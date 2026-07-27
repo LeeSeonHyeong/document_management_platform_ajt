@@ -336,7 +336,5 @@ CREATE TABLE `answer_source` (
         ON UPDATE RESTRICT ON DELETE SET NULL,
     CONSTRAINT `fk_answer_source_schedule`
         FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`)
-        ON UPDATE RESTRICT ON DELETE SET NULL,
-    CONSTRAINT `chk_answer_source_at_most_one_target`
-        CHECK (`wiki_id` IS NULL OR `schedule_id` IS NULL)
+        ON UPDATE RESTRICT ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
