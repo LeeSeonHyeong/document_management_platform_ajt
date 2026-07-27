@@ -33,6 +33,11 @@ pipeline {
 
                     if [ -f docker-compose.yml ] || [ -f compose.yml ]; then
                       echo "compose file found"
+                      if [ -f .env ]; then
+                        echo ".env file found. Deploy stage can run."
+                      else
+                        echo ".env file not found. Skipping deploy for now."
+                      fi
                     else
                       echo "compose file not found. Skipping deploy for now."
                     fi
@@ -80,7 +85,9 @@ pipeline {
 
         stage('Deploy') {
             when {
-                expression { fileExists('docker-compose.yml') || fileExists('compose.yml') }
+                expression {
+                    (fileExists('docker-compose.yml') || fileExists('compose.yml')) && fileExists('.env')
+                }
             }
             steps {
                 sh '''
