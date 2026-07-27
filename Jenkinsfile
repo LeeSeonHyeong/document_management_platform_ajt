@@ -18,6 +18,7 @@ pipeline {
                     echo "Workspace:"
                     pwd
                     ls -la
+                    echo "Git branch: ${GIT_BRANCH:-unknown}"
 
                     if [ -d backend ]; then
                       echo "backend directory found"
@@ -86,11 +87,14 @@ pipeline {
         stage('Deploy') {
             when {
                 expression {
-                    (fileExists('docker-compose.yml') || fileExists('compose.yml')) && fileExists('.env')
+                    def branch = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+                    def isMaster = branch == 'master' || branch == 'origin/master' || branch.endsWith('/master')
+                    return isMaster && (fileExists('docker-compose.yml') || fileExists('compose.yml')) && fileExists('.env')
                 }
             }
             steps {
                 sh '''
+                    echo "Deploying master branch with Docker Compose"
                     docker compose build
                     docker compose up -d
                 '''
