@@ -9,6 +9,7 @@ pipeline {
         }
         stage('Test') {
             steps {
+                echo 'Webhook trigger test from local clone'
                 echo '두 번째 단계도 정상'
                 sh 'date'          // 서버에서 현재 시간 출력
                 sh 'whoami'        // 어떤 유저로 실행되는지
