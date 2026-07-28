@@ -19,7 +19,7 @@ ajt:
     base-url: ${AI_BASE_URL:http://localhost:8000}
     internal-api-key: ${AI_INTERNAL_API_KEY:local-dev-key}
     connect-timeout: ${AI_CONNECT_TIMEOUT:5s}
-    read-timeout: ${AI_READ_TIMEOUT:180s}
+    read-timeout: ${AI_READ_TIMEOUT:10m}
   document:
     storage:
       root-path: ${DOCUMENT_STORAGE_ROOT:build/ajt-documents}
