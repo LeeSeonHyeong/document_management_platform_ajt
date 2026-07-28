@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Local Figma reference images
+figma/
+
 # 환경 변수 (예제는 추적)
 .env
 .env.*
