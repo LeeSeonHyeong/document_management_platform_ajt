@@ -10,6 +10,8 @@ public interface DocumentFileStorage {
 
     String storeParsedMarkdown(String scopeKey, long documentId, String parsedMarkdown) throws IOException;
 
+    String readText(String storedPath) throws IOException;
+
     Resource load(String storedPath);
 
     void delete(String storedPath) throws IOException;
