@@ -44,3 +44,67 @@ export const credentials = {
 export function findUserById(userId) {
   return users.find((u) => u.userId === userId) ?? null
 }
+
+// 일정 목 데이터(오늘 기준 2026-07 전후). 멀티데이·레인 겹침을 확인할 수 있게 구성.
+export const schedules = [
+  {
+    scheduleId: '1',
+    title: '전사 워크숍',
+    content: '2분기 전사 워크숍',
+    location: '대강당',
+    visibilityType: 'all',
+    startAt: '2026-07-28T00:00:00Z',
+    endAt: '2026-07-28T08:00:00Z',
+    status: 'approved',
+  },
+  {
+    scheduleId: '2',
+    title: '개발부 스프린트',
+    content: '스프린트 기간',
+    location: '개발실',
+    visibilityType: 'department',
+    startAt: '2026-07-29T00:00:00Z',
+    endAt: '2026-08-03T09:00:00Z',
+    status: 'approved',
+  },
+  {
+    scheduleId: '3',
+    title: '치과 예약',
+    content: null,
+    location: '강남치과',
+    visibilityType: 'personal',
+    startAt: '2026-07-28T05:00:00Z',
+    endAt: '2026-07-28T06:00:00Z',
+    status: 'approved',
+  },
+  {
+    scheduleId: '4',
+    title: '팀 점심',
+    content: null,
+    location: '회사 앞',
+    visibilityType: 'personal',
+    startAt: '2026-07-30T03:00:00Z',
+    endAt: '2026-07-30T04:00:00Z',
+    status: 'approved',
+  },
+  {
+    scheduleId: '5',
+    title: '월말 정산 마감',
+    content: '7월 정산',
+    location: null,
+    visibilityType: 'all',
+    startAt: '2026-07-31T00:00:00Z',
+    endAt: '2026-07-31T09:00:00Z',
+    status: 'approved',
+  },
+  {
+    scheduleId: '6',
+    title: '인사부 정기 교육',
+    content: null,
+    location: '교육장',
+    visibilityType: 'department',
+    startAt: '2026-07-27T01:00:00Z',
+    endAt: '2026-07-27T03:00:00Z',
+    status: 'approved',
+  },
+]
