@@ -3,9 +3,14 @@
 import { ROLES, ACCOUNT_STATUS, SIGNUP_STATUS } from '@/shared/constants/enums'
 
 export const departments = [
-  { departmentId: '1', name: '개발부' },
-  { departmentId: '2', name: '인사부' },
-  { departmentId: '3', name: '기획부' },
+  { departmentId: '1', name: '개발팀', manager: { userId: '3', name: '김민수' }, memberCount: 8 },
+  { departmentId: '2', name: '인사팀', manager: { userId: '6', name: '최서연' }, memberCount: 3 },
+  { departmentId: '3', name: '기획팀', manager: { userId: '8', name: '한소희' }, memberCount: 2 },
+  { departmentId: '4', name: '디자인팀', manager: null, memberCount: 4 },
+  { departmentId: '5', name: '마케팅팀', manager: null, memberCount: 3 },
+  { departmentId: '6', name: '영업팀', manager: null, memberCount: 2 },
+  { departmentId: '7', name: '재무팀', manager: null, memberCount: 1 },
+  { departmentId: '8', name: '고객지원팀', manager: null, memberCount: 1 },
 ]
 
 export const users = [
@@ -20,6 +25,18 @@ export const users = [
     accountStatus: ACCOUNT_STATUS.ACTIVE,
     createdAt: '2026-07-01T02:00:00Z',
     updatedAt: '2026-07-27T09:00:00Z',
+  },
+  {
+    userId: '8',
+    email: 'sohee.han@ajt.co.kr',
+    name: '한소희',
+    employeeNo: '2024-006',
+    role: ROLES.ADMIN,
+    department: departments[2],
+    signupStatus: SIGNUP_STATUS.APPROVED,
+    accountStatus: ACCOUNT_STATUS.ACTIVE,
+    createdAt: '2024-05-21T01:00:00Z',
+    updatedAt: '2026-07-14T03:00:00Z',
   },
   {
     userId: '2',
@@ -74,7 +91,7 @@ export const users = [
     email: 'seoyeon.choi@ajt.co.kr',
     name: '최서연',
     employeeNo: '2024-004',
-    role: ROLES.EMPLOYEE,
+    role: ROLES.ADMIN,
     department: departments[1],
     signupStatus: SIGNUP_STATUS.APPROVED,
     accountStatus: ACCOUNT_STATUS.ACTIVE,

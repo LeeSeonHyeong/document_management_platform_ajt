@@ -122,6 +122,64 @@ export const handlers = [
     HttpResponse.json({ items: departments, page: 1, size: departments.length, totalCount: departments.length, totalPages: 1 }),
   ),
 
+  http.post('/api/v1/departments', async ({ request }) => {
+    const body = await request.json()
+    if (departments.some((department) => department.name === body.name)) {
+      return HttpResponse.json(
+        errorBody(409, 'DUPLICATE_DEPARTMENT_NAME', '이미 사용 중인 부서명입니다.', '/api/v1/departments'),
+        { status: 409 },
+      )
+    }
+    const manager = body.managerId
+      ? users.find((user) => user.userId === body.managerId)
+      : null
+    const department = {
+      departmentId: String(Math.max(...departments.map((item) => Number(item.departmentId)), 0) + 1),
+      name: body.name,
+      manager: manager ? { userId: manager.userId, name: manager.name } : null,
+      memberCount: 0,
+    }
+    departments.push(department)
+    return HttpResponse.json(department, { status: 201 })
+  }),
+
+  http.patch('/api/v1/departments/:departmentId', async ({ params, request }) => {
+    const department = departments.find((item) => item.departmentId === params.departmentId)
+    if (!department) {
+      return HttpResponse.json(
+        errorBody(404, 'DEPARTMENT_NOT_FOUND', '부서를 찾을 수 없습니다.', `/api/v1/departments/${params.departmentId}`),
+        { status: 404 },
+      )
+    }
+    const body = await request.json()
+    if (body.name !== undefined) department.name = body.name
+    if (Object.prototype.hasOwnProperty.call(body, 'managerId')) {
+      const manager = body.managerId
+        ? users.find((user) => user.userId === body.managerId)
+        : null
+      department.manager = manager ? { userId: manager.userId, name: manager.name } : null
+    }
+    return HttpResponse.json(department)
+  }),
+
+  http.delete('/api/v1/departments/:departmentId', ({ params }) => {
+    const index = departments.findIndex((item) => item.departmentId === params.departmentId)
+    if (index < 0) {
+      return HttpResponse.json(
+        errorBody(404, 'DEPARTMENT_NOT_FOUND', '부서를 찾을 수 없습니다.', `/api/v1/departments/${params.departmentId}`),
+        { status: 404 },
+      )
+    }
+    if ((departments[index].memberCount ?? 0) > 0) {
+      return HttpResponse.json(
+        errorBody(409, 'DEPARTMENT_HAS_MEMBERS', '소속 직원이 있는 부서는 삭제할 수 없습니다.', `/api/v1/departments/${params.departmentId}`),
+        { status: 409 },
+      )
+    }
+    departments.splice(index, 1)
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   http.get('/api/v1/signup-requests', ({ request }) => {
     const status = new URL(request.url).searchParams.get('status')
     const items = signupRequests.filter((item) => !status || item.signupStatus === status)
