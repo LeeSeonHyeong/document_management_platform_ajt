@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/document_parser", "src/wiki_mcp"]
+packages = ["src/document_parser", "src/wiki_mcp", "src/agent_runtime"]
 
 [project]
 name = "ajt-ai-server"
@@ -18,6 +18,15 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# 배포 형태의 런타임. claude-code 런타임은 로그인 세션만 쓰므로 필요 없다.
+deepagents = [
+    "deepagents",
+    "langchain-mcp-adapters",
+    "langchain-anthropic",
+    "python-dotenv",
 ]
 
 [dependency-groups]
