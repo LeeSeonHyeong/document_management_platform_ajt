@@ -1,0 +1,17 @@
+[project]
+name = "ajt-ai-server"
+version = "0.1.0"
+description = "AJT AI 서버 — 원본문서 파싱과 위키 편집 에이전트 (FastAPI)"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9,<10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
