@@ -2,6 +2,8 @@ package com.ajt.backend.global.config;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
+import com.ajt.backend.global.auth.AccessTokenAuthenticationFilter;
+import com.ajt.backend.global.auth.CsrfProtectionFilter;
 import com.ajt.backend.global.error.RestAccessDeniedHandler;
 import com.ajt.backend.global.error.RestAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
@@ -9,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
@@ -16,6 +19,8 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(
             HttpSecurity http,
+            AccessTokenAuthenticationFilter accessTokenAuthenticationFilter,
+            CsrfProtectionFilter csrfProtectionFilter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler
     ) throws Exception {
@@ -28,6 +33,7 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/h2-console/**",
                                 "/api/v1/auth/login",
+                                "/api/v1/auth/csrf",
                                 "/api/v1/auth/signup",
                                 "/api/v1/auth/password-reset-requests",
                                 "/api/v1/auth/password-resets",
@@ -39,6 +45,8 @@ public class SecurityConfig {
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
                 )
+                .addFilterBefore(accessTokenAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(csrfProtectionFilter, AccessTokenAuthenticationFilter.class)
                 .httpBasic(withDefaults())
                 .build();
     }

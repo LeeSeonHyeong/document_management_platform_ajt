@@ -10,6 +10,12 @@ ajt:
     access-token-expiration: ${AJT_ACCESS_TOKEN_EXPIRATION:1h}
     password-reset-secret: ${AJT_PASSWORD_RESET_SECRET:local-dev-password-reset-secret}
     password-reset-expiration: ${AJT_PASSWORD_RESET_EXPIRATION:30m}
+    cookie-secure: ${AJT_AUTH_COOKIE_SECURE:true}
+  ai:
+    base-url: ${AI_BASE_URL:http://localhost:8000}
+    internal-api-key: ${AI_INTERNAL_API_KEY:local-dev-key}
+    connect-timeout: ${AI_CONNECT_TIMEOUT:5s}
+    read-timeout: ${AI_READ_TIMEOUT:180s}
 
 management:
   endpoints:
@@ -20,10 +26,3 @@ management:
     health:
       probes:
         enabled: true
-
-ajt:
-  ai:
-    base-url: ${AI_BASE_URL:http://localhost:8000}
-    internal-api-key: ${AI_INTERNAL_API_KEY:local-dev-key}
-    connect-timeout: ${AI_CONNECT_TIMEOUT:5s}
-    read-timeout: ${AI_READ_TIMEOUT:180s}

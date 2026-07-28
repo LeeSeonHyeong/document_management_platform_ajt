@@ -8,7 +8,8 @@ public record AuthTokenProperties(
         String accessTokenSecret,
         Duration accessTokenExpiration,
         String passwordResetSecret,
-        Duration passwordResetExpiration
+        Duration passwordResetExpiration,
+        Boolean cookieSecure
 ) {
 
     public AuthTokenProperties {
@@ -23,6 +24,9 @@ public record AuthTokenProperties(
         }
         if (passwordResetExpiration == null) {
             passwordResetExpiration = Duration.ofMinutes(30);
+        }
+        if (cookieSecure == null) {
+            cookieSecure = true;
         }
     }
 }

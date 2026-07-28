@@ -17,6 +17,8 @@
     open-in-view: false
 
 ajt:
+  auth:
+    cookie-secure: false
   local-data:
     enabled: true
 
