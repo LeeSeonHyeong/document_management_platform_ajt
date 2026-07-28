@@ -5,7 +5,7 @@ including `파일명 — "인용문"` with no comma, which upstream discarded as
 comment. The quote is the most useful anchor there is, so it has to survive.
 """
 
-from .conftest import SCOPE
+from ..conftest import SCOPE
 from wiki_mcp.tools.references import build_edges, parse_citation, parse_wiki_links
 
 
