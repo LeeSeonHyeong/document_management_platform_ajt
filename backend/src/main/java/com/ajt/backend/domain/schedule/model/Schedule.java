@@ -1,5 +1,6 @@
 package com.ajt.backend.domain.schedule.model;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -7,14 +8,16 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "schedule")
@@ -69,9 +72,16 @@ public class Schedule {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "department_refs", nullable = false, columnDefinition = "json")
-    private List<Long> departmentRefs = List.of();
+    /**
+     * 공개 부서 목록입니다.
+     * 부서 참조 무결성을 DB가 강제하도록 schedule_department 조인 테이블로 저장합니다.
+     * 목록 조회는 페이지네이션 없이 기간 내 전체를 반환하므로, 지연 로딩 N+1을 막기 위해
+     * BatchSize로 부서 목록을 한 번에 모아 읽습니다.
+     */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "schedule_id", nullable = false)
+    @BatchSize(size = 100)
+    private List<ScheduleDepartment> departments = new ArrayList<>();
 
     protected Schedule() {
     }
@@ -169,15 +179,23 @@ public class Schedule {
         return sourceOriginalPath != null;
     }
 
+    /**
+     * 공개 부서 목록을 지정한 목록으로 맞춥니다.
+     * 전체를 비우고 다시 넣으면 유지되는 부서도 삭제·재삽입 대상이 되는데, Hibernate가
+     * 삽입을 orphan 삭제보다 먼저 실행해 uk_schedule_department를 위반한다.
+     * 그래서 빠질 부서만 지우고 새로 들어올 부서만 추가한다.
+     */
     public void replaceDepartments(Collection<Long> departmentIds) {
-        if (departmentIds == null) {
-            this.departmentRefs = List.of();
-            return;
-        }
-        this.departmentRefs = departmentIds.stream()
-                .distinct()
-                .sorted()
+        List<Long> target = departmentIds == null
+                ? List.of()
+                : departmentIds.stream().distinct().sorted().toList();
+        departments.removeIf(department -> !target.contains(department.departmentId()));
+        List<Long> retained = departments.stream()
+                .map(ScheduleDepartment::departmentId)
                 .toList();
+        target.stream()
+                .filter(departmentId -> !retained.contains(departmentId))
+                .forEach(departmentId -> departments.add(new ScheduleDepartment(departmentId)));
     }
 
     private static void validatePeriod(Instant startAt, Instant endAt) {
@@ -259,6 +277,10 @@ public class Schedule {
     }
 
     public List<Long> departmentIds() {
-        return List.copyOf(departmentRefs);
+        // 유지된 부서와 새로 추가된 부서가 섞여 저장 순서가 보장되지 않으므로 정렬해 반환한다.
+        return departments.stream()
+                .map(ScheduleDepartment::departmentId)
+                .sorted()
+                .toList();
     }
 }

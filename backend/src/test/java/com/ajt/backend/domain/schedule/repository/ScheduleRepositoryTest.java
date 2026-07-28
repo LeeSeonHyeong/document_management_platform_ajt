@@ -26,7 +26,7 @@ class ScheduleRepositoryTest {
     private TestEntityManager entityManager;
 
     @Test
-    @DisplayName("일정을 저장하면 enum·Instant·부서 목록(JSON)이 그대로 재조회된다")
+    @DisplayName("일정을 저장하면 enum·Instant·부서 목록(조인 테이블)이 그대로 재조회된다")
     void persistsAndReloadsMapping() {
         Schedule schedule = Schedule.draft(
                 10L, "프로젝트 회의", "주간 진행 공유", "개발부", "3층 회의실",
@@ -48,8 +48,29 @@ class ScheduleRepositoryTest {
     }
 
     @Test
-    @DisplayName("부서 목록이 비면 빈 배열로 저장·조회된다")
-    void persistsEmptyDepartmentRefs() {
+    @DisplayName("같은 부서로 다시 지정해도 uk_schedule_department를 위반하지 않는다")
+    void replacesDepartmentsWithOverlappingSet() {
+        Schedule schedule = Schedule.draft(
+                10L, "프로젝트 회의", null, null, null,
+                ScheduleVisibility.DEPARTMENT, START, END);
+        schedule.replaceDepartments(List.of(1L, 2L));
+        Long id = scheduleRepository.saveAndFlush(schedule).id();
+        entityManager.clear();
+
+        Schedule found = scheduleRepository.findById(id).orElseThrow();
+        // 부서 1은 그대로 두고 2를 3으로 바꾼다. clear 후 재삽입이므로 삭제가 삽입보다
+        // 먼저 실행되지 않으면 부서 1에서 유니크 제약을 위반한다.
+        found.replaceDepartments(List.of(1L, 3L));
+        scheduleRepository.saveAndFlush(found);
+        entityManager.clear();
+
+        assertThat(scheduleRepository.findById(id).orElseThrow().departmentIds())
+                .containsExactly(1L, 3L);
+    }
+
+    @Test
+    @DisplayName("부서 목록이 비면 빈 목록으로 저장·조회된다")
+    void persistsEmptyDepartments() {
         Schedule schedule = Schedule.create(
                 10L, "개인 일정", null, null, null,
                 ScheduleVisibility.PERSONAL, START, END);
