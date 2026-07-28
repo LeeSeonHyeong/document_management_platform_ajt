@@ -29,7 +29,8 @@ def create_app(*, api_key: str | None = None) -> FastAPI:
         response.headers["X-Request-Id"] = rid
         return response
 
-    from .routers import wiki
+    from .routers import source_parse, wiki
 
     app.include_router(wiki.build_router(app))
+    app.include_router(source_parse.build_router(app))
     return app

@@ -19,6 +19,8 @@ dependencies = [
     "pydantic-settings>=2.0",
     "pyyaml>=6.0",
     "fastapi>=0.115",
+    # multipart 업로드(`source-parses`). fastapi 가 전이로 끌어오지만 직접 쓰므로 명시한다.
+    "python-multipart>=0.0.9",
     "httpx>=0.27",
     "uvicorn>=0.30",
 ]
