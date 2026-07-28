@@ -1,0 +1,33 @@
+{
+  "scope": "ALL",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "order": [
+    "01-training.md"
+  ],
+  "documents": [
+    {
+      "seq": 1,
+      "jobId": "9001",
+      "documentId": "101",
+      "document": "01-training.md",
+      "elapsedSeconds": 77.6,
+      "toolCalls": {
+        "guide": 1,
+        "read": 4,
+        "search": 2,
+        "lint": 1
+      },
+      "inputTokens": 302695,
+      "outputTokens": 2125,
+      "turns": 11,
+      "costUsd": 0.484,
+      "error": "변경 없음 — 반영할 것이 없다",
+      "reply": "**error 0건.** lint 통과.\n\nwarn 16건은 모두 stale-page(오래됐을 수 있음)와 unused-footnote 1건 — 이번 작업 범위 밖이라 남겨둠.\n\n원본문서 `01-training.md` 내용은 이미 [교육 훈련 예산](pages/75759a021a75.md)과 [도서 지원 정책](pages/b63430958f86.md) 두 페이지에 빠짐없이 반영돼 있었고, index.md에도 등록 완료 상태. 추가 변경 불필요.",
+      "changes": [],
+      "lint": "**lint 16건** — ALL 범위 (error 0, warn 16; 33건 검사).\n\n**Warnings**\n- [unused-footnote-definition] `pages/2d0c4dd38694.md` — 각주 `^36` 정의가 쓰이지 않는다\n- [stale-page] `pages/6466ec527a71.md` — 2026-07-27 12:55:16 이후 오래됐을 수 있다\n- [stale-page] `pages/2c1213716122.md` — 2026-07-27 12:54:38 이후 오래됐을 수 있다\n- [stale-page] `pages/2d0c4dd38694.md` — 2026-07-27 12:40:08 이후 오래됐을 수 있다\n- [stale-page] `pages/469b409d9597.md` — 2026-07-27 12:40:08 이후 오래됐을 수 있다\n- [stale-page] `pages/f7c1e9d5478f.md` — 2026-07-27 12:40:08 이후 오래됐을 수 있다\n- [stale-page] `pages/b5f176c9b3e6.md` — 2026-07-27 12:24:59 이후 오래됐을 수 있다\n- [stale-page] `pages/bfd285bfd962.md` — 2026-07-27 12:24:59 이후 오래됐을 수 있다\n- [stale-page] `pages/541dfd02bd51.md` — 2026-07-27 12:24:34 이후 오래됐을 수 있다\n- [stale-page] `pages/64f41068e524.md` — 2026-07-27 12:24:34 이후 오래됐을 수 있다\n- [stale-page] `pages/95d744e18b48.md` — 2026-07-27 12:09:25 이후 오래됐을 수 있다\n- [stale-page] `pages/177011e0ae2c.md` — 2026-07-27 11:59:17 이후 오래됐을 수 있다\n- [stale-page] `pages/eddb3cec8f14.md` — 2026-07-27 11:59:17 이후 오래됐을 수 있다\n- [stale-page] `pages/b63430958f86.md` — 2026-07-27 11:39:30 이후 오래됐을 수 있다\n- [stale-page] `pages/75759a021a75.md` — 2026-07-27 11:39:27 이후 오래됐을 수 있다\n- [stale-page] `pages/e785ad1e47c9.md` — 2026-07-27 11:29:47 이후 오래됐을 수 있다",
+      "committed": [],
+      "discarded": 0
+    }
+  ]
+}
