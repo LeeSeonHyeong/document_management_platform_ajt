@@ -303,7 +303,7 @@ git commit -m "feat(ai): 원본문서 파싱 FastAPI 연동 추가"
 ### Task 4: Contract Evidence and Full Regression Verification
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-07-27-fastapi-source-parse-client-design.md` only if implementation reveals a factual mismatch; otherwise no contract document changes.
+- Modify: `backend/docs/superpowers/specs/2026-07-27-fastapi-source-parse-client-design.md` only if implementation reveals a factual mismatch; otherwise no contract document changes.
 - Test: all backend tests and artifact-consistency validation.
 
 **Interfaces:**
@@ -346,7 +346,7 @@ Expected: no actual API key, file content, storage path, generated Postman JSON,
 - [ ] **Step 5: Commit only a factual design correction if one was required**
 
 ```bash
-git add docs/superpowers/specs/2026-07-27-fastapi-source-parse-client-design.md
+git add backend/docs/superpowers/specs/2026-07-27-fastapi-source-parse-client-design.md
 git commit -m "docs(ai): 원본문서 파싱 구현 결과 반영"
 ```
 
