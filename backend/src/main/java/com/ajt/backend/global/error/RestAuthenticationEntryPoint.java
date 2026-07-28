@@ -22,6 +22,6 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
             HttpServletResponse response,
             AuthenticationException authException
     ) throws IOException {
-        responseWriter.write(response, ErrorCode.UNAUTHORIZED, request.getRequestURI());
+        responseWriter.write(response, ErrorCode.INVALID_ACCESS_TOKEN, request.getRequestURI());
     }
 }
