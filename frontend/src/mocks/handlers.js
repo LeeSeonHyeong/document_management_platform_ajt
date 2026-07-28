@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { departments, users, credentials, findUserById } from './db'
 import { documentHandlers } from './handlers/document'
+import { aiJobHandlers } from './handlers/aiJob'
 
 // 목 세션(데모용). HttpOnly 쿠키를 흉내 내는 대신 메모리 플래그로 로그인 상태를 유지한다.
 let currentUserId = null
@@ -88,4 +89,5 @@ export const handlers = [
   http.post('/api/v1/auth/password-resets', () => new HttpResponse(null, { status: 204 })),
 
   ...documentHandlers,
+  ...aiJobHandlers,
 ]

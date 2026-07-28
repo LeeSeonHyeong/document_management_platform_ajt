@@ -8,7 +8,6 @@ import {
   findUserById,
   findDocumentById,
   findDocumentCategoryById,
-  findAiJobById,
   issueDocumentId,
   issueJobId,
   issueCategoryId,
@@ -357,44 +356,7 @@ export const documentHandlers = [
     documentCategories.splice(index, 1)
     return new HttpResponse(null, { status: 204 })
   }),
-
-  // ── AI 작업(기본 조회) ────────────────────────────────────────
-  // 폴링 중 진행률이 점점 올라가는 동작은 hooks/useAiJobPolling과 함께 만드는
-  // mocks/handlers/aiJob.js(다음 프롬프트)에서 이 핸들러를 대체한다.
-  http.get('/api/v1/ai-jobs/:jobId', ({ params }) => {
-    const job = findAiJobById(params.jobId)
-    if (!job) {
-      return HttpResponse.json(
-        errorBody(404, 'AI_JOB_NOT_FOUND', 'AI 작업을 찾을 수 없습니다.', `/api/v1/ai-jobs/${params.jobId}`),
-        { status: 404 },
-      )
-    }
-    return HttpResponse.json(job)
-  }),
-
-  http.post('/api/v1/ai-jobs/:jobId/cancel', ({ params }) => {
-    const job = findAiJobById(params.jobId)
-    if (!job) {
-      return HttpResponse.json(
-        errorBody(404, 'AI_JOB_NOT_FOUND', '존재하지 않는 작업입니다.', `/api/v1/ai-jobs/${params.jobId}/cancel`),
-        { status: 404 },
-      )
-    }
-    if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
-      return HttpResponse.json(
-        errorBody(409, 'AI_JOB_NOT_CANCELLABLE', '이미 종료되었거나 중단할 수 없는 작업입니다.', `/api/v1/ai-jobs/${params.jobId}/cancel`),
-        { status: 409 },
-      )
-    }
-    job.status = 'cancelled'
-    job.finishedAt = new Date().toISOString()
-    job.documentResults
-      .filter((r) => r.status !== 'completed' && r.status !== 'failed')
-      .forEach((r) => {
-        r.status = 'cancelled'
-        const doc = findDocumentById(r.documentId)
-        if (doc) doc.status = 'cancelled'
-      })
-    return HttpResponse.json({ jobId: job.jobId, status: job.status }, { status: 202 })
-  }),
 ]
+
+// AI 작업(GET /ai-jobs/:jobId, POST .../cancel) 핸들러는 mocks/handlers/aiJob.js 로 옮겼다.
+// 폴링할 때마다 진행 상태가 조금씩 전진하는 동작이 필요해서 문서 핸들러와 분리했다.
