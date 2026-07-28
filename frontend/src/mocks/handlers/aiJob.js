@@ -58,7 +58,13 @@ export const aiJobHandlers = [
         { status: 404 },
       )
     }
-    if (!TERMINAL_JOB_STATUSES.has(job.status)) advanceJob(job)
+    // 대기(waiting) 작업은 첫 조회에서는 진행시키지 않는다 — 4-2R 대기 화면에서 문서 묶음을
+    // 검토할 수 있어야 하기 때문. 이후 조회(진행 화면 폴링)부터 한 단계씩 진행한다.
+    if (job.status === 'waiting' && !job._seen) {
+      job._seen = true
+    } else if (!TERMINAL_JOB_STATUSES.has(job.status)) {
+      advanceJob(job)
+    }
     return HttpResponse.json(job)
   }),
 

@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { useQueries } from '@tanstack/react-query'
-import { qk } from '@/shared/api/queryKeys'
 import { Button, Badge, Chip, DataTable, Spinner } from '@/components/ui'
 import { useAiJob } from '../queries'
-import { fetchDocument } from '../api'
+import { useDocumentDetails } from '../hooks/useDocumentDetails'
 import DocumentVisibilityDialog from '../components/DocumentVisibilityDialog'
+import AiJobStartDialog from '../components/AiJobStartDialog'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
@@ -27,29 +26,22 @@ export default function AiJobQueuePage() {
   const { jobId } = useParams()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(null) // 공개 범위를 수정할 document 상세
+  const [startOpen, setStartOpen] = useState(false)
   const { data: job, isLoading } = useAiJob(jobId)
 
-  // 상태가 맞지 않는 라우트로 진입하면 올바른 라우트로 보낸다(document-state.md 규칙).
+  // 이미 종료된 작업으로 대기 라우트에 진입하면 요약으로 보낸다(document-state.md 규칙).
+  // 처리 중(processing)에는 튕기지 않는다 — 사용자가 대기 화면에서 공개 범위를 검토·수정하는 동안
+  // 직렬 큐가 작업을 자동으로 시작(processing)할 수 있기 때문. 진행 화면 이동은 "AI 작업 시작" 버튼으로 한다.
   useEffect(() => {
-    if (!job) return
-    if (job.status === 'processing') navigate(`/admin/documents/jobs/${jobId}/progress`, { replace: true })
-    else if (TERMINAL_STATUSES.has(job.status)) navigate(`/admin/documents/jobs/${jobId}/summary`, { replace: true })
+    if (job && TERMINAL_STATUSES.has(job.status)) {
+      navigate(`/admin/documents/jobs/${jobId}/summary`, { replace: true })
+    }
   }, [job, jobId, navigate])
 
   const results = [...(job?.documentResults ?? [])].sort((a, b) => a.order - b.order)
 
   // 표시용 필드(파일명·카테고리·공개 범위)는 작업 응답에 없으므로 문서 상세로 채운다.
-  const docQueries = useQueries({
-    queries: results.map((r) => ({
-      queryKey: qk.documents.detail(r.documentId),
-      queryFn: () => fetchDocument(r.documentId),
-      enabled: Boolean(r.documentId),
-    })),
-  })
-  const docById = {}
-  results.forEach((r, i) => {
-    docById[r.documentId] = docQueries[i]?.data
-  })
+  const docById = useDocumentDetails(results.map((r) => r.documentId))
 
   const allAssigned = results.length > 0 && results.every((r) => Boolean(docById[r.documentId]?.visibilityType))
 
@@ -74,12 +66,6 @@ export default function AiJobQueuePage() {
       ),
     },
   ]
-
-  function handleStart() {
-    // 작업은 업로드 시점에 이미 생성(waiting)되어 있다. 시작 확인 다이얼로그(4-4R) 연결은
-    // 다음 브랜치(S15P11B106-74 ai-job-run)에서 진행하며, 여기서는 진행 화면으로 이동만 한다.
-    navigate(`/admin/documents/jobs/${jobId}/progress`)
-  }
 
   if (isLoading) {
     return (
@@ -108,7 +94,7 @@ export default function AiJobQueuePage() {
         <span className="text-sm text-slate-500">
           {allAssigned ? '모든 문서에 공개 범위가 지정되었습니다.' : '문서 정보를 불러오는 중입니다…'}
         </span>
-        <Button variant="primary" onClick={handleStart} disabled={!allAssigned}>
+        <Button variant="primary" onClick={() => setStartOpen(true)} disabled={!allAssigned}>
           AI 작업 시작
         </Button>
       </div>
@@ -118,6 +104,17 @@ export default function AiJobQueuePage() {
         document={editing}
         onClose={() => setEditing(null)}
         onSaved={() => setEditing(null)}
+      />
+
+      <AiJobStartDialog
+        open={startOpen}
+        documentCount={results.length}
+        onClose={() => setStartOpen(false)}
+        onConfirm={() => {
+          // 작업은 업로드 시점에 이미 생성(waiting)돼 있으므로 진행 화면으로 이동만 한다.
+          setStartOpen(false)
+          navigate(`/admin/documents/jobs/${jobId}/progress`)
+        }}
       />
     </section>
   )
