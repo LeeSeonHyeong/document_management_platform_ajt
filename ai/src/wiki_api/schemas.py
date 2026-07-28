@@ -141,10 +141,41 @@ class SelectionRequest(Strict):
     jobId: str
     documentId: str
     scopeKey: str
-    parsedMarkdown: str
     currentIndex: str
+    parsedMarkdown: str = ""
     changeType: ChangeType = "document_added"
     removedParsedMarkdown: str | None = None
+
+    @model_validator(mode="after")
+    def _markdown_matches_change_type(self) -> "SelectionRequest":
+        """어느 본문이 필요한지는 `changeType` 이 정한다 (계약 v1.3.0).
+
+        제거에는 새 문서가 없고, 추가에는 이전 문서가 없다. 둘 다 무조건 요구하면 계약대로
+        보낸 첫 호출이 400 이다. `TransformRequest` 와 같은 이유로 라우터가 아니라 모델에서
+        막는다 — 어느 필드가 문제인지 `fieldErrors` 에 적어야 한다 (API_컨벤션 6.2).
+        """
+        errors: list[InitErrorDetails] = []
+        if self.changeType != "document_removed" and not self.parsedMarkdown.strip():
+            errors.append(InitErrorDetails(
+                type=PydanticCustomError(
+                    "parsed_markdown_required",
+                    "changeType이 {change_type}이면 parsedMarkdown이 필요합니다.",
+                    {"change_type": self.changeType}),
+                loc=("parsedMarkdown",),
+                input=self.parsedMarkdown))
+        if self.changeType != "document_added" and \
+                not (self.removedParsedMarkdown or "").strip():
+            errors.append(InitErrorDetails(
+                type=PydanticCustomError(
+                    "removed_markdown_required",
+                    "changeType이 {change_type}이면 removedParsedMarkdown이 필요합니다 — "
+                    "무엇이 사라지는지 모르면 어느 위키가 걸리는지 고를 수 없습니다.",
+                    {"change_type": self.changeType}),
+                loc=("removedParsedMarkdown",),
+                input=self.removedParsedMarkdown))
+        if errors:
+            raise ValidationError.from_exception_data("SelectionRequest", errors)
+        return self
 
 
 class SelectionResponse(Strict):

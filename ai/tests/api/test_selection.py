@@ -291,3 +291,44 @@ def test_a_sync_only_runtime_is_run_off_the_event_loop_with_a_timeout():
     assert _post(runtime).json()["wikiIds"] == ["105"]
     assert runtime.kwargs["timeout"] == SELECTION_TIMEOUT_SECONDS
     assert runtime.kwargs["scope_key"] == SCOPE
+
+
+# ----- 계약 v1.3.0: changeType 별 필수 본문 ------------------------------------
+
+
+def test_a_removal_selection_needs_no_new_document_markdown():
+    """제거는 새 문서가 없다. 계약은 `parsedMarkdown` 을 added·replaced 의 것으로 정의한다 —
+    제거 호출에서 그것을 요구하면 계약대로 보낸 첫 호출이 400 이다."""
+    body = {"jobId": "42", "documentId": "15", "scopeKey": SCOPE,
+            "changeType": "document_removed",
+            "removedParsedMarkdown": SOURCE_MD,
+            "currentIndex": INDEX_MD}
+
+    response = _post(FakeRuntime('{"wikiIds": ["101"], "reason": "인용 위키"}'), body)
+
+    assert response.status_code == 200, response.json()
+
+
+def test_a_removal_selection_still_needs_the_removed_markdown():
+    """무엇이 사라지는지 모르면 어느 위키가 걸리는지 고를 수 없다."""
+    body = {"jobId": "42", "documentId": "15", "scopeKey": SCOPE,
+            "changeType": "document_removed",
+            "currentIndex": INDEX_MD}
+
+    response = _post(FakeRuntime('{"wikiIds": [], "reason": ""}'), body)
+
+    assert response.status_code == 400
+    fields = [e["field"] for e in response.json()["fieldErrors"]]
+    assert "removedParsedMarkdown" in fields
+
+
+def test_an_added_selection_still_needs_the_new_document_markdown():
+    body = {"jobId": "42", "documentId": "15", "scopeKey": SCOPE,
+            "changeType": "document_added",
+            "currentIndex": INDEX_MD}
+
+    response = _post(FakeRuntime('{"wikiIds": [], "reason": ""}'), body)
+
+    assert response.status_code == 400
+    fields = [e["field"] for e in response.json()["fieldErrors"]]
+    assert "parsedMarkdown" in fields
