@@ -393,6 +393,13 @@ const tables = [
         true,
         "TXT, MD, DOCX, PDF, CSV, XLSX",
       ),
+      column(
+        "일정 원본 파일명",
+        "source_original_file_name",
+        "VARCHAR(255)",
+        true,
+        "업로드 당시 원본 파일명; 저장 경로는 확장자만 유지",
+      ),
       column("일정 파싱 경로", "source_parsed_path", "VARCHAR(500)", true),
       column("제목", "title", "VARCHAR(200)"),
       column("내용", "content", "TEXT", true),

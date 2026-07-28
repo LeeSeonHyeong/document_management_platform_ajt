@@ -1,7 +1,7 @@
 package com.ajt.backend.domain.schedule.service;
 
 import com.ajt.backend.domain.department.DepartmentRepository;
-import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.schedule.storage.ScheduleSourceFileStorage;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.schedule.api.ScheduleCreateRequest;
@@ -41,7 +41,7 @@ public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
     private final MemberRepository memberRepository;
     private final DepartmentRepository departmentRepository;
-    private final DocumentFileStorage documentFileStorage;
+    private final ScheduleSourceFileStorage scheduleSourceFileStorage;
 
     /**
      * SCH-CREATE 수동/개인 일정 생성입니다.
@@ -104,7 +104,7 @@ public class ScheduleService {
             String departmentId
     ) {
         // TODO(스케일 검토): 계약상 목록은 페이지네이션이 없어 기간 내 전체를 반환한다.
-        //  또한 부서 JSON 컬럼 특성상 사원 가시성/부서 필터는 조회 후 인메모리로 거른다.
+        //  또한 사원 가시성/부서 필터는 조회 후 인메모리로 거른다(부서 목록은 BatchSize로 모아 읽는다).
         //  기간 내 일정이 대량이면 성능 이슈 가능 → 데이터 증가 시 페이지네이션/DB 필터 도입 검토.
         requireAuthenticated(loginMember);
         LocalDate from = parseDate(startDate);
@@ -204,15 +204,13 @@ public class ScheduleService {
         requireCanModify(loginMember, schedule);
 
         String sourceGroupKey = schedule.sourceGroupKey();
-        String originalPath = schedule.sourceOriginalPath();
-        String parsedPath = schedule.sourceParsedPath();
 
         scheduleRepository.delete(schedule);
 
         if (sourceGroupKey != null) {
             scheduleRepository.flush();
             if (scheduleRepository.countBySourceGroupKey(sourceGroupKey) == 0) {
-                deleteSourceFiles(originalPath, parsedPath);
+                deleteSourceFiles(sourceGroupKey);
             }
         }
     }
@@ -230,23 +228,21 @@ public class ScheduleService {
         if (!schedule.hasSourceDocument()) {
             throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
         }
-        // TODO(39번 일정 원본문서 업로드/파싱 - 팀원 내부 작업 연동 시 교체):
-        //  스케줄 전용 저장소가 없어 공용 파일 저장소(/data/ajt 상대경로)로 원본을 로드한다.
-        Resource resource = documentFileStorage.load(schedule.sourceOriginalPath());
-        return new ScheduleSourceFile(resource, fileNameOf(schedule.sourceOriginalPath()));
+        Resource resource = scheduleSourceFileStorage.load(schedule.sourceOriginalPath());
+        return new ScheduleSourceFile(resource, schedule.sourceOriginalFileName());
     }
 
-    private void deleteSourceFiles(String originalPath, String parsedPath) {
-        // TODO(39번 ...): 스케줄 전용 저장소가 붙기 전까지 공용 파일 저장소로 원본·파싱 파일을 정리한다.
-        for (String path : new String[]{originalPath, parsedPath}) {
-            if (path == null) {
-                continue;
-            }
-            try {
-                documentFileStorage.delete(path);
-            } catch (IOException ignored) {
-                // 파일 정리 실패는 삭제 트랜잭션을 되돌리지 않는다.
-            }
+    /**
+     * 같은 원본문서에서 나온 마지막 일정이 사라질 때 원본·파싱 파일을 정리합니다.
+     */
+    private void deleteSourceFiles(String sourceGroupKey) {
+        if (sourceGroupKey == null) {
+            return;
+        }
+        try {
+            scheduleSourceFileStorage.deleteSourceGroup(sourceGroupKey);
+        } catch (IOException ignored) {
+            // 파일 정리 실패는 삭제 트랜잭션을 되돌리지 않는다.
         }
     }
 
