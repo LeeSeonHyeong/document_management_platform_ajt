@@ -3,6 +3,10 @@ spring:
     name: ajt-backend
   profiles:
     active: local
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 100MB
 
 ajt:
   auth:
@@ -19,6 +23,9 @@ ajt:
   document:
     storage:
       root-path: ${DOCUMENT_STORAGE_ROOT:build/ajt-documents}
+  inquiry:
+    storage:
+      root-path: ${INQUIRY_STORAGE_ROOT:build/ajt-inquiries}
 
 management:
   endpoints:
