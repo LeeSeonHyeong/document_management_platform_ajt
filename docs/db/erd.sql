@@ -207,6 +207,7 @@ CREATE TABLE `schedule` (
     `target_text` VARCHAR(500) NULL,
     `location` VARCHAR(200) NULL,
     `visibility_type` VARCHAR(30) NOT NULL,
+    `department_refs` JSON NOT NULL DEFAULT (JSON_ARRAY()),
     `start_at` DATETIME(6) NOT NULL,
     `end_at` DATETIME(6) NOT NULL,
     `status` VARCHAR(30) NOT NULL,
@@ -225,21 +226,6 @@ CREATE TABLE `schedule` (
         CHECK (`status` IN ('DRAFT', 'APPROVED')),
     CONSTRAINT `chk_schedule_period`
         CHECK (`end_at` >= `start_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-CREATE TABLE `schedule_department` (
-    `schedule_department_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    `schedule_id` BIGINT UNSIGNED NOT NULL,
-    `department_id` BIGINT UNSIGNED NOT NULL,
-    PRIMARY KEY (`schedule_department_id`),
-    UNIQUE KEY `uk_schedule_department` (`schedule_id`, `department_id`),
-    KEY `idx_schedule_department_department` (`department_id`),
-    CONSTRAINT `fk_schedule_department_schedule`
-        FOREIGN KEY (`schedule_id`) REFERENCES `schedule` (`schedule_id`)
-        ON UPDATE RESTRICT ON DELETE CASCADE,
-    CONSTRAINT `fk_schedule_department_department`
-        FOREIGN KEY (`department_id`) REFERENCES `department` (`department_id`)
-        ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `inquiry` (

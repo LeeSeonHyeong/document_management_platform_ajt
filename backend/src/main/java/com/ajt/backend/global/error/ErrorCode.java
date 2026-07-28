@@ -33,7 +33,12 @@ public enum ErrorCode {
     SIGNUP_ALREADY_APPROVED(HttpStatus.CONFLICT, "이미 가입 완료된 이메일입니다."),
     INVALID_OR_EXPIRED_RESET_TOKEN(HttpStatus.BAD_REQUEST, "비밀번호 재설정 토큰이 올바르지 않거나 만료되었습니다."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "CSRF 토큰이 올바르지 않습니다."),
-    CSRF_TOKEN_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF 토큰을 발급하지 못했습니다.");
+    CSRF_TOKEN_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF 토큰을 발급하지 못했습니다."),
+
+    SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "일정이 없거나 접근할 수 없습니다."),
+    INVALID_SCHEDULE(HttpStatus.BAD_REQUEST, "일정 입력값을 확인해주세요."),
+    INVALID_SCHEDULE_RANGE(HttpStatus.BAD_REQUEST, "일정 조회 기간이 올바르지 않습니다."),
+    INVALID_SCHEDULE_STATUS(HttpStatus.CONFLICT, "일정 상태를 확인해주세요.");
 
     private final HttpStatus status;
     private final String message;
