@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Upload, Settings2 } from 'lucide-react'
-import { Button, Pagination, EmptyState } from '@/components/ui'
+import { Button, Pagination, EmptyState, useToast } from '@/components/ui'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentFilterBar from '../components/DocumentFilterBar'
+import DocumentUploadModal from '../components/DocumentUploadModal'
 
 const PAGE_SIZE = 20
 
@@ -20,6 +22,8 @@ function filtersFromParams(params) {
 export default function DocumentListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const toast = useToast()
+  const [uploadOpen, setUploadOpen] = useState(false)
   const filters = filtersFromParams(searchParams)
 
   const { data, isLoading } = useDocuments(filters)
@@ -50,8 +54,7 @@ export default function DocumentListPage() {
               카테고리 관리
             </Button>
           </Link>
-          {/* 업로드 모달 연결은 다음 브랜치(S15P11B106-65)에서 진행한다. */}
-          <Button variant="primary">
+          <Button variant="primary" onClick={() => setUploadOpen(true)}>
             <Upload className="size-4" />
             업로드
           </Button>
@@ -73,6 +76,16 @@ export default function DocumentListPage() {
       />
 
       <Pagination page={filters.page} totalPages={data?.totalPages ?? 0} onChange={goToPage} />
+
+      <DocumentUploadModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={(result) => {
+          // 업로드 성공(202). 목록은 useUploadDocuments가 invalidate 한다.
+          // AI 작업 진행 화면 연결은 다음 브랜치(S15P11B106-74)에서 jobId로 진행한다.
+          toast.success(`업로드가 시작되었습니다 (문서 ${result?.documentIds?.length ?? 0}건)`)
+        }}
+      />
     </section>
   )
 }

@@ -3,14 +3,15 @@ import apiClient from '@/api/client'
 // ── Wiki 원본문서 ────────────────────────────────────────────────
 
 // POST /api/v1/documents (multipart) — 202 { jobId, documentIds, scopeKey, status, createdAt }
-export async function uploadDocuments({ files, documentCategoryId, visibilityType, departmentIds }) {
+// onUploadProgress: axios 진행률 콜백(선택). 진행 표시가 필요한 업로드 모달에서 넘긴다.
+export async function uploadDocuments({ files, documentCategoryId, visibilityType, departmentIds, onUploadProgress }) {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
   form.append('documentCategoryId', documentCategoryId)
   form.append('visibilityType', visibilityType)
   // 업로드 요청은 배열이 아니라 콤마로 이어붙인 문자열이다(PATCH의 departmentIds 배열과 다름).
   if (departmentIds?.length) form.append('departmentIds', departmentIds.join(','))
-  const { data } = await apiClient.post('/documents', form)
+  const { data } = await apiClient.post('/documents', form, { onUploadProgress })
   return data
 }
 
