@@ -3,13 +3,20 @@ package com.ajt.backend.domain.document.api;
 import static org.hamcrest.Matchers.empty;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ajt.backend.domain.document.service.DocumentManagementService;
 import com.ajt.backend.domain.document.service.DocumentUploadService;
 import com.ajt.backend.global.error.GlobalExceptionHandler;
+import com.ajt.backend.global.error.BusinessException;
+import com.ajt.backend.global.error.ErrorCode;
 import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,12 +29,14 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class DocumentUploadControllerTest {
 
     private final DocumentUploadService documentUploadService = org.mockito.Mockito.mock(DocumentUploadService.class);
+    private final DocumentManagementService documentManagementService =
+            org.mockito.Mockito.mock(DocumentManagementService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new DocumentUploadController(documentUploadService))
+                .standaloneSetup(new DocumentUploadController(documentUploadService, documentManagementService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -86,6 +95,70 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("documentCategoryId"))
                 .andExpect(jsonPath("$.fieldErrors[0].reason").value("문서 카테고리를 지정해야 합니다."))
                 .andExpect(jsonPath("$.fieldErrors[1:]", empty()));
+    }
+
+    @Test
+    @DisplayName("문서 상세 조회 성공 시 문서 처리 상태와 메타데이터를 반환한다")
+    void getsDocumentDetail() throws Exception {
+        given(documentManagementService.getDocument(15L)).willReturn(new DocumentDetailResponse(
+                "15",
+                "rule.md",
+                "ALL",
+                new DocumentDetailResponse.CategoryResponse("7", "취업규칙"),
+                "failed",
+                "파싱 실패",
+                "/api/v1/documents/15/file",
+                List.of(),
+                Instant.parse("2026-07-28T05:00:00Z"),
+                Instant.parse("2026-07-28T05:01:00Z")
+        ));
+
+        mockMvc.perform(get("/api/v1/documents/{documentId}", 15L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentId").value("15"))
+                .andExpect(jsonPath("$.originalFileName").value("rule.md"))
+                .andExpect(jsonPath("$.scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.category.documentCategoryId").value("7"))
+                .andExpect(jsonPath("$.category.name").value("취업규칙"))
+                .andExpect(jsonPath("$.status").value("failed"))
+                .andExpect(jsonPath("$.failureReason").value("파싱 실패"))
+                .andExpect(jsonPath("$.downloadUrl").value("/api/v1/documents/15/file"))
+                .andExpect(jsonPath("$.relatedWikis", empty()))
+                .andExpect(jsonPath("$.createdAt").value("2026-07-28T05:00:00Z"))
+                .andExpect(jsonPath("$.updatedAt").value("2026-07-28T05:01:00Z"));
+    }
+
+    @Test
+    @DisplayName("실패 문서 재시도 성공 시 202와 새 AI 작업 정보를 반환한다")
+    void retriesFailedDocument() throws Exception {
+        given(documentManagementService.retry(15L)).willReturn(new DocumentRetryResponse(
+                "42",
+                "15",
+                "waiting",
+                LocalDateTime.parse("2026-07-28T14:00:00")
+        ));
+
+        mockMvc.perform(post("/api/v1/documents/{documentId}/retry", 15L))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.documentId").value("15"))
+                .andExpect(jsonPath("$.status").value("waiting"))
+                .andExpect(jsonPath("$.createdAt").value("2026-07-28T14:00:00"));
+
+        verify(documentManagementService).retry(15L);
+    }
+
+    @Test
+    @DisplayName("재시도할 수 없는 상태면 409 오류를 반환한다")
+    void returnsConflictWhenRetryIsNotAllowed() throws Exception {
+        given(documentManagementService.retry(15L))
+                .willThrow(new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS));
+
+        mockMvc.perform(post("/api/v1/documents/{documentId}/retry", 15L))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_DOCUMENT_STATUS"))
+                .andExpect(jsonPath("$.message").value("문서 처리 상태를 확인해주세요."))
+                .andExpect(jsonPath("$.path").value("/api/v1/documents/15/retry"));
     }
 
     private MockMultipartFile markdownFile(String name) {

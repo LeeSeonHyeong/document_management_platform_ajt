@@ -1,55 +1,82 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AuthContext } from './AuthContext'
-import { login as loginRequest } from '@/api/auth'
-import { UNAUTHORIZED_EVENT } from '@/api/client'
 import {
-  getToken,
-  getStoredUser,
-  setToken,
-  setStoredUser,
-  clearAuth,
-} from '@/lib/authStorage'
+  login as loginRequest,
+  logout as logoutRequest,
+  fetchMe,
+} from '@/api/auth'
+import { UNAUTHORIZED_EVENT } from '@/api/client'
+import { getStoredUser, setStoredUser, clearStoredUser } from '@/lib/authStorage'
 
+// 쿠키 기반 인증.
+//  - 부팅 시 GET /me로 실제 로그인 여부를 확정한다(initializing 동안 가드는 대기).
+//  - 캐시된 user는 첫 화면 깜빡임을 줄이기 위한 낙관적 값일 뿐, /me 결과로 재조정된다.
 export default function AuthProvider({ children }) {
-  // 새로고침 시 localStorage에서 동기적으로 상태를 복원한다.
   const [user, setUser] = useState(() => getStoredUser())
-  const [token, setTokenState] = useState(() => getToken())
+  const [initializing, setInitializing] = useState(true)
 
-  const logout = useCallback(() => {
-    clearAuth()
-    setTokenState(null)
+  const applyUser = useCallback((nextUser) => {
+    setUser(nextUser)
+    setStoredUser(nextUser)
+  }, [])
+
+  const clearUser = useCallback(() => {
     setUser(null)
+    clearStoredUser()
   }, [])
 
-  const login = useCallback(async ({ email, password }) => {
-    const data = await loginRequest({ email, password })
-    setToken(data.accessToken)
-    setStoredUser(data.user)
-    setTokenState(data.accessToken)
-    setUser(data.user)
-    return data.user
-  }, [])
-
-  // axios 인터셉터가 401을 감지하면 전역 이벤트로 알린다. 여기서 로그아웃 처리.
+  // 부팅 시 1회 /me 호출로 세션 복원. 401이면 비로그인으로 확정(리다이렉트 이벤트는 억제).
   useEffect(() => {
-    const handleUnauthorized = () => {
-      setTokenState(null)
-      setUser(null)
+    let active = true
+    fetchMe({ silent: true })
+      .then((me) => {
+        if (active) applyUser(me)
+      })
+      .catch(() => {
+        if (active) clearUser()
+      })
+      .finally(() => {
+        if (active) setInitializing(false)
+      })
+    return () => {
+      active = false
     }
+  }, [applyUser, clearUser])
+
+  const login = useCallback(
+    async ({ email, password }) => {
+      const data = await loginRequest({ email, password })
+      applyUser(data.user)
+      return data.user
+    },
+    [applyUser],
+  )
+
+  const logout = useCallback(async () => {
+    try {
+      await logoutRequest()
+    } finally {
+      clearUser()
+    }
+  }, [clearUser])
+
+  // axios 인터셉터가 401을 감지하면 전역 이벤트로 알린다. 여기서 로그아웃 상태로 전환.
+  useEffect(() => {
+    const handleUnauthorized = () => clearUser()
     window.addEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
-    return () =>
-      window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
-  }, [])
+    return () => window.removeEventListener(UNAUTHORIZED_EVENT, handleUnauthorized)
+  }, [clearUser])
 
   const value = useMemo(
     () => ({
       user,
       role: user?.role ?? null,
-      isAuthenticated: Boolean(token),
+      isAuthenticated: Boolean(user),
+      initializing,
       login,
       logout,
     }),
-    [user, token, login, logout],
+    [user, initializing, login, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

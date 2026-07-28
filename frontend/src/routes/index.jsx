@@ -1,10 +1,14 @@
 import { createBrowserRouter } from 'react-router-dom'
 import { ROLES } from '@/constants/roles'
-import AppLayout from '@/components/layout/AppLayout'
+import AppShell from '@/components/layout/AppShell'
+import AuthLayout from '@/components/layout/AuthLayout'
 import ProtectedRoute from './guards/ProtectedRoute'
 import RoleRoute from './guards/RoleRoute'
 import GuestRoute from './guards/GuestRoute'
-import LoginPage from '@/pages/LoginPage'
+import LoginPage from '@/pages/auth/LoginPage'
+import SignupPage from '@/pages/auth/SignupPage'
+import PasswordFindPage from '@/pages/auth/PasswordFindPage'
+import PasswordResetPage from '@/pages/auth/PasswordResetPage'
 import DashboardPage from '@/pages/DashboardPage'
 import AdminPage from '@/pages/AdminPage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
@@ -17,13 +21,23 @@ import NotFoundPage from '@/pages/NotFoundPage'
 export const router = createBrowserRouter([
   {
     element: <GuestRoute />,
-    children: [{ path: '/login', element: <LoginPage /> }],
+    children: [
+      {
+        element: <AuthLayout />,
+        children: [
+          { path: '/login', element: <LoginPage /> },
+          { path: '/signup', element: <SignupPage /> },
+          { path: '/password/find', element: <PasswordFindPage /> },
+          { path: '/password/reset', element: <PasswordResetPage /> },
+        ],
+      },
+    ],
   },
   {
     element: <ProtectedRoute />,
     children: [
       {
-        element: <AppLayout />,
+        element: <AppShell />,
         children: [
           { index: true, element: <DashboardPage /> },
           {
