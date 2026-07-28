@@ -3,6 +3,10 @@ spring:
     name: ajt-backend
   profiles:
     active: local
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 100MB
 
 ajt:
   auth:
@@ -23,6 +27,9 @@ ajt:
     # 일정 원본문서는 schedule-sources/ 아래에 두며, 파일 구조 설계상 wiki/ 와 같은 루트를 공유한다.
     source-storage:
       root-path: ${SCHEDULE_SOURCE_STORAGE_ROOT:${DOCUMENT_STORAGE_ROOT:build/ajt-documents}}
+  inquiry:
+    storage:
+      root-path: ${INQUIRY_STORAGE_ROOT:build/ajt-inquiries}
 
 management:
   endpoints:
