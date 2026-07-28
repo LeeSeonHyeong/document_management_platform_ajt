@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Upload, Settings2 } from 'lucide-react'
-import { Button, Pagination, EmptyState, useToast } from '@/components/ui'
+import { Button, Pagination, EmptyState } from '@/components/ui'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentFilterBar from '../components/DocumentFilterBar'
@@ -22,7 +22,6 @@ function filtersFromParams(params) {
 export default function DocumentListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const toast = useToast()
   const [uploadOpen, setUploadOpen] = useState(false)
   const filters = filtersFromParams(searchParams)
 
@@ -81,9 +80,9 @@ export default function DocumentListPage() {
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
         onUploaded={(result) => {
-          // 업로드 성공(202). 목록은 useUploadDocuments가 invalidate 한다.
-          // AI 작업 진행 화면 연결은 다음 브랜치(S15P11B106-74)에서 jobId로 진행한다.
-          toast.success(`업로드가 시작되었습니다 (문서 ${result?.documentIds?.length ?? 0}건)`)
+          // 업로드 성공(202) → 방금 생성된 AI 작업(jobId)의 대기 화면(4-2R)으로 이동한다.
+          setUploadOpen(false)
+          if (result?.jobId) navigate(`/admin/documents/jobs/${result.jobId}`)
         }}
       />
     </section>

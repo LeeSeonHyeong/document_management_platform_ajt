@@ -15,6 +15,7 @@ import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import DocumentListPage from '@/features/document/pages/DocumentListPage'
 import SourceDocumentListPage from '@/features/document/pages/SourceDocumentListPage'
+import AiJobQueuePage from '@/features/document/pages/AiJobQueuePage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
               { path: 'admin', element: <AdminPage /> },
               { path: 'admin/documents', element: <DocumentListPage /> },
               { path: 'admin/documents/source', element: <SourceDocumentListPage /> },
+              { path: 'admin/documents/jobs/:jobId', element: <AiJobQueuePage /> },
             ],
           },
         ],

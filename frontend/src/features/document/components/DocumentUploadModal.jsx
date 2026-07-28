@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Upload, FileText, X } from 'lucide-react'
 import { Modal, Button, Select, Chip } from '@/components/ui'
 import { FILE_ACCEPT, MAX_FILE_SIZE_BYTES } from '@/shared/constants/enums'
-import { useSignupDepartments } from '@/features/auth/useSignupDepartments'
+import { useDepartments } from '@/features/department/queries'
 import { useUploadDocuments, useDocumentCategories } from '../queries'
 import { buildScopeKey } from '../scope'
 
@@ -75,7 +75,7 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
   const departmentIds = watch('departmentIds')
   const scopeKey = buildScopeKey(visibilityType, departmentIds)
 
-  const { data: departments = [] } = useSignupDepartments()
+  const { data: departments = [] } = useDepartments()
   const { data: categories = [] } = useDocumentCategories(scopeKey)
   const uploadMutation = useUploadDocuments()
   const uploading = uploadMutation.isPending

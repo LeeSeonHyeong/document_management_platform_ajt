@@ -57,6 +57,10 @@ export const handlers = [
     HttpResponse.json({ items: departments }),
   ),
 
+  http.get('/api/v1/departments', () =>
+    HttpResponse.json({ items: departments }),
+  ),
+
   http.post('/api/v1/auth/signup', async ({ request }) => {
     const body = await request.json()
     const exists = users.some((u) => u.email === body.email)
