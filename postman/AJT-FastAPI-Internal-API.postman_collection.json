@@ -1,0 +1,1138 @@
+{
+  "info": {
+    "name": "AJT FastAPI Internal API",
+    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.3.0이며 Frontend는 직접 호출하지 않습니다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-Internal-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{internalApiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "aiBaseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "contractVersion",
+      "value": "1.3.0",
+      "type": "string"
+    },
+    {
+      "key": "internalApiKey",
+      "value": "local-dev-key",
+      "type": "string"
+    },
+    {
+      "key": "jobId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "documentId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "원본문서 처리",
+      "description": "Spring Boot가 FastAPI에 호출하는 Wiki·일정 공용 파싱 API",
+      "item": [
+        {
+          "name": "원본문서 파싱",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/source-parses",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "source-parses"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Wiki 또는 일정 원본문서에서 Markdown 텍스트를 추출합니다.\nSpring Boot의 Wiki 비동기 작업과 일정 동기 처리에서 공용으로 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `requestId`: 내부 요청 추적 ID\n- `sourceType`: `wiki` 또는 `schedule`\n- `sourceId`: Wiki documentId 또는 일정 sourceGroupKey\n- `file`: 원본문서 파일\n- `originalFileName`, `mimeType`: 검증된 파일 메타데이터\n\n### 정책\n- Wiki는 TXT·MD·PDF·DOCX를 지원합니다.\n- 일정은 TXT·MD·DOCX·PDF·CSV·XLSX를 지원합니다.\n- PDF·DOCX 텍스트가 없으면 내부적으로 OCR을 시도합니다.\n- FastAPI는 DB와 서비스 파일을 직접 수정하지 않습니다.\n\n### Response\n- `requestId`, `sourceType`, `sourceId`\n- `parsedMarkdown`: 추출된 Markdown\n- `warnings`: 경고 목록\n\n### Error\n- `400 Bad Request`: 메타데이터 또는 파일 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `DOCUMENT_PARSE_FAILED`",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "requestId",
+                  "value": "parse-request-1",
+                  "type": "text",
+                  "description": "내부 요청 추적 ID",
+                  "disabled": false
+                },
+                {
+                  "key": "sourceType",
+                  "value": "wiki",
+                  "type": "text",
+                  "description": "wiki 또는 schedule",
+                  "disabled": false
+                },
+                {
+                  "key": "sourceId",
+                  "value": "{{documentId}}",
+                  "type": "text",
+                  "description": "documentId 또는 sourceGroupKey",
+                  "disabled": false
+                },
+                {
+                  "key": "file",
+                  "src": [],
+                  "type": "file",
+                  "description": "Spring Boot가 전달하는 원본 파일",
+                  "disabled": false
+                },
+                {
+                  "key": "originalFileName",
+                  "value": "policy.pdf",
+                  "type": "text",
+                  "description": "원본 파일명",
+                  "disabled": false
+                },
+                {
+                  "key": "mimeType",
+                  "value": "application/pdf",
+                  "type": "text",
+                  "description": "검증된 MIME 타입",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/source-parses",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "source-parses"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "Wiki 또는 일정 원본문서에서 Markdown 텍스트를 추출합니다.\nSpring Boot의 Wiki 비동기 작업과 일정 동기 처리에서 공용으로 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `requestId`: 내부 요청 추적 ID\n- `sourceType`: `wiki` 또는 `schedule`\n- `sourceId`: Wiki documentId 또는 일정 sourceGroupKey\n- `file`: 원본문서 파일\n- `originalFileName`, `mimeType`: 검증된 파일 메타데이터\n\n### 정책\n- Wiki는 TXT·MD·PDF·DOCX를 지원합니다.\n- 일정은 TXT·MD·DOCX·PDF·CSV·XLSX를 지원합니다.\n- PDF·DOCX 텍스트가 없으면 내부적으로 OCR을 시도합니다.\n- FastAPI는 DB와 서비스 파일을 직접 수정하지 않습니다.\n\n### Response\n- `requestId`, `sourceType`, `sourceId`\n- `parsedMarkdown`: 추출된 Markdown\n- `warnings`: 경고 목록\n\n### Error\n- `400 Bad Request`: 메타데이터 또는 파일 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `DOCUMENT_PARSE_FAILED`",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "requestId",
+                      "value": "parse-request-1",
+                      "type": "text",
+                      "description": "내부 요청 추적 ID",
+                      "disabled": false
+                    },
+                    {
+                      "key": "sourceType",
+                      "value": "wiki",
+                      "type": "text",
+                      "description": "wiki 또는 schedule",
+                      "disabled": false
+                    },
+                    {
+                      "key": "sourceId",
+                      "value": "{{documentId}}",
+                      "type": "text",
+                      "description": "documentId 또는 sourceGroupKey",
+                      "disabled": false
+                    },
+                    {
+                      "key": "file",
+                      "src": [],
+                      "type": "file",
+                      "description": "Spring Boot가 전달하는 원본 파일",
+                      "disabled": false
+                    },
+                    {
+                      "key": "originalFileName",
+                      "value": "policy.pdf",
+                      "type": "text",
+                      "description": "원본 파일명",
+                      "disabled": false
+                    },
+                    {
+                      "key": "mimeType",
+                      "value": "application/pdf",
+                      "type": "text",
+                      "description": "검증된 MIME 타입",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"requestId\": \"parse-request-1\",\n  \"sourceType\": \"wiki\",\n  \"sourceId\": \"15\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"warnings\": []\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/source-parses",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "source-parses"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "Wiki 또는 일정 원본문서에서 Markdown 텍스트를 추출합니다.\nSpring Boot의 Wiki 비동기 작업과 일정 동기 처리에서 공용으로 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `requestId`: 내부 요청 추적 ID\n- `sourceType`: `wiki` 또는 `schedule`\n- `sourceId`: Wiki documentId 또는 일정 sourceGroupKey\n- `file`: 원본문서 파일\n- `originalFileName`, `mimeType`: 검증된 파일 메타데이터\n\n### 정책\n- Wiki는 TXT·MD·PDF·DOCX를 지원합니다.\n- 일정은 TXT·MD·DOCX·PDF·CSV·XLSX를 지원합니다.\n- PDF·DOCX 텍스트가 없으면 내부적으로 OCR을 시도합니다.\n- FastAPI는 DB와 서비스 파일을 직접 수정하지 않습니다.\n\n### Response\n- `requestId`, `sourceType`, `sourceId`\n- `parsedMarkdown`: 추출된 Markdown\n- `warnings`: 경고 목록\n\n### Error\n- `400 Bad Request`: 메타데이터 또는 파일 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `DOCUMENT_PARSE_FAILED`",
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "requestId",
+                      "value": "parse-request-1",
+                      "type": "text",
+                      "description": "내부 요청 추적 ID",
+                      "disabled": false
+                    },
+                    {
+                      "key": "sourceType",
+                      "value": "wiki",
+                      "type": "text",
+                      "description": "wiki 또는 schedule",
+                      "disabled": false
+                    },
+                    {
+                      "key": "sourceId",
+                      "value": "{{documentId}}",
+                      "type": "text",
+                      "description": "documentId 또는 sourceGroupKey",
+                      "disabled": false
+                    },
+                    {
+                      "key": "file",
+                      "src": [],
+                      "type": "file",
+                      "description": "Spring Boot가 전달하는 원본 파일",
+                      "disabled": false
+                    },
+                    {
+                      "key": "originalFileName",
+                      "value": "policy.pdf",
+                      "type": "text",
+                      "description": "원본 파일명",
+                      "disabled": false
+                    },
+                    {
+                      "key": "mimeType",
+                      "value": "application/pdf",
+                      "type": "text",
+                      "description": "검증된 MIME 타입",
+                      "disabled": false
+                    }
+                  ]
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_SOURCE_PARSE_REQUEST\",\n  \"message\": \"파싱 요청 파일 또는 메타데이터가 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/source-parses\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wiki 처리",
+      "description": "Wiki 전체 구조 변환과 관리자 수정 대화 API",
+      "item": [
+        {
+          "name": "Wiki 변환 문맥 선택",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/wiki-context-selections",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-context-selections"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "새 원본문서와 현재 목차를 분석해 변환에 필요한 Wiki만 선택합니다.\nSpring Boot가 전역 직렬 Wiki 변환에서 본문 조회 전에 먼저 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 요청 scopeKey의 현재 index.md 내용\n\n### 정책\n- FastAPI는 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- removed·replaced는 Spring Boot가 원본·파싱 파일을 삭제 또는 교체하기 전에 호출합니다.\n- wikiIds는 currentIndex의 링크에서 식별하며, 중복 없이 관련도 순서로 최대 5개를 반환합니다.\n- Spring Boot는 응답 ID의 존재와 scopeKey를 재검증한 뒤 선택 본문만 Wiki 변환 API에 전달합니다.\n\n### Response\n- `wikiIds`: 변환 문맥으로 필요한 Wiki 문자열 ID 배열, 최대 5개\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 문서 Markdown 또는 목차 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_CONTEXT_SELECTION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-context-selections",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-context-selections"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "새 원본문서와 현재 목차를 분석해 변환에 필요한 Wiki만 선택합니다.\nSpring Boot가 전역 직렬 Wiki 변환에서 본문 조회 전에 먼저 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 요청 scopeKey의 현재 index.md 내용\n\n### 정책\n- FastAPI는 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- removed·replaced는 Spring Boot가 원본·파싱 파일을 삭제 또는 교체하기 전에 호출합니다.\n- wikiIds는 currentIndex의 링크에서 식별하며, 중복 없이 관련도 순서로 최대 5개를 반환합니다.\n- Spring Boot는 응답 ID의 존재와 scopeKey를 재검증한 뒤 선택 본문만 Wiki 변환 API에 전달합니다.\n\n### Response\n- `wikiIds`: 변환 문맥으로 필요한 Wiki 문자열 ID 배열, 최대 5개\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 문서 Markdown 또는 목차 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_CONTEXT_SELECTION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"wikiIds\": [\n    \"101\",\n    \"108\"\n  ],\n  \"reason\": \"새 취업 규칙의 휴가·복무 항목과 관련된 현재 Wiki입니다.\"\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-context-selections",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-context-selections"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "새 원본문서와 현재 목차를 분석해 변환에 필요한 Wiki만 선택합니다.\nSpring Boot가 전역 직렬 Wiki 변환에서 본문 조회 전에 먼저 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 요청 scopeKey의 현재 index.md 내용\n\n### 정책\n- FastAPI는 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- removed·replaced는 Spring Boot가 원본·파싱 파일을 삭제 또는 교체하기 전에 호출합니다.\n- wikiIds는 currentIndex의 링크에서 식별하며, 중복 없이 관련도 순서로 최대 5개를 반환합니다.\n- Spring Boot는 응답 ID의 존재와 scopeKey를 재검증한 뒤 선택 본문만 Wiki 변환 API에 전달합니다.\n\n### Response\n- `wikiIds`: 변환 문맥으로 필요한 Wiki 문자열 ID 배열, 최대 5개\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 문서 Markdown 또는 목차 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_CONTEXT_SELECTION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_WIKI_CONTEXT_SELECTION_REQUEST\",\n  \"message\": \"Wiki 문맥 선택 요청 구조가 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/wiki-context-selections\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 변환",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/wiki-transformations",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-transformations"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-transformations",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-transformations"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"summary\": \"휴가 규정 Wiki를 생성했습니다.\",\n  \"categoryChanges\": [\n    {\n      \"action\": \"create\",\n      \"tempCategoryId\": \"category-temp-1\",\n      \"name\": \"휴가 및 근태\"\n    }\n  ],\n  \"wikiChanges\": [\n    {\n      \"action\": \"create\",\n      \"tempWikiId\": \"wiki-temp-1\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"evidence\": [\n        {\n          \"documentId\": \"15\",\n          \"footnote\": \"1\",\n          \"location\": \"3장 휴가\",\n          \"quote\": \"연차는 15일을 부여한다\"\n        }\n      ]\n    }\n  ],\n  \"relationChanges\": [],\n  \"indexEntries\": [\n    {\n      \"wikiRef\": \"wiki-temp-1\",\n      \"order\": 1,\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-transformations",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-transformations"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_WIKI_TRANSFORMATION_REQUEST\",\n  \"message\": \"Wiki 변환 요청 구조가 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/wiki-transformations\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 관리자 수정",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/wiki-edits",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-edits"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-edits",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-edits"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"agentMessage\": \"중복된 휴가 규정을 하나로 정리했습니다.\",\n  \"wikiChanges\": [\n    {\n      \"action\": \"update\",\n      \"wikiId\": \"100\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n정리된 본문...\"\n    }\n  ],\n  \"categoryChanges\": [],\n  \"relationChanges\": [],\n  \"indexEntries\": [\n    {\n      \"wikiRef\": \"100\",\n      \"order\": 1,\n      \"title\": \"휴가 규정\",\n      \"summary\": \"정리된 휴가 규정\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-edits",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-edits"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_WIKI_EDIT_REQUEST\",\n  \"message\": \"Wiki 수정 지시 또는 문맥이 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/wiki-edits\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "일정 처리",
+      "description": "파싱된 일정 문서에서 일정별 초안을 추출하는 API",
+      "item": [
+        {
+          "name": "일정 추출",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/schedule-extractions",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "schedule-extractions"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "파싱된 일정 문서에서 일정을 개별 항목으로 추출합니다.\nSpring Boot 일정 문서 처리 작업에서 내부 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `sourceGroupKey`: 일정 원본문서 묶음 키\n- `parsedMarkdown`: 일정 문서 파싱 결과\n- `visibilityType`, `departmentIds`: 업로드 시 선택한 공개 범위\n\n### 정책\n- 추출된 일정은 각각 별도의 draft로 반환합니다.\n- 일정이 없으면 오류가 아닌 no_schedule과 빈 schedules를 반환합니다.\n- FastAPI는 일정과 파일을 직접 저장하지 않습니다.\n\n### Response\n- `status`: extracted 또는 no_schedule\n- `schedules`: 순서, 제목, 내용, 대상, 장소, 공개 범위, 시작·종료 시각\n- `warnings`: 불명확한 날짜와 필드 경고\n\n### Error\n- `400 Bad Request`: 날짜 또는 공개 범위 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `SCHEDULE_EXTRACTION_FAILED`",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sourceGroupKey\": \"schedule-source-20260727-01\",\n  \"parsedMarkdown\": \"# 8월 일정\\n...\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\",\n    \"2\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/schedule-extractions",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "schedule-extractions"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "파싱된 일정 문서에서 일정을 개별 항목으로 추출합니다.\nSpring Boot 일정 문서 처리 작업에서 내부 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `sourceGroupKey`: 일정 원본문서 묶음 키\n- `parsedMarkdown`: 일정 문서 파싱 결과\n- `visibilityType`, `departmentIds`: 업로드 시 선택한 공개 범위\n\n### 정책\n- 추출된 일정은 각각 별도의 draft로 반환합니다.\n- 일정이 없으면 오류가 아닌 no_schedule과 빈 schedules를 반환합니다.\n- FastAPI는 일정과 파일을 직접 저장하지 않습니다.\n\n### Response\n- `status`: extracted 또는 no_schedule\n- `schedules`: 순서, 제목, 내용, 대상, 장소, 공개 범위, 시작·종료 시각\n- `warnings`: 불명확한 날짜와 필드 경고\n\n### Error\n- `400 Bad Request`: 날짜 또는 공개 범위 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `SCHEDULE_EXTRACTION_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sourceGroupKey\": \"schedule-source-20260727-01\",\n  \"parsedMarkdown\": \"# 8월 일정\\n...\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\",\n    \"2\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"status\": \"extracted\",\n  \"schedules\": [\n    {\n      \"order\": 1,\n      \"title\": \"8월 휴가 일정\",\n      \"content\": \"개발부 휴가 일정\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\",\n      \"visibilityType\": \"department\",\n      \"departmentIds\": [\n        \"1\",\n        \"2\"\n      ],\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\"\n    }\n  ],\n  \"warnings\": []\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/schedule-extractions",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "schedule-extractions"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "파싱된 일정 문서에서 일정을 개별 항목으로 추출합니다.\nSpring Boot 일정 문서 처리 작업에서 내부 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `sourceGroupKey`: 일정 원본문서 묶음 키\n- `parsedMarkdown`: 일정 문서 파싱 결과\n- `visibilityType`, `departmentIds`: 업로드 시 선택한 공개 범위\n\n### 정책\n- 추출된 일정은 각각 별도의 draft로 반환합니다.\n- 일정이 없으면 오류가 아닌 no_schedule과 빈 schedules를 반환합니다.\n- FastAPI는 일정과 파일을 직접 저장하지 않습니다.\n\n### Response\n- `status`: extracted 또는 no_schedule\n- `schedules`: 순서, 제목, 내용, 대상, 장소, 공개 범위, 시작·종료 시각\n- `warnings`: 불명확한 날짜와 필드 경고\n\n### Error\n- `400 Bad Request`: 날짜 또는 공개 범위 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `SCHEDULE_EXTRACTION_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"sourceGroupKey\": \"schedule-source-20260727-01\",\n  \"parsedMarkdown\": \"# 8월 일정\\n...\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\",\n    \"2\"\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_SCHEDULE_EXTRACTION_REQUEST\",\n  \"message\": \"일정 추출 요청 구조가 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/schedule-extractions\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "답변 생성",
+      "description": "질문 자동 분류·자료 선택과 선택 본문 기반 답변 생성 API",
+      "item": [
+        {
+          "name": "답변 자료 선택",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/answer-context-selections",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "answer-context-selections"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "질문을 Wiki·일정·혼합으로 자동 분류하고 필요한 자료 ID를 선택합니다.\nSpring Boot가 최종 답변용 본문을 읽기 전에 1차로 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `questionId`, `conversationId`, `question`\n- `conversationMessages`: 같은 사용자 대화의 이전 질문·답변\n- `wikiIndexes`: 권한 있는 공간별 scopeKey와 index.md 내용\n- `scheduleSummaries`: 권한 있는 일정의 ID, 제목, 기간, 대상과 장소\n\n### 정책\n- questionType은 wiki, schedule 또는 mixed입니다.\n- 이전 대화 문맥을 포함해 현재 질문의 종류와 필요한 자료를 판단합니다.\n- Wiki와 일정은 각각 최대 5개를 관련도 순서로 선택합니다.\n- 본문과 원본문서는 이 단계에 전달하지 않습니다.\n\n### Response\n- `questionType`\n- `wikiIds`, `scheduleIds`: 관련도 순서의 선택 ID 배열\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 질문 또는 목차·일정 요약 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `ANSWER_CONTEXT_SELECTION_FAILED`",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionId\": \"500\",\n  \"conversationId\": \"chat-123\",\n  \"question\": \"연차 규정과 다음 휴가 일정을 알려줘.\",\n  \"conversationMessages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"연차 신청 방법을 알려줘.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"연차 신청 절차는 다음과 같습니다.\"\n    }\n  ],\n  \"wikiIndexes\": [\n    {\n      \"scopeKey\": \"D1-D2\",\n      \"indexMarkdown\": \"# 사내 규정\\n- [휴가 규정](pages/101.md)\"\n    }\n  ],\n  \"scheduleSummaries\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\",\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/answer-context-selections",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "answer-context-selections"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "질문을 Wiki·일정·혼합으로 자동 분류하고 필요한 자료 ID를 선택합니다.\nSpring Boot가 최종 답변용 본문을 읽기 전에 1차로 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `questionId`, `conversationId`, `question`\n- `conversationMessages`: 같은 사용자 대화의 이전 질문·답변\n- `wikiIndexes`: 권한 있는 공간별 scopeKey와 index.md 내용\n- `scheduleSummaries`: 권한 있는 일정의 ID, 제목, 기간, 대상과 장소\n\n### 정책\n- questionType은 wiki, schedule 또는 mixed입니다.\n- 이전 대화 문맥을 포함해 현재 질문의 종류와 필요한 자료를 판단합니다.\n- Wiki와 일정은 각각 최대 5개를 관련도 순서로 선택합니다.\n- 본문과 원본문서는 이 단계에 전달하지 않습니다.\n\n### Response\n- `questionType`\n- `wikiIds`, `scheduleIds`: 관련도 순서의 선택 ID 배열\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 질문 또는 목차·일정 요약 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `ANSWER_CONTEXT_SELECTION_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"questionId\": \"500\",\n  \"conversationId\": \"chat-123\",\n  \"question\": \"연차 규정과 다음 휴가 일정을 알려줘.\",\n  \"conversationMessages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"연차 신청 방법을 알려줘.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"연차 신청 절차는 다음과 같습니다.\"\n    }\n  ],\n  \"wikiIndexes\": [\n    {\n      \"scopeKey\": \"D1-D2\",\n      \"indexMarkdown\": \"# 사내 규정\\n- [휴가 규정](pages/101.md)\"\n    }\n  ],\n  \"scheduleSummaries\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\",\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"questionType\": \"mixed\",\n  \"wikiIds\": [\n    \"101\"\n  ],\n  \"scheduleIds\": [\n    \"31\"\n  ],\n  \"reason\": \"휴가 규정과 다음 일정을 모두 묻는 질문입니다.\"\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/answer-context-selections",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "answer-context-selections"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "질문을 Wiki·일정·혼합으로 자동 분류하고 필요한 자료 ID를 선택합니다.\nSpring Boot가 최종 답변용 본문을 읽기 전에 1차로 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `questionId`, `conversationId`, `question`\n- `conversationMessages`: 같은 사용자 대화의 이전 질문·답변\n- `wikiIndexes`: 권한 있는 공간별 scopeKey와 index.md 내용\n- `scheduleSummaries`: 권한 있는 일정의 ID, 제목, 기간, 대상과 장소\n\n### 정책\n- questionType은 wiki, schedule 또는 mixed입니다.\n- 이전 대화 문맥을 포함해 현재 질문의 종류와 필요한 자료를 판단합니다.\n- Wiki와 일정은 각각 최대 5개를 관련도 순서로 선택합니다.\n- 본문과 원본문서는 이 단계에 전달하지 않습니다.\n\n### Response\n- `questionType`\n- `wikiIds`, `scheduleIds`: 관련도 순서의 선택 ID 배열\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 질문 또는 목차·일정 요약 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `ANSWER_CONTEXT_SELECTION_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"questionId\": \"500\",\n  \"conversationId\": \"chat-123\",\n  \"question\": \"연차 규정과 다음 휴가 일정을 알려줘.\",\n  \"conversationMessages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"연차 신청 방법을 알려줘.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"연차 신청 절차는 다음과 같습니다.\"\n    }\n  ],\n  \"wikiIndexes\": [\n    {\n      \"scopeKey\": \"D1-D2\",\n      \"indexMarkdown\": \"# 사내 규정\\n- [휴가 규정](pages/101.md)\"\n    }\n  ],\n  \"scheduleSummaries\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\",\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_ANSWER_CONTEXT_REQUEST\",\n  \"message\": \"질문 또는 후보 자료 구조가 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/answer-context-selections\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "답변 생성",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{aiBaseUrl}}/internal/v1/answers",
+              "host": [
+                "{{aiBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "answers"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "Spring Boot가 권한 검증한 Wiki 또는 일정으로 답변을 생성합니다.\nWiki·일정 챗봇 질문 처리에서 내부 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `questionId`, `conversationId`, `questionType`, `question`\n- `conversationMessages`: 같은 사용자 대화의 이전 질문·답변\n- `selectedWikis`: 백엔드가 재검증하고 파일에서 읽은 Wiki 본문\n- `selectedSchedules`: 백엔드가 재검증한 일정 내용\n\n### 정책\n- 현재 질문은 같은 conversationId의 이전 질문·답변 문맥과 함께 처리합니다.\n- wiki는 selectedWikis, schedule은 selectedSchedules, mixed는 두 배열을 사용합니다.\n- 원본문서는 전달하지 않으며 Spring Boot가 최종 Wiki 출처에 하위 근거로 붙입니다.\n- 출처는 두 개 이상 반환할 수 있습니다.\n\n### Response\n- `answer`: 생성된 답변\n- `sources`: 실제 사용한 wikiId 또는 scheduleId와 제목 배열\n\n### Error\n- `400 Bad Request`: 질문 또는 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `ANSWER_GENERATION_FAILED`",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionId\": \"500\",\n  \"conversationId\": \"chat-123\",\n  \"questionType\": \"mixed\",\n  \"question\": \"연차 규정과 다음 휴가 일정을 알려줘.\",\n  \"conversationMessages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"연차 신청 방법을 알려줘.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"연차 신청 절차는 다음과 같습니다.\"\n    }\n  ],\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\"\n    }\n  ],\n  \"selectedSchedules\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\",\n      \"content\": \"개발부 휴가 일정\",\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/answers",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "answers"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "Spring Boot가 권한 검증한 Wiki 또는 일정으로 답변을 생성합니다.\nWiki·일정 챗봇 질문 처리에서 내부 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `questionId`, `conversationId`, `questionType`, `question`\n- `conversationMessages`: 같은 사용자 대화의 이전 질문·답변\n- `selectedWikis`: 백엔드가 재검증하고 파일에서 읽은 Wiki 본문\n- `selectedSchedules`: 백엔드가 재검증한 일정 내용\n\n### 정책\n- 현재 질문은 같은 conversationId의 이전 질문·답변 문맥과 함께 처리합니다.\n- wiki는 selectedWikis, schedule은 selectedSchedules, mixed는 두 배열을 사용합니다.\n- 원본문서는 전달하지 않으며 Spring Boot가 최종 Wiki 출처에 하위 근거로 붙입니다.\n- 출처는 두 개 이상 반환할 수 있습니다.\n\n### Response\n- `answer`: 생성된 답변\n- `sources`: 실제 사용한 wikiId 또는 scheduleId와 제목 배열\n\n### Error\n- `400 Bad Request`: 질문 또는 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `ANSWER_GENERATION_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"questionId\": \"500\",\n  \"conversationId\": \"chat-123\",\n  \"questionType\": \"mixed\",\n  \"question\": \"연차 규정과 다음 휴가 일정을 알려줘.\",\n  \"conversationMessages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"연차 신청 방법을 알려줘.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"연차 신청 절차는 다음과 같습니다.\"\n    }\n  ],\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\"\n    }\n  ],\n  \"selectedSchedules\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\",\n      \"content\": \"개발부 휴가 일정\",\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"answer\": \"연차 규정과 다음 휴가 일정은 다음과 같습니다.\",\n  \"sources\": [\n    {\n      \"type\": \"wiki\",\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\"\n    },\n    {\n      \"type\": \"schedule\",\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "400 Bad Request - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{aiBaseUrl}}/internal/v1/answers",
+                  "host": [
+                    "{{aiBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "answers"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "description": "Spring Boot가 권한 검증한 Wiki 또는 일정으로 답변을 생성합니다.\nWiki·일정 챗봇 질문 처리에서 내부 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `questionId`, `conversationId`, `questionType`, `question`\n- `conversationMessages`: 같은 사용자 대화의 이전 질문·답변\n- `selectedWikis`: 백엔드가 재검증하고 파일에서 읽은 Wiki 본문\n- `selectedSchedules`: 백엔드가 재검증한 일정 내용\n\n### 정책\n- 현재 질문은 같은 conversationId의 이전 질문·답변 문맥과 함께 처리합니다.\n- wiki는 selectedWikis, schedule은 selectedSchedules, mixed는 두 배열을 사용합니다.\n- 원본문서는 전달하지 않으며 Spring Boot가 최종 Wiki 출처에 하위 근거로 붙입니다.\n- 출처는 두 개 이상 반환할 수 있습니다.\n\n### Response\n- `answer`: 생성된 답변\n- `sources`: 실제 사용한 wikiId 또는 scheduleId와 제목 배열\n\n### Error\n- `400 Bad Request`: 질문 또는 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `ANSWER_GENERATION_FAILED`",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"questionId\": \"500\",\n  \"conversationId\": \"chat-123\",\n  \"questionType\": \"mixed\",\n  \"question\": \"연차 규정과 다음 휴가 일정을 알려줘.\",\n  \"conversationMessages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"연차 신청 방법을 알려줘.\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"연차 신청 절차는 다음과 같습니다.\"\n    }\n  ],\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\"\n    }\n  ],\n  \"selectedSchedules\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"8월 휴가 일정\",\n      \"content\": \"개발부 휴가 일정\",\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"targetText\": \"개발부\",\n      \"location\": \"본사\"\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_ANSWER_GENERATION_REQUEST\",\n  \"message\": \"답변 생성 요청 문맥이 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/answers\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
