@@ -1,5 +1,6 @@
 package com.ajt.backend.global.error;
 
+import com.ajt.backend.domain.document.api.DocumentUploadValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -63,6 +64,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(errorCode.status())
                 .body(ErrorResponse.of(errorCode, errorCode.message(), request.getRequestURI(), fieldErrors));
+    }
+
+    @ExceptionHandler(DocumentUploadValidationException.class)
+    ResponseEntity<ErrorResponse> handleDocumentUploadValidationException(
+            DocumentUploadValidationException exception,
+            HttpServletRequest request
+    ) {
+        ErrorCode errorCode = ErrorCode.INVALID_DOCUMENT_UPLOAD;
+        return ResponseEntity
+                .status(errorCode.status())
+                .body(ErrorResponse.of(
+                        errorCode,
+                        errorCode.message(),
+                        request.getRequestURI(),
+                        List.of(new FieldErrorResponse(exception.field(), exception.getMessage()))
+                ));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

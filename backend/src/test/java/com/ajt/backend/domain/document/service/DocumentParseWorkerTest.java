@@ -8,6 +8,7 @@ import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.AiJobStatus;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentStatus;
+import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.global.ai.client.AiClient;
@@ -28,9 +29,10 @@ import org.springframework.core.io.ByteArrayResource;
 class DocumentParseWorkerTest {
 
     private final DocumentRepository documentRepository = org.mockito.Mockito.mock(DocumentRepository.class);
+    private final AiJobRepository aiJobRepository = org.mockito.Mockito.mock(AiJobRepository.class);
     private final DocumentFileStorage fileStorage = org.mockito.Mockito.mock(DocumentFileStorage.class);
     private final AiClient aiClient = org.mockito.Mockito.mock(AiClient.class);
-    private final DocumentParseWorker worker = new DocumentParseWorker(documentRepository, fileStorage, aiClient);
+    private final DocumentParseWorker worker = new DocumentParseWorker(documentRepository, aiJobRepository, fileStorage, aiClient);
 
     @Test
     @DisplayName("문서를 업로드 순서대로 파싱하고 Markdown 파일 경로를 저장한다")

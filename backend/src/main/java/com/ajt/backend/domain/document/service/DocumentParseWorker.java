@@ -2,6 +2,7 @@ package com.ajt.backend.domain.document.service;
 
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
+import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.global.ai.client.AiClient;
@@ -18,26 +19,32 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class DocumentParseWorker {
 
     private final DocumentRepository documentRepository;
+    private final AiJobRepository aiJobRepository;
     private final DocumentFileStorage fileStorage;
     private final AiClient aiClient;
 
     public DocumentParseWorker(
             DocumentRepository documentRepository,
+            AiJobRepository aiJobRepository,
             DocumentFileStorage fileStorage,
             AiClient aiClient
     ) {
         this.documentRepository = documentRepository;
+        this.aiJobRepository = aiJobRepository;
         this.fileStorage = fileStorage;
         this.aiClient = aiClient;
     }
 
+    @Transactional
     public void parse(AiJob job) {
         job.start();
+        aiJobRepository.save(job);
         for (Document document : orderedDocuments(job.documentIds())) {
             parseDocument(document);
         }

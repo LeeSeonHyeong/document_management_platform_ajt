@@ -33,6 +33,7 @@ public class DocumentUploadService {
     private final DocumentRepository documentRepository;
     private final AiJobRepository aiJobRepository;
     private final DocumentFileStorage fileStorage;
+    private final DocumentParseJobLauncher parseJobLauncher;
 
     public DocumentUploadService(
             CurrentMemberProvider currentMemberProvider,
@@ -40,7 +41,8 @@ public class DocumentUploadService {
             DocumentCategoryRepository documentCategoryRepository,
             DocumentRepository documentRepository,
             AiJobRepository aiJobRepository,
-            DocumentFileStorage fileStorage
+            DocumentFileStorage fileStorage,
+            DocumentParseJobLauncher parseJobLauncher
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiScopeRepository = wikiScopeRepository;
@@ -48,6 +50,7 @@ public class DocumentUploadService {
         this.documentRepository = documentRepository;
         this.aiJobRepository = aiJobRepository;
         this.fileStorage = fileStorage;
+        this.parseJobLauncher = parseJobLauncher;
     }
 
     @Transactional
@@ -77,6 +80,7 @@ public class DocumentUploadService {
                     scopeKey + "/jobs/" + UUID.randomUUID(),
                     documentIds
             ));
+            parseJobLauncher.launch(job);
 
             return new DocumentUploadResponse(
                     String.valueOf(job.id()),

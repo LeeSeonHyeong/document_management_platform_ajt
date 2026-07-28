@@ -39,13 +39,15 @@ class DocumentUploadServiceTest {
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final DocumentFileStorage fileStorage = mock(DocumentFileStorage.class);
+    private final DocumentParseJobLauncher parseJobLauncher = mock(DocumentParseJobLauncher.class);
     private final DocumentUploadService service = new DocumentUploadService(
             currentMemberProvider,
             wikiScopeRepository,
             documentCategoryRepository,
             documentRepository,
             aiJobRepository,
-            fileStorage
+            fileStorage,
+            parseJobLauncher
     );
 
     @Test
@@ -82,6 +84,7 @@ class DocumentUploadServiceTest {
         assertThat(response.status()).isEqualTo("waiting");
         assertThat(response.createdAt()).isNotNull();
         verify(wikiScopeRepository).save(any(WikiScope.class));
+        verify(parseJobLauncher).launch(any(AiJob.class));
     }
 
     @Test

@@ -34,7 +34,7 @@ public record DocumentUploadRequest(
         validateFiles(copiedFiles);
 
         if (documentCategoryId == null || documentCategoryId <= 0) {
-            throw new DocumentUploadValidationException("문서 카테고리를 지정해야 합니다.");
+            throw new DocumentUploadValidationException("documentCategoryId", "문서 카테고리를 지정해야 합니다.");
         }
 
         try {
@@ -44,7 +44,7 @@ public record DocumentUploadRequest(
                     ScopeKey.from(visibilityType, departmentIds)
             );
         } catch (IllegalArgumentException exception) {
-            throw new DocumentUploadValidationException(exception.getMessage());
+            throw new DocumentUploadValidationException("visibilityType", exception.getMessage());
         }
     }
 
