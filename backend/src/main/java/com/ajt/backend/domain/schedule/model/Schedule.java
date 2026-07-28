@@ -1,6 +1,5 @@
 package com.ajt.backend.domain.schedule.model;
 
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,15 +7,14 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "schedule")
@@ -71,9 +69,9 @@ public class Schedule {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
-    @JoinColumn(name = "schedule_id", nullable = false)
-    private List<ScheduleDepartment> departments = new ArrayList<>();
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "department_refs", nullable = false, columnDefinition = "json")
+    private List<Long> departmentRefs = List.of();
 
     protected Schedule() {
     }
@@ -151,13 +149,14 @@ public class Schedule {
     }
 
     public void replaceDepartments(Collection<Long> departmentIds) {
-        departments.clear();
-        if (departmentIds != null) {
-            departmentIds.stream()
-                    .distinct()
-                    .sorted()
-                    .forEach(departmentId -> departments.add(new ScheduleDepartment(departmentId)));
+        if (departmentIds == null) {
+            this.departmentRefs = List.of();
+            return;
         }
+        this.departmentRefs = departmentIds.stream()
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     private static void validatePeriod(Instant startAt, Instant endAt) {
@@ -239,6 +238,6 @@ public class Schedule {
     }
 
     public List<Long> departmentIds() {
-        return departments.stream().map(ScheduleDepartment::departmentId).toList();
+        return List.copyOf(departmentRefs);
     }
 }
