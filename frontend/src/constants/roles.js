@@ -1,8 +1,3 @@
-// 백엔드 member.role ENUM(EMPLOYEE, ADMIN)에 대응.
-// 공개 API JSON은 소문자(role: "employee" | "admin")로 내려온다.
-export const ROLES = Object.freeze({
-  ADMIN: 'admin',
-  EMPLOYEE: 'employee',
-})
-
-export const ALL_ROLES = Object.values(ROLES)
+// 역할 상수는 shared/constants/enums.js가 단일 출처다.
+// 기존 import 경로(@/constants/roles) 호환을 위해 재노출한다.
+export { ROLES, ALL_ROLES } from '@/shared/constants/enums'
