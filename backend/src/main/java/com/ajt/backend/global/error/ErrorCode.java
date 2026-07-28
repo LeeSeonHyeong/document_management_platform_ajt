@@ -6,6 +6,7 @@ public enum ErrorCode {
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청값을 확인해주세요."),
     INVALID_DOCUMENT_UPLOAD(HttpStatus.BAD_REQUEST, "파일 형식, 개수 또는 용량 제한을 확인해주세요."),
     INVALID_DOCUMENT_STATUS(HttpStatus.CONFLICT, "문서 처리 상태를 확인해주세요."),
+    AI_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 작업을 찾을 수 없습니다."),
     INVALID_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
     ADMIN_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "관리자 권한이 필요합니다."),
