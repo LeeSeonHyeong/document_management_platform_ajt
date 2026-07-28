@@ -68,4 +68,22 @@ class DocumentTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("UPLOADED 상태의 문서만 파싱할 수 있습니다.");
     }
+
+    @Test
+    @DisplayName("DB ID 발급 후 원본 파일 저장 경로를 반영한다")
+    void changesOriginalPathAfterIdIsAssigned() {
+        Document document = Document.uploaded(
+                10L,
+                3L,
+                "ALL",
+                "규정.md",
+                "pending",
+                "text/markdown",
+                100L
+        );
+
+        document.changeOriginalPath("ALL/12/original.md");
+
+        assertThat(document.originalPath()).isEqualTo("ALL/12/original.md");
+    }
 }

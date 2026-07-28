@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.core.io.Resource;
 import org.springframework.mock.web.MockMultipartFile;
 
 @DisplayName("원본문서 로컬 파일 저장소")
@@ -49,5 +50,20 @@ class LocalDocumentFileStorageTest {
         storage.delete(storedPath);
 
         assertThat(Files.exists(storageRoot.resolve(storedPath))).isFalse();
+    }
+
+    @Test
+    @DisplayName("저장한 원본 파일을 Resource로 불러온다")
+    void loadsStoredOriginalFileAsResource() throws Exception {
+        LocalDocumentFileStorage storage = new LocalDocumentFileStorage(storageRoot);
+        MockMultipartFile file = new MockMultipartFile(
+                "files", "취업규칙.md", "text/markdown", "# original".getBytes()
+        );
+        String storedPath = storage.storeOriginal("ALL", 15L, file);
+
+        Resource resource = storage.load(storedPath);
+
+        assertThat(resource.exists()).isTrue();
+        assertThat(resource.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("# original");
     }
 }

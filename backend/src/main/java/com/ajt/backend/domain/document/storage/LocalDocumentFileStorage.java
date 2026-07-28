@@ -6,6 +6,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
 import org.springframework.web.multipart.MultipartFile;
 
 public class LocalDocumentFileStorage implements DocumentFileStorage {
@@ -35,6 +37,11 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
         Files.createDirectories(target.getParent());
         Files.writeString(target, parsedMarkdown, StandardCharsets.UTF_8);
         return storedPath;
+    }
+
+    @Override
+    public Resource load(String storedPath) {
+        return new FileSystemResource(resolve(storedPath));
     }
 
     @Override

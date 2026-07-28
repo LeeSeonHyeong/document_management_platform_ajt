@@ -118,6 +118,10 @@ public class Document {
         this.status = DocumentStatus.FAILED;
     }
 
+    public void changeOriginalPath(String originalPath) {
+        this.originalPath = originalPath;
+    }
+
     public Long id() {
         return id;
     }
