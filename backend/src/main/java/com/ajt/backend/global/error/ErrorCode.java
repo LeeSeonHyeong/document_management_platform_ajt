@@ -14,6 +14,11 @@ public enum ErrorCode {
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
 
     DEPARTMENT_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않는 부서입니다."),
+    DEPARTMENT_RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 부서입니다."),
+    DEPARTMENT_NAME_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 부서명입니다."),
+    DEPARTMENT_IN_USE(HttpStatus.CONFLICT, "사용 중인 부서는 삭제할 수 없습니다."),
+    DEPARTMENT_MANAGER_INVALID(HttpStatus.BAD_REQUEST, "부서 관리자는 승인된 활성 관리자만 지정할 수 있습니다."),
+    DEPARTMENT_MANAGER_ALREADY_ASSIGNED(HttpStatus.CONFLICT, "이미 다른 부서를 담당 중인 관리자입니다."),
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     SIGNUP_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "가입 신청을 찾을 수 없습니다."),
     INVALID_SIGNUP_STATUS(HttpStatus.CONFLICT, "승인 대기 상태의 신청만 처리할 수 있습니다."),

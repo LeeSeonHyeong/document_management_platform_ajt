@@ -17,11 +17,13 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
+import lombok.Getter;
 
 /**
  * 회원 계정 엔티티입니다.
  * 가입 승인 상태와 계정 활성 상태를 함께 보고 로그인 가능 여부와 관리자 처리 결과를 판단합니다.
  */
+@Getter
 @Entity
 @Table(name = "member")
 public class Member {
@@ -204,50 +206,6 @@ public class Member {
     @PreUpdate
     void preUpdate() {
         updatedAt = Instant.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public Department getDepartment() {
-        return department;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public String getPasswordHash() {
-        return passwordHash;
-    }
-
-    public String getEmployeeNo() {
-        return employeeNo;
-    }
-
-    public Role getRole() {
-        return role;
-    }
-
-    public SignupStatus getSignupStatus() {
-        return signupStatus;
-    }
-
-    public AccountStatus getAccountStatus() {
-        return accountStatus;
-    }
-
-    public Instant getCreatedAt() {
-        return createdAt;
-    }
-
-    public Instant getUpdatedAt() {
-        return updatedAt;
     }
 
     public static String normalizeEmail(String email) {

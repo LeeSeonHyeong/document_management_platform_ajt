@@ -5,9 +5,17 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
  * 부서 데이터를 조회하는 저장소입니다.
- * 현재 인증 범위에서는 회원가입용 부서 목록과 회원가입 시 부서 존재 여부 확인에 사용합니다.
+ * 회원가입용 부서 목록과 관리자 부서 관리 API가 같은 부서 테이블을 사용합니다.
  */
 public interface DepartmentRepository extends JpaRepository<Department, Long> {
 
     List<Department> findAllByOrderByNameAsc();
+
+    boolean existsByName(String name);
+
+    boolean existsByNameAndIdNot(String name, Long id);
+
+    boolean existsByManager_Id(Long managerId);
+
+    boolean existsByManager_IdAndIdNot(Long managerId, Long departmentId);
 }
