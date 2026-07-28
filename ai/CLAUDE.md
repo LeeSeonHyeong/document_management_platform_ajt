@@ -34,6 +34,8 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
 | `agent_runtime` | 에이전트 실행 — claude-code(지금)·deepagents(배포) 런타임, 시간 상한 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |
+| `viewer/` | 위키 참조 그래프 뷰어 (개발 도구). 데이터는 `python -m wiki_mcp.graph_api --root <저장소> --scope ALL` 로 띄운다 |
+| `experiments/` | 측정 기록 — `INDEX.md` 가 수치의 정본. 실험별로 `report.json`(문서→위키 변경 매핑 포함)·`data/wiki/`(생성된 위키 전문)·`graph.json`(각주 단위 인용 그래프)이 있어 "어떤 원본에서 어떤 위키가 나왔나"를 추적할 수 있다 |
 
 - **AI 서버는 DB·서비스 파일에 접근하지 않는다.** 요청 본문이 실어 온 것만 처리하고 변경안을 반환한다. 저장·확정은 Spring.
 - **라이브 위키는 에이전트에게 읽기 전용.** 모든 쓰기는 작업 공간(`work/{jobId}/output/`)으로 가고, 반영 전 `lint`를 통과해야 한다.
