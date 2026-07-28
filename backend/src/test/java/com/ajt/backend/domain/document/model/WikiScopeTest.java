@@ -17,7 +17,7 @@ class WikiScopeTest {
         assertThat(scope.scopeKey()).isEqualTo("ALL");
         assertThat(scope.visibilityType()).isEqualTo(WikiScopeVisibilityType.ALL);
         assertThat(scope.departmentRefs()).isEmpty();
-        assertThat(scope.indexPath()).isEqualTo("ALL/index.md");
+        assertThat(scope.indexPath()).isEqualTo("wiki/ALL/index.md");
     }
 
     @Test
@@ -28,6 +28,6 @@ class WikiScopeTest {
         assertThat(scope.scopeKey()).isEqualTo("D1-D2");
         assertThat(scope.visibilityType()).isEqualTo(WikiScopeVisibilityType.DEPARTMENT);
         assertThat(scope.departmentRefs()).containsExactly(1L, 2L);
-        assertThat(scope.indexPath()).isEqualTo("D1-D2/index.md");
+        assertThat(scope.indexPath()).isEqualTo("wiki/D1-D2/index.md");
     }
 }

@@ -26,7 +26,7 @@ class LocalDocumentFileStorageTest {
 
         String storedPath = storage.storeOriginal("D1-D2", 15L, file);
 
-        assertThat(storedPath).isEqualTo("D1-D2/15/original.pdf");
+        assertThat(storedPath).isEqualTo("wiki/D1-D2/sources/15/original.pdf");
         assertThat(Files.readString(storageRoot.resolve(storedPath))).isEqualTo("original");
     }
 
@@ -37,7 +37,7 @@ class LocalDocumentFileStorageTest {
 
         String storedPath = storage.storeParsedMarkdown("ALL", 15L, "# 취업규칙");
 
-        assertThat(storedPath).isEqualTo("ALL/15/parsed.md");
+        assertThat(storedPath).isEqualTo("wiki/ALL/sources/15/parsed.md");
         assertThat(Files.readString(storageRoot.resolve(storedPath))).isEqualTo("# 취업규칙");
     }
 

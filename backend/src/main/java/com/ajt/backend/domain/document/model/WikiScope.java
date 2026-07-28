@@ -38,7 +38,7 @@ public class WikiScope {
         this.scopeKey = scopeKey;
         this.visibilityType = visibilityType;
         this.departmentRefs = List.copyOf(departmentRefs);
-        this.indexPath = scopeKey + "/index.md";
+        this.indexPath = "wiki/" + scopeKey + "/index.md";
     }
 
     public static WikiScope all() {

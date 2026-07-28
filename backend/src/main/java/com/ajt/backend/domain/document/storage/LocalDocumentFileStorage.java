@@ -21,7 +21,7 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
     @Override
     public String storeOriginal(String scopeKey, long documentId, MultipartFile file) throws IOException {
         String extension = extensionOf(file.getOriginalFilename());
-        String storedPath = scopeKey + "/" + documentId + "/original." + extension;
+        String storedPath = "wiki/" + scopeKey + "/sources/" + documentId + "/original." + extension;
         Path target = resolve(storedPath);
         Files.createDirectories(target.getParent());
         try (InputStream inputStream = file.getInputStream()) {
@@ -32,7 +32,7 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
 
     @Override
     public String storeParsedMarkdown(String scopeKey, long documentId, String parsedMarkdown) throws IOException {
-        String storedPath = scopeKey + "/" + documentId + "/parsed.md";
+        String storedPath = "wiki/" + scopeKey + "/sources/" + documentId + "/parsed.md";
         Path target = resolve(storedPath);
         Files.createDirectories(target.getParent());
         Files.writeString(target, parsedMarkdown, StandardCharsets.UTF_8);
