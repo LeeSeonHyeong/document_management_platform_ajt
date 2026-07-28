@@ -1,0 +1,27 @@
+LLM Wiki — AI Server
+Copyright 2026 llmwiki contributors
+
+This product includes software derived from the Lucas LLM Wiki project,
+licensed under the Apache License, Version 2.0.
+
+  Original work: lucas-llmwiki (mcp/ subtree)
+  Upstream:       https://github.com/lucasastorian/llmwiki
+  License:        see ./LICENSE
+
+Files under `src/wiki_mcp/` are derived from the upstream project. Each such file carries
+a header naming the upstream file it came from and summarising what changed.
+
+Substantive modifications made by this project:
+
+  * `knowledge_base` (per-user vault) replaced by `scope` — the visibility
+    partition from `docs/erdTable.sql` (`wiki_scope.scope_key`). A scope is
+    never created by the agent; the backend owns it.
+  * Hosted mode removed: Supabase/Postgres backend, S3 storage, OAuth, the
+    HTTP transport, and `add_source_from_url`.
+  * Highlights/annotations, courses, image and spreadsheet reading removed.
+  * `overview.md` renamed `index.md` to match `wiki_scope.index_path`.
+  * Wiki page directories map to `wiki_category`; `category` added to the
+    required frontmatter because `wiki.wiki_category_id` is NOT NULL.
+  * Cross-page markdown links are permitted only within one scope. A link
+    that leaves its scope is a lint error, because a body link cannot be
+    filtered per viewer (FR-ACL-006, NFR-SEC-003).
