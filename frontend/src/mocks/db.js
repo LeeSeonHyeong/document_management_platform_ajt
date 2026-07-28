@@ -264,3 +264,96 @@ export function findDocumentCategoryById(categoryId) {
 export function findAiJobById(jobId) {
   return aiJobs.find((j) => j.jobId === jobId) ?? null
 }
+
+// ── Wiki ─────────────────────────────────────────────────────────
+// AI가 관리하는 카테고리(FR-WIKI-014). 관리자는 조회만 하므로 여기서도 수정 핸들러를 만들지 않는다.
+export const wikiCategories = [
+  { wikiCategoryId: '9', scopeKey: 'D1-D2', name: '휴가 및 근태', description: 'AI가 분류한 휴가·근태 규정' },
+  { wikiCategoryId: '10', scopeKey: 'D1-D2', name: '복리후생', description: 'AI가 분류한 복리후생 안내' },
+  { wikiCategoryId: '11', scopeKey: 'D1', name: '개발 표준', description: 'AI가 분류한 개발팀 표준 문서' },
+]
+
+export const wikis = [
+  {
+    wikiId: '101',
+    title: '휴가 규정',
+    summary: '연차와 반차 사용 기준',
+    contentMarkdown:
+      '# 휴가 규정\n연차와 반차를 사용할 수 있습니다.\n\n복지 포인트는 [복지 포인트 안내](pages/102.md) 문서를 참고하세요.',
+    wikiCategoryId: '9',
+    scopeKey: 'D1-D2',
+    evidenceDocumentIds: ['1', '2'],
+    relatedWikiIds: ['102'],
+    updatedAt: '2026-07-21T09:10:00Z',
+  },
+  {
+    wikiId: '102',
+    title: '복지 포인트 안내',
+    summary: '분기별 복지 포인트 지급 및 사용 기준',
+    contentMarkdown: '# 복지 포인트 안내\n분기별로 복지 포인트가 지급됩니다.',
+    wikiCategoryId: '10',
+    scopeKey: 'D1-D2',
+    evidenceDocumentIds: ['4'],
+    relatedWikiIds: ['101'],
+    updatedAt: '2026-07-22T09:00:00Z',
+  },
+  {
+    wikiId: '103',
+    title: '코딩 컨벤션',
+    summary: '개발팀 코드 스타일 가이드',
+    contentMarkdown: '# 코딩 컨벤션\n들여쓰기는 2칸을 사용합니다.',
+    wikiCategoryId: '11',
+    scopeKey: 'D1',
+    evidenceDocumentIds: ['3'],
+    relatedWikiIds: [],
+    updatedAt: '2026-07-27T09:20:00Z',
+  },
+]
+
+// wikiId → 관리자·에이전트 대화 목록. FR-AI-004: 작업 ID가 아니라 Wiki ID에 연결.
+export const wikiChatMessages = {
+  101: [
+    {
+      messageId: '1',
+      senderType: 'admin',
+      content: '중복된 휴가 규정을 하나로 정리해줘.',
+      createdAt: '2026-07-21T09:05:00Z',
+    },
+    {
+      messageId: '2',
+      senderType: 'agent',
+      content: '중복된 연차 항목을 정리해 휴가 규정 Wiki에 반영했습니다.',
+      createdAt: '2026-07-21T09:05:30Z',
+    },
+  ],
+}
+
+let nextWikiChatMessageId = 3
+
+export function issueWikiChatMessageId() {
+  return String(nextWikiChatMessageId++)
+}
+
+export function findWikiById(wikiId) {
+  return wikis.find((w) => w.wikiId === wikiId) ?? null
+}
+
+export function findWikiCategoryById(wikiCategoryId) {
+  return wikiCategories.find((c) => c.wikiCategoryId === wikiCategoryId) ?? null
+}
+
+// scopeKey별로 Wiki를 묶어 접근 가능한 독립 Wiki 공간 목록을 만든다.
+export function buildWikiSpaces() {
+  const scopeKeys = [...new Set(wikis.map((w) => w.scopeKey))]
+  return scopeKeys.map((scopeKey) => {
+    const departmentIds = scopeKey.split('-').map((part) => part.replace('D', ''))
+    const scopeDepartments = departmentsByIds(departmentIds)
+    return {
+      scopeKey,
+      visibilityType: 'department',
+      departments: scopeDepartments,
+      displayName: scopeDepartments.map((d) => d.name).join(' + '),
+      wikiCount: wikis.filter((w) => w.scopeKey === scopeKey).length,
+    }
+  })
+}
