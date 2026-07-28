@@ -24,6 +24,7 @@ class ScopeKeyTest {
         ScopeKey scopeKey = ScopeKey.from("department", List.of(3L, 1L, 3L, 2L));
 
         assertThat(scopeKey.value()).isEqualTo("D1-D2-D3");
+        assertThat(scopeKey.departmentIds()).containsExactly(1L, 2L, 3L);
     }
 
     @Test
