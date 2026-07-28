@@ -11,6 +11,7 @@ const collectionSchema =
   "https://schema.getpostman.com/json/collection/v2.1.0/collection.json";
 
 const cookieAuth = { type: "noauth" };
+const csrfProtectedMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const internalApiKeyAuth = {
   type: "apikey",
@@ -115,9 +116,19 @@ function request({
   body,
   headers = [],
 }) {
+  const requestHeaders = [...headers];
+  const requiresCsrfHeader =
+    baseVariable === "backendBaseUrl" && csrfProtectedMethods.has(method);
+  const hasCsrfHeader = requestHeaders.some(
+    (header) => header.key.toLowerCase() === "x-xsrf-token",
+  );
+  if (requiresCsrfHeader && !hasCsrfHeader) {
+    requestHeaders.push({ key: "X-XSRF-TOKEN", value: "{{csrfToken}}" });
+  }
+
   const requestValue = {
     method,
-    header: headers,
+    header: requestHeaders,
     url: urlObject(baseVariable, path, query),
     description,
   };

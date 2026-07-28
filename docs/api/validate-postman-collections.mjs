@@ -20,6 +20,7 @@ const requiredDescriptionSections = [
   "### Response",
   "### Error",
 ];
+const csrfProtectedMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 function flattenRequests(collection) {
   return collection.item.flatMap((folder) =>
@@ -55,6 +56,19 @@ function validateCollection(collection, expectedPathPrefix) {
     }
     if (!item.request.method) {
       errors.push(`${item.folder}/${item.name}: HTTP Method 누락`);
+    }
+    if (
+      expectedPathPrefix === "/api/v1/" &&
+      csrfProtectedMethods.has(item.request.method)
+    ) {
+      const hasCsrfHeader = (item.request.header ?? []).some(
+        (header) =>
+          header.key?.toLowerCase() === "x-xsrf-token" &&
+          header.value === "{{csrfToken}}",
+      );
+      if (!hasCsrfHeader) {
+        errors.push(`${item.folder}/${item.name}: X-XSRF-TOKEN 헤더 누락`);
+      }
     }
   }
 
