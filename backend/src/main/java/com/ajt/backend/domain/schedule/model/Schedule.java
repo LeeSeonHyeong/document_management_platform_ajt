@@ -179,14 +179,22 @@ public class Schedule {
         return sourceOriginalPath != null;
     }
 
+    /**
+     * 공개 부서 목록을 지정한 목록으로 맞춥니다.
+     * 전체를 비우고 다시 넣으면 유지되는 부서도 삭제·재삽입 대상이 되는데, Hibernate가
+     * 삽입을 orphan 삭제보다 먼저 실행해 uk_schedule_department를 위반한다.
+     * 그래서 빠질 부서만 지우고 새로 들어올 부서만 추가한다.
+     */
     public void replaceDepartments(Collection<Long> departmentIds) {
-        departments.clear();
-        if (departmentIds == null) {
-            return;
-        }
-        departmentIds.stream()
-                .distinct()
-                .sorted()
+        List<Long> target = departmentIds == null
+                ? List.of()
+                : departmentIds.stream().distinct().sorted().toList();
+        departments.removeIf(department -> !target.contains(department.departmentId()));
+        List<Long> retained = departments.stream()
+                .map(ScheduleDepartment::departmentId)
+                .toList();
+        target.stream()
+                .filter(departmentId -> !retained.contains(departmentId))
                 .forEach(departmentId -> departments.add(new ScheduleDepartment(departmentId)));
     }
 
@@ -269,8 +277,10 @@ public class Schedule {
     }
 
     public List<Long> departmentIds() {
+        // 유지된 부서와 새로 추가된 부서가 섞여 저장 순서가 보장되지 않으므로 정렬해 반환한다.
         return departments.stream()
                 .map(ScheduleDepartment::departmentId)
+                .sorted()
                 .toList();
     }
 }
