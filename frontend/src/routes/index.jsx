@@ -13,6 +13,10 @@ import DashboardPage from '@/pages/DashboardPage'
 import AdminPage from '@/pages/AdminPage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import EmployeeListPage from '@/features/member/pages/EmployeeListPage'
+import EmployeeDetailPage from '@/features/member/pages/EmployeeDetailPage'
+import EmployeeEditPage from '@/features/member/pages/EmployeeEditPage'
+import SignupRequestsPage from '@/features/member/pages/SignupRequestsPage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -42,7 +46,13 @@ export const router = createBrowserRouter([
           { index: true, element: <DashboardPage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
-            children: [{ path: 'admin', element: <AdminPage /> }],
+            children: [
+              { path: 'admin', element: <AdminPage /> },
+              { path: 'admin/users', element: <EmployeeListPage /> },
+              { path: 'admin/users/:userId', element: <EmployeeDetailPage /> },
+              { path: 'admin/users/:userId/edit', element: <EmployeeEditPage /> },
+              { path: 'admin/signup-requests', element: <SignupRequestsPage /> },
+            ],
           },
         ],
       },

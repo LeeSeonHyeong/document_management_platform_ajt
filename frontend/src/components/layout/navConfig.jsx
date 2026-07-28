@@ -40,8 +40,26 @@ export const ROUTE_LABELS = {
   '/settings': '설정',
   '/admin': '관리자',
   '/admin/users': '직원 관리',
+  '/admin/signup-requests': '가입 승인 관리',
   '/admin/departments': '부서 관리',
   '/admin/inquiries': '문의 관리',
   '/admin/documents': '문서 관리',
   '/admin/schedules': '일정 관리',
+}
+
+// 상단바의 큰 페이지 제목입니다.
+// 동적 경로(:userId)는 실제 URL을 보고 가장 구체적인 화면명으로 변환합니다.
+export function getPageTitle(pathname) {
+  if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return '직원 정보 수정'
+  if (/^\/admin\/users\/[^/]+$/.test(pathname)) return '직원 상세'
+  return ROUTE_LABELS[pathname] ?? 'AJT'
+}
+
+// 직원 관리 Figma 프레임에 표기된 상단 경로 문구를 그대로 사용합니다.
+export function getPageEyebrow(pathname) {
+  if (pathname === '/admin/users') return 'AJT / 조직 관리'
+  if (pathname === '/admin/signup-requests') return 'AJT / 직원 관리'
+  if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return 'AJT / 직원 상세'
+  if (/^\/admin\/users\/[^/]+$/.test(pathname)) return 'AJT / 직원 관리'
+  return null
 }
