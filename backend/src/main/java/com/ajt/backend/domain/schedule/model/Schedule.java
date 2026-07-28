@@ -138,6 +138,27 @@ public class Schedule {
         status = ScheduleStatus.APPROVED;
     }
 
+    // TODO(동시성): @Version 낙관적 락이 없어 동시 수정 시 마지막 쓰기가 이긴다.
+    //  프로젝트 전반의 공통 정책으로 도입할지 팀과 검토 필요.
+    public void update(
+            String title,
+            String content,
+            String targetText,
+            String location,
+            ScheduleVisibility visibilityType,
+            Instant startAt,
+            Instant endAt
+    ) {
+        validatePeriod(startAt, endAt);
+        this.title = title;
+        this.content = content;
+        this.targetText = targetText;
+        this.location = location;
+        this.visibilityType = visibilityType;
+        this.startAt = startAt;
+        this.endAt = endAt;
+    }
+
     public void linkSource(String sourceGroupKey, String sourceOriginalPath, String sourceParsedPath) {
         this.sourceGroupKey = sourceGroupKey;
         this.sourceOriginalPath = sourceOriginalPath;
