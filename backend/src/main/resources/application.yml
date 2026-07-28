@@ -1,8 +1,15 @@
-﻿spring:
+spring:
   application:
     name: ajt-backend
   profiles:
     active: local
+
+ajt:
+  auth:
+    access-token-secret: ${AJT_ACCESS_TOKEN_SECRET:local-dev-access-token-secret}
+    access-token-expiration: ${AJT_ACCESS_TOKEN_EXPIRATION:1h}
+    password-reset-secret: ${AJT_PASSWORD_RESET_SECRET:local-dev-password-reset-secret}
+    password-reset-expiration: ${AJT_PASSWORD_RESET_EXPIRATION:30m}
 
 management:
   endpoints:

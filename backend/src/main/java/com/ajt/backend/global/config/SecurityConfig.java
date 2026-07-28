@@ -23,7 +23,16 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/health", "/actuator/health", "/h2-console/**").permitAll()
+                        .requestMatchers(
+                                "/api/v1/health",
+                                "/actuator/health",
+                                "/h2-console/**",
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/signup",
+                                "/api/v1/auth/password-reset-requests",
+                                "/api/v1/auth/password-resets",
+                                "/api/v1/signup-departments"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling
