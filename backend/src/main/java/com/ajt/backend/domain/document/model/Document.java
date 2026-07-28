@@ -7,7 +7,10 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.List;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -55,6 +58,12 @@ public class Document {
 
     @Column(name = "failure_reason", length = 1000)
     private String failureReason;
+
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private Instant updatedAt;
 
     protected Document() {
     }
@@ -118,8 +127,28 @@ public class Document {
         this.status = DocumentStatus.FAILED;
     }
 
+    public void retryParsing() {
+        if (status != DocumentStatus.FAILED && status != DocumentStatus.CANCELLED) {
+            throw new IllegalStateException("FAILED 또는 CANCELLED 상태의 문서만 재시도할 수 있습니다.");
+        }
+        this.status = DocumentStatus.UPLOADED;
+        this.failureReason = null;
+    }
+
     public void changeOriginalPath(String originalPath) {
         this.originalPath = originalPath;
+    }
+
+    @PrePersist
+    void prePersist() {
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void preUpdate() {
+        updatedAt = Instant.now();
     }
 
     public Long id() {
@@ -128,6 +157,10 @@ public class Document {
 
     public long uploaderId() {
         return uploaderId;
+    }
+
+    public long documentCategoryId() {
+        return documentCategoryId;
     }
 
     public String scopeKey() {
@@ -160,6 +193,14 @@ public class Document {
 
     public String failureReason() {
         return failureReason;
+    }
+
+    public Instant createdAt() {
+        return createdAt;
+    }
+
+    public Instant updatedAt() {
+        return updatedAt;
     }
 
     private void ensureParsing() {
