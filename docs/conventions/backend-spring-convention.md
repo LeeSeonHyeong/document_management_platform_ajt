@@ -47,10 +47,19 @@ public class ScheduleService {
 
 - 부서 목록·문서 목록 등 소규모 ID 참조 목록은 별도 정규화 테이블 대신 **JSON 컬럼**으로 저장한다.
 - Hibernate `@JdbcTypeCode(SqlTypes.JSON)`을 사용하고, DB 컬럼은 `JSON NOT NULL DEFAULT (JSON_ARRAY())`로 정의한다.
-- 기존 예시: `wiki_scope.department_refs`, `ai_job.document_ids`, `document.document_wiki_refs`, `schedule.department_refs`.
+- 기존 예시: `wiki_scope.department_refs`, `ai_job.document_ids`, `document.document_wiki_refs`.
 
 ```java
 @JdbcTypeCode(SqlTypes.JSON)
 @Column(name = "department_refs", nullable = false, columnDefinition = "json")
 private List<Long> departmentRefs = List.of();
 ```
+
+### 예외: 삭제를 DB가 막아야 하는 참조
+
+참조 대상이 삭제될 때 DB가 삭제 자체를 막아야 하는 관계는 JSON 컬럼 대신 **조인 테이블과 FK**를 쓴다.
+JSON 컬럼에는 FK를 걸 수 없어 참조 무결성을 애플리케이션 검사에만 의존하게 되기 때문이다.
+
+- 해당 예시: `schedule_department` (일정 공개 부서). 부서 삭제를 `ON DELETE RESTRICT`로 막는다.
+- 조인 테이블을 쓰면 지연 로딩 N+1이 생기므로 컬렉션에 `@BatchSize`를 지정한다.
+- FK 위반은 500으로 나가므로, 계약이 요구하는 오류 코드가 있으면 삭제 전에 애플리케이션에서도 확인한다.

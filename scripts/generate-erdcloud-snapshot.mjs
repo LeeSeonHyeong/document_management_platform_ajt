@@ -405,13 +405,6 @@ const tables = [
         false,
         "ALL, DEPARTMENT, PERSONAL",
       ),
-      column(
-        "공개 부서 목록",
-        "department_refs",
-        "JSON",
-        false,
-        "DEPARTMENT 공개 시 부서 ID 목록; 그 외에는 빈 배열",
-      ),
       column("시작일시", "start_at", "DATETIME(6)"),
       column("종료일시", "end_at", "DATETIME(6)"),
       column(
@@ -423,6 +416,31 @@ const tables = [
       ),
       column("생성일시", "created_at", "DATETIME(6)"),
       column("수정일시", "updated_at", "DATETIME(6)"),
+    ],
+  ),
+  table(
+    "일정 공개 부서",
+    "schedule_department",
+    2000,
+    0,
+    column("일정 공개 부서 ID", "schedule_department_id", "BIGINT UNSIGNED"),
+    [
+      column(
+        "일정 ID",
+        "schedule_id",
+        "BIGINT UNSIGNED",
+        false,
+        "",
+        { table: "schedule", relType: "ZERO_OR_MANY" },
+      ),
+      column(
+        "부서 ID",
+        "department_id",
+        "BIGINT UNSIGNED",
+        false,
+        "",
+        { table: "department", relType: "ZERO_OR_MANY" },
+      ),
     ],
   ),
   table(

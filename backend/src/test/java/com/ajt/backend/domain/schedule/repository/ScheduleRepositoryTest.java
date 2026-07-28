@@ -26,7 +26,7 @@ class ScheduleRepositoryTest {
     private TestEntityManager entityManager;
 
     @Test
-    @DisplayName("일정을 저장하면 enum·Instant·부서 목록(JSON)이 그대로 재조회된다")
+    @DisplayName("일정을 저장하면 enum·Instant·부서 목록(조인 테이블)이 그대로 재조회된다")
     void persistsAndReloadsMapping() {
         Schedule schedule = Schedule.draft(
                 10L, "프로젝트 회의", "주간 진행 공유", "개발부", "3층 회의실",
@@ -48,8 +48,8 @@ class ScheduleRepositoryTest {
     }
 
     @Test
-    @DisplayName("부서 목록이 비면 빈 배열로 저장·조회된다")
-    void persistsEmptyDepartmentRefs() {
+    @DisplayName("부서 목록이 비면 빈 목록으로 저장·조회된다")
+    void persistsEmptyDepartments() {
         Schedule schedule = Schedule.create(
                 10L, "개인 일정", null, null, null,
                 ScheduleVisibility.PERSONAL, START, END);

@@ -181,8 +181,8 @@ for (const match of sql.matchAll(
   sqlTables.set(tableName, columns);
 }
 
-// schedule_department 정규화 테이블은 schedule.department_refs JSON으로 대체되어 15개가 되었다.
-expect(sqlTables.size === 15, `SQL CREATE TABLE 수가 15개가 아님: ${sqlTables.size}`);
+// 부서 참조 무결성을 DB가 강제하도록 schedule_department 조인 테이블을 유지해 16개다.
+expect(sqlTables.size === 16, `SQL CREATE TABLE 수가 16개가 아님: ${sqlTables.size}`);
 expect(
   sqlTables.size === entityByName.size &&
     [...sqlTables.keys()].every((name) => entityByName.has(name)),

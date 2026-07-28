@@ -1335,20 +1335,6 @@
           "relGroupId": null
         },
         {
-          "_id": "qQmGH95GmBu8p9XRJ",
-          "name": "공개 부서 목록",
-          "pName": "department_refs",
-          "domain": "",
-          "type": "JSON",
-          "defaultValue": "",
-          "isAllowNull": false,
-          "comment": "DEPARTMENT 공개 시 부서 ID 목록; 그 외에는 빈 배열",
-          "relEntity": null,
-          "relFieldId": null,
-          "relType": null,
-          "relGroupId": null
-        },
-        {
           "_id": "M7dvjnXdeHCQWLhf2",
           "name": "시작일시",
           "pName": "start_at",
@@ -1425,6 +1411,66 @@
             "_id": "NaGdtA0k4Gp4AUpOX",
             "name": "일정 ID",
             "pName": "schedule_id",
+            "domain": "",
+            "type": "BIGINT UNSIGNED",
+            "defaultValue": "",
+            "isAllowNull": false,
+            "comment": "",
+            "relEntity": null,
+            "relFieldId": null,
+            "relType": null,
+            "relGroupId": null
+          }
+        ],
+        "fks": []
+      },
+      "color": "rgba(10, 10, 10, 0.5)"
+    },
+    {
+      "_id": "mxpBrNMfUmy50P2J9",
+      "_diagramId": "zMbO03J50A7p1AzQa",
+      "position": {
+        "x": 2000,
+        "y": 0
+      },
+      "name": "일정 공개 부서",
+      "pName": "schedule_department",
+      "fields": [
+        {
+          "_id": "TKHKZik5UG3UYOz8X",
+          "name": "일정 ID",
+          "pName": "schedule_id",
+          "domain": "",
+          "type": "BIGINT UNSIGNED",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "",
+          "relEntity": "MD5f22d15x2e5l0a3",
+          "relFieldId": "NaGdtA0k4Gp4AUpOX",
+          "relType": "ZERO_OR_MANY",
+          "relGroupId": "8es1uLYluSX7ek7pn"
+        },
+        {
+          "_id": "KsQvtRPd1G2IeaUpK",
+          "name": "부서 ID",
+          "pName": "department_id",
+          "domain": "",
+          "type": "BIGINT UNSIGNED",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "",
+          "relEntity": "RRIgUUF2wle2d6hq2",
+          "relFieldId": "6J7b8DFJHL4OUwJRj",
+          "relType": "ZERO_OR_MANY",
+          "relGroupId": "oWMAFd8M1Xvd5RjEk"
+        }
+      ],
+      "keys": {
+        "pks": [
+          {
+            "_id": "GdMuE6bfUga2rVw0f",
+            "name": "일정 공개 부서 ID",
+            "pName": "schedule_department_id",
             "domain": "",
             "type": "BIGINT UNSIGNED",
             "defaultValue": "",
@@ -1997,5 +2043,5 @@
   "memoData": [],
   "creatorName": "이선형",
   "creatorThumb": "https://lh3.googleusercontent.com/a/ACg8ocIicA9RTG78H5pkaS4Wz2PWt98TK8htUQqcKvDqctSVw1KG1ZFc=s96-c",
-  "createdAt": "2026-07-28T13:42:11.419Z"
+  "createdAt": "2026-07-28T14:24:58.890Z"
 }
