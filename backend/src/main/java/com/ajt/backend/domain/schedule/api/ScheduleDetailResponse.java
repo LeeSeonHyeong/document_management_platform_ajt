@@ -29,13 +29,9 @@ public record ScheduleDetailResponse(
     }
 
     public static ScheduleDetailResponse from(Schedule schedule) {
-        // TODO(39번 일정 원본문서 업로드/파싱 - 팀원 내부 작업 연동 시 재검토):
-        //  schedule 테이블에 원본 파일명 컬럼이 없어 지금은 저장 경로의 basename으로 대체한다.
-        //  파싱 연동이 붙으면 실제 원본 파일명 저장 방식을 팀원과 확정하고 이 로직을 교체할 것.
-        //  현재 브랜치는 원본문서를 만드는 경로가 없어 수동·개인 일정은 sourceDocument=null 이다.
         SourceDocument sourceDocument = schedule.hasSourceDocument()
                 ? new SourceDocument(
-                        fileNameOf(schedule.sourceOriginalPath()),
+                        schedule.sourceOriginalFileName(),
                         "/api/v1/schedules/%d/source-file".formatted(schedule.id()))
                 : null;
 
@@ -52,10 +48,5 @@ public record ScheduleDetailResponse(
                 schedule.status().apiValue(),
                 sourceDocument
         );
-    }
-
-    private static String fileNameOf(String path) {
-        int separator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-        return path.substring(separator + 1);
     }
 }

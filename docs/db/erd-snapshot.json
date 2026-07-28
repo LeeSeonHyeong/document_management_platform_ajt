@@ -1251,6 +1251,20 @@
           "relGroupId": null
         },
         {
+          "_id": "0KISTFoaTSSloPpyu",
+          "name": "일정 원본 파일명",
+          "pName": "source_original_file_name",
+          "domain": "",
+          "type": "VARCHAR(255)",
+          "defaultValue": "",
+          "isAllowNull": true,
+          "comment": "업로드 당시 원본 파일명; 저장 경로는 확장자만 유지",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
           "_id": "k9a3MRETkkZJvXyh6",
           "name": "일정 파싱 경로",
           "pName": "source_parsed_path",
@@ -2043,5 +2057,5 @@
   "memoData": [],
   "creatorName": "이선형",
   "creatorThumb": "https://lh3.googleusercontent.com/a/ACg8ocIicA9RTG78H5pkaS4Wz2PWt98TK8htUQqcKvDqctSVw1KG1ZFc=s96-c",
-  "createdAt": "2026-07-28T14:24:58.890Z"
+  "createdAt": "2026-07-28T14:40:01.054Z"
 }

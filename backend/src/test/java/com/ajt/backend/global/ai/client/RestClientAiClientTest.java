@@ -11,6 +11,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 import java.net.ConnectException;
+import java.time.Instant;
 import java.net.SocketTimeoutException;
 import java.io.IOException;
 import java.util.List;
@@ -311,6 +312,152 @@ class RestClientAiClientTest {
 
         assertThat(error.failureType()).isEqualTo(AiClientFailureType.CONNECTION_FAILED);
         assertThat(error.getCause()).isInstanceOf(ResourceAccessException.class);
+    }
+
+    @Test
+    @DisplayName("일정 추출 요청을 JSON 계약대로 보내고 추출된 일정을 읽는다")
+    void sendsScheduleExtractionContractAndReadsPostmanSuccess() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/schedule-extractions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-API-Key", "local-dev-key"))
+                .andExpect(header(HttpHeaders.CONTENT_TYPE, containsString(MediaType.APPLICATION_JSON_VALUE)))
+                .andExpect(content().json("""
+                        {
+                          "sourceGroupKey": "schedule-source-20260727-01",
+                          "parsedMarkdown": "# 8월 일정\\n...",
+                          "visibilityType": "department",
+                          "departmentIds": ["1", "2"]
+                        }
+                        """))
+                .andRespond(withSuccess("""
+                        {
+                          "status": "extracted",
+                          "schedules": [
+                            {
+                              "order": 1,
+                              "title": "8월 휴가 일정",
+                              "content": "개발부 휴가 일정",
+                              "targetText": "개발부",
+                              "location": "본사",
+                              "visibilityType": "department",
+                              "departmentIds": ["1", "2"],
+                              "startAt": "2026-08-03T01:00:00Z",
+                              "endAt": "2026-08-03T03:00:00Z"
+                            }
+                          ],
+                          "warnings": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        ScheduleExtractionResponse response = client.extractSchedules(scheduleExtractionRequest());
+
+        assertThat(response.status()).isEqualTo("extracted");
+        assertThat(response.schedules()).hasSize(1);
+        ScheduleExtractionResponse.ExtractedSchedule extracted = response.schedules().getFirst();
+        assertThat(extracted.title()).isEqualTo("8월 휴가 일정");
+        assertThat(extracted.departmentIds()).containsExactly("1", "2");
+        assertThat(extracted.startAtInstant()).isEqualTo(Instant.parse("2026-08-03T01:00:00Z"));
+        assertThat(extracted.endAtInstant()).isEqualTo(Instant.parse("2026-08-03T03:00:00Z"));
+    }
+
+    @Test
+    @DisplayName("일정 추출 오류 응답을 계약 코드로 매핑한다")
+    void mapsScheduleExtractionBadRequest() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/schedule-extractions"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "timestamp": "2026-07-27T09:00:00Z",
+                                  "status": 400,
+                                  "error": "Bad Request",
+                                  "code": "INVALID_SCHEDULE_EXTRACTION_REQUEST",
+                                  "message": "일정 추출 요청 구조가 올바르지 않습니다.",
+                                  "path": "/internal/v1/schedule-extractions",
+                                  "fieldErrors": []
+                                }
+                                """));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.extractSchedules(scheduleExtractionRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.BAD_REQUEST);
+        assertThat(error.upstreamCode()).isEqualTo("INVALID_SCHEDULE_EXTRACTION_REQUEST");
+    }
+
+    @Test
+    @DisplayName("추출 일정의 시각이 파싱 불가하면 잘못된 응답으로 처리한다")
+    void mapsUnparsableExtractedInstantToInvalidResponse() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/schedule-extractions"))
+                .andRespond(withSuccess("""
+                        {
+                          "status": "extracted",
+                          "schedules": [
+                            {
+                              "order": 1,
+                              "title": "8월 휴가 일정",
+                              "content": null,
+                              "targetText": null,
+                              "location": null,
+                              "visibilityType": "department",
+                              "departmentIds": ["1"],
+                              "startAt": "2026-08-03 01:00",
+                              "endAt": "2026-08-03T03:00:00Z"
+                            }
+                          ],
+                          "warnings": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.extractSchedules(scheduleExtractionRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("추출 일정의 종료 시각이 시작보다 빠르면 잘못된 응답으로 처리한다")
+    void mapsInvertedExtractedPeriodToInvalidResponse() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/schedule-extractions"))
+                .andRespond(withSuccess("""
+                        {
+                          "status": "extracted",
+                          "schedules": [
+                            {
+                              "order": 1,
+                              "title": "8월 휴가 일정",
+                              "content": null,
+                              "targetText": null,
+                              "location": null,
+                              "visibilityType": "department",
+                              "departmentIds": ["1"],
+                              "startAt": "2026-08-03T03:00:00Z",
+                              "endAt": "2026-08-03T01:00:00Z"
+                            }
+                          ],
+                          "warnings": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.extractSchedules(scheduleExtractionRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    private ScheduleExtractionRequest scheduleExtractionRequest() {
+        return new ScheduleExtractionRequest(
+                "schedule-source-20260727-01",
+                "# 8월 일정\n...",
+                "department",
+                List.of("1", "2")
+        );
     }
 
     private RestClientAiClient clientWithFailure(IOException cause) {

@@ -82,9 +82,15 @@ class ScheduleTest {
         Schedule schedule = Schedule.draft(
                 1L, "회의", null, null, null, ScheduleVisibility.ALL, START, END);
 
-        schedule.linkSource("grp-1", "schedule/grp-1/original.xlsx", "schedule/grp-1/parsed.md");
+        schedule.linkSource(
+                "grp-1",
+                "schedule-sources/grp-1/original/source.xlsx",
+                "8월일정.xlsx",
+                "schedule-sources/grp-1/parsed/content.md");
 
         assertThat(schedule.hasSourceDocument()).isTrue();
-        assertThat(schedule.sourceOriginalPath()).isEqualTo("schedule/grp-1/original.xlsx");
+        assertThat(schedule.sourceOriginalPath())
+                .isEqualTo("schedule-sources/grp-1/original/source.xlsx");
+        assertThat(schedule.sourceOriginalFileName()).isEqualTo("8월일정.xlsx");
     }
 }

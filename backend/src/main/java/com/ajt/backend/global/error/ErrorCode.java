@@ -38,7 +38,8 @@ public enum ErrorCode {
     SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "일정이 없거나 접근할 수 없습니다."),
     INVALID_SCHEDULE(HttpStatus.BAD_REQUEST, "일정 입력값을 확인해주세요."),
     INVALID_SCHEDULE_RANGE(HttpStatus.BAD_REQUEST, "일정 조회 기간이 올바르지 않습니다."),
-    INVALID_SCHEDULE_STATUS(HttpStatus.CONFLICT, "일정 상태를 확인해주세요.");
+    INVALID_SCHEDULE_STATUS(HttpStatus.CONFLICT, "일정 상태를 확인해주세요."),
+    INVALID_SCHEDULE_SOURCE(HttpStatus.BAD_REQUEST, "일정 원본문서 형식 또는 공개 범위가 올바르지 않습니다.");
 
     private final HttpStatus status;
     private final String message;

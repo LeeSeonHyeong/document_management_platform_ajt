@@ -37,6 +37,13 @@ public class Schedule {
     @Column(name = "source_original_path", length = 500)
     private String sourceOriginalPath;
 
+    /**
+     * 업로드 당시의 원본 파일명입니다.
+     * 저장 경로는 source.{ext} 형태로 확장자만 유지하므로 경로에서 원래 이름을 복원할 수 없어 따로 보관한다.
+     */
+    @Column(name = "source_original_file_name", length = 255)
+    private String sourceOriginalFileName;
+
     @Column(name = "source_parsed_path", length = 500)
     private String sourceParsedPath;
 
@@ -169,9 +176,15 @@ public class Schedule {
         this.endAt = endAt;
     }
 
-    public void linkSource(String sourceGroupKey, String sourceOriginalPath, String sourceParsedPath) {
+    public void linkSource(
+            String sourceGroupKey,
+            String sourceOriginalPath,
+            String sourceOriginalFileName,
+            String sourceParsedPath
+    ) {
         this.sourceGroupKey = sourceGroupKey;
         this.sourceOriginalPath = sourceOriginalPath;
+        this.sourceOriginalFileName = sourceOriginalFileName;
         this.sourceParsedPath = sourceParsedPath;
     }
 
@@ -230,6 +243,10 @@ public class Schedule {
 
     public String sourceOriginalPath() {
         return sourceOriginalPath;
+    }
+
+    public String sourceOriginalFileName() {
+        return sourceOriginalFileName;
     }
 
     public String sourceParsedPath() {
