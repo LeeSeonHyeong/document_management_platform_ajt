@@ -27,6 +27,8 @@ OCR 테스트는 시스템에 [Tesseract](https://github.com/tesseract-ocr/tesse
 | `src/wiki_mcp/` | 위키 저장 계층(VaultFS)과 편집 에이전트가 쓰는 MCP 툴 |
 | `src/agent_runtime/` | 에이전트를 실제로 돌리는 층. 런타임 2종과 시간 상한 |
 | `src/wiki_api/` | Spring Boot 가 호출하는 내부 API (`/internal/v1`)와 기동 진입점 |
+| `viewer/` | 위키 참조 그래프 뷰어 (개발 도구, React·Vite) |
+| `experiments/` | 측정 기록 — `INDEX.md` 가 수치의 정본 |
 | `tests/` | pytest 테스트 |
 
 ## 원본문서 파싱
@@ -98,3 +100,19 @@ INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000
 ```sh
 uv run python -m wiki_mcp.local_server --root ./data --scope ALL --job-id 9001
 ```
+
+## 그래프 뷰어
+
+변환 결과(페이지·인용·관계)를 눈으로 확인하는 개발 도구다. 라이브 계층만 보여준다 —
+작업 계층은 검증 전이라 그리지 않는다.
+
+```sh
+uv run python -m wiki_mcp.graph_api --root ./data --scope ALL   # 그래프 데이터 API
+cd viewer && npm install && npm run dev                          # localhost:5173
+```
+
+## 측정 기록
+
+`experiments/INDEX.md` 가 수치의 정본이다. 실험 1개 = 디렉터리 1개
+(`manifest.json` 재현 정보 · `report.json` 집계 · `notes.md` 해석). 순차 변환이
+반복에서 무너지지 않는다는 근거가 여기 있다.

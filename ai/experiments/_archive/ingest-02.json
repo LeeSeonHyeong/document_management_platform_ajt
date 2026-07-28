@@ -1,0 +1,17 @@
+{
+  "scope": "ALL",
+  "runtime": "claude-code",
+  "documents": [
+    {
+      "seq": 1,
+      "document": "02-side-gigs.md",
+      "elapsedSeconds": 89.7,
+      "toolCalls": {},
+      "inputTokens": 822831,
+      "outputTokens": 1847,
+      "turns": 15,
+      "costUsd": 0.5898,
+      "error": null
+    }
+  ]
+}
