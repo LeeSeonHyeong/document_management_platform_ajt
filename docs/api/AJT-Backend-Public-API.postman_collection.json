@@ -82,6 +82,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -121,6 +125,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -179,6 +187,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -463,6 +475,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -502,6 +518,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -556,6 +576,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -716,6 +740,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -756,6 +784,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -1115,6 +1147,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -1197,7 +1233,12 @@
           "name": "가입 신청 승인",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/signup-requests/:userId/approve",
               "host": [
@@ -1226,7 +1267,12 @@
               "name": "200 OK - 성공",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/signup-requests/:userId/approve",
                   "host": [
@@ -1270,7 +1316,12 @@
               "name": "409 Conflict - 대표 오류",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/signup-requests/:userId/approve",
                   "host": [
@@ -1316,7 +1367,12 @@
           "name": "가입 신청 거부",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/signup-requests/:userId/reject",
               "host": [
@@ -1451,6 +1507,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -1487,6 +1547,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -1526,7 +1590,12 @@
           "name": "부서 삭제",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/departments/:departmentId",
               "host": [
@@ -1592,6 +1661,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -1628,6 +1701,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -1667,7 +1744,12 @@
           "name": "문서 카테고리 삭제",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/document-categories/:categoryId",
               "host": [
@@ -1702,7 +1784,12 @@
           "name": "Wiki 원본문서 업로드",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/documents",
               "host": [
@@ -1756,7 +1843,12 @@
               "name": "202 Accepted - 성공",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/documents",
                   "host": [
@@ -1825,7 +1917,12 @@
               "name": "400 Bad Request - 대표 오류",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/documents",
                   "host": [
@@ -2002,6 +2099,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -2071,7 +2172,12 @@
           "name": "Wiki 원본문서 파일 교체",
           "request": {
             "method": "PUT",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/documents/:documentId/file",
               "host": [
@@ -2113,7 +2219,12 @@
           "name": "Wiki 원본문서 삭제",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/documents/:documentId",
               "host": [
@@ -2142,7 +2253,12 @@
           "name": "실패 문서 재처리",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/documents/:documentId/retry",
               "host": [
@@ -2288,7 +2404,12 @@
           "name": "AI 작업 중단",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/ai-jobs/:jobId/cancel",
               "host": [
@@ -2852,6 +2973,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -2896,6 +3021,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -2931,6 +3060,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -2981,6 +3114,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -3193,7 +3330,12 @@
           "name": "일정 원본문서 업로드",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/schedule-sources",
               "host": [
@@ -3240,7 +3382,12 @@
               "name": "201 Created - 성공",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/schedule-sources",
                   "host": [
@@ -3302,7 +3449,12 @@
               "name": "400 Bad Request - 대표 오류",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/schedule-sources",
                   "host": [
@@ -3537,6 +3689,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -3572,6 +3728,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -3622,6 +3782,10 @@
                   {
                     "key": "Content-Type",
                     "value": "application/json"
+                  },
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
                   }
                 ],
                 "url": {
@@ -3833,6 +3997,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -3902,7 +4070,12 @@
           "name": "일정 삭제 또는 draft 거부",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/schedules/:scheduleId",
               "host": [
@@ -3931,7 +4104,12 @@
           "name": "일정 draft 승인",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/schedules/:scheduleId/approve",
               "host": [
@@ -4080,7 +4258,12 @@
           "name": "문의 등록",
           "request": {
             "method": "POST",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/inquiries",
               "host": [
@@ -4141,7 +4324,12 @@
               "name": "201 Created - 성공",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/inquiries",
                   "host": [
@@ -4217,7 +4405,12 @@
               "name": "400 Bad Request - 대표 오류",
               "originalRequest": {
                 "method": "POST",
-                "header": [],
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
                 "url": {
                   "raw": "{{backendBaseUrl}}/api/v1/inquiries",
                   "host": [
@@ -4629,7 +4822,12 @@
           "name": "문의 삭제",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/inquiries/:inquiryId",
               "host": [
@@ -4698,6 +4896,10 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
               }
             ],
             "url": {
@@ -4738,7 +4940,12 @@
           "name": "문의 답변 삭제",
           "request": {
             "method": "DELETE",
-            "header": [],
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
             "url": {
               "raw": "{{backendBaseUrl}}/api/v1/inquiries/:inquiryId/answer",
               "host": [
