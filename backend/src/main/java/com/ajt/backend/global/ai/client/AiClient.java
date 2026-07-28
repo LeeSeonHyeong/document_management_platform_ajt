@@ -5,4 +5,6 @@ public interface AiClient {
     SourceParseResponse parseSource(SourceParseRequest request);
 
     WikiContextSelectionResponse selectWikiContext(WikiContextSelectionRequest request);
+
+    WikiTransformationResponse transformWiki(WikiTransformationRequest request);
 }

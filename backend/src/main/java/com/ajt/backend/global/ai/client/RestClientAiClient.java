@@ -20,6 +20,7 @@ public class RestClientAiClient implements AiClient {
 
     private static final String SOURCE_PARSE_PATH = "/internal/v1/source-parses";
     private static final String WIKI_CONTEXT_SELECTION_PATH = "/internal/v1/wiki-context-selections";
+    private static final String WIKI_TRANSFORMATION_PATH = "/internal/v1/wiki-transformations";
 
     private final RestClient restClient;
     private final AiClientErrorMapper errorMapper;
@@ -64,6 +65,23 @@ public class RestClientAiClient implements AiClient {
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
                     .body(WikiContextSelectionResponse.class);
+
+            return validateResponse(response);
+        } catch (ResourceAccessException exception) {
+            throw transportFailure(exception);
+        }
+    }
+
+    @Override
+    public WikiTransformationResponse transformWiki(WikiTransformationRequest request) {
+        try {
+            WikiTransformationResponse response = restClient.post()
+                    .uri(WIKI_TRANSFORMATION_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
+                    .body(WikiTransformationResponse.class);
 
             return validateResponse(response);
         } catch (ResourceAccessException exception) {
@@ -119,6 +137,39 @@ public class RestClientAiClient implements AiClient {
             );
         }
         return new WikiContextSelectionResponse(List.copyOf(response.wikiIds()), response.reason());
+    }
+
+    private WikiTransformationResponse validateResponse(WikiTransformationResponse response) {
+        if (response == null
+                || isBlank(response.summary())
+                || response.categoryChanges() == null
+                || response.wikiChanges() == null
+                || response.relationChanges() == null
+                || response.indexEntries() == null
+                || response.categoryChanges().stream().anyMatch(change -> change == null || isBlank(change.action()))
+                || response.wikiChanges().stream().anyMatch(change -> change == null || isBlank(change.action()))
+                || response.relationChanges().stream().anyMatch(change -> change == null || isBlank(change.action()))
+                || response.indexEntries().stream().anyMatch(entry -> entry == null
+                || isBlank(entry.wikiRef())
+                || entry.order() == null
+                || isBlank(entry.title())
+                || isBlank(entry.summary()))) {
+            throw new AiClientException(
+                    AiClientFailureType.INVALID_RESPONSE,
+                    200,
+                    null,
+                    null,
+                    List.<FieldErrorResponse>of(),
+                    null
+            );
+        }
+        return new WikiTransformationResponse(
+                response.summary(),
+                List.copyOf(response.categoryChanges()),
+                List.copyOf(response.wikiChanges()),
+                List.copyOf(response.relationChanges()),
+                List.copyOf(response.indexEntries())
+        );
     }
 
     private AiClientException transportFailure(ResourceAccessException exception) {
