@@ -123,3 +123,39 @@ def test_failure_stage_values_are_lower_snake_case():
         "context_load", "agent_start", "agent_timeout",
         "agent_error", "lint_failed", "assemble",
     ]
+
+
+# ----- 계약 v1.3.0: 상태·코드 집합 ---------------------------------------------
+
+
+def test_no_route_can_answer_outside_the_contract_status_set():
+    """계약은 엔드포인트마다 400·401·500 만 정의한다. 그 밖의 상태를 내면 Spring 은
+    `UNEXPECTED_STATUS` 로 뭉갠다 — 어떤 실패인지 백엔드가 알 수 없다."""
+    from wiki_api import errors, session
+
+    sources = (errors.__file__, session.__file__)
+    offenders = []
+    for path in sources:
+        with open(path, encoding="utf-8") as handle:
+            for number, line in enumerate(handle, start=1):
+                if "status=" not in line:
+                    continue
+                for allowed in ("status=400", "status=401", "status=500"):
+                    if allowed in line:
+                        break
+                else:
+                    offenders.append(f"{path}:{number} {line.strip()}")
+    assert offenders == []
+
+
+def test_every_endpoint_has_its_own_failure_code():
+    """500 의 `code` 는 계약이 엔드포인트별로 지정한다. 빠진 경로는 공용
+    `INTERNAL_SERVER_ERROR` 로 떨어져 계약 밖 코드가 된다."""
+    from wiki_api.errors import _FAILURE_CODES, failure_code_for
+
+    assert failure_code_for("/internal/v1/wiki-context-selections") == \
+        "WIKI_CONTEXT_SELECTION_FAILED"
+    assert failure_code_for("/internal/v1/wiki-transformations") == \
+        "WIKI_TRANSFORMATION_FAILED"
+    assert failure_code_for("/internal/v1/wiki-edits") == "WIKI_EDIT_FAILED"
+    assert "INTERNAL_SERVER_ERROR" not in _FAILURE_CODES.values()

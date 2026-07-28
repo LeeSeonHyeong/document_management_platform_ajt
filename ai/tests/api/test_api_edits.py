@@ -77,24 +77,28 @@ def test_edit_is_an_update_on_the_existing_wiki():
     assert "회의는 최후의 수단이다" in change["contentMarkdown"]
 
 
-def test_an_unreadable_wiki_is_404():
+def test_an_unreadable_wiki_is_a_bad_request():
     """수정 대상 본문이 비어 있으면 편집할 페이지가 없다 — Spring 이 위키를 읽지 못한 채
     (삭제됐거나 범위 밖) 요청을 보낸 경우다.
 
-    403 이 아니다 — 권한 없는 자원과 없는 자원이 같은 응답이어야 한다. 본문 모양까지 본다
-    (API_컨벤션 6.2): Spring 이 `code` 로 분기하므로 상태코드만 맞고 `code` 가 다르면
+    **404 가 아니라 400 이다.** 계약(v1.3.0)이 이 엔드포인트에 허용한 상태는 400·401·500
+    뿐이고, 400 을 "지시 내용 또는 Wiki 컨텍스트 오류"로 정의한다 — 요청이 실어 온 위키
+    컨텍스트가 비어 있는 것이 정확히 그 경우다. 이 서버는 요청에 실린 위키만 알기 때문에
+    되물을 곳도 없다.
+
+    본문 모양까지 본다: Spring 이 `code` 로 분기하므로 상태코드만 맞고 `code` 가 다르면
     백엔드가 이 응답을 해석할 수 없다."""
     request = dict(REQUEST, wikiId="999",
                    currentWiki={"title": "커뮤니케이션 가이드", "contentMarkdown": ""})
     response = _client(EditingRuntime()).post("/internal/v1/wiki-edits", json=request,
                                               headers={"X-Internal-API-Key": API_KEY})
-    assert response.status_code == 404
+    assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "WIKI_NOT_FOUND"
+    assert body["code"] == "INVALID_WIKI_EDIT_REQUEST"
     assert set(body) == {"timestamp", "status", "error", "code", "message", "path",
                          "fieldErrors"}
-    assert body["status"] == 404
-    assert body["error"] == "Not Found"
+    assert body["status"] == 400
+    assert body["error"] == "Bad Request"
     assert body["path"] == "/internal/v1/wiki-edits"
     assert body["fieldErrors"] == []
     # 제목도 존재 여부도 노출하지 않는다.

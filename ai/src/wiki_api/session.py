@@ -331,19 +331,21 @@ class WikiSession:
         return None
 
     async def address_for_wiki_id(self, wiki_id: str) -> str:
-        """`wikiId` → 주소. 하이드레이션된 위키에 없으면 404.
+        """`wikiId` → 주소. 요청이 실어 온 위키에 없으면 400.
 
-        403 이 아니다 — 권한 없는 자원과 없는 자원이 같은 응답이어야 한다.
+        이 세션이 아는 위키는 요청 본문에 실려 온 것뿐이다 — 단건 보충 조회가 없으므로
+        되물을 곳도 없다. 그래서 없는 `wikiId` 는 서버 상태가 아니라 **요청값의 문제**다.
 
-        v1.1.0 에서 단건 보충 조회(`GET /wikis/{id}/content`)가 사라졌다. 이제 이 세션이
-        아는 위키는 요청이 실어 온 것뿐이므로, 그 안에 없으면 우리가 할 수 있는 일이
-        없다 — 되묻지 않고 404 다.
+        404 가 아닌 이유는 계약(v1.3.0)이다. 엔드포인트마다 400·401·500 만 정의하고 400 을
+        "지시 내용 또는 Wiki 컨텍스트 오류"로 둔다. 404 를 내면 Spring 의 상태 분기에서
+        `UNEXPECTED_STATUS` 로 떨어져 어떤 실패인지 알 수 없게 된다.
         """
         for row in await self.fs.list_documents(self.scope_id):
             if str(row.get("wiki_id") or "") == str(wiki_id):
                 return row["address"]
-        raise InternalError("WIKI_NOT_FOUND", "Wiki가 없거나 접근할 수 없습니다.",
-                            status=404)
+        raise InternalError("INVALID_WIKI_EDIT_REQUEST",
+                            "요청에 실린 Wiki 컨텍스트에서 대상 Wiki를 찾을 수 없습니다.",
+                            status=400)
 
     @staticmethod
     def _errors(report: str) -> list[tuple[str, str, str]]:

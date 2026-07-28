@@ -81,6 +81,7 @@ _VALIDATION_CODES = {
 # 예상 못한 예외에 붙일 코드. 경로별 실패 코드를 그대로 쓴다 — Spring 이 `code` 로 분기하고
 # `document_results` 에 기록하므로, 같은 엔드포인트의 실패가 두 이름으로 나오면 안 된다.
 _FAILURE_CODES = {
+    "/internal/v1/wiki-context-selections": "WIKI_CONTEXT_SELECTION_FAILED",
     "/internal/v1/wiki-transformations": "WIKI_TRANSFORMATION_FAILED",
     "/internal/v1/wiki-edits": "WIKI_EDIT_FAILED",
     # `/internal/v1/wiki-reconciliations` 는 없다 — v1.1.0 이 그 경로를 `changeType` 분기로
