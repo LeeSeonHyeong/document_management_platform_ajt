@@ -80,6 +80,7 @@ Spring Boot 만 호출한다. 계약은
 
 | 엔드포인트 | 하는 일 |
 | --- | --- |
+| `POST /internal/v1/source-parses` | 원본문서 파일에서 Markdown 을 추출한다 |
 | `POST /internal/v1/wiki-context-selections` | 새 문서와 목차만 보고 변환에 필요한 위키를 최대 5개 고른다 |
 | `POST /internal/v1/wiki-transformations` | 선택된 위키를 받아 변환하고 변경안을 돌려준다 |
 | `POST /internal/v1/wiki-edits` | 관리자의 채팅 수정 지시를 반영한 변경안을 돌려준다 |

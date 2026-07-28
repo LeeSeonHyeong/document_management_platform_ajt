@@ -30,6 +30,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pymupdf" },
     { name = "python-docx" },
+    { name = "python-multipart" },
     { name = "pyyaml" },
     { name = "uvicorn" },
 ]
@@ -63,6 +64,7 @@ requires-dist = [
     { name = "pymupdf", specifier = ">=1.26,<2" },
     { name = "python-docx", specifier = ">=1.2,<2" },
     { name = "python-dotenv", marker = "extra == 'deepagents'" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]

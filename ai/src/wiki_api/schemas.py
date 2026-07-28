@@ -278,3 +278,22 @@ class TransformResponse(Strict):
 
 class EditResponse(TransformResponse):
     agentMessage: str
+
+
+SourceType = Literal["wiki", "schedule"]
+
+
+class SourceParseResponse(Strict):
+    """`POST /internal/v1/source-parses` 응답.
+
+    Spring 의 `SourceParseResponse` 가 다섯 필드를 전부 비어 있지 않게 검증하므로
+    (`RestClientAiClient`), 필드를 늘리거나 이름을 바꾸면 그쪽에서 `INVALID_RESPONSE`
+    가 된다. 요청의 `requestId`·`sourceType`·`sourceId` 를 그대로 되돌려준다 —
+    Spring 이 비동기 응답을 자기 작업과 맞추는 열쇠다.
+    """
+
+    requestId: str
+    sourceType: SourceType
+    sourceId: str
+    parsedMarkdown: str
+    warnings: list[str] = Field(default_factory=list)
