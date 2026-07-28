@@ -26,18 +26,24 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Transactional
 class DepartmentServiceTest {
+    private final DepartmentService departmentService;
+    private final DepartmentRepository departmentRepository;
+    private final MemberRepository memberRepository;
+    private final PasswordEncoder passwordEncoder;
+
 
     @Autowired
-    DepartmentService departmentService;
-
-    @Autowired
-    DepartmentRepository departmentRepository;
-
-    @Autowired
-    MemberRepository memberRepository;
-
-    @Autowired
-    PasswordEncoder passwordEncoder;
+    DepartmentServiceTest(
+            DepartmentService departmentService,
+            DepartmentRepository departmentRepository,
+            MemberRepository memberRepository,
+            PasswordEncoder passwordEncoder
+    ) {
+        this.departmentService = departmentService;
+        this.departmentRepository = departmentRepository;
+        this.memberRepository = memberRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Test
     @DisplayName("부서 목록 조회는 이름순으로 부서와 지정 관리자를 반환한다")
