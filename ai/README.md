@@ -25,6 +25,8 @@ OCR 테스트는 시스템에 [Tesseract](https://github.com/tesseract-ocr/tesse
 | --- | --- |
 | `src/document_parser/` | 원본문서 파싱 — TXT·MD·DOCX·PDF, PDF 텍스트 부족 시 OCR 대체 |
 | `src/wiki_mcp/` | 위키 저장 계층(VaultFS)과 편집 에이전트가 쓰는 MCP 툴 |
+| `src/agent_runtime/` | 에이전트를 실제로 돌리는 층. 런타임 2종과 시간 상한 |
+| `src/wiki_api/` | Spring Boot 가 호출하는 내부 API (`/internal/v1`)와 기동 진입점 |
 | `tests/` | pytest 테스트 |
 
 ## 원본문서 파싱
@@ -55,6 +57,42 @@ OCR 테스트는 시스템에 [Tesseract](https://github.com/tesseract-ocr/tesse
 `src/wiki_mcp/` 는 [Lucas LLM Wiki](https://github.com/lucasastorian/llmwiki)
 (Apache 2.0)에서 이식했다. 각 파일 헤더에 원본 파일명과 변경점이 있고, 전체
 변경 요약은 `NOTICE` 에 있다.
+
+## 에이전트 런타임
+
+`src/agent_runtime/` 은 위 MCP 서버를 붙여 에이전트를 한 번 돌리는 층이다.
+런타임이 두 개이고 같은 서버·같은 `guide` 를 쓴다. 그래서 둘의 결과 차이는
+프롬프트 차이가 아니라 하네스 차이다.
+
+| 런타임 | 언제 쓰나 |
+| --- | --- |
+| `claude_code.py` | 지금. Claude Code CLI 를 subprocess 로 띄운다. 구독 과금이라 API 키가 없어도 된다 |
+| `deep_agents.py` | 배포 형태. FastAPI 안에서 `claude -p` 를 띄우는 것은 성립하지 않는다. `uv sync --extra deepagents` 로 설치 |
+
+- `base.py` — 두 런타임이 지키는 인터페이스와 작업별 지시문 생성
+- `limits.py` — 문서 크기에 비례한 시간 상한 (NFR-PERF-002)
+- `guards.py` — 에이전트가 MCP 서버를 우회해 쓰지 않았는지 사후 확인
+
+## 내부 API
+
+Spring Boot 만 호출한다. 계약은
+`docs/api/AJT-FastAPI-Internal-API.postman_collection.json` (v1.1.0)이 정본이다.
+
+| 엔드포인트 | 하는 일 |
+| --- | --- |
+| `POST /internal/v1/wiki-context-selections` | 새 문서와 목차만 보고 변환에 필요한 위키를 최대 5개 고른다 |
+| `POST /internal/v1/wiki-transformations` | 선택된 위키를 받아 변환하고 변경안을 돌려준다 |
+| `POST /internal/v1/wiki-edits` | 관리자의 채팅 수정 지시를 반영한 변경안을 돌려준다 |
+
+Spring 이 2단계로 부르는 push 방식이다 — 이 서버는 Spring 을 되물어 읽지 않고, DB·파일에도
+닿지 않는다. 요청마다 임시 작업 공간을 만들어 요청 본문의 위키를 라이브 계층에 채우고,
+에이전트를 돌린 뒤, 작업 계층의 차이를 변경안으로 조립해 돌려주고 공간을 버린다.
+
+인증은 `X-Internal-API-Key` 헤더다. 키가 없으면 모든 요청이 401 이다.
+
+```sh
+INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000
+```
 
 ```sh
 uv run python -m wiki_mcp.local_server --root ./data --scope ALL --job-id 9001
