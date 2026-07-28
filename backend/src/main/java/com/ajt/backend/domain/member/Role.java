@@ -12,7 +12,7 @@ public enum Role {
 
     public static Role fromApiValue(String value) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("역할은 필수 입력 값입니다.");
+            throw new IllegalArgumentException("역할은 필수 입력값입니다.");
         }
 
         try {

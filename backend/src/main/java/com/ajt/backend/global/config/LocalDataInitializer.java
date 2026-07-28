@@ -4,6 +4,7 @@ import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.Role;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -13,7 +14,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 
 /**
  * local H2 테스트용 기본 데이터를 넣습니다.
- * 실제 배포 환경에서는 실행되지 않고, Postman으로 인증 API를 확인할 때만 사용합니다.
+ * 실제 배포 환경에서는 실행되지 않고, Postman으로 인증/사용자 API를 확인할 때만 사용합니다.
  */
 @Configuration
 @Profile("local")
@@ -28,7 +29,8 @@ public class LocalDataInitializer {
     ) {
         return args -> {
             Department department = findOrCreateDepartment(departmentRepository);
-            createApprovedMemberIfAbsent(memberRepository, passwordEncoder, department);
+            createApprovedEmployeeIfAbsent(memberRepository, passwordEncoder, department);
+            createApprovedAdminIfAbsent(memberRepository, passwordEncoder, department);
         };
     }
 
@@ -39,7 +41,7 @@ public class LocalDataInitializer {
                 .orElseGet(() -> departmentRepository.save(new Department("개발부")));
     }
 
-    private void createApprovedMemberIfAbsent(
+    private void createApprovedEmployeeIfAbsent(
             MemberRepository memberRepository,
             PasswordEncoder passwordEncoder,
             Department department
@@ -51,6 +53,22 @@ public class LocalDataInitializer {
                         "홍길동",
                         passwordEncoder.encode("password123!"),
                         "AJT-2026-0001"
+                )));
+    }
+
+    private void createApprovedAdminIfAbsent(
+            MemberRepository memberRepository,
+            PasswordEncoder passwordEncoder,
+            Department department
+    ) {
+        memberRepository.findByEmail("admin@ajt.com")
+                .orElseGet(() -> memberRepository.save(Member.approved(
+                        department,
+                        "admin@ajt.com",
+                        "관리자",
+                        passwordEncoder.encode("password123!"),
+                        "AJT-2026-0002",
+                        Role.ADMIN
                 )));
     }
 }

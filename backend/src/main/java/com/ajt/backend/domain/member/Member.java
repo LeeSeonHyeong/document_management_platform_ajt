@@ -20,7 +20,7 @@ import java.util.Objects;
 
 /**
  * 회원 계정 엔티티입니다.
- * 가입 승인 상태와 계정 활성 상태를 함께 보고 로그인 가능 여부를 판단합니다.
+ * 가입 승인 상태와 계정 활성 상태를 함께 보고 로그인 가능 여부와 관리자 처리 결과를 판단합니다.
  */
 @Entity
 @Table(name = "member")
@@ -109,26 +109,37 @@ public class Member {
             String passwordHash,
             String employeeNo
     ) {
+        return approved(department, email, name, passwordHash, employeeNo, Role.EMPLOYEE);
+    }
+
+    public static Member approved(
+            Department department,
+            String email,
+            String name,
+            String passwordHash,
+            String employeeNo,
+            Role role
+    ) {
         Member member = new Member(
                 department,
                 email,
                 name,
                 passwordHash,
-                Role.EMPLOYEE,
+                role,
                 SignupStatus.APPROVED,
                 AccountStatus.ACTIVE
         );
-        member.employeeNo = employeeNo;
+        member.employeeNo = member.requireEmployeeNo(employeeNo);
         return member;
     }
 
     /**
-     * 거부된 가입 요청만 다시 pending 상태로 바꿀 수 있습니다.
+     * 거절된 가입 신청만 다시 pending 상태로 바꿀 수 있습니다.
      * pending/approved 중복 신청은 서비스에서 명확한 API 오류로 막습니다.
      */
     public void resubmitSignup(Department department, String email, String name, String passwordHash) {
         if (signupStatus != SignupStatus.REJECTED) {
-            throw new IllegalStateException("거부된 가입 요청만 다시 신청할 수 있습니다.");
+            throw new IllegalStateException("거절된 가입 신청만 다시 신청할 수 있습니다.");
         }
         this.department = Objects.requireNonNull(department, "부서는 필수입니다.");
         this.email = normalizeEmail(email);
@@ -146,10 +157,41 @@ public class Member {
 
     public void rejectSignup() {
         if (signupStatus != SignupStatus.PENDING) {
-            throw new IllegalStateException("승인 대기 중인 가입 요청만 거부할 수 있습니다.");
+            throw new IllegalStateException("승인 대기 상태의 가입 신청만 거절할 수 있습니다.");
         }
         this.signupStatus = SignupStatus.REJECTED;
         this.accountStatus = AccountStatus.INACTIVE;
+        touch();
+    }
+
+    public void approveSignup(String employeeNo) {
+        if (signupStatus != SignupStatus.PENDING) {
+            throw new IllegalStateException("승인 대기 상태의 가입 신청만 승인할 수 있습니다.");
+        }
+        this.employeeNo = requireEmployeeNo(employeeNo);
+        this.signupStatus = SignupStatus.APPROVED;
+        this.accountStatus = AccountStatus.ACTIVE;
+        touch();
+    }
+
+    /**
+     * MEM-02 관리자 사용자 수정 규칙입니다.
+     * null로 들어온 값은 변경하지 않고, 전달된 값만 현재 회원 정보에 반영합니다.
+     */
+    public void updateByAdmin(Department department, String name, Role role, AccountStatus accountStatus) {
+        if (department != null) {
+            this.department = department;
+        }
+        if (name != null) {
+            this.name = requireName(name);
+        }
+        if (role != null) {
+            this.role = role;
+        }
+        if (accountStatus != null) {
+            this.accountStatus = accountStatus;
+        }
+        touch();
     }
 
     @PrePersist
@@ -227,5 +269,16 @@ public class Member {
             throw new IllegalArgumentException("비밀번호 해시는 필수입니다.");
         }
         return passwordHash;
+    }
+
+    private String requireEmployeeNo(String employeeNo) {
+        if (employeeNo == null || employeeNo.isBlank()) {
+            throw new IllegalArgumentException("사번은 필수입니다.");
+        }
+        return employeeNo.trim();
+    }
+
+    private void touch() {
+        updatedAt = Instant.now();
     }
 }
