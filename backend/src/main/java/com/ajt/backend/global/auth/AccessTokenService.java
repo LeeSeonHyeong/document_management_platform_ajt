@@ -1,12 +1,13 @@
 package com.ajt.backend.global.auth;
 
 import com.ajt.backend.domain.member.Member;
+import com.ajt.backend.domain.member.Role;
 import java.time.Clock;
 import org.springframework.stereotype.Service;
 
 /**
- * AUTH-02 로그인 성공 시 내려줄 접근 토큰을 만듭니다.
- * 현재는 초기 인증 API용 서명 토큰이며, JWT/RBAC Jira에서 표준 JWT 검증 필터와 함께 재검토합니다.
+ * 로그인 성공 후 사용할 accessToken을 만들고 검증합니다.
+ * 최신 API 명세에서는 이 토큰을 JSON이 아니라 HttpOnly 쿠키로만 내려줍니다.
  */
 @Service
 public class AccessTokenService extends SignedTokenSupport {
@@ -32,6 +33,29 @@ public class AccessTokenService extends SignedTokenSupport {
                 String.valueOf(expiresAt)
         );
         return signPayload(payload, properties.accessTokenSecret());
+    }
+
+    public AccessTokenData parse(String token) {
+        String payload = verifyAndReadPayload(token, properties.accessTokenSecret());
+        String[] values = payload.split("\n", -1);
+        if (values.length != 5 || !"access".equals(values[0])) {
+            throw invalidTokenException();
+        }
+
+        try {
+            long expiresAt = Long.parseLong(values[4]);
+            if (clock.instant().getEpochSecond() > expiresAt) {
+                throw invalidTokenException();
+            }
+            return new AccessTokenData(
+                    Long.valueOf(values[1]),
+                    values[2],
+                    Role.fromApiValue(values[3]),
+                    expiresAt
+            );
+        } catch (RuntimeException exception) {
+            throw invalidTokenException();
+        }
     }
 
     public long expiresInSeconds() {

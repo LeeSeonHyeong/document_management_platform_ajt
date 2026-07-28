@@ -1,37 +1,81 @@
 package com.ajt.backend.domain.auth;
 
+import com.ajt.backend.domain.auth.dto.AuthMessageResponse;
 import com.ajt.backend.domain.auth.dto.LoginRequest;
 import com.ajt.backend.domain.auth.dto.LoginResponse;
+import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequestResponse;
 import com.ajt.backend.domain.auth.dto.SignupRequest;
 import com.ajt.backend.domain.auth.dto.SignupResponse;
+import com.ajt.backend.global.auth.AuthCookieService;
+import com.ajt.backend.global.auth.CsrfTokenService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
 
     private final AuthService authService;
+    private final AuthCookieService authCookieService;
+    private final CsrfTokenService csrfTokenService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(
+            AuthService authService,
+            AuthCookieService authCookieService,
+            CsrfTokenService csrfTokenService
+    ) {
         this.authService = authService;
+        this.authCookieService = authCookieService;
+        this.csrfTokenService = csrfTokenService;
     }
 
     /**
      * AUTH-02 로그인 API입니다.
-     * 승인 완료 및 활성 상태인 회원에게 Bearer 접근 토큰을 발급합니다.
+     * 성공하면 accessToken은 JSON이 아니라 AJT_ACCESS_TOKEN HttpOnly 쿠키로 내려줍니다.
      */
     @PostMapping("/login")
-    public LoginResponse login(@Valid @RequestBody LoginRequest request) {
-        return authService.login(request);
+    public LoginResponse login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response
+    ) {
+        LoginResult result = authService.login(request);
+        response.addHeader(
+                HttpHeaders.SET_COOKIE,
+                authCookieService.createAccessTokenCookie(result.accessToken()).toString()
+        );
+        return result.toResponse();
+    }
+
+    /**
+     * AUTH-CSRF CSRF 토큰 발급 API입니다.
+     * 프론트는 이 쿠키 값을 읽어서 상태 변경 요청의 X-XSRF-TOKEN 헤더로 보내면 됩니다.
+     */
+    @GetMapping("/csrf")
+    public AuthMessageResponse csrf(HttpServletResponse response) {
+        String csrfToken = csrfTokenService.createToken();
+        response.addHeader(HttpHeaders.SET_COOKIE, csrfTokenService.createCookie(csrfToken).toString());
+        return new AuthMessageResponse("CSRF 토큰이 발급되었습니다.");
+    }
+
+    /**
+     * AUTH-04 로그아웃 API입니다.
+     * 현재 인증 쿠키를 만료시켜 이후 요청에서 다시 로그인하도록 만듭니다.
+     */
+    @PostMapping("/logout")
+    public AuthMessageResponse logout(HttpServletResponse response) {
+        response.addHeader(HttpHeaders.SET_COOKIE, authCookieService.expireAccessTokenCookie().toString());
+        return new AuthMessageResponse("로그아웃되었습니다.");
     }
 
     /**

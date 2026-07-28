@@ -1,8 +1,10 @@
 package com.ajt.backend.domain.auth;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -10,11 +12,16 @@ import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.global.auth.AccessTokenService;
+import com.ajt.backend.global.auth.AuthCookieService;
+import com.ajt.backend.global.auth.CsrfTokenService;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,6 +46,9 @@ class AuthControllerTest {
 
     @Autowired
     PasswordEncoder passwordEncoder;
+
+    @Autowired
+    AccessTokenService accessTokenService;
 
     @Test
     @DisplayName("POST /api/v1/auth/signup 요청은 202와 승인 대기 회원 정보를 반환한다")
@@ -65,8 +75,8 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/auth/login 요청은 승인된 회원에게 접근 토큰을 반환한다")
-    void loginReturnsToken() throws Exception {
+    @DisplayName("POST /api/v1/auth/login 요청은 accessToken을 HttpOnly 쿠키로 발급한다")
+    void loginReturnsAccessTokenCookie() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
         memberRepository.save(Member.approvedEmployee(
                 department,
@@ -85,11 +95,64 @@ class AuthControllerTest {
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").isNotEmpty())
-                .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME)))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("HttpOnly")))
+                .andExpect(jsonPath("$.accessToken").doesNotExist())
+                .andExpect(jsonPath("$.tokenType").doesNotExist())
                 .andExpect(jsonPath("$.expiresIn").value(3600))
                 .andExpect(jsonPath("$.user.email").value("employee@ajt.com"))
                 .andExpect(jsonPath("$.user.department.name").value("개발부"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/auth/csrf 요청은 XSRF-TOKEN 쿠키를 발급한다")
+    void csrfReturnsReadableCookie() throws Exception {
+        mockMvc.perform(get("/api/v1/auth/csrf"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString(CsrfTokenService.CSRF_COOKIE_NAME)))
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("SameSite=Lax")))
+                .andExpect(jsonPath("$.message").value("CSRF 토큰이 발급되었습니다."));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/logout 요청은 인증 쿠키와 CSRF 토큰이 맞으면 인증 쿠키를 만료한다")
+    void logoutExpiresAccessTokenCookie() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department,
+                "employee@ajt.com",
+                "홍길동",
+                passwordEncoder.encode("password123!"),
+                "AJT-2026-0001"
+        ));
+        String csrfToken = "csrf-token";
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(new Cookie(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME, accessTokenService.createAccessToken(member)))
+                        .cookie(new Cookie(CsrfTokenService.CSRF_COOKIE_NAME, csrfToken))
+                        .header(CsrfTokenService.CSRF_HEADER_NAME, csrfToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")))
+                .andExpect(jsonPath("$.message").value("로그아웃되었습니다."));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/logout 요청은 CSRF 토큰이 없으면 403 오류를 반환한다")
+    void logoutRejectsMissingCsrfToken() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department,
+                "employee@ajt.com",
+                "홍길동",
+                passwordEncoder.encode("password123!"),
+                "AJT-2026-0001"
+        ));
+
+        mockMvc.perform(post("/api/v1/auth/logout")
+                        .cookie(new Cookie(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME, accessTokenService.createAccessToken(member))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF_TOKEN_INVALID"))
+                .andExpect(jsonPath("$.message").value("CSRF 토큰이 올바르지 않습니다."));
     }
 
     @Test

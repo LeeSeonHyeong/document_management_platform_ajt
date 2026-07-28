@@ -2,7 +2,7 @@ package com.ajt.backend.domain.auth;
 
 import com.ajt.backend.domain.auth.dto.AuthUserResponse;
 import com.ajt.backend.domain.auth.dto.LoginRequest;
-import com.ajt.backend.domain.auth.dto.LoginResponse;
+import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequestResponse;
@@ -52,7 +52,7 @@ public class AuthService {
 
     /**
      * AUTH-01 회원가입 요청입니다.
-     * 신규 이메일은 pending/inactive로 저장하고, rejected 이메일은 같은 회원 행을 다시 pending으로 되돌립니다.
+     * 신규 이메일은 pending/inactive로 저장하고, rejected 이메일은 같은 회원 행을 다시 pending으로 돌립니다.
      */
     @Transactional
     public SignupResponse signup(SignupRequest request) {
@@ -67,19 +67,18 @@ public class AuthService {
 
     /**
      * AUTH-02 로그인입니다.
-     * 가입 승인 완료이면서 활성 계정인 회원만 접근 토큰을 받을 수 있습니다.
+     * 승인 완료이면서 활성 상태인 회원만 accessToken을 받을 수 있습니다.
      */
     @Transactional(readOnly = true)
-    public LoginResponse login(LoginRequest request) {
+    public LoginResult login(LoginRequest request) {
         String email = Member.normalizeEmail(request.email());
         Member member = memberRepository.findByEmail(email)
                 .filter(found -> passwordEncoder.matches(request.password(), found.getPasswordHash()))
                 .filter(this::canLogin)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
-        return new LoginResponse(
+        return new LoginResult(
                 accessTokenService.createAccessToken(member),
-                "Bearer",
                 accessTokenService.expiresInSeconds(),
                 AuthUserResponse.from(member)
         );
@@ -88,7 +87,6 @@ public class AuthService {
     /**
      * AUTH-05 비밀번호 재설정 요청입니다.
      * 계정 존재 여부 노출을 막기 위해 이메일 존재 여부와 관계없이 같은 메시지를 반환합니다.
-     * 실제 메일 발송 연결은 메일/알림 기능 범위에서 이어 붙입니다.
      */
     @Transactional(readOnly = true)
     public PasswordResetRequestResponse requestPasswordReset(PasswordResetRequest request) {
@@ -99,7 +97,7 @@ public class AuthService {
 
     /**
      * AUTH-06 비밀번호 재설정입니다.
-     * 토큰은 현재 비밀번호 해시와 연결되어 있어 비밀번호가 한 번 바뀌면 기존 토큰은 자동으로 무효가 됩니다.
+     * 토큰은 현재 비밀번호 해시와 연결되어 있어 비밀번호가 바뀌면 기존 토큰은 다시 쓸 수 없습니다.
      */
     @Transactional
     public void resetPassword(PasswordResetConfirmRequest request) {

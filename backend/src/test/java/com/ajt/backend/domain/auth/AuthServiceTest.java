@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ajt.backend.domain.auth.dto.LoginRequest;
-import com.ajt.backend.domain.auth.dto.LoginResponse;
+import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
 import com.ajt.backend.domain.auth.dto.SignupRequest;
 import com.ajt.backend.domain.auth.dto.SignupResponse;
@@ -47,7 +47,7 @@ class AuthServiceTest {
     PasswordResetTokenService passwordResetTokenService;
 
     @Test
-    @DisplayName("회원가입을 요청하면 사번 없이 승인 대기/비활성 상태로 저장된다")
+    @DisplayName("회원가입을 요청하면 사번 없이 승인 대기 비활성 상태로 저장된다")
     void signupCreatesPendingInactiveMember() {
         Department department = departmentRepository.save(new Department("개발부"));
 
@@ -81,7 +81,7 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("거부된 이메일로 다시 회원가입하면 기존 회원 행이 승인 대기로 갱신된다")
+    @DisplayName("거절된 이메일로 다시 회원가입하면 기존 회원 행이 승인 대기로 갱신된다")
     void signupResubmitsRejectedEmail() {
         Department department = departmentRepository.save(new Department("개발부"));
         Member member = memberRepository.save(Member.signup(
@@ -107,8 +107,8 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("승인 완료 및 활성 상태 회원은 로그인하면 Bearer 토큰과 회원 정보를 받는다")
-    void loginReturnsBearerTokenForApprovedActiveMember() {
+    @DisplayName("승인 완료 및 활성 상태 회원이 로그인하면 쿠키 발급용 accessToken과 회원 정보를 받는다")
+    void loginReturnsTokenResultForApprovedActiveMember() {
         Department department = departmentRepository.save(new Department("개발부"));
         Member member = memberRepository.save(Member.approvedEmployee(
                 department,
@@ -118,10 +118,9 @@ class AuthServiceTest {
                 "AJT-2026-0001"
         ));
 
-        LoginResponse response = authService.login(new LoginRequest("employee@ajt.com", "password123!"));
+        LoginResult response = authService.login(new LoginRequest("employee@ajt.com", "password123!"));
 
         assertThat(response.accessToken()).isNotBlank();
-        assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(3600);
         assertThat(response.user().userId()).isEqualTo(String.valueOf(member.getId()));
         assertThat(response.user().role()).isEqualTo("employee");
