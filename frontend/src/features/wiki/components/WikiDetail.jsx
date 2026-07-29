@@ -7,6 +7,7 @@ import { ROLES } from '@/shared/constants/enums'
 import { useWiki, useWikis } from '../queries'
 import WikiMarkdown from './WikiMarkdown'
 import WikiSourcePreviewModal from './WikiSourcePreviewModal'
+import WikiAgentChat from './WikiAgentChat'
 
 function formatDateTime(iso) {
   if (!iso) return '-'
@@ -106,10 +107,7 @@ export default function WikiDetail({ wikiId }) {
         </div>
       )}
 
-      {tab === 'agent' && isAdmin && (
-        // Jira -75 (브랜치 10)에서 에이전트 채팅으로 채운다. 지금은 빈 탭.
-        <div className="py-12 text-center text-sm text-slate-400">AI 에이전트 기능은 준비 중입니다.</div>
-      )}
+      {tab === 'agent' && isAdmin && <WikiAgentChat wikiId={wikiId} />}
 
       <WikiSourcePreviewModal
         open={Boolean(previewDoc)}
