@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
-import { Download, FileText, Bot } from 'lucide-react'
+import { FileText, Bot } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Badge, Button, Tabs, Spinner, EmptyState, useToast } from '@/components/ui'
+import { Badge, Tabs, Spinner, EmptyState } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { ROLES } from '@/shared/constants/enums'
-import { fetchDocumentFile } from '@/features/document/api'
 import { useWiki, useWikis } from '../queries'
 import WikiMarkdown from './WikiMarkdown'
+import WikiSourcePreviewModal from './WikiSourcePreviewModal'
 
 function formatDateTime(iso) {
   if (!iso) return '-'
@@ -17,8 +17,8 @@ function formatDateTime(iso) {
 export default function WikiDetail({ wikiId }) {
   const { role } = useAuth()
   const isAdmin = role === ROLES.ADMIN
-  const toast = useToast()
   const [tab, setTab] = useState('toc')
+  const [previewDoc, setPreviewDoc] = useState(null)
 
   const { data: wiki, isLoading, isError } = useWiki(wikiId)
   // 본문 내부 링크의 유효성 판정을 위해 같은 공간의 Wiki ID 집합을 준비한다.
@@ -31,21 +31,6 @@ export default function WikiDetail({ wikiId }) {
     ;(wiki?.relatedWikis ?? []).forEach((w) => ids.add(String(w.wikiId)))
     return ids
   }, [wiki, scopeWikiPage])
-
-  async function handleDownload(documentId, fallbackName) {
-    try {
-      const { blob, fileName } = await fetchDocumentFile(documentId)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileName ?? fallbackName ?? 'document'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      if (e?.response?.status === 403) toast.error('다운로드 권한이 없습니다.')
-      else toast.error('다운로드에 실패했습니다.')
-    }
-  }
 
   if (isLoading) {
     return (
@@ -85,17 +70,17 @@ export default function WikiDetail({ wikiId }) {
             <h2 className="mb-2 text-sm font-semibold text-slate-700">원본 문서</h2>
             {wiki.evidenceDocuments?.length > 0 ? (
               <ul className="space-y-1.5">
+                {/* 항목 클릭 시 미리보기 모달(6-2R/S2-1). 다운로드·상세 이동은 모달 안에서 role로 분기한다. */}
                 {wiki.evidenceDocuments.map((doc) => (
-                  <li key={doc.documentId} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    <FileText className="size-4 shrink-0 text-slate-400" />
-                    <span className="min-w-0 flex-1 truncate text-slate-700">{doc.originalFileName}</span>
-                    {/* 원본문서 다운로드는 관리자만 (FR-DOC-016). 사원에겐 경로/URL을 노출하지 않는다. */}
-                    {isAdmin && (
-                      <Button size="sm" variant="ghost" onClick={() => handleDownload(doc.documentId, doc.originalFileName)}>
-                        <Download className="size-4" />
-                        다운로드
-                      </Button>
-                    )}
+                  <li key={doc.documentId}>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDoc(doc)}
+                      className="focus-ring flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    >
+                      <FileText className="size-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0 flex-1 truncate text-slate-700">{doc.originalFileName}</span>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -125,6 +110,12 @@ export default function WikiDetail({ wikiId }) {
         // Jira -75 (브랜치 10)에서 에이전트 채팅으로 채운다. 지금은 빈 탭.
         <div className="py-12 text-center text-sm text-slate-400">AI 에이전트 기능은 준비 중입니다.</div>
       )}
+
+      <WikiSourcePreviewModal
+        open={Boolean(previewDoc)}
+        evidenceDocument={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
     </div>
   )
 }
