@@ -4,6 +4,7 @@ import { departments, users, signupRequests, inquiries, credentials, findUserByI
 // 목 세션(데모용). HttpOnly 쿠키를 흉내 내는 대신 메모리 플래그로 로그인 상태를 유지한다.
 let currentUserId = null
 const inquiryAttachmentFiles = new Map()
+const questionHistory = []
 
 function errorBody(status, code, message, path, fieldErrors = []) {
   return {
@@ -412,5 +413,85 @@ export const handlers = [
     inquiry.answer = { content, answeredAt: new Date().toISOString() }
     inquiry.status = 'done'
     return HttpResponse.json(inquiry.answer)
+  }),
+
+  http.post('/api/v1/questions', async ({ request }) => {
+    if (!currentUserId) {
+      return HttpResponse.json(
+        errorBody(401, 'INVALID_ACCESS_TOKEN', '로그인이 필요합니다.', '/api/v1/questions'),
+        { status: 401 },
+      )
+    }
+    const body = await request.json()
+    const question = String(body.question ?? '').trim()
+    if (!question) {
+      return HttpResponse.json(
+        errorBody(400, 'INVALID_QUESTION', '질문을 입력해주세요.', '/api/v1/questions'),
+        { status: 400 },
+      )
+    }
+
+    const conversationId = body.conversationId || `chat-${Date.now()}`
+    const questionId = String(Date.now())
+    const mentionsSchedule = /일정|연차|휴가|회의|행사/.test(question)
+    const mentionsWiki = /규정|위키|문서|절차|정책/.test(question)
+    const questionType = mentionsSchedule && mentionsWiki ? 'mixed' : mentionsSchedule ? 'schedule' : 'wiki'
+    const wikiSource = {
+      type: 'wiki',
+      wikiId: '101',
+      title: '근무 규정 및 복리후생 안내',
+      evidenceDocuments: [{
+        documentId: '15',
+        originalFileName: '취업규칙.pdf',
+        downloadUrl: '/api/v1/documents/15/file',
+      }],
+    }
+    const scheduleSource = {
+      type: 'schedule',
+      scheduleId: '31',
+      title: '사내 주요 일정',
+    }
+    const answers = {
+      mixed: '관련 사내 규정과 등록된 일정을 함께 확인했습니다. 연차는 근태관리 시스템에서 신청하며, 일정에 표시된 승인 기한 전에 결재를 완료해주세요.',
+      schedule: '등록된 일정 기준으로 확인했습니다. 상세한 날짜와 시간은 홈 캘린더의 해당 일정을 선택해 확인할 수 있습니다.',
+      wiki: '사내 위키 기준으로 확인했습니다. 관련 규정과 절차는 아래 출처에서 자세히 확인할 수 있습니다.',
+    }
+    const sources = questionType === 'mixed'
+      ? [wikiSource, scheduleSource]
+      : questionType === 'schedule'
+        ? [scheduleSource]
+        : [wikiSource]
+    const result = {
+      conversationId,
+      questionId,
+      questionType,
+      question,
+      answer: answers[questionType],
+      sources,
+      createdAt: new Date().toISOString(),
+    }
+    questionHistory.unshift({ ...result, userId: currentUserId })
+    return HttpResponse.json(result)
+  }),
+
+  http.get('/api/v1/questions', ({ request }) => {
+    const url = new URL(request.url)
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
+    const size = Math.max(1, Number(url.searchParams.get('size')) || 20)
+    const conversationId = url.searchParams.get('conversationId')
+    const questionType = url.searchParams.get('questionType')
+    const items = questionHistory.filter((item) =>
+      item.userId === currentUserId
+      && (!conversationId || item.conversationId === conversationId)
+      && (!questionType || item.questionType === questionType),
+    )
+    const start = (page - 1) * size
+    return HttpResponse.json({
+      items: items.slice(start, start + size).map(({ userId: _userId, ...item }) => item),
+      page,
+      size,
+      totalCount: items.length,
+      totalPages: Math.max(1, Math.ceil(items.length / size)),
+    })
   }),
 ]
