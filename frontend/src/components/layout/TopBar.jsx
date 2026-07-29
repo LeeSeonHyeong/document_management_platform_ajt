@@ -34,7 +34,12 @@ export default function TopBar() {
         </h1>
       </div>
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2.5">
+        <button
+          type="button"
+          onClick={() => navigate('/me')}
+          className="focus-ring flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left transition hover:border-primary-300 hover:bg-primary-50/40"
+          aria-label="내 정보로 이동"
+        >
           <Avatar name={user?.name} size="sm" />
           <div className="text-right leading-tight">
             <p className="text-sm font-medium text-slate-800">{user?.name}</p>
@@ -43,7 +48,7 @@ export default function TopBar() {
               {user?.department?.name ? ` · ${user.department.name}` : ''}
             </p>
           </div>
-        </div>
+        </button>
         <button
           type="button"
           onClick={handleLogout}

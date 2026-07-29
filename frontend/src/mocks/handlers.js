@@ -51,6 +51,21 @@ export const handlers = [
     return HttpResponse.json(findUserById(currentUserId))
   }),
 
+  http.patch('/api/v1/me/password', async ({ request }) => {
+    const body = await request.json()
+    const credentialEntry = Object.entries(credentials).find(([, account]) => account.userId === currentUserId)
+    if (!credentialEntry || credentialEntry[1].password !== body.currentPassword) {
+      return HttpResponse.json(
+        errorBody(401, 'INVALID_CURRENT_PASSWORD', '현재 비밀번호가 올바르지 않습니다.', '/api/v1/me/password'),
+        { status: 401 },
+      )
+    }
+    credentialEntry[1].password = body.newPassword
+    const user = findUserById(currentUserId)
+    if (user) user.updatedAt = new Date().toISOString()
+    return HttpResponse.json({ message: '비밀번호가 변경되었습니다.' })
+  }),
+
   http.get('/api/v1/signup-departments', () =>
     HttpResponse.json({ items: departments }),
   ),

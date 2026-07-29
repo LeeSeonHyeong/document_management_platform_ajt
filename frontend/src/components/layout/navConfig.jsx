@@ -59,6 +59,7 @@ export function getPageTitle(pathname) {
 
 // 직원 관리 Figma 프레임에 표기된 상단 경로 문구를 그대로 사용합니다.
 export function getPageEyebrow(pathname) {
+  if (pathname === '/me') return 'AJT / 계정'
   if (pathname === '/admin/users') return 'AJT / 조직 관리'
   if (pathname === '/admin/departments') return 'AJT / 조직 관리'
   if (pathname === '/admin/signup-requests') return 'AJT / 직원 관리'
