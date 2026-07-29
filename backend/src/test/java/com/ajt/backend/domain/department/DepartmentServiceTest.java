@@ -7,12 +7,19 @@ import com.ajt.backend.domain.department.dto.DepartmentCreateRequest;
 import com.ajt.backend.domain.department.dto.DepartmentListResponse;
 import com.ajt.backend.domain.department.dto.DepartmentResponse;
 import com.ajt.backend.domain.department.dto.DepartmentUpdateRequest;
+import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.Role;
+import com.ajt.backend.domain.schedule.model.Schedule;
+import com.ajt.backend.domain.schedule.model.ScheduleVisibility;
+import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,18 +33,30 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Transactional
 class DepartmentServiceTest {
+    private final DepartmentService departmentService;
+    private final DepartmentRepository departmentRepository;
+    private final MemberRepository memberRepository;
+    private final ScheduleRepository scheduleRepository;
+    private final WikiScopeRepository wikiScopeRepository;
+    private final PasswordEncoder passwordEncoder;
+
 
     @Autowired
-    DepartmentService departmentService;
-
-    @Autowired
-    DepartmentRepository departmentRepository;
-
-    @Autowired
-    MemberRepository memberRepository;
-
-    @Autowired
-    PasswordEncoder passwordEncoder;
+    DepartmentServiceTest(
+            DepartmentService departmentService,
+            DepartmentRepository departmentRepository,
+            MemberRepository memberRepository,
+            ScheduleRepository scheduleRepository,
+            WikiScopeRepository wikiScopeRepository,
+            PasswordEncoder passwordEncoder
+    ) {
+        this.departmentService = departmentService;
+        this.departmentRepository = departmentRepository;
+        this.memberRepository = memberRepository;
+        this.scheduleRepository = scheduleRepository;
+        this.wikiScopeRepository = wikiScopeRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Test
     @DisplayName("부서 목록 조회는 이름순으로 부서와 지정 관리자를 반환한다")
@@ -125,6 +144,69 @@ class DepartmentServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.DEPARTMENT_IN_USE);
+    }
+
+    @Test
+    @DisplayName("부서 공개 일정이 참조하는 부서는 삭제할 수 없다")
+    void deleteDepartmentRejectsDepartmentReferencedBySchedule() {
+        Department adminDepartment = departmentRepository.save(new Department("인사부"));
+        Department referenced = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(adminDepartment, "admin@ajt.com", "AJT-2026-9001"));
+        Schedule schedule = Schedule.create(
+                admin.getId(),
+                "부서 워크샵",
+                null,
+                null,
+                null,
+                ScheduleVisibility.DEPARTMENT,
+                Instant.parse("2026-08-01T00:00:00Z"),
+                Instant.parse("2026-08-01T09:00:00Z")
+        );
+        schedule.replaceDepartments(List.of(referenced.getId()));
+        scheduleRepository.save(schedule);
+
+        assertThatThrownBy(() -> departmentService.deleteDepartment(authenticated(admin), referenced.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_IN_USE);
+    }
+
+    @Test
+    @DisplayName("부서 공개 위키 범위가 참조하는 부서는 삭제할 수 없다")
+    void deleteDepartmentRejectsDepartmentReferencedByWikiScope() {
+        Department adminDepartment = departmentRepository.save(new Department("인사부"));
+        Department referenced = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(adminDepartment, "admin@ajt.com", "AJT-2026-9001"));
+        wikiScopeRepository.save(WikiScope.department(List.of(referenced.getId())));
+
+        assertThatThrownBy(() -> departmentService.deleteDepartment(authenticated(admin), referenced.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_IN_USE);
+    }
+
+    @Test
+    @DisplayName("아무 데이터도 참조하지 않는 부서는 삭제된다")
+    void deleteDepartmentRemovesUnreferencedDepartment() {
+        Department adminDepartment = departmentRepository.save(new Department("인사부"));
+        Department unreferenced = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(adminDepartment, "admin@ajt.com", "AJT-2026-9001"));
+        Schedule otherSchedule = Schedule.create(
+                admin.getId(),
+                "다른 부서 워크샵",
+                null,
+                null,
+                null,
+                ScheduleVisibility.DEPARTMENT,
+                Instant.parse("2026-08-01T00:00:00Z"),
+                Instant.parse("2026-08-01T09:00:00Z")
+        );
+        otherSchedule.replaceDepartments(List.of(adminDepartment.getId()));
+        scheduleRepository.save(otherSchedule);
+
+        departmentService.deleteDepartment(authenticated(admin), unreferenced.getId());
+
+        assertThat(departmentRepository.findById(unreferenced.getId())).isEmpty();
     }
 
     private AuthenticatedMember authenticated(Member member) {
