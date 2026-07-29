@@ -14,6 +14,16 @@ import AdminPage from '@/pages/AdminPage'
 import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import EmployeeListPage from '@/features/member/pages/EmployeeListPage'
+import EmployeeDetailPage from '@/features/member/pages/EmployeeDetailPage'
+import EmployeeEditPage from '@/features/member/pages/EmployeeEditPage'
+import SignupRequestsPage from '@/features/member/pages/SignupRequestsPage'
+import DepartmentManagementPage from '@/features/department/pages/DepartmentManagementPage'
+import InquiryManagementPage from '@/features/inquiry/pages/InquiryManagementPage'
+import InquiryDetailPage from '@/features/inquiry/pages/InquiryDetailPage'
+import EmployeeInquiriesPage from '@/features/inquiry/pages/EmployeeInquiriesPage'
+import CreateInquiryPage from '@/features/inquiry/pages/CreateInquiryPage'
+import MyProfilePage from '@/features/me/pages/MyProfilePage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -41,10 +51,25 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <HomePage /> },
+          { path: 'me', element: <MyProfilePage /> },
+          {
+            element: <RoleRoute allowedRoles={[ROLES.EMPLOYEE]} />,
+            children: [
+              { path: 'inquiries', element: <EmployeeInquiriesPage /> },
+              { path: 'inquiries/new', element: <CreateInquiryPage /> },
+            ],
+          },
           {
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
             children: [
               { path: 'admin', element: <AdminPage /> },
+              { path: 'admin/users', element: <EmployeeListPage /> },
+              { path: 'admin/users/:userId', element: <EmployeeDetailPage /> },
+              { path: 'admin/users/:userId/edit', element: <EmployeeEditPage /> },
+              { path: 'admin/signup-requests', element: <SignupRequestsPage /> },
+              { path: 'admin/departments', element: <DepartmentManagementPage /> },
+              { path: 'admin/inquiries', element: <InquiryManagementPage /> },
+              { path: 'admin/inquiries/:inquiryId', element: <InquiryDetailPage /> },
               { path: 'admin/schedules', element: <AdminSchedulePage /> },
             ],
           },

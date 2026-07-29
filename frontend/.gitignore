@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Local Figma reference images
+figma/
+
+# Local frontend development guide
+AJT-프론트엔드-역할배분.md
+
 # 환경 변수 (예제는 추적)
 .env
 .env.*
