@@ -7,13 +7,17 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ajt.backend.domain.department.Department;
+import com.ajt.backend.domain.document.api.DocumentDeleteResponse;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
 import com.ajt.backend.domain.document.api.DocumentListResponse;
+import com.ajt.backend.domain.document.api.DocumentMetadataUpdateRequest;
 import com.ajt.backend.domain.document.api.DocumentRetryResponse;
 import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
+import com.ajt.backend.domain.document.api.DocumentUpdateResponse;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
@@ -268,6 +272,124 @@ class DocumentManagementServiceTest {
         verify(memberRepository, never()).findById(anyLong());
     }
 
+    @Test
+    @DisplayName("관리자는 문서 메타데이터를 수정하고 재처리 작업을 생성한다")
+    void updatesDocumentMetadata() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(7L)).willReturn(Optional.of(category(7L, "취업규칙")));
+        given(wikiScopeRepository.findById("ALL")).willReturn(Optional.of(mock(WikiScope.class)));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        DocumentUpdateResponse response = service.update(
+                15L, new DocumentMetadataUpdateRequest(7L, "all", List.of()));
+
+        assertThat(response.jobId()).isEqualTo("42");
+        assertThat(response.status()).isEqualTo("waiting");
+        assertThat(response.document().documentId()).isEqualTo("15");
+        assertThat(response.document().category().name()).isEqualTo("취업규칙");
+        assertThat(document.status().name()).isEqualTo("UPLOADED");
+        verify(parseJobLauncher).launch(any(AiJob.class));
+        // 같은 범위 수정은 이 문서만 증분 재처리한다(범위 전체를 훑지 않는다).
+        verify(documentRepository, never()).findByScopeKey(any());
+    }
+
+    @Test
+    @DisplayName("공개 범위가 바뀌면 새 범위엔 이 문서만, 기존 범위엔 남은 문서로 재처리한다")
+    void updatesDocumentMetadataWithScopeChange() throws Exception {
+        Document document = uploadedDocument(); // scope "ALL"
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(4L)).willReturn(Optional.of(category(4L, "D1-D3", "사규")));
+        given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
+        // 기존 범위 검사에서는 [문서], 문서 이동 후 재처리에서는 [] (남은 문서 없음)
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document), List.of());
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        DocumentUpdateResponse response = service.update(
+                15L, new DocumentMetadataUpdateRequest(4L, "department", List.of(1L, 3L)));
+
+        assertThat(response.jobId()).isEqualTo("42");
+        assertThat(response.document().scopeKey()).isEqualTo("D1-D3");
+        assertThat(response.document().category().name()).isEqualTo("사규");
+        assertThat(document.scopeKey()).isEqualTo("D1-D3");
+        assertThat(document.status().name()).isEqualTo("UPLOADED");
+        // 새 범위(문서 단위) + 기존 범위(범위 단위) → 재처리 작업 2건
+        verify(parseJobLauncher, times(2)).launch(any(AiJob.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 문서를 수정할 수 없다")
+    void rejectsNonAdminUpdate() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+
+        assertThatThrownBy(() -> service.update(15L, new DocumentMetadataUpdateRequest(7L, "all", List.of())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("처리 중인 문서는 수정할 수 없다(409)")
+    void rejectsUpdateWhenProcessing() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.startParsing(); // UPLOADED -> PARSING (처리 중)
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service.update(15L, new DocumentMetadataUpdateRequest(7L, "all", List.of())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+    }
+
+    @Test
+    @DisplayName("관리자는 문서를 삭제하고 남은 문서 기준 재처리 작업을 생성한다")
+    void deletesDocument() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        // 삭제 전 검사에서는 [문서], 삭제 후 재처리에서는 [] (남은 문서 없음)
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document), List.of());
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        DocumentDeleteResponse response = service.delete(15L);
+
+        assertThat(response.jobId()).isEqualTo("42");
+        assertThat(response.scopeKey()).isEqualTo("ALL");
+        assertThat(response.status()).isEqualTo("waiting");
+        verify(documentRepository).delete(document);
+        verify(parseJobLauncher).launch(any(AiJob.class));
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 문서를 삭제할 수 없다")
+    void rejectsNonAdminDelete() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+
+        assertThatThrownBy(() -> service.delete(15L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
     private Document uploadedDocument() {
         return Document.uploaded(
                 10L,
@@ -281,7 +403,11 @@ class DocumentManagementServiceTest {
     }
 
     private DocumentCategory category(long id, String name) throws Exception {
-        DocumentCategory category = DocumentCategory.create("ALL", name, null);
+        return category(id, "ALL", name);
+    }
+
+    private DocumentCategory category(long id, String scopeKey, String name) throws Exception {
+        DocumentCategory category = DocumentCategory.create(scopeKey, name, null);
         assignId(category, id);
         return category;
     }

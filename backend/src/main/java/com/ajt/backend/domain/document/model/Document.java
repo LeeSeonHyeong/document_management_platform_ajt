@@ -168,6 +168,29 @@ public class Document {
         this.originalPath = originalPath;
     }
 
+    /** 처리 중(파싱·변환 진행)인지 여부. 수정·교체·삭제 요청은 처리 중이면 거부한다(409). */
+    public boolean isInProgress() {
+        return status == DocumentStatus.PARSING || status == DocumentStatus.PROCESSING;
+    }
+
+    /**
+     * 재처리를 위해 문서를 UPLOADED로 되돌린다(실패/취소/완료 문서를 다시 파싱 대상으로).
+     * 처리 중인 문서는 되돌릴 수 없다.
+     */
+    public void markForReprocess() {
+        if (isInProgress()) {
+            throw new IllegalStateException("처리 중인 문서는 재처리 대상으로 되돌릴 수 없습니다.");
+        }
+        this.status = DocumentStatus.UPLOADED;
+        this.failureReason = null;
+    }
+
+    /** DOC-05 메타데이터 수정: 카테고리와 공개 범위(scopeKey)를 함께 변경한다. */
+    public void changeCategoryAndScope(long documentCategoryId, String scopeKey) {
+        this.documentCategoryId = documentCategoryId;
+        this.scopeKey = scopeKey;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
