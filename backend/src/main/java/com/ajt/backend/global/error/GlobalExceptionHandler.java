@@ -4,6 +4,7 @@ import com.ajt.backend.domain.document.api.DocumentUploadValidationException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -119,6 +120,19 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         ErrorCode errorCode = ErrorCode.NOT_FOUND;
+        return ResponseEntity
+                .status(errorCode.status())
+                .body(ErrorResponse.of(errorCode, request.getRequestURI()));
+    }
+
+    // 수정: 신규 추가. 동시성 등으로 DB 유니크/FK 제약 위반이 사전 체크를 빠져나가면 500 대신 409로 변환한다.
+    //       내부 메시지(SQL·제약조건명)는 노출하지 않고 고정 문구만 반환한다(REST 컨벤션 §6.5).
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ErrorResponse> handleDataIntegrityViolationException(
+            DataIntegrityViolationException exception,
+            HttpServletRequest request
+    ) {
+        ErrorCode errorCode = ErrorCode.RESOURCE_CONFLICT;
         return ResponseEntity
                 .status(errorCode.status())
                 .body(ErrorResponse.of(errorCode, request.getRequestURI()));
