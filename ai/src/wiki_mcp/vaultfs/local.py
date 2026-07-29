@@ -37,7 +37,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from wiki_mcp.services.chunker import chunk_text, store_chunks
+from wiki_mcp.services.chunker import chunk_text, search_query, store_chunks
 
 from .base import (
     INDEX_ADDRESS,
@@ -320,6 +320,19 @@ class LocalVaultFS(VaultFS):
 
     async def search_chunks(self, scope_id: str, query: str, limit: int,
                             kind_filter: str | None = None) -> list[dict]:
+        """`search_query` 로 질의를 바꿔 넣는다 — 색인이 전처리본이므로 질의도 같은 전처리를
+        거쳐야 한다. 한쪽만 하면 아무것도 맞지 않는다 (`chunker.search_tokens`).
+
+        에이전트 질의를 `MATCH ?` 에 그대로 넘기던 것이 D8 이었다: 한국어는 조사가 붙어
+        오므로 `"연차"` 가 `"연차를"` 을 못 찾고, 어절 여럿은 FTS5 기본값인 AND 로 읽혀
+        자연어 질의가 0건이 됐다 (R@5 0.33, 40건 중 26건 0건).
+
+        빈 질의는 여기서 끊는다. 빈 MATCH 식은 FTS5 문법 오류이고, 그 예외가 툴 응답에
+        「오류」로 나가면 에이전트가 검색 자체를 포기한다.
+        """
+        expression = search_query(query)
+        if not expression:
+            return []
         db = self._conn()
         sql = (
             "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
@@ -332,7 +345,7 @@ class LocalVaultFS(VaultFS):
             "JOIN visible_documents d ON dc.document_id = d.id "
             "WHERE chunks_fts MATCH ? AND d.scope_id = ? "
         )
-        params: list = [query, scope_id]
+        params: list = [expression, scope_id]
         if kind_filter == "wiki":
             sql += "AND d.kind IN ('page', 'index') "
         elif kind_filter == "sources":

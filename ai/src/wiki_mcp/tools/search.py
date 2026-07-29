@@ -19,6 +19,7 @@ from typing import Literal
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from wiki_mcp.telemetry import record_search
 from wiki_mcp.vaultfs import VaultError, VaultFS
 
 from .helpers import MATCH_ALL, MAX_LIST, MAX_SEARCH, deep_link, glob_match, label, normalize_address
@@ -89,6 +90,11 @@ class SearchHandler:
             wanted = {t.lower() for t in tags}
             matches = [m for m in matches
                        if wanted.issubset({t.lower() for t in (m.get("tags") or [])})]
+        # 질의 문자열을 남긴다 — 기본은 꺼져 있고 `--query-log` 를 준 세션에서만 쓴다
+        # (`wiki_mcp/telemetry.py`). 필터를 거친 뒤 세는 이유는 에이전트가 실제로 본 건수가
+        # 그것이기 때문이다. 0건도 남긴다 — 못 찾은 질의가 가장 중요한 신호다.
+        record_search(query, len(matches), scope_key=self.scope_key)
+
         if not matches:
             return f"`{query}`에 해당하는 것이 {self.scope_key} 범위에 없다."
 

@@ -33,6 +33,70 @@ class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+# ---- 요청 크기 상한 (D7) ----------------------------------------------------
+#
+# `FR-WIKI-002` 가 v2.9 에서 "최대 5개 선택" 을 없앴다. Spring 이 범위 위키를 전량 실어
+# 보낼 수 있게 되었고 여기에 상한이 없어 AI 코드 변경 없이 그대로 받는다.
+#
+# **개수로 막지 않는다.** 같은 개정이 "선택 개수 상한은 두지 않는다" 를 명시했으므로 개수
+# 상한은 요구사항 위반이다. 실제 자원 한계인 바이트로 막는다 — 요청 본문은 파싱되어
+# 메모리에 올라가고, 하이드레이션이 임시 디스크에 파일로 쓴다.
+#
+# **측정한 것과 계산한 것을 구분해 적는다.** 아래 상한은 관측된 한계가 아니라 관측값에서
+# 나눗셈으로 고른 자리다 — 사내 위키가 실제로 몇 장까지 커지는지는 아직 모른다.
+#
+# 측정:
+#
+#   * 위키 페이지 — 평균 9,734B · 중앙 8,177B · 최대 26,924B
+#     출처는 `experiments/` 의 생성 결과 44장이고 원본 코퍼스가 **영어**다.
+#   * 한국어 페이지 — 평균 7,946자. **내가 만든 합성 코퍼스 100장**이고 사내 문서가 아니다.
+#   * 하이드레이션 — 100장에 712ms (7.1ms/장)
+#   * 에이전트 루프 — 문서 1건에 126~894초
+#
+# 계산: 한국어 3바이트/자를 곱해 페이지당 약 23KB, 총량 상한을 그것으로 나눠 약 1,400장.
+# 실제 위키가 1,400장인 것도, 그만큼을 돌려 본 것도 아니다.
+#
+# 문맥 준비가 실행 시간의 0.1~0.7% 라서 **속도는 결정 변수가 아니다.** 상한의 목적은
+# 메모리·임시 디스크 소진을 막는 것뿐이므로 관측 규모를 훨씬 넘는 자리에 둔다.
+#
+# 상한을 올려야 할 근거가 생기면 `INDEX.md` 에 그 측정을 남기고 여기를 고친다. 상한을
+# 내리려면 회귀 테스트(`tests/api/test_request_size_limits.py`)의 통과 조건을 먼저 본다.
+
+# 한 요청이 실어 올 수 있는 문맥 총량. 위 계산으로 한국어 페이지 약 1,400장 규모다.
+# 그만큼이면 하이드레이션이 10초인데 에이전트 루프가 최소 126초라 무의미한 비용이다.
+MAX_REQUEST_CONTEXT_BYTES = 32 * 1024 * 1024
+
+# 위키 한 장의 본문. 관측 최대 페이지(26,924B)의 약 78배다. 이보다 큰 한 장은 위키가
+# 아니라 결함이다 — 하이드레이션·청킹·각주 원문 대조가 전부 이 한 장에 매달린다.
+MAX_WIKI_CONTENT_BYTES = 2 * 1024 * 1024
+
+# 원본문서 파싱 본문 하나. 위키보다 크게 잡는다 — `FR-DOC-002` 가 파일당 20MB 를
+# 허용하므로 파싱 결과가 위키 한 장보다 클 수 있다. 관측 최대는 31,514B 였다.
+MAX_DOCUMENT_MARKDOWN_BYTES = 8 * 1024 * 1024
+
+
+def _utf8_size(text: str | None) -> int:
+    """UTF-8 바이트 수. `len(text)` 이 아닌 이유는 한글이 3바이트라서다 — 글자 수로 재면
+    한국어 요청의 실제 메모리 사용량을 3분의 1로 과소평가한다."""
+    return len(text.encode("utf-8")) if text else 0
+
+
+def _too_large(loc: tuple, what: str, actual: int, limit: int) -> InitErrorDetails:
+    """상한 초과 오류 1건.
+
+    `PydanticCustomError` 로 만드는 것은 `loc` 을 붙이기 위해서다 — 어느 필드(그리고
+    배열이면 몇 번째)가 문제인지 `fieldErrors` 에 남아야 Spring 이 사람에게 번역할 수
+    있다 (API_컨벤션 6.2).
+    """
+    return InitErrorDetails(
+        type=PydanticCustomError(
+            "payload_too_large",
+            "{what}이 상한을 넘었습니다 — {actual}바이트, 상한 {limit}바이트.",
+            {"what": what, "actual": actual, "limit": limit}),
+        loc=loc,
+        input=actual)
+
+
 class CategoryRef(Strict):
     """현재 카테고리 1건.
 
@@ -134,6 +198,40 @@ class TransformRequest(Strict):
             raise ValidationError.from_exception_data("TransformRequest", errors)
         return self
 
+    @model_validator(mode="after")
+    def _the_request_must_fit(self) -> "TransformRequest":
+        """D7. 문맥 총량과 개별 본문에 바이트 상한을 건다.
+
+        **개수는 세지 않는다** — `FR-WIKI-002` 가 개수 상한을 금지한다. 작은 위키 1,000장은
+        통과해야 하고 큰 위키 20장은 막혀야 한다.
+
+        개별 검사를 총량 검사와 따로 두는 이유는 진단이다. 총량만 보면 "32MB 를 넘었다"
+        까지만 알 수 있고, 한 장이 비정상인 경우와 정상 위키가 많은 경우를 구별할 수 없다.
+        """
+        errors: list[InitErrorDetails] = []
+
+        for name, limit in (("parsedMarkdown", MAX_DOCUMENT_MARKDOWN_BYTES),
+                            ("removedParsedMarkdown", MAX_DOCUMENT_MARKDOWN_BYTES)):
+            size = _utf8_size(getattr(self, name))
+            if size > limit:
+                errors.append(_too_large((name,), "원본문서 본문", size, limit))
+
+        total = 0
+        for i, wiki in enumerate(self.selectedWikis):
+            size = _utf8_size(wiki.contentMarkdown)
+            if size > MAX_WIKI_CONTENT_BYTES:
+                errors.append(_too_large(("selectedWikis", i, "contentMarkdown"),
+                                         f"위키 {wiki.wikiId} 의 본문", size,
+                                         MAX_WIKI_CONTENT_BYTES))
+            total += size + _utf8_size(wiki.title) + _utf8_size(wiki.summary)
+        if total > MAX_REQUEST_CONTEXT_BYTES:
+            errors.append(_too_large(("selectedWikis",), "selectedWikis 문맥 총량",
+                                     total, MAX_REQUEST_CONTEXT_BYTES))
+
+        if errors:
+            raise ValidationError.from_exception_data("TransformRequest", errors)
+        return self
+
 
 class SelectionRequest(Strict):
     """1단계 — 목차만 보고 이번 변환에 관련된 위키를 최대 5개 고른다 (설계 §5)."""
@@ -177,6 +275,20 @@ class SelectionRequest(Strict):
             raise ValidationError.from_exception_data("SelectionRequest", errors)
         return self
 
+    @model_validator(mode="after")
+    def _the_request_must_fit(self) -> "SelectionRequest":
+        """D7. 1단계도 같은 문을 쓴다 — 본문 두 개가 `TransformRequest` 와 같은 출처에서
+        온다. 여기만 열려 있으면 상한이 없는 것과 같다."""
+        errors: list[InitErrorDetails] = []
+        for name in ("parsedMarkdown", "removedParsedMarkdown"):
+            size = _utf8_size(getattr(self, name))
+            if size > MAX_DOCUMENT_MARKDOWN_BYTES:
+                errors.append(_too_large((name,), "원본문서 본문", size,
+                                         MAX_DOCUMENT_MARKDOWN_BYTES))
+        if errors:
+            raise ValidationError.from_exception_data("SelectionRequest", errors)
+        return self
+
 
 class SelectionResponse(Strict):
     wikiIds: list[str]
@@ -214,6 +326,38 @@ class EditRequest(Strict):
     # 계약에는 없다. 있으면 이미 있는 카테고리를 다시 만들지 않고(DR-019) 없으면 빈 목록이라
     # 예전과 같이 동작한다 — 수정 지시가 카테고리를 바꾸는 경우에만 의미가 있다.
     currentCategories: list[CategoryRef] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _the_request_must_fit(self) -> "EditRequest":
+        """D7. 관리자 수정도 같은 상한을 받는다 — 같은 세션·같은 임시 디스크를 쓴다.
+
+        `evidenceDocuments` 는 위키가 아니라 원본문서라서 개별 상한이 더 크다. 총량은
+        같은 값을 공유한다 — 막으려는 것이 요청 하나가 쓰는 자원이지 그 안의 구성이 아니다.
+        """
+        errors: list[InitErrorDetails] = []
+
+        size = _utf8_size(self.currentWiki.contentMarkdown)
+        if size > MAX_WIKI_CONTENT_BYTES:
+            errors.append(_too_large(("currentWiki", "contentMarkdown"),
+                                     "수정 대상 위키의 본문", size,
+                                     MAX_WIKI_CONTENT_BYTES))
+
+        total = size
+        for i, doc in enumerate(self.evidenceDocuments):
+            doc_size = _utf8_size(doc.parsedMarkdown)
+            if doc_size > MAX_DOCUMENT_MARKDOWN_BYTES:
+                errors.append(_too_large(
+                    ("evidenceDocuments", i, "parsedMarkdown"),
+                    f"근거 문서 {doc.documentId} 의 본문", doc_size,
+                    MAX_DOCUMENT_MARKDOWN_BYTES))
+            total += doc_size
+        if total > MAX_REQUEST_CONTEXT_BYTES:
+            errors.append(_too_large(("evidenceDocuments",), "수정 요청 문맥 총량",
+                                     total, MAX_REQUEST_CONTEXT_BYTES))
+
+        if errors:
+            raise ValidationError.from_exception_data("EditRequest", errors)
+        return self
 
 
 class Evidence(Strict):

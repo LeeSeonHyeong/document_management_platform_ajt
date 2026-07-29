@@ -37,6 +37,13 @@ class RunResult:
     cost_usd: float = 0.0
     elapsed_seconds: float = 0.0
     error: str | None = None
+    # 턴별·툴별 내역. `agent_runtime/stream_json.py` 의 `StreamSummary.as_dict()` 모양이고,
+    # 그것을 내지 못하는 런타임은 `None` 이다. **계약 응답에는 실리지 않는다** — 측정
+    # (`report.json`)과 진단용이다.
+    #
+    # 총계만으로는 D8 을 좁힐 수 없어서 넣었다: 시간 ≈ 출력토큰 ÷ 55 로 거의 일정하므로
+    # 출력 토큰이 곧 지연시간이고, 그것을 줄이려면 어느 턴에서 나오는지부터 알아야 한다.
+    detail: dict | None = None
 
 
 class Runtime(Protocol):
@@ -59,8 +66,10 @@ class Runtime(Protocol):
     # 본문뿐이라 툴이 필요 없고, MCP 서버를 띄우는 것은 낭비이자 사고 위험이다(선택
     # 호출이 위키를 고칠 수 있게 된다). 그래서 "MCP 없이 한 번만 물어본다"는 능력을
     # 선택 메서드로 둔다 — `bare=True` 플래그를 `run()` 에 더하는 대신 별도 이름으로
-    # 둔 이유는 `agent_runtime/claude_code.py` 가 수정 금지라 거기에 인자를 더할 수 없고,
-    # 프로토콜에 필수로 올리면 두 런타임이 즉시 계약 위반이 되기 때문이다.
+    # 둔 이유는 프로토콜에 필수로 올리면 두 런타임이 즉시 계약 위반이 되기 때문이다.
+    # (앞 판본은 "`claude_code.py` 가 수정 금지"라고 적었다. 그것은 v1.1.0 적응 설계의
+    # 「불변」 목록이었고 그 이터레이션 한정이다 — S15P11B106-143 이 계획대로 그 파일과
+    # `tools/lint.py`·`shared/schema.sql`·`vaultfs/local.py` 를 고쳤다.)
     #
     # **두 프로덕션 런타임 모두 아직 이것을 구현하지 않는다.** `api/selection.py` 는
     # 그때 `run`/`arun` 으로 물러서서 빈 임시 루트를 준다 — 동작하지만 MCP 서버가
