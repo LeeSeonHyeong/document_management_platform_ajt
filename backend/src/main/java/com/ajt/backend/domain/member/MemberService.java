@@ -16,8 +16,10 @@ import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -76,8 +78,12 @@ public class MemberService {
         requireAdmin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
         Specification<Member> specification = userSpecification(status, signupStatus, role, managerAssignable, keyword);
+        // 수정: 부서장 여부를 역할(ADMIN)이 아니라 department.manager_id 지정으로 판단하도록 변경(FR-USR-006).
+        //       회원마다 개별 조회하면 N+1이 되므로, 부서장으로 지정된 회원 ID를 한 번에 모아 집합으로 비교한다.
+        Set<Long> managerMemberIds = new HashSet<>(departmentRepository.findManagerMemberIds());
         Page<UserSummaryResponse> result = memberRepository.findAll(specification, pageable)
-                .map(UserSummaryResponse::from);
+                // 수정: from(member) → from(member, 부서장여부)로 인자 추가.
+                .map(member -> UserSummaryResponse.from(member, managerMemberIds.contains(member.getId())));
         return UserListResponse.from(result);
     }
 
