@@ -3556,7 +3556,7 @@
               ],
               "variable": []
             },
-            "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+            "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
           },
           "response": [
             {
@@ -3601,7 +3601,7 @@
                   ],
                   "variable": []
                 },
-                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "OK",
               "code": 200,
@@ -3661,7 +3661,7 @@
                   ],
                   "variable": []
                 },
-                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "Bad Request",
               "code": 400,

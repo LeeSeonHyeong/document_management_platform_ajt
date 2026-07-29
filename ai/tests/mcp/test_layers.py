@@ -6,7 +6,7 @@ was rewritten. If any of these fail, an unverified page is being served.
 
 import pytest
 
-from .conftest import JOB_ID, SCOPE
+from ..conftest import JOB_ID, SCOPE
 from wiki_mcp.vaultfs import INDEX_ADDRESS, ReadOnlyLayerError, VaultError
 from wiki_mcp.vaultfs.local import LocalVaultFS, commit_job, discard_job
 

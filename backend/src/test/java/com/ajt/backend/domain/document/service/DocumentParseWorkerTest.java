@@ -17,6 +17,8 @@ import com.ajt.backend.global.ai.client.AiClientFailureType;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
 import com.ajt.backend.global.ai.client.SourceParseResponse;
 import com.ajt.backend.global.ai.client.SourceType;
+import com.ajt.backend.global.ai.client.WikiContextSelectionRequest;
+import com.ajt.backend.global.ai.client.WikiContextSelectionResponse;
 import com.ajt.backend.global.error.FieldErrorResponse;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -40,13 +42,20 @@ class DocumentParseWorkerTest {
         Document first = document(15L, "first.md");
         Document second = document(16L, "second.md");
         AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L, 16L));
+        assignId(job, 42L);
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(second, first));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
+        given(fileStorage.readText("wiki/ALL/index.md")).willReturn("# 목차\n- [휴가 규정](pages/101.md)");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation -> {
             SourceParseRequest request = invocation.getArgument(0);
             capturedSourceIds.add(request.sourceId());
             return response(request.sourceId(), "# " + ("15".equals(request.sourceId()) ? "first" : "second"));
+        });
+        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class))).willAnswer(invocation -> {
+            WikiContextSelectionRequest request = invocation.getArgument(0);
+            capturedContextSelections.add(request);
+            return new WikiContextSelectionResponse(List.of("101", "108"), "관련 Wiki");
         });
         given(fileStorage.storeParsedMarkdown("ALL", 15L, "# first"))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
@@ -58,9 +67,18 @@ class DocumentParseWorkerTest {
         assertThat(capturedSourceIds).containsExactly("15", "16");
         assertThat(first.status()).isEqualTo(DocumentStatus.PROCESSING);
         assertThat(first.parsedPath()).isEqualTo("wiki/ALL/sources/15/parsed.md");
+        assertThat(first.documentWikiRefs()).containsExactly(101L, 108L);
         assertThat(second.status()).isEqualTo(DocumentStatus.PROCESSING);
         assertThat(second.parsedPath()).isEqualTo("wiki/ALL/sources/16/parsed.md");
+        assertThat(second.documentWikiRefs()).containsExactly(101L, 108L);
         assertThat(job.status()).isEqualTo(AiJobStatus.PROCESSING);
+        assertThat(capturedContextSelections)
+                .extracting(WikiContextSelectionRequest::documentId)
+                .containsExactly("15", "16");
+        assertThat(capturedContextSelections.get(0).jobId()).isEqualTo(String.valueOf(job.id()));
+        assertThat(capturedContextSelections.get(0).scopeKey()).isEqualTo("ALL");
+        assertThat(capturedContextSelections.get(0).parsedMarkdown()).isEqualTo("# first");
+        assertThat(capturedContextSelections.get(0).currentIndex()).isEqualTo("# 목차\n- [휴가 규정](pages/101.md)");
     }
 
     @Test
@@ -70,10 +88,12 @@ class DocumentParseWorkerTest {
         Document second = document(16L, "second.md");
         Document third = document(17L, "third.md");
         AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L, 16L, 17L));
+        assignId(job, 42L);
         given(documentRepository.findAllById(List.of(15L, 16L, 17L))).willReturn(List.of(first, second, third));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
         given(fileStorage.load(third.originalPath())).willReturn(resource("third"));
+        given(fileStorage.readText("wiki/ALL/index.md")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation -> {
             SourceParseRequest request = invocation.getArgument(0);
             capturedSourceIds.add(request.sourceId());
@@ -89,6 +109,8 @@ class DocumentParseWorkerTest {
             }
             return response(request.sourceId(), "# parsed " + request.sourceId());
         });
+        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
+                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown("ALL", 15L, "# parsed 15"))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
         given(fileStorage.storeParsedMarkdown("ALL", 17L, "# parsed 17"))
@@ -105,6 +127,7 @@ class DocumentParseWorkerTest {
     }
 
     private final List<String> capturedSourceIds = new ArrayList<>();
+    private final List<WikiContextSelectionRequest> capturedContextSelections = new ArrayList<>();
 
     private Document document(long id, String name) throws ReflectiveOperationException {
         Document document = Document.uploaded(

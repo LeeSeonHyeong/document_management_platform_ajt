@@ -15,9 +15,13 @@ import org.springframework.boot.test.context.SpringBootTest;
         "ajt.ai.read-timeout=181s"
 })
 class AiApiPropertiesTest {
+    private final AiApiProperties properties;
+
 
     @Autowired
-    private AiApiProperties properties;
+    AiApiPropertiesTest(AiApiProperties properties) {
+        this.properties = properties;
+    }
 
     @Test
     void bindsAiProperties() {
