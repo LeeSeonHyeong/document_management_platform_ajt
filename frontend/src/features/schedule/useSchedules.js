@@ -4,6 +4,7 @@ import {
   createSchedule,
   updateSchedule,
   deleteSchedule,
+  approveSchedule,
 } from '@/api/schedules'
 import { qk } from '@/shared/api/queryKeys'
 
@@ -15,18 +16,22 @@ export function toCalendarEvent(schedule) {
     start: new Date(schedule.startAt),
     end: new Date(schedule.endAt),
     visibilityType: schedule.visibilityType,
+    departmentIds: schedule.departmentIds ?? [],
+    targetText: schedule.targetText,
     location: schedule.location,
     content: schedule.content,
     status: schedule.status,
+    sourceGroupKey: schedule.sourceGroupKey,
     raw: schedule,
   }
 }
 
-// 기간(달 그리드 범위)으로 일정을 조회하고 캘린더 이벤트로 매핑한다.
-export function useSchedules({ startDate, endDate }) {
+// 기간·필터로 일정을 조회하고 캘린더 이벤트로 매핑한다.
+// params: { startDate, endDate, status, visibilityType, departmentId }
+export function useSchedules(params = {}) {
   return useQuery({
-    queryKey: qk.schedules.list({ startDate, endDate }),
-    queryFn: () => fetchSchedules({ startDate, endDate }),
+    queryKey: qk.schedules.list(params),
+    queryFn: () => fetchSchedules(params),
     select: (items) => items.map(toCalendarEvent),
   })
 }
@@ -51,6 +56,15 @@ export function useDeleteSchedule() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteSchedule,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.schedules.all }),
+  })
+}
+
+// 초안 승인(관리자 검수). 승인 시 목록·달력 갱신.
+export function useApproveSchedule() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: approveSchedule,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.schedules.all }),
   })
 }

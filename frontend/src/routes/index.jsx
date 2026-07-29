@@ -11,6 +11,7 @@ import PasswordFindPage from '@/pages/auth/PasswordFindPage'
 import PasswordResetPage from '@/pages/auth/PasswordResetPage'
 import HomePage from '@/pages/home/HomePage'
 import AdminPage from '@/pages/AdminPage'
+import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 
@@ -42,7 +43,10 @@ export const router = createBrowserRouter([
           { index: true, element: <HomePage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
-            children: [{ path: 'admin', element: <AdminPage /> }],
+            children: [
+              { path: 'admin', element: <AdminPage /> },
+              { path: 'admin/schedules', element: <AdminSchedulePage /> },
+            ],
           },
         ],
       },

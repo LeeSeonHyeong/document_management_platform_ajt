@@ -1,10 +1,17 @@
 import apiClient from './client'
 
-// GET /api/v1/schedules?startDate=&endDate=
-// 권한 내 전체·부서 일정 + 본인 개인 일정을 기간으로 조회한다.
-export async function fetchSchedules({ startDate, endDate } = {}) {
-  const { data } = await apiClient.get('/schedules', { params: { startDate, endDate } })
+// GET /api/v1/schedules
+// 기간·상태·공개범위·부서로 조회한다. 관리자는 status=draft로 검수 대기 초안도 조회 가능.
+// params 예: { startDate, endDate, status, visibilityType, departmentId }
+export async function fetchSchedules(params = {}) {
+  const { data } = await apiClient.get('/schedules', { params })
   return data.items ?? []
+}
+
+// POST /api/v1/schedules/:id/approve — 초안 1건 승인(APPROVED로 전환)
+export async function approveSchedule(scheduleId) {
+  const { data } = await apiClient.post(`/schedules/${scheduleId}/approve`)
+  return data
 }
 
 // POST /api/v1/schedules — 수동·개인 일정 생성
