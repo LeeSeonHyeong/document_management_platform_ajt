@@ -16,6 +16,7 @@ import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.wiki.service.WikiTransformationService;
+import com.ajt.backend.domain.wiki.service.WikiTransformationService.WikiTransformationResult;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.AiClientFailureType;
@@ -81,7 +82,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 anyString(),
                 anyList()
-        )).willReturn(List.of(101L, 205L));
+        )).willReturn(new WikiTransformationResult(List.of(101L, 205L), "휴가 규정을 Wiki에 반영했습니다."));
 
         worker.parse(job);
 
@@ -91,7 +92,7 @@ class DocumentParseWorkerTest {
         assertThat(first.documentWikiRefs()).containsExactly(101L, 205L);
         assertThat(second.status()).isEqualTo(DocumentStatus.COMPLETED);
         assertThat(second.parsedPath()).isEqualTo("wiki/ALL/sources/16/parsed.md");
-        assertThat(job.status()).isEqualTo(AiJobStatus.PROCESSING);
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
         assertThat(capturedContextSelections)
                 .extracting(WikiContextSelectionRequest::documentId)
                 .containsExactly("15", "16");
@@ -123,7 +124,7 @@ class DocumentParseWorkerTest {
                 eq("ALL"),
                 eq("# 취업 규칙"),
                 eq(List.of(101L, 108L))
-        )).willReturn(List.of(101L));
+        )).willReturn(new WikiTransformationResult(List.of(101L), "반영 완료"));
 
         worker.parse(job);
 
@@ -164,7 +165,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 anyString(),
                 anyList()
-        )).willReturn(List.of(300L));
+        )).willReturn(new WikiTransformationResult(List.of(300L), "반영 완료"));
 
         worker.parse(job);
 
@@ -173,7 +174,7 @@ class DocumentParseWorkerTest {
         assertThat(second.status()).isEqualTo(DocumentStatus.FAILED);
         assertThat(second.failureReason()).isEqualTo("FastAPI 응답 시간이 초과되었습니다.");
         assertThat(third.status()).isEqualTo(DocumentStatus.COMPLETED);
-        assertThat(job.status()).isEqualTo(AiJobStatus.PROCESSING);
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
     }
 
     @Test
@@ -206,7 +207,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 anyString(),
                 anyList()
-        )).willReturn(List.of(301L));
+        )).willReturn(new WikiTransformationResult(List.of(301L), "반영 완료"));
 
         worker.parse(job);
 
@@ -214,6 +215,139 @@ class DocumentParseWorkerTest {
         assertThat(first.failureReason()).isEqualTo("FastAPI 응답 시간이 초과되었습니다.");
         assertThat(second.status()).isEqualTo(DocumentStatus.COMPLETED);
         assertThat(second.documentWikiRefs()).containsExactly(301L);
+    }
+
+    @Test
+    @DisplayName("문서가 하나라도 성공하면 작업을 완료로 끝내고 문서별 결과를 기록한다")
+    void finishesJobWithDocumentResults() throws Exception {
+        Document first = document(15L, "first.md");
+        Document second = document(16L, "second.md");
+        AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L, 16L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
+        given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
+        given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
+        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
+        given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation ->
+                response(invocation.<SourceParseRequest>getArgument(0).sourceId(), "# parsed"));
+        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
+                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
+        given(fileStorage.storeParsedMarkdown(eq("ALL"), anyLong(), anyString()))
+                .willReturn("wiki/ALL/sources/parsed.md");
+        given(wikiTransformationService.transformForAddedDocument(
+                anyLong(),
+                eq(15L),
+                anyString(),
+                anyString(),
+                anyList()
+        )).willReturn(new WikiTransformationResult(List.of(101L), "휴가 규정을 Wiki에 반영했습니다."));
+        given(wikiTransformationService.transformForAddedDocument(
+                anyLong(),
+                eq(16L),
+                anyString(),
+                anyString(),
+                anyList()
+        )).willThrow(failureWithStage());
+
+        worker.parse(job);
+
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+        assertThat(job.finishedAt()).isNotNull();
+        assertThat(job.failureReason()).isNull();
+        assertThat(job.documentResults())
+                .extracting(
+                        AiJob.DocumentParseResult::documentId,
+                        AiJob.DocumentParseResult::success,
+                        AiJob.DocumentParseResult::summary,
+                        AiJob.DocumentParseResult::failureStage
+                )
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(15L, true, "휴가 규정을 Wiki에 반영했습니다.", null),
+                        org.assertj.core.groups.Tuple.tuple(16L, false, null, "agent_timeout")
+                );
+    }
+
+    @Test
+    @DisplayName("모든 문서가 실패하면 작업을 실패로 끝낸다")
+    void failsJobWhenEveryDocumentFails() throws Exception {
+        Document only = document(15L, "first.md");
+        AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(only));
+        given(fileStorage.load(only.originalPath())).willReturn(resource("first"));
+        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
+        given(aiClient.parseSource(any(SourceParseRequest.class))).willThrow(timeout());
+
+        worker.parse(job);
+
+        assertThat(only.status()).isEqualTo(DocumentStatus.FAILED);
+        assertThat(job.status()).isEqualTo(AiJobStatus.FAILED);
+        assertThat(job.failureReason()).isEqualTo("FastAPI 응답 시간이 초과되었습니다.");
+        assertThat(job.finishedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("삭제된 문서는 실패로 기록하고 남은 문서를 계속 처리한다")
+    void recordsMissingDocumentAsFailure() throws Exception {
+        Document second = document(16L, "second.md");
+        AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L, 16L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(second));
+        given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
+        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
+        given(aiClient.parseSource(any(SourceParseRequest.class))).willReturn(response("16", "# parsed"));
+        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
+                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
+        given(fileStorage.storeParsedMarkdown(eq("ALL"), anyLong(), anyString()))
+                .willReturn("wiki/ALL/sources/parsed.md");
+        given(wikiTransformationService.transformForAddedDocument(
+                anyLong(),
+                eq(16L),
+                anyString(),
+                anyString(),
+                anyList()
+        )).willReturn(new WikiTransformationResult(List.of(101L), "반영 완료"));
+
+        worker.parse(job);
+
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+        assertThat(job.documentResults())
+                .extracting(
+                        AiJob.DocumentParseResult::documentId,
+                        AiJob.DocumentParseResult::success,
+                        AiJob.DocumentParseResult::failureReason
+                )
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(15L, false, "문서를 찾을 수 없습니다."),
+                        org.assertj.core.groups.Tuple.tuple(16L, true, null)
+                );
+    }
+
+    @Test
+    @DisplayName("문서 저장소 조회 자체가 실패하면 작업 자체를 실패로 끝낸다")
+    void failsJobWhenRepositoryFails() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L)))
+                .willThrow(new IllegalStateException("DB 연결 실패"));
+
+        worker.parse(job);
+
+        assertThat(job.status()).isEqualTo(AiJobStatus.FAILED);
+        assertThat(job.failureReason()).startsWith("작업 대상 문서를 읽지 못했습니다");
+        assertThat(job.documentResults()).isEmpty();
+    }
+
+    private AiClientException failureWithStage() {
+        return new AiClientException(
+                AiClientFailureType.SERVER_ERROR,
+                500,
+                "WIKI_TRANSFORMATION_FAILED",
+                "Wiki 변환에 실패했습니다.",
+                List.<FieldErrorResponse>of(),
+                null,
+                "agent_timeout"
+        );
     }
 
     private final List<String> capturedSourceIds = new ArrayList<>();

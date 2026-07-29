@@ -42,7 +42,7 @@ public class AiJobQueryService {
         return new AiJobResponse(
                 String.valueOf(job.id()),
                 job.status().name().toLowerCase(),
-                documentResults(job.documentIds(), documentsById),
+                documentResults(job.documentIds(), documentsById, recordedResultsById(job)),
                 job.createdAt(),
                 job.startedAt(),
                 job.finishedAt(),
@@ -64,12 +64,27 @@ public class AiJobQueryService {
         return documents;
     }
 
+    /**
+     * 작업에 기록된 문서별 결과입니다. 아직 진행 중인 작업은 비어 있습니다.
+     */
+    private Map<Long, AiJob.DocumentParseResult> recordedResultsById(AiJob job) {
+        Map<Long, AiJob.DocumentParseResult> results = new HashMap<>();
+        job.documentResults().forEach(result -> results.put(result.documentId(), result));
+        return results;
+    }
+
     private List<AiJobResponse.DocumentResultResponse> documentResults(
             List<Long> documentIds,
-            Map<Long, Document> documentsById
+            Map<Long, Document> documentsById,
+            Map<Long, AiJob.DocumentParseResult> recordedResultsById
     ) {
         return documentIds.stream()
-                .map(documentId -> toDocumentResult(documentId, documentsById.get(documentId), documentIds))
+                .map(documentId -> toDocumentResult(
+                        documentId,
+                        documentsById.get(documentId),
+                        recordedResultsById.get(documentId),
+                        documentIds
+                ))
                 .sorted(Comparator.comparingInt(AiJobResponse.DocumentResultResponse::order))
                 .toList();
     }
@@ -77,6 +92,7 @@ public class AiJobQueryService {
     private AiJobResponse.DocumentResultResponse toDocumentResult(
             long documentId,
             Document document,
+            AiJob.DocumentParseResult recordedResult,
             List<Long> orderedDocumentIds
     ) {
         DocumentStatus status = document == null ? DocumentStatus.FAILED : document.status();
@@ -85,9 +101,19 @@ public class AiJobQueryService {
                 orderedDocumentIds.indexOf(documentId) + 1,
                 responseStatus(status),
                 currentStage(status),
-                null,
-                document == null ? "문서를 찾을 수 없습니다." : document.failureReason()
+                recordedResult == null ? null : recordedResult.summary(),
+                failureReasonOf(document, recordedResult)
         );
+    }
+
+    private String failureReasonOf(Document document, AiJob.DocumentParseResult recordedResult) {
+        if (document == null) {
+            return "문서를 찾을 수 없습니다.";
+        }
+        if (document.failureReason() != null) {
+            return document.failureReason();
+        }
+        return recordedResult == null ? null : recordedResult.failureReason();
     }
 
     private String responseStatus(DocumentStatus status) {

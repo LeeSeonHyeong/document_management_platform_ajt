@@ -70,6 +70,64 @@ class AiJobQueryServiceTest {
     }
 
     @Test
+    @DisplayName("종료된 작업은 기록된 문서별 요약과 실패 단계를 함께 돌려준다")
+    void getFinishedAiJob() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L, 16L));
+        assign(job, "id", 42L);
+        assign(job, "createdAt", LocalDateTime.parse("2026-07-28T15:00:00"));
+        job.start();
+        Document completed = uploadedDocument(15L, "first.md");
+        completed.startParsing();
+        completed.completeParsing("wiki/ALL/sources/15/parsed.md");
+        completed.completeProcessing(List.of(101L));
+        Document failed = uploadedDocument(16L, "second.md");
+        failed.startParsing();
+        failed.completeParsing("wiki/ALL/sources/16/parsed.md");
+        failed.failProcessing("Wiki 변환에 실패했습니다.");
+        job.finish(List.of(
+                AiJob.DocumentParseResult.succeeded(15L, "휴가 규정을 Wiki에 반영했습니다."),
+                AiJob.DocumentParseResult.failed(16L, "Wiki 변환에 실패했습니다.", "agent_timeout")
+        ));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(completed, failed));
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        assertThat(response.status()).isEqualTo("completed");
+        assertThat(response.finishedAt()).isNotNull();
+        assertThat(response.documentResults().get(0).status()).isEqualTo("completed");
+        assertThat(response.documentResults().get(0).currentStage()).isEqualTo("wiki_applied");
+        assertThat(response.documentResults().get(0).summary()).isEqualTo("휴가 규정을 Wiki에 반영했습니다.");
+        assertThat(response.documentResults().get(0).failureReason()).isNull();
+        assertThat(response.documentResults().get(1).status()).isEqualTo("failed");
+        assertThat(response.documentResults().get(1).summary()).isNull();
+        assertThat(response.documentResults().get(1).failureReason()).isEqualTo("Wiki 변환에 실패했습니다.");
+    }
+
+    @Test
+    @DisplayName("진행 중인 작업은 아직 기록된 결과가 없어 요약을 비워 둔다")
+    void leavesSummaryEmptyWhileProcessing() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assign(job, "id", 42L);
+        job.start();
+        Document processing = uploadedDocument(15L, "first.md");
+        processing.startParsing();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(processing));
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        assertThat(response.documentResults()).singleElement()
+                .satisfies(result -> {
+                    assertThat(result.status()).isEqualTo("processing");
+                    assertThat(result.summary()).isNull();
+                    assertThat(result.failureReason()).isNull();
+                });
+    }
+
+    @Test
     @DisplayName("관리자가 아니면 AI 작업 상태를 조회할 수 없다")
     void rejectsNonAdmin() {
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));

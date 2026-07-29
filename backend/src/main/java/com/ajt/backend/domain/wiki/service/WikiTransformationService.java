@@ -52,7 +52,7 @@ public class WikiTransformationService {
      * 호출한 파싱 작업은 해당 문서를 실패로 기록한 뒤 다음 문서를 계속 처리해야 하기 때문입니다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public List<Long> transformForAddedDocument(
+    public WikiTransformationResult transformForAddedDocument(
             long jobId,
             long documentId,
             String scopeKey,
@@ -71,7 +71,21 @@ public class WikiTransformationService {
                 currentCategories(scopeKey),
                 selectedWikis(scopeKey, selectedWikiIds, currentIndex)
         ));
-        return applier.apply(scopeKey, documentId, response);
+        return new WikiTransformationResult(
+                applier.apply(scopeKey, documentId, response),
+                response.summary()
+        );
+    }
+
+    /**
+     * 변환 반영 결과입니다. {@code summary}는 AI가 돌려준 문서별 작업 요약으로,
+     * ai_job.document_results에 기록해 작업 상태 조회에 노출합니다.
+     */
+    public record WikiTransformationResult(List<Long> affectedWikiIds, String summary) {
+
+        public WikiTransformationResult {
+            affectedWikiIds = List.copyOf(affectedWikiIds);
+        }
     }
 
     /**
