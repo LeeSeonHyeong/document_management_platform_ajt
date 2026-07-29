@@ -10,7 +10,7 @@ import pytest
 from mcp.server.fastmcp import FastMCP
 
 from wiki_mcp.telemetry import count_tool_calls, read_counts
-from .conftest import JOB_ID, SCOPE
+from ..conftest import JOB_ID, SCOPE
 from wiki_mcp.tools import register
 from wiki_mcp.vaultfs import LocalVaultFS
 

@@ -38,7 +38,7 @@ from .local import (INDEX_ADDRESS, PAGES_PREFIX, SOURCES_PREFIX, LocalVaultFS,
 
 # `tools.write` imports `tools.references`, which imports `vaultfs` (for the
 # `VaultFS` type) — and `vaultfs/__init__.py` imports this module. A top-level
-# `from tools.write import ...` here would therefore run while `vaultfs` is
+# `from wiki_mcp.tools.write import ...` here would therefore run while `vaultfs` is
 # still mid-initialization and fail with a circular-import error. Deferred to
 # first use inside `_insert_live` instead; `tools/write.py` itself is untouched.
 

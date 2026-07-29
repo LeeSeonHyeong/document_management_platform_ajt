@@ -1,0 +1,15 @@
+{
+  "scope": "ALL",
+  "runtime": "claude-code",
+  "documents": [
+    {
+      "seq": 1,
+      "document": "01-training.md",
+      "elapsedSeconds": 50.7,
+      "toolCalls": {},
+      "inputTokens": 464179,
+      "outputTokens": 2867,
+      "error": null
+    }
+  ]
+}

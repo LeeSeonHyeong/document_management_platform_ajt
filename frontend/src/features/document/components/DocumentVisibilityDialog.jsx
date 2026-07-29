@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Modal, Button, Chip } from '@/components/ui'
-import { useDepartments } from '@/features/department/queries'
+import { useDepartments } from '@/features/department/useDepartments'
 import { useUpdateDocument } from '../queries'
 import { buildScopeKey } from '../scope'
 

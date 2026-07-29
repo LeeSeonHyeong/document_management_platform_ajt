@@ -19,5 +19,6 @@
 ## 규칙
 
 - API는 `../docs/conventions/rest-api-convention.md`와 `../docs/api/` 계약을 따른다. 계약에 없는 API를 임의로 만들지 않는다.
+- 스프링 구현(생성자 주입, JSON 직렬화, 리스트 참조 컬럼)은 `../docs/conventions/backend-spring-convention.md`를 따른다.
 - 스키마 변경은 `../docs/db/erd.sql`을 먼저 갱신한다.
 - 설계 이력: `docs/superpowers/plans/`, `docs/superpowers/specs/` (백엔드 전용 설계 문서)

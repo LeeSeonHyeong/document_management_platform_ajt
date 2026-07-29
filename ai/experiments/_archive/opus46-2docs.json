@@ -1,0 +1,51 @@
+{
+  "scope": "ALL",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "order": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "documents": [
+    {
+      "seq": 1,
+      "document": "01-training.md",
+      "elapsedSeconds": 94.6,
+      "toolCalls": {
+        "guide": 1,
+        "read": 2,
+        "search": 3,
+        "create": 1,
+        "edit": 1,
+        "append": 1,
+        "lint": 1
+      },
+      "inputTokens": 406175,
+      "outputTokens": 3303,
+      "turns": 13,
+      "costUsd": 0.5096,
+      "error": null,
+      "reply": "lint 통과, error 0건.\n\n완료 요약:\n- `01-training.md` 읽고 위키 페이지 1건 생성: `/wiki/복리후생/교육-및-도서-지원.md` (도서 구매·교육 예산·컨퍼런스 정책, 각주 11개)\n- `index.md` 갱신 — 카테고리·핵심 내용·최근 변경 반영\n- `log.md` 기록 추가\n- lint 통과"
+    },
+    {
+      "seq": 2,
+      "document": "02-side-gigs.md",
+      "elapsedSeconds": 134.3,
+      "toolCalls": {
+        "guide": 1,
+        "read": 4,
+        "search": 5,
+        "create": 1,
+        "edit": 6,
+        "append": 1,
+        "lint": 2
+      },
+      "inputTokens": 757913,
+      "outputTokens": 7031,
+      "turns": 23,
+      "costUsd": 0.8627,
+      "error": null,
+      "reply": "**error 0건.** warn 2건은 stale-page — 방금 만든 페이지라 무시 가능.\n\n완료 요약:\n- **생성**: `/wiki/근무 정책/부업-및-겸직-정책.md` — 부업 허용 기준, 시간 관리, IP 귀속, 승인 절차\n- **수정**: `/wiki/복리후생/교육-및-도서-지원.md` — 부업 정책 상호 참조 추가\n- **갱신**: `index.md` (원본 2건, 페이지 2건, 핵심 내용·최근 변경 추가), `log.md` (ingest 기록)\n- **lint**: error 0, warn 2 (stale-page, 무해)"
+    }
+  ]
+}

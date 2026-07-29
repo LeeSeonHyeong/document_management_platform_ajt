@@ -4,11 +4,14 @@ import com.ajt.backend.domain.department.dto.DepartmentCreateRequest;
 import com.ajt.backend.domain.department.dto.DepartmentListResponse;
 import com.ajt.backend.domain.department.dto.DepartmentResponse;
 import com.ajt.backend.domain.department.dto.DepartmentUpdateRequest;
+import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.AccountStatus;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.Role;
 import com.ajt.backend.domain.member.SignupStatus;
+import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -20,13 +23,19 @@ public class DepartmentService {
 
     private final DepartmentRepository departmentRepository;
     private final MemberRepository memberRepository;
+    private final ScheduleRepository scheduleRepository;
+    private final WikiScopeRepository wikiScopeRepository;
 
     public DepartmentService(
             DepartmentRepository departmentRepository,
-            MemberRepository memberRepository
+            MemberRepository memberRepository,
+            ScheduleRepository scheduleRepository,
+            WikiScopeRepository wikiScopeRepository
     ) {
         this.departmentRepository = departmentRepository;
         this.memberRepository = memberRepository;
+        this.scheduleRepository = scheduleRepository;
+        this.wikiScopeRepository = wikiScopeRepository;
     }
 
     /**
@@ -85,7 +94,7 @@ public class DepartmentService {
 
     /**
      * DEPT-04 부서 삭제 요구사항입니다.
-     * 직원이 한 명이라도 소속된 부서는 삭제하지 않고 409로 막습니다.
+     * 직원이 소속되거나 다른 데이터가 참조하는 부서는 삭제하지 않고 409로 막습니다. (FR-USR-008)
      */
     @Transactional
     public void deleteDepartment(AuthenticatedMember loginMember, Long departmentId) {
@@ -94,7 +103,28 @@ public class DepartmentService {
         if (memberRepository.existsByDepartment_Id(department.getId())) {
             throw new BusinessException(ErrorCode.DEPARTMENT_IN_USE);
         }
+        if (isReferencedByDepartment(department.getId())) {
+            throw new BusinessException(ErrorCode.DEPARTMENT_IN_USE);
+        }
         departmentRepository.delete(department);
+    }
+
+    /**
+     * 부서 공개 일정과 부서 공개 위키 범위가 이 부서를 참조하는지 확인합니다.
+     * 일정은 schedule_department 조인 테이블의 FK가 삭제를 막지만, FK 위반은 계약이 요구하는
+     * 409 DEPARTMENT_IN_USE가 아니라 500으로 나가므로 삭제 전에 미리 확인한다.
+     * 위키 범위는 wiki_scope.department_refs JSON으로 저장되어 FK를 걸 수 없으므로
+     * (backend-spring-convention.md 3절) 부서 공개 범위만 읽어 메모리에서 판정한다.
+     * 부서 공개가 아닌 행의 참조 목록은 항상 비어 있다.
+     */
+    private boolean isReferencedByDepartment(long departmentId) {
+        if (scheduleRepository.existsByDepartments_DepartmentId(departmentId)) {
+            return true;
+        }
+        return wikiScopeRepository
+                .findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT)
+                .stream()
+                .anyMatch(scope -> scope.departmentRefs().contains(departmentId));
     }
 
     private Department findDepartment(Long departmentId) {
