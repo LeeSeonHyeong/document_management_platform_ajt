@@ -1,0 +1,41 @@
+{
+  "slug": "2026-07-27-opus46-12docs",
+  "startedAt": "2026-07-27T20:18",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md",
+    "03-career-progression.md",
+    "04-benefits.md",
+    "05-offboarding.md",
+    "06-security.md",
+    "07-time-off.md",
+    "08-compensation.md",
+    "09-spending-money.md",
+    "10-onboarding.md",
+    "11-offsites.md",
+    "12-communication.md"
+  ],
+  "purpose": "12건 누적에서 카테고리 수렴·merge 발동·조각 발생·시간 추이를 본다. 본 측정",
+  "code": {
+    "guideSha": "unknown (사후 기록)",
+    "schemaSha": "unknown (사후 기록)",
+    "instructionSha": "unknown (사후 기록)",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ],
+    "note": "2026-07-27-opus46-2docs 와 동일한 코드."
+  },
+  "backfilled": true
+}

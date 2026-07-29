@@ -7,7 +7,7 @@ into "the claim is supported" (FR-WIKI-001, NFR-AI-002). That was the first item
 on the earlier spike's unverified list.
 """
 
-from .conftest import SCOPE
+from ..conftest import SCOPE
 from wiki_mcp.tools.lint import LintHandler
 from wiki_mcp.tools.references import sync_references
 
