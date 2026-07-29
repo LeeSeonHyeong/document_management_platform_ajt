@@ -3,6 +3,7 @@ package com.ajt.backend.global.ai.client;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -449,6 +450,250 @@ class RestClientAiClientTest {
         );
 
         assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("Wiki 관리자 수정 요청을 JSON 계약대로 보내고 변경안을 읽는다")
+    void sendsWikiEditContractAndReadsPostmanSuccess() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-API-Key", "local-dev-key"))
+                .andExpect(header(HttpHeaders.CONTENT_TYPE, containsString(MediaType.APPLICATION_JSON_VALUE)))
+                .andExpect(content().json("""
+                        {
+                          "wikiId": "100",
+                          "scopeKey": "D1-D2",
+                          "instruction": "중복된 휴가 규정을 하나로 정리해줘.",
+                          "currentWiki": {
+                            "title": "휴가 규정",
+                            "contentMarkdown": "# 휴가 규정\\n..."
+                          },
+                          "evidenceDocuments": [],
+                          "chatHistory": []
+                        }
+                        """))
+                .andRespond(withSuccess("""
+                        {
+                          "agentMessage": "중복된 휴가 규정을 하나로 정리했습니다.",
+                          "wikiChanges": [
+                            {
+                              "action": "update",
+                              "wikiId": "100",
+                              "title": "휴가 규정",
+                              "contentMarkdown": "# 휴가 규정\\n정리된 본문..."
+                            }
+                          ],
+                          "categoryChanges": [],
+                          "relationChanges": [],
+                          "indexEntries": [
+                            {
+                              "wikiRef": "100",
+                              "order": 1,
+                              "title": "휴가 규정",
+                              "summary": "정리된 휴가 규정"
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        WikiEditResponse response = client.editWiki(wikiEditRequest());
+
+        assertThat(response.agentMessage()).isEqualTo("중복된 휴가 규정을 하나로 정리했습니다.");
+        assertThat(response.wikiChanges()).hasSize(1);
+        assertThat(response.wikiChanges().getFirst().action()).isEqualTo("update");
+        assertThat(response.wikiChanges().getFirst().wikiId()).isEqualTo("100");
+        assertThat(response.categoryChanges()).isEmpty();
+        assertThat(response.relationChanges()).isEmpty();
+        assertThat(response.indexEntries()).hasSize(1);
+        assertThat(response.indexEntries().getFirst().wikiRef()).isEqualTo("100");
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 요청에 계약에 없는 필드를 보내지 않는다")
+    void sendsOnlyContractFieldsForWikiEdit() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andExpect(content().string(not(containsString("currentCategories"))))
+                .andRespond(withSuccess("""
+                        {
+                          "agentMessage": "변경이 없습니다.",
+                          "wikiChanges": [],
+                          "categoryChanges": [],
+                          "relationChanges": [],
+                          "indexEntries": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        client.editWiki(wikiEditRequest());
+
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 요청은 근거 문서와 대화 이력을 계약대로 전달한다")
+    void sendsEvidenceAndChatHistoryForWikiEdit() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andExpect(content().json("""
+                        {
+                          "evidenceDocuments": [
+                            {
+                              "documentId": "15",
+                              "originalFileName": "취업규칙.pdf",
+                              "parsedMarkdown": "# 취업 규칙\\n본문..."
+                            }
+                          ],
+                          "chatHistory": [
+                            {"senderType": "admin", "content": "중복을 정리해줘"},
+                            {"senderType": "agent", "content": "어떤 문서를 기준으로 할까요?"}
+                          ]
+                        }
+                        """))
+                .andRespond(withSuccess("""
+                        {
+                          "agentMessage": "정리했습니다.",
+                          "wikiChanges": [],
+                          "categoryChanges": [],
+                          "relationChanges": [],
+                          "indexEntries": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        client.editWiki(new WikiEditRequest(
+                "100",
+                "D1-D2",
+                "중복된 휴가 규정을 하나로 정리해줘.",
+                new WikiEditRequest.WikiBody("휴가 규정", "# 휴가 규정\n..."),
+                List.of(new WikiEditRequest.EvidenceDocument("15", "취업규칙.pdf", "# 취업 규칙\n본문...")),
+                List.of(
+                        new WikiEditRequest.ChatMessage("admin", "중복을 정리해줘"),
+                        new WikiEditRequest.ChatMessage("agent", "어떤 문서를 기준으로 할까요?"))
+        ));
+
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 오류 응답을 계약 코드로 매핑한다")
+    void mapsWikiEditBadRequest() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "timestamp": "2026-07-27T09:00:00Z",
+                                  "status": 400,
+                                  "error": "Bad Request",
+                                  "code": "INVALID_WIKI_EDIT_REQUEST",
+                                  "message": "Wiki 수정 지시 또는 문맥이 올바르지 않습니다.",
+                                  "path": "/internal/v1/wiki-edits",
+                                  "fieldErrors": []
+                                }
+                                """));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.editWiki(wikiEditRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.BAD_REQUEST);
+        assertThat(error.upstreamCode()).isEqualTo("INVALID_WIKI_EDIT_REQUEST");
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 실패 500을 계약 코드로 매핑한다")
+    void mapsWikiEditFailure() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "timestamp": "2026-07-27T09:00:00Z",
+                                  "status": 500,
+                                  "error": "Internal Server Error",
+                                  "code": "WIKI_EDIT_FAILED",
+                                  "message": "Wiki 수정에 실패했습니다.",
+                                  "path": "/internal/v1/wiki-edits",
+                                  "fieldErrors": []
+                                }
+                                """));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.editWiki(wikiEditRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.upstreamStatus()).isEqualTo(500);
+        assertThat(error.upstreamCode()).isEqualTo("WIKI_EDIT_FAILED");
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 응답에 agentMessage가 없으면 잘못된 응답으로 처리한다")
+    void mapsMissingAgentMessageToInvalidResponse() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andRespond(withSuccess("""
+                        {
+                          "wikiChanges": [],
+                          "categoryChanges": [],
+                          "relationChanges": [],
+                          "indexEntries": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.editWiki(wikiEditRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 응답의 목차 항목이 불완전하면 잘못된 응답으로 처리한다")
+    void mapsIncompleteIndexEntryToInvalidResponse() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
+                .andRespond(withSuccess("""
+                        {
+                          "agentMessage": "정리했습니다.",
+                          "wikiChanges": [],
+                          "categoryChanges": [],
+                          "relationChanges": [],
+                          "indexEntries": [
+                            {"wikiRef": "100", "order": null, "title": "휴가 규정", "summary": "요약"}
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.editWiki(wikiEditRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("Wiki 수정 타임아웃과 연결 실패를 구분해 매핑한다")
+    void mapsWikiEditTransportFailures() {
+        assertThat(catchThrowableOfType(
+                () -> clientWithFailure(new SocketTimeoutException()).editWiki(wikiEditRequest()),
+                AiClientException.class).failureType())
+                .isEqualTo(AiClientFailureType.TIMEOUT);
+
+        assertThat(catchThrowableOfType(
+                () -> clientWithFailure(new ConnectException()).editWiki(wikiEditRequest()),
+                AiClientException.class).failureType())
+                .isEqualTo(AiClientFailureType.CONNECTION_FAILED);
+    }
+
+    private WikiEditRequest wikiEditRequest() {
+        return new WikiEditRequest(
+                "100",
+                "D1-D2",
+                "중복된 휴가 규정을 하나로 정리해줘.",
+                new WikiEditRequest.WikiBody("휴가 규정", "# 휴가 규정\n..."),
+                List.of(),
+                List.of()
+        );
     }
 
     private ScheduleExtractionRequest scheduleExtractionRequest() {

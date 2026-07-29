@@ -22,6 +22,7 @@ public class RestClientAiClient implements AiClient {
     private static final String SCHEDULE_EXTRACTION_PATH = "/internal/v1/schedule-extractions";
     private static final String WIKI_CONTEXT_SELECTION_PATH = "/internal/v1/wiki-context-selections";
     private static final String WIKI_TRANSFORMATION_PATH = "/internal/v1/wiki-transformations";
+    private static final String WIKI_EDIT_PATH = "/internal/v1/wiki-edits";
 
     private final RestClient restClient;
     private final AiClientErrorMapper errorMapper;
@@ -100,6 +101,23 @@ public class RestClientAiClient implements AiClient {
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
                     .body(WikiTransformationResponse.class);
+
+            return validateResponse(response);
+        } catch (ResourceAccessException exception) {
+            throw transportFailure(exception);
+        }
+    }
+
+    @Override
+    public WikiEditResponse editWiki(WikiEditRequest request) {
+        try {
+            WikiEditResponse response = restClient.post()
+                    .uri(WIKI_EDIT_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
+                    .body(WikiEditResponse.class);
 
             return validateResponse(response);
         } catch (ResourceAccessException exception) {
@@ -207,26 +225,12 @@ public class RestClientAiClient implements AiClient {
     private WikiTransformationResponse validateResponse(WikiTransformationResponse response) {
         if (response == null
                 || isBlank(response.summary())
-                || response.categoryChanges() == null
-                || response.wikiChanges() == null
-                || response.relationChanges() == null
-                || response.indexEntries() == null
-                || response.categoryChanges().stream().anyMatch(change -> change == null || isBlank(change.action()))
-                || response.wikiChanges().stream().anyMatch(change -> change == null || isBlank(change.action()))
-                || response.relationChanges().stream().anyMatch(change -> change == null || isBlank(change.action()))
-                || response.indexEntries().stream().anyMatch(entry -> entry == null
-                || isBlank(entry.wikiRef())
-                || entry.order() == null
-                || isBlank(entry.title())
-                || isBlank(entry.summary()))) {
-            throw new AiClientException(
-                    AiClientFailureType.INVALID_RESPONSE,
-                    200,
-                    null,
-                    null,
-                    List.<FieldErrorResponse>of(),
-                    null
-            );
+                || hasInvalidChanges(
+                        response.categoryChanges(),
+                        response.wikiChanges(),
+                        response.relationChanges(),
+                        response.indexEntries())) {
+            throw invalidResponse();
         }
         return new WikiTransformationResponse(
                 response.summary(),
@@ -235,6 +239,49 @@ public class RestClientAiClient implements AiClient {
                 List.copyOf(response.relationChanges()),
                 List.copyOf(response.indexEntries())
         );
+    }
+
+    private WikiEditResponse validateResponse(WikiEditResponse response) {
+        if (response == null
+                || isBlank(response.agentMessage())
+                || hasInvalidChanges(
+                        response.categoryChanges(),
+                        response.wikiChanges(),
+                        response.relationChanges(),
+                        response.indexEntries())) {
+            throw invalidResponse();
+        }
+        return new WikiEditResponse(
+                response.agentMessage(),
+                List.copyOf(response.categoryChanges()),
+                List.copyOf(response.wikiChanges()),
+                List.copyOf(response.relationChanges()),
+                List.copyOf(response.indexEntries())
+        );
+    }
+
+    /**
+     * Wiki 변환·수정 응답이 공유하는 변경 목록 검증입니다.
+     * 목록 자체가 없거나, 각 변경에 action이 없거나, 목차 항목의 필수 값이 비면 잘못된 응답으로 본다.
+     */
+    private boolean hasInvalidChanges(
+            List<WikiTransformationResponse.CategoryChange> categoryChanges,
+            List<WikiTransformationResponse.WikiChange> wikiChanges,
+            List<WikiTransformationResponse.RelationChange> relationChanges,
+            List<WikiTransformationResponse.IndexEntry> indexEntries
+    ) {
+        return categoryChanges == null
+                || wikiChanges == null
+                || relationChanges == null
+                || indexEntries == null
+                || categoryChanges.stream().anyMatch(change -> change == null || isBlank(change.action()))
+                || wikiChanges.stream().anyMatch(change -> change == null || isBlank(change.action()))
+                || relationChanges.stream().anyMatch(change -> change == null || isBlank(change.action()))
+                || indexEntries.stream().anyMatch(entry -> entry == null
+                        || isBlank(entry.wikiRef())
+                        || entry.order() == null
+                        || isBlank(entry.title())
+                        || isBlank(entry.summary()));
     }
 
     private AiClientException transportFailure(ResourceAccessException exception) {
