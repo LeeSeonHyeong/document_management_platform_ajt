@@ -181,8 +181,9 @@ for (const match of sql.matchAll(
   sqlTables.set(tableName, columns);
 }
 
-// 부서 참조 무결성을 DB가 강제하도록 schedule_department 조인 테이블을 유지해 16개다.
-expect(sqlTables.size === 16, `SQL CREATE TABLE 수가 16개가 아님: ${sqlTables.size}`);
+// 부서 참조 무결성을 DB가 강제하도록 schedule_department 조인 테이블을 유지하고,
+// Wiki 본문 전문 검색을 위한 파생 색인 wiki_search_chunk 를 더해 17개다.
+expect(sqlTables.size === 17, `SQL CREATE TABLE 수가 17개가 아님: ${sqlTables.size}`);
 expect(
   sqlTables.size === entityByName.size &&
     [...sqlTables.keys()].every((name) => entityByName.has(name)),
@@ -308,18 +309,18 @@ expect(
   ),
   "삭제된 일정 첨부파일 API가 남아 있음",
 );
-expect(publicRequests.length === 55, `공개 API 수가 55개가 아님: ${publicRequests.length}`);
+expect(publicRequests.length === 56, `공개 API 수가 56개가 아님: ${publicRequests.length}`);
 expect(internalRequests.length === 7, `내부 API 수가 7개가 아님: ${internalRequests.length}`);
 
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
 expect(
-  collectionVariable(publicCollection, "contractVersion") === "1.3.0",
-  "공개 API 계약 버전이 1.3.0이 아님",
+  collectionVariable(publicCollection, "contractVersion") === "1.3.1",
+  "공개 API 계약 버전이 1.3.1이 아님",
 );
 expect(
-  collectionVariable(internalCollection, "contractVersion") === "1.3.0",
-  "내부 API 계약 버전이 1.3.0이 아님",
+  collectionVariable(internalCollection, "contractVersion") === "1.3.1",
+  "내부 API 계약 버전이 1.3.1이 아님",
 );
 
 const p0PublicEndpoints = [
