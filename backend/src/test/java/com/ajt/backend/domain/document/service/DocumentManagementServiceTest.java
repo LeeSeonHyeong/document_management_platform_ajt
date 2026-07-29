@@ -8,7 +8,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
+import com.ajt.backend.domain.document.api.DocumentListResponse;
 import com.ajt.backend.domain.document.api.DocumentRetryResponse;
+import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
@@ -22,9 +24,14 @@ import java.lang.reflect.Field;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 @DisplayName("원본문서 관리 서비스")
 class DocumentManagementServiceTest {
@@ -163,6 +170,43 @@ class DocumentManagementServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+    }
+
+    @Test
+    @DisplayName("관리자는 필터·페이지 정보로 원본문서 목록을 조회한다")
+    void findDocumentsForAdmin() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        assignTime(document, "createdAt", Instant.parse("2026-07-28T05:00:00Z"));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(document), PageRequest.of(0, 20), 1));
+        given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
+
+        DocumentListResponse response =
+                service.findDocuments(1, 20, "ALL", null, "uploaded", null, null, null, null, null);
+
+        assertThat(response.totalCount()).isEqualTo(1);
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(20);
+        assertThat(response.items()).hasSize(1);
+        DocumentSummaryResponse item = response.items().get(0);
+        assertThat(item.documentId()).isEqualTo("15");
+        assertThat(item.originalFileName()).isEqualTo("rule.md");
+        assertThat(item.scopeKey()).isEqualTo("ALL");
+        assertThat(item.status()).isEqualTo("uploaded");
+        assertThat(item.category().name()).isEqualTo("취업규칙");
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 문서 목록을 조회할 수 없다")
+    void rejectsNonAdminList() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+
+        assertThatThrownBy(() -> service.findDocuments(1, 20, null, null, null, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
     }
 
     private Document uploadedDocument() {
