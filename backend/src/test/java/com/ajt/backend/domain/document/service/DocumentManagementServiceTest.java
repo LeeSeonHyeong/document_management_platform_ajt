@@ -3,10 +3,13 @@ package com.ajt.backend.domain.document.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
 import com.ajt.backend.domain.document.api.DocumentListResponse;
 import com.ajt.backend.domain.document.api.DocumentRetryResponse;
@@ -14,10 +17,15 @@ import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
+import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.member.Member;
+import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.lang.reflect.Field;
@@ -42,13 +50,17 @@ class DocumentManagementServiceTest {
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final DocumentParseJobLauncher parseJobLauncher = mock(DocumentParseJobLauncher.class);
     private final DocumentFileStorage documentFileStorage = mock(DocumentFileStorage.class);
+    private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
     private final DocumentManagementService service = new DocumentManagementService(
             currentMemberProvider,
             documentRepository,
             documentCategoryRepository,
             aiJobRepository,
             parseJobLauncher,
-            documentFileStorage
+            documentFileStorage,
+            memberRepository,
+            wikiScopeRepository
     );
 
     @Test
@@ -173,7 +185,7 @@ class DocumentManagementServiceTest {
     }
 
     @Test
-    @DisplayName("관리자는 필터·페이지 정보로 원본문서 목록을 조회한다")
+    @DisplayName("관리자는 접근범위 제한 없이 필터·페이지 정보로 전체 목록을 조회한다")
     void findDocumentsForAdmin() throws Exception {
         Document document = uploadedDocument();
         assignId(document, 15L);
@@ -184,7 +196,7 @@ class DocumentManagementServiceTest {
         given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
 
         DocumentListResponse response =
-                service.findDocuments(1, 20, "ALL", null, "uploaded", null, null, null, null, null);
+                service.findDocuments(1, 20, "ALL", null, "uploaded", null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isEqualTo(1);
         assertThat(response.page()).isEqualTo(1);
@@ -196,17 +208,64 @@ class DocumentManagementServiceTest {
         assertThat(item.scopeKey()).isEqualTo("ALL");
         assertThat(item.status()).isEqualTo("uploaded");
         assertThat(item.category().name()).isEqualTo("취업규칙");
+        // 관리자는 접근범위 계산이 필요 없으므로 부서/공개범위 조회를 하지 않는다.
+        verify(memberRepository, never()).findById(anyLong());
+        verify(wikiScopeRepository, never()).findByVisibilityType(any());
     }
 
     @Test
-    @DisplayName("관리자가 아니면 문서 목록을 조회할 수 없다")
-    void rejectsNonAdminList() {
+    @DisplayName("사원은 접근 가능한 문서만 조회하며, 소속 부서·공개범위를 조회해 필터를 만든다")
+    void findDocumentsForEmployee() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+        // 사원(20)의 소속 부서 = 2
+        Department department = mock(Department.class);
+        given(department.getId()).willReturn(2L);
+        Member member = mock(Member.class);
+        given(member.getDepartment()).willReturn(department);
+        given(memberRepository.findById(20L)).willReturn(Optional.of(member));
+        // 부서 2를 포함하는 공개범위(D2)가 존재
+        WikiScope departmentScope = mock(WikiScope.class);
+        given(departmentScope.departmentRefs()).willReturn(List.of(2L));
+        given(departmentScope.scopeKey()).willReturn("D2");
+        given(wikiScopeRepository.findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT))
+                .willReturn(List.of(departmentScope));
+        given(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(document), PageRequest.of(0, 20), 1));
+        given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
 
-        assertThatThrownBy(() -> service.findDocuments(1, 20, null, null, null, null, null, null, null, null))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+        DocumentListResponse response =
+                service.findDocuments(1, 20, null, null, null, null, null, null, null, null, null);
+
+        assertThat(response.items()).hasSize(1);
+        assertThat(response.items().get(0).documentId()).isEqualTo("15");
+        verify(memberRepository).findById(20L);
+        verify(wikiScopeRepository).findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT);
+    }
+
+    @Test
+    @DisplayName("departmentId 필터를 주면 해당 부서를 포함하는 공개범위를 조회해 필터로 사용한다")
+    void findDocumentsWithDepartmentFilter() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        WikiScope departmentScope = mock(WikiScope.class);
+        given(departmentScope.departmentRefs()).willReturn(List.of(2L));
+        given(departmentScope.scopeKey()).willReturn("D2");
+        given(wikiScopeRepository.findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT))
+                .willReturn(List.of(departmentScope));
+        given(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(document), PageRequest.of(0, 20), 1));
+        given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
+
+        DocumentListResponse response =
+                service.findDocuments(1, 20, null, null, null, null, null, 2L, null, null, null);
+
+        assertThat(response.items()).hasSize(1);
+        // 관리자여도 departmentId 필터가 있으면 공개범위 조회가 일어난다.
+        verify(wikiScopeRepository).findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT);
+        verify(memberRepository, never()).findById(anyLong());
     }
 
     private Document uploadedDocument() {
