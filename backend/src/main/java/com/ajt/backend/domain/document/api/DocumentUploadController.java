@@ -10,10 +10,13 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -100,5 +103,22 @@ public class DocumentUploadController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public DocumentRetryResponse retry(@PathVariable long documentId) {
         return documentManagementService.retry(documentId);
+    }
+
+    // 작업(DOC-05): 문서 메타데이터(카테고리·공개범위) 수정 → 재처리.
+    @PatchMapping("/api/v1/documents/{documentId}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DocumentUpdateResponse update(
+            @PathVariable long documentId,
+            @RequestBody DocumentMetadataUpdateRequest request
+    ) {
+        return documentManagementService.update(documentId, request);
+    }
+
+    // 작업(DOC-05): 문서 하드 삭제 → 해당 범위 Wiki 재처리.
+    @DeleteMapping("/api/v1/documents/{documentId}")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DocumentDeleteResponse delete(@PathVariable long documentId) {
+        return documentManagementService.delete(documentId);
     }
 }

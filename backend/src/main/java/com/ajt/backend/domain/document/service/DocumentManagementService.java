@@ -1,9 +1,13 @@
 package com.ajt.backend.domain.document.service;
 
+import com.ajt.backend.domain.document.ScopeKey;
+import com.ajt.backend.domain.document.api.DocumentDeleteResponse;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
 import com.ajt.backend.domain.document.api.DocumentListResponse;
+import com.ajt.backend.domain.document.api.DocumentMetadataUpdateRequest;
 import com.ajt.backend.domain.document.api.DocumentRetryResponse;
 import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
+import com.ajt.backend.domain.document.api.DocumentUpdateResponse;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
@@ -20,6 +24,7 @@ import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
+import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -144,6 +149,170 @@ public class DocumentManagementService {
                 String.valueOf(document.id()),
                 job.status().name().toLowerCase(),
                 LocalDateTime.now()
+        );
+    }
+
+    /**
+     * 작업(DOC-05): 원본문서 메타데이터(카테고리·공개범위) 수정.
+     * 공개범위가 바뀌면 기존·새 범위 Wiki를 각각 현재 문서 기준으로 재처리한다(202 + 재처리 jobId + 수정된 문서).
+     */
+    @Transactional
+    public DocumentUpdateResponse update(long documentId, DocumentMetadataUpdateRequest request) {
+        CurrentMember admin = requireAdmin();
+        Document document = findDocument(documentId);
+        ensureNotInProgress(document);
+
+        if (request.documentCategoryId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "documentCategoryId는 필수입니다.");
+        }
+        ScopeKey newScope;
+        try {
+            newScope = ScopeKey.from(request.visibilityType(), request.departmentIds());
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, exception.getMessage());
+        }
+        String newScopeKey = newScope.value();
+
+        // 리뷰(#4): 새 카테고리가 없으면 404로 처리한다(계약의 400 "카테고리·범위 조합 오류"로 볼 여지도 있으나 방어적으로 404).
+        DocumentCategory category = documentCategoryRepository.findById(request.documentCategoryId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.DOCUMENT_CATEGORY_NOT_FOUND));
+        if (!category.belongsToScope(newScopeKey)) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "카테고리와 공개 범위가 일치하지 않습니다.");
+        }
+
+        String oldScopeKey = document.scopeKey();
+        boolean scopeChanged = !oldScopeKey.equals(newScopeKey);
+        ensureWikiScope(newScope);
+        if (scopeChanged) {
+            // 범위가 바뀌면 기존 범위는 문서가 빠진 채 인덱스를 다시 만들어야 해 범위 전체를 재처리한다.
+            // 이때 기존 범위에 처리 중 문서가 있으면 안전하게 재생성할 수 없어 충돌로 막는다.
+            ensureScopeNotProcessing(oldScopeKey);
+        }
+
+        document.changeCategoryAndScope(request.documentCategoryId(), newScopeKey);
+
+        // 새(또는 같은) 범위에는 이 문서만 증분 재처리한다(업로드·재시도와 동일한 문서 단위 패턴).
+        AiJob job = reprocessDocument(admin.memberId(), document);
+        if (scopeChanged) {
+            reprocessScope(admin.memberId(), oldScopeKey);
+        }
+
+        return new DocumentUpdateResponse(
+                String.valueOf(job.id()),
+                job.status().name().toLowerCase(),
+                toDetail(document, category)
+        );
+    }
+
+    /**
+     * 작업(DOC-05): 원본문서 하드 삭제.
+     * 문서와 관련 파일을 삭제한 뒤 해당 범위 Wiki 재처리를 트리거한다(202 + jobId).
+     *
+     * <p>한계: 삭제된 문서가 만든 Wiki의 "확정 삭제"(고아 Wiki 제거)는 아직 하지 않는다.
+     * 현재는 남은 문서 재처리 트리거까지이며, 실제 Wiki 반영·정리는 AI/Wiki 연동 이후에 이뤄진다.
+     * TODO(위키): 문서 삭제 시 이 문서를 참조하는 Wiki의 documentRefs에서 문서를 제거하고,
+     *  참조가 0이 된 Wiki를 삭제(파일·목차·관계 정리)한다. wiki 도메인/AI 연동 후 별도 티켓으로 진행.
+     */
+    @Transactional
+    public DocumentDeleteResponse delete(long documentId) {
+        CurrentMember admin = requireAdmin();
+        Document document = findDocument(documentId);
+        ensureNotInProgress(document);
+        String scopeKey = document.scopeKey();
+        String originalPath = document.originalPath();
+        String parsedPath = document.parsedPath();
+        // 삭제 후 남은 문서로 범위 인덱스를 다시 만들어야 하므로 범위 단위로 재처리한다. 처리 중 문서가 있으면 충돌.
+        ensureScopeNotProcessing(scopeKey);
+
+        documentRepository.delete(document);
+        documentRepository.flush();
+        deleteQuietly(originalPath);
+        if (parsedPath != null) {
+            deleteQuietly(parsedPath);
+        }
+
+        // 남은 문서 기준 범위 재처리를 트리거한다(실제 Wiki 반영·고아 Wiki 정리는 AI/Wiki 연동 후).
+        AiJob job = reprocessScope(admin.memberId(), scopeKey);
+        return new DocumentDeleteResponse(
+                String.valueOf(job.id()),
+                scopeKey,
+                job.status().name().toLowerCase()
+        );
+    }
+
+    // 문서 한 건만 재처리 대상(UPLOADED)으로 되돌리고 AI 작업을 생성·실행한다(증분: 업로드·재시도와 동일한 패턴).
+    // 파일 교체·같은 범위 수정처럼 특정 문서만 바뀐 경우에 사용한다.
+    private AiJob reprocessDocument(long requesterId, Document document) {
+        document.markForReprocess();
+        AiJob job = aiJobRepository.save(AiJob.waiting(
+                requesterId,
+                document.scopeKey(),
+                document.scopeKey() + "/jobs/" + UUID.randomUUID(),
+                List.of(document.id())
+        ));
+        parseJobLauncher.launch(job);
+        return job;
+    }
+
+    // 해당 범위의 현재 문서들을 재처리 대상(UPLOADED)으로 되돌리고 재처리 AI 작업을 생성·실행한다.
+    // 문서가 빠지는 경우(범위 변경 시 기존 범위, 삭제)의 인덱스 재생성에 사용한다.
+    // 리뷰(#3): 남은 문서가 0개면 documentIds가 비어 워커가 빈 작업을 FAILED로 마감한다(허위 실패).
+    //          "빈 범위 = Wiki 비우기"는 AI 측 처리 합의가 필요하며, 계약상 202+jobId는 그대로 반환된다. 후속 과제.
+    private AiJob reprocessScope(long requesterId, String scopeKey) {
+        List<Document> documents = documentRepository.findByScopeKey(scopeKey);
+        documents.forEach(Document::markForReprocess);
+        List<Long> documentIds = documents.stream().map(Document::id).toList();
+        AiJob job = aiJobRepository.save(AiJob.waiting(
+                requesterId,
+                scopeKey,
+                scopeKey + "/jobs/" + UUID.randomUUID(),
+                documentIds
+        ));
+        parseJobLauncher.launch(job);
+        return job;
+    }
+
+    private void ensureNotInProgress(Document document) {
+        if (document.isInProgress()) {
+            throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS);
+        }
+    }
+
+    private void ensureScopeNotProcessing(String scopeKey) {
+        boolean anyProcessing = documentRepository.findByScopeKey(scopeKey).stream()
+                .anyMatch(Document::isInProgress);
+        if (anyProcessing) {
+            throw new BusinessException(ErrorCode.WIKI_EDIT_IN_PROGRESS);
+        }
+    }
+
+    private void ensureWikiScope(ScopeKey scope) {
+        wikiScopeRepository.findById(scope.value()).orElseGet(() -> wikiScopeRepository.save(
+                "ALL".equals(scope.value())
+                        ? WikiScope.all()
+                        : WikiScope.department(scope.departmentIds())));
+    }
+
+    private void deleteQuietly(String storedPath) {
+        try {
+            documentFileStorage.delete(storedPath);
+        } catch (IOException ignored) {
+            log.warn("원본문서 파일 삭제 실패(무시하고 진행): {}", storedPath);
+        }
+    }
+
+    private DocumentDetailResponse toDetail(Document document, DocumentCategory category) {
+        return new DocumentDetailResponse(
+                String.valueOf(document.id()),
+                document.originalFileName(),
+                document.scopeKey(),
+                new DocumentDetailResponse.CategoryResponse(String.valueOf(category.id()), category.name()),
+                document.status().name().toLowerCase(),
+                document.failureReason(),
+                "/api/v1/documents/%d/file".formatted(document.id()),
+                List.of(),
+                document.createdAt(),
+                document.updatedAt()
         );
     }
 

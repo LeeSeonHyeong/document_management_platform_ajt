@@ -3,10 +3,13 @@ package com.ajt.backend.domain.document.api;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -26,6 +29,7 @@ import java.util.List;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -229,6 +233,49 @@ class DocumentUploadControllerTest {
         mockMvc.perform(get("/api/v1/documents/{documentId}/file", 15L))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("문서 메타데이터 수정 성공 시 202와 재처리 작업·수정된 문서를 반환한다")
+    void updatesDocumentMetadata() throws Exception {
+        given(documentManagementService.update(eq(15L), any(DocumentMetadataUpdateRequest.class)))
+                .willReturn(new DocumentUpdateResponse("42", "waiting", new DocumentDetailResponse(
+                        "15",
+                        "rule.md",
+                        "D1-D3",
+                        new DocumentDetailResponse.CategoryResponse("4", "사규"),
+                        "uploaded",
+                        null,
+                        "/api/v1/documents/15/file",
+                        List.of(),
+                        Instant.parse("2026-07-28T05:00:00Z"),
+                        Instant.parse("2026-07-28T05:10:00Z")
+                )));
+
+        mockMvc.perform(patch("/api/v1/documents/{documentId}", 15L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentCategoryId\":4,\"visibilityType\":\"department\",\"departmentIds\":[1,3]}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.status").value("waiting"))
+                .andExpect(jsonPath("$.document.documentId").value("15"))
+                .andExpect(jsonPath("$.document.scopeKey").value("D1-D3"))
+                .andExpect(jsonPath("$.document.category.name").value("사규"));
+    }
+
+    @Test
+    @DisplayName("문서 삭제 성공 시 202와 Wiki 재처리 작업 정보를 반환한다")
+    void deletesDocument() throws Exception {
+        given(documentManagementService.delete(15L))
+                .willReturn(new DocumentDeleteResponse("42", "ALL", "waiting"));
+
+        mockMvc.perform(delete("/api/v1/documents/{documentId}", 15L))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.status").value("waiting"));
+
+        verify(documentManagementService).delete(15L);
     }
 
     private MockMultipartFile markdownFile(String name) {
