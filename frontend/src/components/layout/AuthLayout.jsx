@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, CheckCircle2 } from 'lucide-react'
 
 // 인증 화면(로그인/회원가입/비밀번호) 공통 레이아웃.
 // 좌측 브랜드 패널(보라 그라데이션) + 우측 폼 영역.
@@ -13,15 +13,31 @@ export default function AuthLayout() {
           </span>
           <span className="text-lg font-bold">AJT</span>
         </div>
-        <div className="space-y-4">
-          <h1 className="text-3xl font-bold leading-snug">
-            사내 지식과 일정을
-            <br />
-            AI로 한곳에서
-          </h1>
-          <p className="text-sm text-white/70">
-            Enterprise AI Workspace · 몇 분이면 팀에 합류합니다.
-          </p>
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold leading-snug">
+              몇 분이면
+              <br />
+              팀에 합류합니다
+            </h1>
+            <p className="text-sm text-white/70">
+              사내 지식과 일정을 AI로 한곳에서 · Enterprise AI Workspace
+            </p>
+          </div>
+          <ul className="space-y-2.5 text-sm text-white/80">
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 shrink-0 text-white/70" />
+              원본 문서를 AI가 사내 위키로 자동 정리
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 shrink-0 text-white/70" />
+              전사·부서·개인 일정을 한 달력에서 관리
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 shrink-0 text-white/70" />
+              권한 내 지식·일정을 챗봇으로 즉시 질의응답
+            </li>
+          </ul>
         </div>
         <p className="text-xs text-white/50">© 2026 AUTO Janitor Tool</p>
       </div>

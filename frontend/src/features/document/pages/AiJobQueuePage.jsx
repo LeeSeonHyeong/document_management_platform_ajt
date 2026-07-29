@@ -108,7 +108,7 @@ export default function AiJobQueuePage() {
 
       <AiJobStartDialog
         open={startOpen}
-        documentCount={results.length}
+        documents={results.map((r) => docById[r.documentId]).filter(Boolean)}
         onClose={() => setStartOpen(false)}
         onConfirm={() => {
           // 작업은 업로드 시점에 이미 생성(waiting)돼 있으므로 진행 화면으로 이동만 한다.
