@@ -5,6 +5,7 @@ import com.ajt.backend.domain.wiki.model.WikiCategory;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
+import com.ajt.backend.global.ai.client.WikiEditResponse;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.CategoryChange;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.Evidence;
@@ -59,16 +60,51 @@ public class WikiTransformationApplier {
      * 변환 결과를 반영하고 생성·수정된 Wiki ID를 반환합니다. 반환값은 문서의 document_wiki_refs가 됩니다.
      */
     public List<Long> apply(String scopeKey, long documentId, WikiTransformationResponse response) {
-        WikiIndex previousIndex = WikiIndex.parse(readIndex(scopeKey));
-        Map<String, Long> categoryIdsByRef = applyCategoryChanges(scopeKey, response.categoryChanges());
-        WikiChangeResult wikiResult = applyWikiChanges(
+        return apply(
                 scopeKey,
                 documentId,
-                nullSafe(response.wikiChanges()),
+                response.categoryChanges(),
+                response.wikiChanges(),
+                response.relationChanges(),
+                response.indexEntries()
+        );
+    }
+
+    /**
+     * 관리자 대화로 지시한 Wiki 수정 결과를 반영합니다.
+     *
+     * <p>변경 목록 구조는 변환 응답과 같아 같은 반영 로직을 씁니다.
+     * 다만 새 원본문서가 없으므로 문서 참조를 자동으로 더하지 않고, AI가 준 근거 문서만 반영합니다.
+     */
+    public List<Long> apply(String scopeKey, WikiEditResponse response) {
+        return apply(
+                scopeKey,
+                null,
+                response.categoryChanges(),
+                response.wikiChanges(),
+                response.relationChanges(),
+                response.indexEntries()
+        );
+    }
+
+    private List<Long> apply(
+            String scopeKey,
+            Long originDocumentId,
+            List<CategoryChange> categoryChanges,
+            List<WikiChange> wikiChanges,
+            List<RelationChange> relationChanges,
+            List<IndexEntry> indexEntries
+    ) {
+        WikiIndex previousIndex = WikiIndex.parse(readIndex(scopeKey));
+        Map<String, Long> categoryIdsByRef = applyCategoryChanges(scopeKey, categoryChanges);
+        WikiChangeResult wikiResult = applyWikiChanges(
+                scopeKey,
+                originDocumentId,
+                nullSafe(wikiChanges),
                 categoryIdsByRef
         );
-        applyRelationChanges(scopeKey, nullSafe(response.relationChanges()), wikiResult.wikiIdsByRef());
-        writeIndex(scopeKey, nullSafe(response.indexEntries()), wikiResult, previousIndex);
+        applyRelationChanges(scopeKey, nullSafe(relationChanges), wikiResult.wikiIdsByRef());
+        writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex);
         return List.copyOf(wikiResult.affectedWikiIds());
     }
 
@@ -104,7 +140,7 @@ public class WikiTransformationApplier {
 
     private WikiChangeResult applyWikiChanges(
             String scopeKey,
-            long documentId,
+            Long originDocumentId,
             List<WikiChange> changes,
             Map<String, Long> categoryIdsByRef
     ) {
@@ -118,7 +154,7 @@ public class WikiTransformationApplier {
                     long categoryId = resolveCategoryId(scopeKey, change.categoryId(), categoryIdsByRef);
                     Wiki created = wikiRepository.saveAndFlush(Wiki.create(scopeKey, categoryId, change.title()));
                     created.assignStoragePath();
-                    created.addDocumentRefs(evidenceDocumentIds(documentId, change.evidence()));
+                    created.addDocumentRefs(evidenceDocumentIds(originDocumentId, change.evidence()));
                     storeContent(scopeKey, created.id(), requireContent(change));
                     wikiRepository.save(created);
                     if (change.tempWikiId() != null && !change.tempWikiId().isBlank()) {
@@ -137,7 +173,7 @@ public class WikiTransformationApplier {
                     if (isPresent(change.contentMarkdown())) {
                         storeContent(scopeKey, wiki.id(), change.contentMarkdown());
                     }
-                    wiki.addDocumentRefs(evidenceDocumentIds(documentId, change.evidence()));
+                    wiki.addDocumentRefs(evidenceDocumentIds(originDocumentId, change.evidence()));
                     affectedWikiIds.add(wiki.id());
                 }
                 case ACTION_DELETE -> {
@@ -308,9 +344,15 @@ public class WikiTransformationApplier {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private List<Long> evidenceDocumentIds(long documentId, List<Evidence> evidence) {
+    /**
+     * 변경에 딸린 근거 문서 ID입니다.
+     * 문서 추가로 시작된 변환이면 그 문서를 항상 포함하고, 관리자 대화 수정이면 AI가 준 근거만 씁니다.
+     */
+    private List<Long> evidenceDocumentIds(Long originDocumentId, List<Evidence> evidence) {
         Set<Long> documentIds = new LinkedHashSet<>();
-        documentIds.add(documentId);
+        if (originDocumentId != null) {
+            documentIds.add(originDocumentId);
+        }
         for (Evidence item : nullSafe(evidence)) {
             Optional.ofNullable(item.documentId())
                     .filter(value -> !value.isBlank())
