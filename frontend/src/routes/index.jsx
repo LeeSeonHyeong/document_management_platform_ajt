@@ -15,6 +15,7 @@ import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import DocumentListPage from '@/features/document/pages/DocumentListPage'
 import SourceDocumentListPage from '@/features/document/pages/SourceDocumentListPage'
+import SourceDocumentDetailPage from '@/features/document/pages/SourceDocumentDetailPage'
 import AiJobQueuePage from '@/features/document/pages/AiJobQueuePage'
 import AiJobProgressPage from '@/features/document/pages/AiJobProgressPage'
 import AiJobSummaryPage from '@/features/document/pages/AiJobSummaryPage'
@@ -51,6 +52,7 @@ export const router = createBrowserRouter([
               { path: 'admin', element: <AdminPage /> },
               { path: 'admin/documents', element: <DocumentListPage /> },
               { path: 'admin/documents/source', element: <SourceDocumentListPage /> },
+              { path: 'admin/documents/source/:documentId', element: <SourceDocumentDetailPage /> },
               { path: 'admin/documents/jobs/:jobId', element: <AiJobQueuePage /> },
               { path: 'admin/documents/jobs/:jobId/progress', element: <AiJobProgressPage /> },
               { path: 'admin/documents/jobs/:jobId/summary', element: <AiJobSummaryPage /> },
