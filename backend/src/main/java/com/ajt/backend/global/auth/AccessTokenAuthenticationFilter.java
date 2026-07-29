@@ -47,6 +47,7 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        // 수정: try에는 토큰 파싱·인증 등록까지만 둔다. 인증 실패는 여기서 401로 처리하고 return으로 종료한다.
         try {
             AccessTokenData tokenData = accessTokenService.parse(accessToken.get());
             AuthenticatedMember principal = new AuthenticatedMember(
@@ -60,10 +61,14 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
                     List.of(new SimpleGrantedAuthority("ROLE_" + tokenData.role().name()))
             );
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            filterChain.doFilter(request, response);
         } catch (RuntimeException exception) {
             SecurityContextHolder.clearContext();
             responseWriter.write(response, ErrorCode.INVALID_ACCESS_TOKEN, request.getRequestURI());
+            return;
         }
+
+        // 수정: doFilter를 try 밖으로 이동. 인증 이후(컨트롤러 등)에서 난 예외가 토큰 오류(401)로
+        //       오인되거나 응답이 이중 기록되는 문제를 막기 위함.
+        filterChain.doFilter(request, response);
     }
 }
