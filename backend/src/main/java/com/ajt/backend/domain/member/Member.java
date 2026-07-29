@@ -43,7 +43,7 @@ public class Member {
     @Column(nullable = false, length = 50)
     private String name;
 
-    @Column(name = "password", nullable = false, length = 255)
+    @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
     @Column(name = "employee_no", unique = true, length = 20)
