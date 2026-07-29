@@ -1,6 +1,11 @@
 -- AJT MySQL 8.4 LTS schema
 -- Application timestamps are stored as UTC DATETIME(6).
 -- API enum values are lower snake_case; DB values are upper snake case.
+--
+-- [DB 스키마 변경 금지 원칙] 이 파일은 DB 스키마의 SSOT다. 임의로 변경하지 말 것.
+--   - 코드(엔티티)와 어긋나면 ERD를 정답으로 보고 엔티티를 이 파일에 맞춘다.
+--   - 변경이 필요하면 직접 수정하지 말고, 해당 코드에
+--     `// TODO(DB): <사유>. erd.sql 변경 필요 — 팀원 합의 후 진행` 주석을 남기고 팀 합의 후 진행한다.
 
 CREATE DATABASE IF NOT EXISTS `ajt`
     CHARACTER SET utf8mb4
