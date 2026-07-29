@@ -19,6 +19,9 @@
 ajt:
   auth:
     cookie-secure: false
+  ai:
+    # 로컬 개발 편의를 위한 기본 키. 운영에서는 AI_INTERNAL_API_KEY를 반드시 지정해야 한다.
+    internal-api-key: ${AI_INTERNAL_API_KEY:local-dev-key}
   local-data:
     enabled: true
 

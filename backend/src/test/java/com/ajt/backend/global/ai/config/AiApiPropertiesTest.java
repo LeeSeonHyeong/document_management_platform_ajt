@@ -12,7 +12,8 @@ import org.springframework.boot.test.context.SpringBootTest;
         "ajt.ai.base-url=http://ai.example:8100",
         "ajt.ai.internal-api-key=test-key",
         "ajt.ai.connect-timeout=7s",
-        "ajt.ai.read-timeout=181s"
+        "ajt.ai.read-timeout=181s",
+        "ajt.ai.schedule-extraction-read-timeout=180s"
 })
 class AiApiPropertiesTest {
     private final AiApiProperties properties;
@@ -29,6 +30,7 @@ class AiApiPropertiesTest {
         assertThat(properties.internalApiKey()).isEqualTo("test-key");
         assertThat(properties.connectTimeout()).isEqualTo(Duration.ofSeconds(7));
         assertThat(properties.readTimeout()).isEqualTo(Duration.ofSeconds(181));
+        assertThat(properties.scheduleExtractionReadTimeout()).isEqualTo(Duration.ofSeconds(180));
     }
 
     @Test

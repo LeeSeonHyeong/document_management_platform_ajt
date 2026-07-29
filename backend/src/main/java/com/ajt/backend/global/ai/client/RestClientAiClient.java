@@ -25,11 +25,24 @@ public class RestClientAiClient implements AiClient {
     private static final String WIKI_EDIT_PATH = "/internal/v1/wiki-edits";
 
     private final RestClient restClient;
+    private final RestClient scheduleExtractionRestClient;
     private final AiClientErrorMapper errorMapper;
 
-    public RestClientAiClient(RestClient restClient, ObjectMapper objectMapper) {
+    public RestClientAiClient(
+            RestClient restClient,
+            RestClient scheduleExtractionRestClient,
+            ObjectMapper objectMapper
+    ) {
         this.restClient = restClient;
+        this.scheduleExtractionRestClient = scheduleExtractionRestClient;
         this.errorMapper = new AiClientErrorMapper(objectMapper);
+    }
+
+    /**
+     * 모든 호출에 같은 클라이언트를 쓰는 생성자입니다. (타임아웃 분리가 필요 없는 테스트용)
+     */
+    public RestClientAiClient(RestClient restClient, ObjectMapper objectMapper) {
+        this(restClient, restClient, objectMapper);
     }
 
     @Override
@@ -60,7 +73,7 @@ public class RestClientAiClient implements AiClient {
     @Override
     public ScheduleExtractionResponse extractSchedules(ScheduleExtractionRequest request) {
         try {
-            ScheduleExtractionResponse response = restClient.post()
+            ScheduleExtractionResponse response = scheduleExtractionRestClient.post()
                     .uri(SCHEDULE_EXTRACTION_PATH)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(request)
