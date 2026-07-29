@@ -6,6 +6,11 @@ public enum ErrorCode {
     INVALID_REQUEST(HttpStatus.BAD_REQUEST, "요청값을 확인해주세요."),
     INVALID_DOCUMENT_UPLOAD(HttpStatus.BAD_REQUEST, "파일 형식, 개수 또는 용량 제한을 확인해주세요."),
     INVALID_DOCUMENT_STATUS(HttpStatus.CONFLICT, "문서 처리 상태를 확인해주세요."),
+    DOCUMENT_CATEGORY_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않는 문서 카테고리입니다."),
+    DOCUMENT_CATEGORY_NAME_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 문서 카테고리명입니다."),
+    DOCUMENT_CATEGORY_IN_USE(HttpStatus.CONFLICT, "사용 중인 문서 카테고리는 삭제할 수 없습니다."),
+    INVALID_SCOPE_KEY(HttpStatus.BAD_REQUEST, "scopeKey 형식이 올바르지 않습니다."),
+    WIKI_SCOPE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않거나 접근할 수 없는 Wiki 공간입니다."),
     AI_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 작업을 찾을 수 없습니다."),
     INVALID_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -28,7 +33,20 @@ public enum ErrorCode {
     SIGNUP_ALREADY_APPROVED(HttpStatus.CONFLICT, "이미 가입 완료된 이메일입니다."),
     INVALID_OR_EXPIRED_RESET_TOKEN(HttpStatus.BAD_REQUEST, "비밀번호 재설정 토큰이 올바르지 않거나 만료되었습니다."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "CSRF 토큰이 올바르지 않습니다."),
-    CSRF_TOKEN_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF 토큰을 발급하지 못했습니다.");
+    CSRF_TOKEN_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF 토큰을 발급하지 못했습니다."),
+
+    SCHEDULE_NOT_FOUND(HttpStatus.NOT_FOUND, "일정이 없거나 접근할 수 없습니다."),
+    INVALID_SCHEDULE(HttpStatus.BAD_REQUEST, "일정 입력값을 확인해주세요."),
+    INVALID_SCHEDULE_RANGE(HttpStatus.BAD_REQUEST, "일정 조회 기간이 올바르지 않습니다."),
+    INVALID_SCHEDULE_STATUS(HttpStatus.CONFLICT, "일정 상태를 확인해주세요."),
+    INVALID_SCHEDULE_SOURCE(HttpStatus.BAD_REQUEST, "일정 원본문서 형식 또는 공개 범위가 올바르지 않습니다."),
+
+    INVALID_INQUIRY(HttpStatus.BAD_REQUEST, "문의 입력값 또는 이미지 파일을 확인해주세요."),
+    INVALID_INQUIRY_FILTER(HttpStatus.BAD_REQUEST, "문의 조회 조건이 올바르지 않습니다."),
+    INQUIRY_NOT_FOUND(HttpStatus.NOT_FOUND, "문의가 없거나 조회할 수 없습니다."),
+    INQUIRY_ASSIGNEE_NOT_ELIGIBLE(HttpStatus.CONFLICT, "선택한 회원은 문의 담당자로 지정할 수 없습니다."),
+    INQUIRY_FORBIDDEN(HttpStatus.FORBIDDEN, "문의에 대한 권한이 없습니다."),
+    INQUIRY_ANSWER_NOT_FOUND(HttpStatus.NOT_FOUND, "문의 답변이 존재하지 않습니다.");
 
     private final HttpStatus status;
     private final String message;

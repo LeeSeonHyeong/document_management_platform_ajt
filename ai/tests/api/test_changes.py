@@ -1,0 +1,271 @@
+"""작업 층을 계약 응답으로 바꾼다.
+
+`pageKey` 와 `tempWikiId` 는 같은 발상이다 — DB 행이 생기기 전에 페이지를 쓰고 서로
+링크하려면 쓰는 쪽이 이름을 발급해야 한다. 계약은 그것을 파일명이 아니라 응답 안 참조로
+표현하므로 매핑이 1:1 이다.
+
+`evidence` 가 붙는 이유는 FR-AI-009 다 — 「각 변경의 근거 문서 위치」를 `summary` 문자열
+하나로는 담을 수 없다.
+"""
+
+import pytest
+
+from wiki_api.changes import (TempRefs, build_response, parse_index_entries,
+                         snapshot_citations)
+
+PAGE = """\
+---
+title: 회의 운영
+description: 정례 회의 운영 기준
+tags: [회의, 운영]
+category: 근무 정책
+---
+
+주간 회의는 30분을 넘기지 않는다[^1].
+
+[^1]: 인사규정.pdf, 3장 휴가 — "연차는 입사일을 기준으로 산정한다"
+"""
+
+
+def test_temp_refs_are_stable_and_one_to_one():
+    refs = TempRefs()
+    first = refs.for_new_page("a3f2c1d4")
+    assert first == "wiki-temp-1"
+    assert refs.for_new_page("a3f2c1d4") == "wiki-temp-1"   # 같은 키는 같은 참조
+    assert refs.for_new_page("7b91e0c2") == "wiki-temp-2"
+
+
+def test_existing_page_resolves_to_its_wiki_id():
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    assert refs.ref_for("a3f2c1d4") == "101"
+
+
+def test_index_entries_come_from_the_markdown_the_agent_wrote():
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    refs.for_new_page("7b91e0c2")
+
+    entries = parse_index_entries(
+        "# 목차\n\n"
+        "- [회의 운영](pages/a3f2c1d4.md) — 정례 회의 운영 기준\n"
+        "- [휴가 규정](pages/7b91e0c2.md) — 연차와 반차\n",
+        refs,
+    )
+
+    assert [(e.wikiRef, e.order, e.title, e.summary) for e in entries] == [
+        ("101", 1, "회의 운영", "정례 회의 운영 기준"),
+        ("wiki-temp-1", 2, "휴가 규정", "연차와 반차"),
+    ]
+
+
+def test_index_entry_without_a_summary():
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    entries = parse_index_entries("- [회의 운영](pages/a3f2c1d4.md)\n", refs)
+    assert entries[0].summary is None
+
+
+def test_index_entries_skip_links_to_unknown_pages():
+    """목차가 없는 페이지를 가리키면 Spring 이 매달린 참조를 받는다."""
+    entries = parse_index_entries("- [없음](pages/deadbeef.md) — 설명\n", TempRefs())
+    assert entries == []
+
+
+async def test_create_becomes_a_wiki_change_with_a_temp_ref(vault, scope_row):
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영", category="근무 정책",
+                   tags=["회의", "운영"])
+    from wiki_mcp.tools.references import sync_references
+    await sync_references(fs, scope_id, address, PAGE)
+
+    response = await build_response(fs, scope_id, summary="회의 운영 Wiki를 생성했습니다.")
+
+    assert response.summary == "회의 운영 Wiki를 생성했습니다."
+    change = response.wikiChanges[0]
+    assert change.action == "create"
+    assert change.tempWikiId == "wiki-temp-1"
+    assert change.wikiId is None
+    assert change.title == "회의 운영"
+    assert "주간 회의는 30분" in change.contentMarkdown
+
+
+async def test_evidence_carries_location_and_quote(vault, scope_row):
+    """lint 가 원문 대조한 그 값이 그대로 실린다 (FR-AI-009, NFR-AI-002)."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영")
+    from wiki_mcp.tools.references import sync_references
+    await sync_references(fs, scope_id, address, PAGE)
+
+    response = await build_response(fs, scope_id, summary="x")
+    evidence = response.wikiChanges[0].evidence
+
+    assert evidence, "각주가 있는데 evidence 가 비었다"
+    assert evidence[0].documentId == "101"
+    assert evidence[0].location == "3장 휴가"
+    assert evidence[0].quote == "연차는 입사일을 기준으로 산정한다"
+
+
+async def test_relation_changes_are_undirected_links(vault, scope_row):
+    """DR-002·003: Wiki-문서 관계를 양쪽 JSON 에 한 트랜잭션으로 쓴다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영")
+    from wiki_mcp.tools.references import sync_references
+    await sync_references(fs, scope_id, address, PAGE)
+
+    response = await build_response(fs, scope_id, summary="x")
+    links = [r for r in response.relationChanges if r.type == "wiki_document"]
+
+    assert links[0].action == "link"
+    assert links[0].documentId == "101"
+    assert links[0].wikiRef == "wiki-temp-1"
+
+
+async def test_an_inline_wiki_link_becomes_an_undirected_wiki_wiki_relation(vault, scope_row):
+    """DR-002·003 의 Wiki-Wiki 쪽. **이 단정이 없어서 조립이 KeyError 로 500 이었다.**
+
+    `get_forward_references()` 는 대상 문서의 주소를 `address` 컬럼으로 준다
+    (`mcp/vaultfs/local.py` 의 SELECT — `get_backlinks`·`search.py`·`references.py` 도 전부
+    그 이름을 읽는다). `changes.py` 만 `target_address` 를 읽어서, **본문에 다른 위키로 가는
+    인라인 링크가 하나라도 있으면** 변환 응답 조립이 통째로 터졌다
+    (`failureStage: assemble`). 12건 측정 코퍼스에 그런 링크가 69개였다.
+    """
+    _, scope_id, fs = vault
+    from wiki_mcp.tools.references import sync_references
+
+    target = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, target, PAGE, title="회의 운영", category="근무 정책")
+    await sync_references(fs, scope_id, target, PAGE)
+    from wiki_mcp.vaultfs.local import commit_job
+    await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "501")
+
+    linking = await fs.allocate_page(scope_id)
+    body = (PAGE.replace("title: 회의 운영", "title: 회의 준비")
+            .replace("주간 회의는 30분을 넘기지 않는다[^1].",
+                     f"자세한 것은 [회의 운영]({target})을 본다[^1]."))
+    await fs.write(scope_id, linking, body, title="회의 준비", category="근무 정책")
+    await sync_references(fs, scope_id, linking, body)
+
+    response = await build_response(fs, scope_id, summary="x")
+
+    wiki_links = [(r.action, r.wikiRef, r.targetWikiRef)
+                  for r in response.relationChanges if r.type == "wiki_wiki"]
+    assert wiki_links == [("link", "wiki-temp-1", "501")]
+
+
+async def test_remove_becomes_an_unlink_and_a_remove(vault, scope_row):
+    """재조정이 이것에 기댄다 — 사라진 문서를 가리키던 관계를 걷어내야 한다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영")
+    from wiki_mcp.tools.references import sync_references
+    await sync_references(fs, scope_id, address, PAGE)
+
+    # A tombstone (vs. an outright drop) only happens for a page already live —
+    # commit it first so `remove` has something to hand over.
+    from wiki_mcp.vaultfs.local import commit_job
+    await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "501")
+
+    await fs.remove(scope_id, address)
+
+    response = await build_response(fs, scope_id, summary="x")
+
+    assert response.wikiChanges[0].action == "remove"
+    assert any(r.action == "unlink" for r in response.relationChanges)
+
+
+async def test_dropping_a_footnote_yields_an_unlink(vault, scope_row):
+    """I4. 페이지를 고치면서 각주를 떨어뜨리면 그 Wiki-원본문서 관계는 끊어야 한다 (DR-002).
+    본문만 갱신하고 관계를 남기면 근거가 사라진 링크가 영구히 붙어 있다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    from wiki_mcp.tools.references import sync_references
+    await fs.write(scope_id, address, PAGE, title="회의 운영")
+    await sync_references(fs, scope_id, address, PAGE)
+
+    from wiki_mcp.vaultfs.local import commit_job
+    await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "501")
+
+    # 에이전트가 돌기 전의 라이브 인용 스냅샷 — 세션이 `run_agent` 앞에서 이것을 찍는다.
+    before = await snapshot_citations(fs, scope_id)
+    assert before[address] == {"101"}
+
+    stripped = PAGE.split("[^1]")[0].rstrip() + "\n"
+    await fs.write(scope_id, address, stripped, title="회의 운영")
+    await sync_references(fs, scope_id, address, stripped)
+
+    response = await build_response(fs, scope_id, summary="x", live_citations=before)
+
+    unlinks = [(r.wikiRef, r.documentId) for r in response.relationChanges
+               if r.action == "unlink" and r.type == "wiki_document"]
+    assert unlinks == [("501", "101")]
+
+
+async def test_a_kept_footnote_is_not_unlinked(vault, scope_row):
+    """유지된 각주까지 unlink 하면 반영 시점에 관계가 사라진다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    from wiki_mcp.tools.references import sync_references
+    await fs.write(scope_id, address, PAGE, title="회의 운영")
+    await sync_references(fs, scope_id, address, PAGE)
+    from wiki_mcp.vaultfs.local import commit_job
+    await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "501")
+
+    before = await snapshot_citations(fs, scope_id)
+    await fs.write(scope_id, address, PAGE + "\n한 문장 덧붙인다.\n", title="회의 운영")
+    await sync_references(fs, scope_id, address, PAGE)
+
+    response = await build_response(fs, scope_id, summary="x", live_citations=before)
+
+    assert not [r for r in response.relationChanges if r.action == "unlink"]
+
+
+async def test_wiki_change_carries_the_wiki_path(vault, scope_row):
+    """C2. Spring 이 DR-016 `wiki_path` 컬럼에 그대로 저장하고, 신규 페이지 사이의 본문
+    링크를 실제 `wikiId` 로 치환할 때 이 값이 열쇠다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영")
+
+    response = await build_response(fs, scope_id, summary="x")
+
+    assert response.wikiChanges[0].wikiPath == f"wiki/{fs.scope_key}/{address}"
+
+
+async def test_known_category_is_referenced_by_its_id_not_recreated(vault, scope_row):
+    """카테고리는 에이전트가 관리하고 관리자는 조회만 한다 (FR-WIKI-014). 그 관리가 성립하려면
+    이미 있는 이름을 다시 만들지 않고 그 `wikiCategoryId` 를 가리켜야 한다 (DR-019)."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영", category="근무 정책")
+
+    response = await build_response(fs, scope_id, summary="x",
+                                   current_categories={"근무 정책": "9"})
+
+    assert response.categoryChanges == []
+    assert response.wikiChanges[0].wikiCategoryRef == "9"
+
+
+async def test_unknown_category_is_created_and_referenced_by_temp_id(vault, scope_row):
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="회의 운영", category="근무 정책")
+
+    response = await build_response(fs, scope_id, summary="x", current_categories={})
+
+    created = response.categoryChanges[0]
+    assert created.action == "create"
+    assert created.name == "근무 정책"
+    assert created.tempCategoryId == "category-temp-1"
+    assert response.wikiChanges[0].wikiCategoryRef == "category-temp-1"
+
+
+async def test_no_changes_gives_empty_lists(vault, scope_row):
+    """재투입에서 변경 0 은 정상이다 (FR-DOC-012). 오류가 아니다."""
+    _, scope_id, fs = vault
+    response = await build_response(fs, scope_id, summary="변경이 없습니다.")
+    assert response.wikiChanges == []
+    assert response.relationChanges == []

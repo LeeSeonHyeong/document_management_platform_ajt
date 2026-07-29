@@ -1,0 +1,31 @@
+{
+  "slug": "2026-07-27-opus46-2docs-pre",
+  "startedAt": "2026-07-27T17:35",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "purpose": "C안 리팩토링(2단 저장·pageKey 주소) 직후 첫 e2e. 배관이 도는지",
+  "code": {
+    "guideSha": "unknown (사후 기록)",
+    "schemaSha": "unknown (사후 기록)",
+    "instructionSha": "unknown (사후 기록)",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ],
+    "note": "인용문 파서·각주 정리·stale 판정·주소 기준 관계 그래프 수정 **전**. index.db는 구 스키마여서 rebuild.py로 재구축했고, 원본문서명 2건은 복구되지 않아 각주가 해결되지 않는다 — 각주 지표를 다른 실험과 대조하지 말 것."
+  },
+  "backfilled": true
+}

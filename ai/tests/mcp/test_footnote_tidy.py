@@ -7,7 +7,7 @@ stops rendering them there. `append` already guarded the tail; `create` and
 `edit` did not.
 """
 
-from .conftest import SCOPE
+from ..conftest import SCOPE
 from wiki_mcp.tools.write import WriteHandler, split_trailing_footnotes, tidy_footnotes
 
 

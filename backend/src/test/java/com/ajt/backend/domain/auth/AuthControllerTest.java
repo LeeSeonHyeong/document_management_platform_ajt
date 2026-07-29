@@ -34,21 +34,27 @@ import org.springframework.transaction.annotation.Transactional;
 @AutoConfigureMockMvc
 @Transactional
 class AuthControllerTest {
+    private final MockMvc mockMvc;
+    private final DepartmentRepository departmentRepository;
+    private final MemberRepository memberRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final AccessTokenService accessTokenService;
+
 
     @Autowired
-    MockMvc mockMvc;
-
-    @Autowired
-    DepartmentRepository departmentRepository;
-
-    @Autowired
-    MemberRepository memberRepository;
-
-    @Autowired
-    PasswordEncoder passwordEncoder;
-
-    @Autowired
-    AccessTokenService accessTokenService;
+    AuthControllerTest(
+            MockMvc mockMvc,
+            DepartmentRepository departmentRepository,
+            MemberRepository memberRepository,
+            PasswordEncoder passwordEncoder,
+            AccessTokenService accessTokenService
+    ) {
+        this.mockMvc = mockMvc;
+        this.departmentRepository = departmentRepository;
+        this.memberRepository = memberRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.accessTokenService = accessTokenService;
+    }
 
     @Test
     @DisplayName("POST /api/v1/auth/signup 요청은 202와 승인 대기 회원 정보를 반환한다")

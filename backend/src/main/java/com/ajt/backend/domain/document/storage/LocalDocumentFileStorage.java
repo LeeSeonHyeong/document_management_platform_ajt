@@ -40,6 +40,11 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
     }
 
     @Override
+    public String readText(String storedPath) throws IOException {
+        return Files.readString(resolve(storedPath), StandardCharsets.UTF_8);
+    }
+
+    @Override
     public Resource load(String storedPath) {
         return new FileSystemResource(resolve(storedPath));
     }
