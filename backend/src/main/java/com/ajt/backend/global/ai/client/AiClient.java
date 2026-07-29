@@ -9,4 +9,6 @@ public interface AiClient {
     WikiContextSelectionResponse selectWikiContext(WikiContextSelectionRequest request);
 
     WikiTransformationResponse transformWiki(WikiTransformationRequest request);
+
+    WikiEditResponse editWiki(WikiEditRequest request);
 }
