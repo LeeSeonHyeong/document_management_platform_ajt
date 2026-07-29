@@ -30,21 +30,27 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Transactional
 class AuthServiceTest {
+    private final AuthService authService;
+    private final DepartmentRepository departmentRepository;
+    private final MemberRepository memberRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final PasswordResetTokenService passwordResetTokenService;
+
 
     @Autowired
-    AuthService authService;
-
-    @Autowired
-    DepartmentRepository departmentRepository;
-
-    @Autowired
-    MemberRepository memberRepository;
-
-    @Autowired
-    PasswordEncoder passwordEncoder;
-
-    @Autowired
-    PasswordResetTokenService passwordResetTokenService;
+    AuthServiceTest(
+            AuthService authService,
+            DepartmentRepository departmentRepository,
+            MemberRepository memberRepository,
+            PasswordEncoder passwordEncoder,
+            PasswordResetTokenService passwordResetTokenService
+    ) {
+        this.authService = authService;
+        this.departmentRepository = departmentRepository;
+        this.memberRepository = memberRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.passwordResetTokenService = passwordResetTokenService;
+    }
 
     @Test
     @DisplayName("회원가입을 요청하면 사번 없이 승인 대기 비활성 상태로 저장된다")

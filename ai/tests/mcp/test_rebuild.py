@@ -5,7 +5,7 @@ The need was concrete: changing `document_references` left every existing
 workspace unopenable, because `CREATE TABLE IF NOT EXISTS` does not migrate.
 """
 
-from .conftest import JOB_ID, SCOPE
+from ..conftest import JOB_ID, SCOPE
 from wiki_mcp.tools.lint import LintHandler
 from wiki_mcp.tools.references import sync_references
 from wiki_mcp.vaultfs import LocalVaultFS
