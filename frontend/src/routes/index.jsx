@@ -9,8 +9,9 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
 import PasswordFindPage from '@/pages/auth/PasswordFindPage'
 import PasswordResetPage from '@/pages/auth/PasswordResetPage'
-import DashboardPage from '@/pages/DashboardPage'
+import HomePage from '@/pages/home/HomePage'
 import AdminPage from '@/pages/AdminPage'
+import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import DocumentListPage from '@/features/document/pages/DocumentListPage'
@@ -45,11 +46,12 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <DashboardPage /> },
+          { index: true, element: <HomePage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
             children: [
               { path: 'admin', element: <AdminPage /> },
+              { path: 'admin/schedules', element: <AdminSchedulePage /> },
               { path: 'admin/documents', element: <DocumentListPage /> },
               { path: 'admin/documents/source', element: <SourceDocumentListPage /> },
               { path: 'admin/documents/source/:documentId', element: <SourceDocumentDetailPage /> },

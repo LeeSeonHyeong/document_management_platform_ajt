@@ -1,0 +1,30 @@
+{
+  "slug": "2026-07-27-reingest",
+  "startedAt": "2026-07-27T21:59",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md"
+  ],
+  "purpose": "12건 결과 위에 01-training 을 재투입. 위키 누적 비용과 재처리 멱등성(FR-DOC-012)을 한 번에 본다",
+  "code": {
+    "guideSha": "unknown (사후 기록)",
+    "schemaSha": "unknown (사후 기록)",
+    "instructionSha": "unknown (사후 기록)",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ],
+    "note": "12건 런과 동일한 코드. data/ 는 12건 결과의 복사본에서 출발했다."
+  },
+  "backfilled": true
+}

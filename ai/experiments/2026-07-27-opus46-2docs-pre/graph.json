@@ -1,0 +1,124 @@
+{
+  "scope": "ALL",
+  "indexPath": "wiki/ALL/index.md",
+  "nodes": [
+    {
+      "id": "index.md",
+      "kind": "index",
+      "title": "위키 목차",
+      "category": "목차",
+      "tags": [
+        "목차",
+        "허브"
+      ],
+      "chars": 705,
+      "citations": 0,
+      "wikiId": null,
+      "sourceId": null,
+      "fileName": null,
+      "orphan": false
+    },
+    {
+      "id": "pages/634d3196e245.md",
+      "kind": "page",
+      "title": "부업(Side Gig) 정책",
+      "category": "복지 제도",
+      "tags": [
+        "부업",
+        "사이드프로젝트",
+        "지적재산권",
+        "IP",
+        "근무시간"
+      ],
+      "chars": 4498,
+      "citations": 0,
+      "wikiId": null,
+      "sourceId": null,
+      "fileName": null,
+      "orphan": false
+    },
+    {
+      "id": "pages/f3947718bb92.md",
+      "kind": "page",
+      "title": "교육 및 자기계발 지원",
+      "category": "복지 제도",
+      "tags": [
+        "교육",
+        "도서",
+        "컨퍼런스",
+        "자기계발",
+        "예산"
+      ],
+      "chars": 3608,
+      "citations": 0,
+      "wikiId": null,
+      "sourceId": null,
+      "fileName": null,
+      "orphan": false
+    },
+    {
+      "id": "sources/101/parsed/content.md",
+      "kind": "source",
+      "title": "sources/101/parsed/content.md",
+      "category": null,
+      "tags": [],
+      "chars": 2423,
+      "citations": 0,
+      "wikiId": null,
+      "sourceId": "101",
+      "fileName": null,
+      "orphan": false
+    },
+    {
+      "id": "sources/102/parsed/content.md",
+      "kind": "source",
+      "title": "sources/102/parsed/content.md",
+      "category": null,
+      "tags": [],
+      "chars": 3377,
+      "citations": 0,
+      "wikiId": null,
+      "sourceId": "102",
+      "fileName": null,
+      "orphan": false
+    }
+  ],
+  "edges": [
+    {
+      "source": "index.md",
+      "target": "pages/634d3196e245.md",
+      "type": "links_to",
+      "footnote": null,
+      "location": null,
+      "quote": null,
+      "page": null
+    },
+    {
+      "source": "index.md",
+      "target": "pages/f3947718bb92.md",
+      "type": "links_to",
+      "footnote": null,
+      "location": null,
+      "quote": null,
+      "page": null
+    },
+    {
+      "source": "pages/634d3196e245.md",
+      "target": "pages/f3947718bb92.md",
+      "type": "links_to",
+      "footnote": null,
+      "location": null,
+      "quote": null,
+      "page": null
+    },
+    {
+      "source": "pages/f3947718bb92.md",
+      "target": "pages/634d3196e245.md",
+      "type": "links_to",
+      "footnote": null,
+      "location": null,
+      "quote": null,
+      "page": null
+    }
+  ]
+}
