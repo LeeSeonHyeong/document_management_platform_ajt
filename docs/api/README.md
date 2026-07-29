@@ -2,9 +2,9 @@
 
 ## 계약 버전
 
-- 현재 버전: `1.3.0`
+- 현재 버전: `1.4.0`
 - 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.8
-- 공개 API: 55개
+- 공개 API: 56개
 - Spring Boot → FastAPI 내부 API: 7개
 
 URL, HTTP 메서드, 필드명, 필드 타입, 상태 코드와 P0 Saved Example은 프론트엔드·Spring Boot·FastAPI가 함께 사용하는 개발 계약이다. 변경이 필요하면 소비 담당자와 먼저 합의하고 `contractVersion`을 올린 뒤 컬렉션을 다시 배포한다.

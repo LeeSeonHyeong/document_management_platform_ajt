@@ -1,11 +1,13 @@
 package com.ajt.backend.domain.auth;
 
+import com.ajt.backend.domain.auth.dto.AuthMessageResponse;
 import com.ajt.backend.domain.auth.dto.AuthUserResponse;
 import com.ajt.backend.domain.auth.dto.LoginRequest;
 import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequestResponse;
+import com.ajt.backend.domain.auth.dto.PasswordResetVerifyRequest;
 import com.ajt.backend.domain.auth.dto.SignupRequest;
 import com.ajt.backend.domain.auth.dto.SignupResponse;
 import com.ajt.backend.domain.department.Department;
@@ -15,10 +17,12 @@ import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.SignupStatus;
 import com.ajt.backend.global.auth.AccessTokenService;
-import com.ajt.backend.global.auth.PasswordResetTokenData;
-import com.ajt.backend.global.auth.PasswordResetTokenService;
+import com.ajt.backend.global.auth.PasswordResetCodeStore;
+import com.ajt.backend.global.auth.PasswordResetRateLimiter;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import com.ajt.backend.global.mail.EmailSender;
+import java.security.SecureRandom;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -34,20 +38,28 @@ public class AuthService {
     private final DepartmentRepository departmentRepository;
     private final PasswordEncoder passwordEncoder;
     private final AccessTokenService accessTokenService;
-    private final PasswordResetTokenService passwordResetTokenService;
+    // 수정: 링크 토큰(PasswordResetTokenService) → 인증번호 방식으로 교체. 코드 저장소 + 메일 발송기를 사용한다.
+    private final PasswordResetCodeStore passwordResetCodeStore;
+    private final PasswordResetRateLimiter passwordResetRateLimiter;
+    private final EmailSender emailSender;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthService(
             MemberRepository memberRepository,
             DepartmentRepository departmentRepository,
             PasswordEncoder passwordEncoder,
             AccessTokenService accessTokenService,
-            PasswordResetTokenService passwordResetTokenService
+            PasswordResetCodeStore passwordResetCodeStore,
+            PasswordResetRateLimiter passwordResetRateLimiter,
+            EmailSender emailSender
     ) {
         this.memberRepository = memberRepository;
         this.departmentRepository = departmentRepository;
         this.passwordEncoder = passwordEncoder;
         this.accessTokenService = accessTokenService;
-        this.passwordResetTokenService = passwordResetTokenService;
+        this.passwordResetCodeStore = passwordResetCodeStore;
+        this.passwordResetRateLimiter = passwordResetRateLimiter;
+        this.emailSender = emailSender;
     }
 
     /**
@@ -86,30 +98,51 @@ public class AuthService {
 
     /**
      * AUTH-05 비밀번호 재설정 요청입니다.
-     * 계정 존재 여부 노출을 막기 위해 이메일 존재 여부와 관계없이 같은 메시지를 반환합니다.
+     * 수정: 링크 토큰 대신 6자리 인증번호를 만들어 저장하고 이메일로 발송한다.
+     * 계정 존재 여부를 숨기기 위해 등록 여부와 관계없이 같은 메시지를 반환한다.
      */
     @Transactional(readOnly = true)
-    public PasswordResetRequestResponse requestPasswordReset(PasswordResetRequest request) {
-        memberRepository.findByEmail(Member.normalizeEmail(request.email()))
-                .ifPresent(passwordResetTokenService::createToken);
+    public PasswordResetRequestResponse requestPasswordReset(PasswordResetRequest request, String clientIp) {
+        String email = Member.normalizeEmail(request.email());
+        // 수정: 요청 rate limit(429). 이메일·IP 기준으로 과도한 요청을 차단한다(무차별·이메일 폭탄 방지).
+        passwordResetRateLimiter.check("email:" + email);
+        passwordResetRateLimiter.check("ip:" + clientIp);
+        memberRepository.findByEmail(email).ifPresent(member -> {
+            String code = generateCode();
+            passwordResetCodeStore.save(email, code);
+            emailSender.sendPasswordResetCode(member.getEmail(), code);
+        });
         return new PasswordResetRequestResponse(PASSWORD_RESET_REQUEST_MESSAGE);
     }
 
     /**
+     * AUTH-06a 인증번호 확인입니다. (신규)
+     * 인증번호가 유효하면 프론트가 비밀번호 수정 화면으로 진행한다. 실제 변경은 resetPassword에서 다시 확인한다.
+     */
+    @Transactional(readOnly = true)
+    public AuthMessageResponse verifyResetCode(PasswordResetVerifyRequest request) {
+        String email = Member.normalizeEmail(request.email());
+        if (!passwordResetCodeStore.matches(email, request.code())) {
+            throw new BusinessException(ErrorCode.INVALID_OR_EXPIRED_RESET_CODE);
+        }
+        return new AuthMessageResponse("인증번호가 확인되었습니다.");
+    }
+
+    /**
      * AUTH-06 비밀번호 재설정입니다.
-     * 토큰은 현재 비밀번호 해시와 연결되어 있어 비밀번호가 바뀌면 기존 토큰은 다시 쓸 수 없습니다.
+     * 수정: 인증번호가 유효하면 새 비밀번호로 바꾸고, 사용한 인증번호는 즉시 폐기한다.
      */
     @Transactional
     public void resetPassword(PasswordResetConfirmRequest request) {
-        PasswordResetTokenData tokenData = passwordResetTokenService.parse(request.token());
-        Member member = memberRepository.findByEmail(Member.normalizeEmail(tokenData.email()))
-                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_OR_EXPIRED_RESET_TOKEN));
-
-        if (!passwordResetTokenService.matchesCurrentPassword(member, tokenData)) {
-            throw new BusinessException(ErrorCode.INVALID_OR_EXPIRED_RESET_TOKEN);
+        String email = Member.normalizeEmail(request.email());
+        if (!passwordResetCodeStore.matches(email, request.code())) {
+            throw new BusinessException(ErrorCode.INVALID_OR_EXPIRED_RESET_CODE);
         }
+        Member member = memberRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_OR_EXPIRED_RESET_CODE));
 
         member.changePassword(passwordEncoder.encode(request.newPassword()));
+        passwordResetCodeStore.remove(email);
     }
 
     private SignupResponse createSignup(
@@ -161,5 +194,10 @@ public class AuthService {
     private boolean canLogin(Member member) {
         return member.getSignupStatus() == SignupStatus.APPROVED
                 && member.getAccountStatus() == AccountStatus.ACTIVE;
+    }
+
+    // 수정: 6자리 인증번호(000000~999999)를 생성한다.
+    private String generateCode() {
+        return String.format("%06d", secureRandom.nextInt(1_000_000));
     }
 }
