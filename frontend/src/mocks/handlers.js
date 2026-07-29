@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { departments, users, signupRequests, credentials, findUserById } from './db'
+import { departments, users, signupRequests, inquiries, credentials, findUserById } from './db'
 
 // 목 세션(데모용). HttpOnly 쿠키를 흉내 내는 대신 메모리 플래그로 로그인 상태를 유지한다.
 let currentUserId = null
@@ -202,5 +202,63 @@ export const handlers = [
     if (!signup) return HttpResponse.json(errorBody(404, 'USER_NOT_FOUND', '가입 요청을 찾을 수 없습니다.', `/api/v1/signup-requests/${params.userId}/reject`), { status: 404 })
     signup.signupStatus = 'rejected'
     return HttpResponse.json({ userId: signup.userId, signupStatus: 'rejected', accountStatus: 'inactive', rejectedAt: new Date().toISOString() })
+  }),
+
+  http.get('/api/v1/inquiries', ({ request }) => {
+    const url = new URL(request.url)
+    const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase()
+    const status = url.searchParams.get('status')
+    const priority = url.searchParams.get('priority')
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
+    const size = Math.max(1, Number(url.searchParams.get('size')) || 20)
+    const [sortField, sortDirection = 'desc'] = (url.searchParams.get('sort') ?? 'createdAt,desc').split(',')
+    const priorityOrder = { high: 3, normal: 2, low: 1 }
+
+    const items = inquiries
+      .filter((inquiry) => {
+        const searchable = `${inquiry.title} ${inquiry.author.name}`.toLowerCase()
+        return (!keyword || searchable.includes(keyword))
+          && (!status || inquiry.status === status)
+          && (!priority || inquiry.priority === priority)
+      })
+      .sort((a, b) => {
+        const left = sortField === 'priority' ? priorityOrder[a.priority] : new Date(a.createdAt).getTime()
+        const right = sortField === 'priority' ? priorityOrder[b.priority] : new Date(b.createdAt).getTime()
+        return sortDirection === 'asc' ? left - right : right - left
+      })
+
+    const start = (page - 1) * size
+    return HttpResponse.json({
+      items: items.slice(start, start + size),
+      page,
+      size,
+      totalCount: items.length,
+      totalPages: Math.max(1, Math.ceil(items.length / size)),
+    })
+  }),
+
+  http.get('/api/v1/inquiries/:inquiryId', ({ params }) => {
+    const inquiry = inquiries.find((item) => item.inquiryId === params.inquiryId)
+    if (!inquiry) {
+      return HttpResponse.json(
+        errorBody(404, 'INQUIRY_NOT_FOUND', '문의를 찾을 수 없습니다.', `/api/v1/inquiries/${params.inquiryId}`),
+        { status: 404 },
+      )
+    }
+    return HttpResponse.json(inquiry)
+  }),
+
+  http.put('/api/v1/inquiries/:inquiryId/answer', async ({ params, request }) => {
+    const inquiry = inquiries.find((item) => item.inquiryId === params.inquiryId)
+    if (!inquiry) {
+      return HttpResponse.json(
+        errorBody(404, 'INQUIRY_NOT_FOUND', '문의를 찾을 수 없습니다.', `/api/v1/inquiries/${params.inquiryId}/answer`),
+        { status: 404 },
+      )
+    }
+    const { content } = await request.json()
+    inquiry.answer = { content, answeredAt: new Date().toISOString() }
+    inquiry.status = 'done'
+    return HttpResponse.json(inquiry.answer)
   }),
 ]

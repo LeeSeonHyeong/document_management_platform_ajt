@@ -52,6 +52,7 @@ export const ROUTE_LABELS = {
 export function getPageTitle(pathname) {
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return '직원 정보 수정'
   if (/^\/admin\/users\/[^/]+$/.test(pathname)) return '직원 상세'
+  if (/^\/admin\/inquiries\/[^/]+$/.test(pathname)) return '문의 상세'
   return ROUTE_LABELS[pathname] ?? 'AJT'
 }
 
@@ -60,6 +61,8 @@ export function getPageEyebrow(pathname) {
   if (pathname === '/admin/users') return 'AJT / 조직 관리'
   if (pathname === '/admin/departments') return 'AJT / 조직 관리'
   if (pathname === '/admin/signup-requests') return 'AJT / 직원 관리'
+  if (pathname === '/admin/inquiries') return 'AJT / 지원 관리'
+  if (/^\/admin\/inquiries\/[^/]+$/.test(pathname)) return 'AJT / 문의 관리'
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return 'AJT / 직원 상세'
   if (/^\/admin\/users\/[^/]+$/.test(pathname)) return 'AJT / 직원 관리'
   return null

@@ -1,6 +1,12 @@
 // MSW 목 데이터 골격. 백엔드 없이 화면을 개발/시연할 때 사용한다.
 // 실제 API 계약과 응답 형태를 맞춰 두어, 백엔드 연동 시 핸들러만 제거하면 되도록 한다.
-import { ROLES, ACCOUNT_STATUS, SIGNUP_STATUS } from '@/shared/constants/enums'
+import {
+  ROLES,
+  ACCOUNT_STATUS,
+  SIGNUP_STATUS,
+  INQUIRY_PRIORITY,
+  INQUIRY_STATUS,
+} from '@/shared/constants/enums'
 
 export const departments = [
   { departmentId: '1', name: '개발팀', manager: { userId: '3', name: '김민수' }, memberCount: 8 },
@@ -130,6 +136,66 @@ export const signupRequests = [
   signupStatus: SIGNUP_STATUS.PENDING,
   requestedAt,
 }))
+
+// 문의 관리 화면용 임시 데이터입니다.
+// 실제 연동 시 아래 필드가 문의 목록·상세 API의 JSON 응답으로 대체됩니다.
+export const inquiries = [
+  {
+    inquiryId: '4',
+    displayId: 'INQ-2024-004',
+    title: 'VPN 접속 문제',
+    author: { userId: '11', name: '이하늘', department: departments[4] },
+    assignee: { assigneeId: '3', name: '김민수', department: departments[0] },
+    priority: INQUIRY_PRIORITY.HIGH,
+    status: INQUIRY_STATUS.PENDING,
+    createdAt: '2026-07-29T09:30:00+09:00',
+    content: '외부에서 사내 VPN에 접속하려고 하면 인증 단계에서 연결이 종료됩니다.\n확인 부탁드립니다.',
+    attachments: [],
+    answer: null,
+  },
+  {
+    inquiryId: '3',
+    displayId: 'INQ-2024-003',
+    title: '사내 메일 발송 오류',
+    author: { userId: '12', name: '최지훈', department: departments[5] },
+    assignee: { assigneeId: '3', name: '김민수', department: departments[0] },
+    priority: INQUIRY_PRIORITY.HIGH,
+    status: INQUIRY_STATUS.PENDING,
+    createdAt: '2026-07-23T09:12:00+09:00',
+    content: '안녕하세요. 오늘 오전부터 사내 메일 발송 시 오류 메시지가 나타나며 메일이 전송되지 않습니다.\n확인 후 조치 부탁드립니다.',
+    attachments: [{ attachmentId: '31', name: '메일_오류_화면.png', sizeLabel: '218KB' }],
+    answer: null,
+  },
+  {
+    inquiryId: '2',
+    displayId: 'INQ-2024-002',
+    title: '장비 교체 요청',
+    author: { userId: '4', name: '이지은', department: departments[3] },
+    assignee: { assigneeId: '3', name: '김민수', department: departments[0] },
+    priority: INQUIRY_PRIORITY.LOW,
+    status: INQUIRY_STATUS.PENDING,
+    createdAt: '2026-07-22T14:20:00+09:00',
+    content: '업무용 모니터 화면이 반복해서 꺼집니다. 장비 점검 및 교체를 요청드립니다.',
+    attachments: [],
+    answer: null,
+  },
+  {
+    inquiryId: '1',
+    displayId: 'INQ-2024-001',
+    title: '비밀번호 초기화 요청',
+    author: { userId: '13', name: '정수민', department: departments[1] },
+    assignee: { assigneeId: '3', name: '김민수', department: departments[0] },
+    priority: INQUIRY_PRIORITY.NORMAL,
+    status: INQUIRY_STATUS.DONE,
+    createdAt: '2026-07-21T10:05:00+09:00',
+    content: '업무 계정 비밀번호를 분실했습니다. 초기화를 요청드립니다.',
+    attachments: [],
+    answer: {
+      content: '본인 확인 후 임시 비밀번호를 발급했습니다. 로그인 후 비밀번호를 변경해주세요.',
+      answeredAt: '2026-07-21T10:30:00+09:00',
+    },
+  },
+]
 
 // 목 로그인 계정(비밀번호는 검증만 통과시키는 데모용).
 export const credentials = {
