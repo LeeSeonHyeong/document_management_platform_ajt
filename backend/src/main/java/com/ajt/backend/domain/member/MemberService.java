@@ -95,6 +95,14 @@ public class MemberService {
     public UserResponse updateUser(AuthenticatedMember loginMember, Long userId, UserUpdateRequest request) {
         requireAdmin(loginMember);
         Member member = findMember(userId);
+
+        // 수정: PATCH 부분 수정 규칙(§4.2). 이 4개 필드는 모두 필수라 비울 수 없으므로,
+        //       "명시적 null"(키가 전달됐는데 값이 null)이면 400으로 거절한다. 키 생략은 그대로 둔다.
+        rejectExplicitNull(request.namePresent(), request.name(), "name");
+        rejectExplicitNull(request.rolePresent(), request.role(), "role");
+        rejectExplicitNull(request.departmentIdPresent(), request.departmentId(), "departmentId");
+        rejectExplicitNull(request.accountStatusPresent(), request.accountStatus(), "accountStatus");
+
         Department department = findDepartmentOrNull(request.departmentId());
         Role role = parseRoleOrNull(request.role());
         AccountStatus accountStatus = parseAccountStatusOrNull(request.accountStatus());
@@ -178,6 +186,13 @@ public class MemberService {
     private void requireAdmin(AuthenticatedMember loginMember) {
         if (loginMember == null || !loginMember.isAdmin()) {
             throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+        }
+    }
+
+    // 수정: PATCH 필드가 전달됐는데(present) 값이 null이면, 비울 수 없는 필수 필드이므로 400으로 거절한다(§4.2).
+    private void rejectExplicitNull(boolean present, Object value, String field) {
+        if (present && value == null) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, field + " 필드는 null일 수 없습니다.");
         }
     }
 

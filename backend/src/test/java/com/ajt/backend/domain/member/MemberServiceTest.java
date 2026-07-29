@@ -106,13 +106,31 @@ class MemberServiceTest {
         UserResponse response = memberService.updateUser(
                 new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN),
                 employee.getId(),
-                new UserUpdateRequest("김싸피", "admin", String.valueOf(afterDepartment.getId()), "inactive")
+                UserUpdateRequest.of("김싸피", "admin", String.valueOf(afterDepartment.getId()), "inactive")
         );
 
         assertThat(response.name()).isEqualTo("김싸피");
         assertThat(response.role()).isEqualTo("admin");
         assertThat(response.department().name()).isEqualTo("인사부");
         assertThat(response.accountStatus()).isEqualTo("inactive");
+    }
+
+    @Test
+    @DisplayName("사용자 수정에서 필수 필드에 명시적 null을 보내면 400")
+    void updateUserRejectsExplicitNull() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        AuthenticatedMember adminMember = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        // role 키가 전달됐지만 값이 null(명시적 null) → 필수 필드라 400
+        UserUpdateRequest request =
+                UserUpdateRequest.of("김싸피", null, String.valueOf(department.getId()), "active");
+
+        assertThatThrownBy(() -> memberService.updateUser(adminMember, employee.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
     }
 
     @Test
