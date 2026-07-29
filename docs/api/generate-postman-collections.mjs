@@ -1773,6 +1773,7 @@ const internalFolders = [
           "`currentIndex`: 현재 Wiki 목차",
           "`currentCategories`: 같은 공간의 현재 카테고리 ID와 이름",
           "`selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON",
+          "`selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.",
         ],
         policy: [
           "다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.",
@@ -1785,6 +1786,8 @@ const internalFolders = [
         response: [
           "`summary`: 문서별 작업 요약",
           "`categoryChanges`, `wikiChanges`, `relationChanges`",
+          "`wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`",
+          "`wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)",
           "`wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거",
           "`indexEntries`: AI가 정한 목차 구조·순서·제목·요약",
         ],
@@ -1829,6 +1832,7 @@ const internalFolders = [
         response: [
           "`agentMessage`: 관리자에게 보여줄 응답",
           "`wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`",
+          "`wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.",
         ],
         errors: [
           "`400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류",
@@ -1980,6 +1984,7 @@ const internalFolders = [
           "`questionId`, `conversationId`, `questionType`, `question`",
           "`conversationMessages`: 같은 사용자 대화의 이전 질문·답변",
           "`selectedWikis`: 백엔드가 재검증하고 파일에서 읽은 Wiki 본문",
+          "`selectedWikis[].summary`: `wiki.summary`에서 채웁니다. 값이 없으면 생략할 수 있습니다.",
           "`selectedSchedules`: 백엔드가 재검증한 일정 내용",
         ],
         policy: [
