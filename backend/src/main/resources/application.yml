@@ -7,6 +7,15 @@ spring:
     multipart:
       max-file-size: 20MB
       max-request-size: 100MB
+  mail:
+    # 비밀번호 재설정 인증번호 발송용 SMTP. 계정·비밀번호는 환경변수로만 주입한다(코드/깃에 두지 않음).
+    host: ${MAIL_HOST:smtp.naver.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.ssl.enable: true
 
 ajt:
   auth:
@@ -15,6 +24,8 @@ ajt:
     password-reset-secret: ${AJT_PASSWORD_RESET_SECRET:local-dev-password-reset-secret}
     password-reset-expiration: ${AJT_PASSWORD_RESET_EXPIRATION:30m}
     cookie-secure: ${AJT_AUTH_COOKIE_SECURE:true}
+  mail:
+    from: ${MAIL_FROM:noreply@ajt.local}
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8000}
     # 기본값을 두지 않는다. 비어 있으면 기동을 실패시켜 알려진 키로 내부 API가 열리는 것을 막는다.

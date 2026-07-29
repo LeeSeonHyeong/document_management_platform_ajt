@@ -34,6 +34,10 @@ public enum ErrorCode {
     SIGNUP_ALREADY_PENDING(HttpStatus.CONFLICT, "이미 가입 승인 대기 중인 이메일입니다."),
     SIGNUP_ALREADY_APPROVED(HttpStatus.CONFLICT, "이미 가입 완료된 이메일입니다."),
     INVALID_OR_EXPIRED_RESET_TOKEN(HttpStatus.BAD_REQUEST, "비밀번호 재설정 토큰이 올바르지 않거나 만료되었습니다."),
+    // 수정: 인증번호 방식 재설정용 코드 신규 추가.
+    INVALID_OR_EXPIRED_RESET_CODE(HttpStatus.BAD_REQUEST, "인증번호가 올바르지 않거나 만료되었습니다."),
+    // 수정: 재설정 요청 rate limit 초과용 429 코드 신규 추가.
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "CSRF 토큰이 올바르지 않습니다."),
     CSRF_TOKEN_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF 토큰을 발급하지 못했습니다."),
 

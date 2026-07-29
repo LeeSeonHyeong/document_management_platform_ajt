@@ -285,13 +285,13 @@ const publicFolders = [
       headers: [{ key: "Content-Type", value: "application/json" }],
       body: rawJson({ email: "employee@ajt.com" }),
       description: docs({
-        summary: "등록 이메일로 비밀번호 재설정 링크 전송을 요청합니다.",
+        summary: "등록 이메일로 비밀번호 재설정 인증번호 전송을 요청합니다.",
         usage: "비밀번호 찾기 화면에서 사용합니다.",
         auth: "불필요",
         requestBody: ["`email`: 비밀번호를 재설정할 계정 이메일"],
         policy: [
           "이메일 등록 여부와 관계없이 같은 응답을 반환합니다.",
-          "재설정 토큰은 30분간 유효하며 DB에 저장하지 않습니다.",
+          "6자리 인증번호를 발송하며, 인증번호는 5분간 유효하고 DB에 저장하지 않습니다.",
         ],
         response: [
           "`200 OK`",
@@ -304,31 +304,59 @@ const publicFolders = [
       }),
     }),
     request({
+      name: "비밀번호 재설정 인증번호 확인",
+      method: "POST",
+      path: "/api/v1/auth/password-reset-verify",
+      auth: "noauth",
+      headers: [{ key: "Content-Type", value: "application/json" }],
+      body: rawJson({ email: "employee@ajt.com", code: "123456" }),
+      description: docs({
+        summary: "이메일로 받은 6자리 인증번호를 확인합니다.",
+        usage: "비밀번호 재설정 인증번호 입력 화면에서 사용합니다.",
+        auth: "불필요",
+        requestBody: [
+          "`email`: 재설정할 계정 이메일",
+          "`code`: 이메일로 받은 6자리 인증번호",
+        ],
+        policy: [
+          "인증번호가 유효하면 비밀번호 수정 화면으로 진행합니다.",
+          "실제 변경은 password-resets에서 인증번호를 다시 확인합니다.",
+        ],
+        response: [
+          "`200 OK`",
+          "`message`: `인증번호가 확인되었습니다.`",
+        ],
+        errors: ["`400 Bad Request`: `INVALID_OR_EXPIRED_RESET_CODE`"],
+      }),
+    }),
+    request({
       name: "비밀번호 재설정",
       method: "POST",
       path: "/api/v1/auth/password-resets",
       auth: "noauth",
       headers: [{ key: "Content-Type", value: "application/json" }],
       body: rawJson({
-        token: "password-reset-token",
+        email: "employee@ajt.com",
+        code: "123456",
         newPassword: "newPassword123!",
       }),
       description: docs({
-        summary: "이메일 링크의 토큰을 사용해 새 비밀번호를 설정합니다.",
-        usage: "비밀번호 재설정 링크 진입 화면에서 사용합니다.",
+        summary: "이메일로 받은 인증번호로 새 비밀번호를 설정합니다.",
+        usage: "비밀번호 재설정(새 비밀번호 입력) 화면에서 사용합니다.",
         auth: "불필요",
         requestBody: [
-          "`token`: 이메일 링크에 포함된 서명 토큰",
+          "`email`: 재설정할 계정 이메일",
+          "`code`: 이메일로 받은 6자리 인증번호",
           "`newPassword`: 새 비밀번호",
         ],
         policy: [
-          "비밀번호 변경 후 기존 재설정 토큰은 무효화됩니다.",
+          "인증번호가 유효하면 비밀번호를 변경하고 인증번호는 즉시 폐기됩니다.",
           "변경 완료 후 자동 로그인하지 않습니다.",
         ],
         response: ["`204 No Content`: 비밀번호 변경 완료"],
         errors: [
           "`400 Bad Request`: 새 비밀번호 정책 위반",
-          "`400 Bad Request`: `INVALID_OR_EXPIRED_RESET_TOKEN`",
+          "`400 Bad Request`: `INVALID_OR_EXPIRED_RESET_CODE`",
         ],
       }),
     }),

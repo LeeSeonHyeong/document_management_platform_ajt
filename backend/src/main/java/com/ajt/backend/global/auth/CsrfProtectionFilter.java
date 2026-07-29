@@ -63,6 +63,7 @@ public class CsrfProtectionFilter extends OncePerRequestFilter {
                 "/api/v1/auth/login",
                 "/api/v1/auth/signup",
                 "/api/v1/auth/password-reset-requests",
+                "/api/v1/auth/password-reset-verify",
                 "/api/v1/auth/password-resets"
         ).contains(path);
     }
