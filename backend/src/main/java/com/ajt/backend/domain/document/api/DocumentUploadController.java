@@ -50,6 +50,24 @@ public class DocumentUploadController {
         return documentUploadService.upload(request);
     }
 
+    // 작업(DOC-04): 관리자 원본문서 목록. 권한·필터·페이지네이션은 서비스가 담당한다.
+    @GetMapping("/api/v1/documents")
+    public DocumentListResponse listDocuments(
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "size", required = false) Integer size,
+            @RequestParam(name = "scopeKey", required = false) String scopeKey,
+            @RequestParam(name = "categoryId", required = false) Long categoryId,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "keyword", required = false) String keyword,
+            @RequestParam(name = "fileType", required = false) String fileType,
+            @RequestParam(name = "uploadedFrom", required = false) String uploadedFrom,
+            @RequestParam(name = "uploadedTo", required = false) String uploadedTo,
+            @RequestParam(name = "sort", required = false) String sort
+    ) {
+        return documentManagementService.findDocuments(
+                page, size, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo, sort);
+    }
+
     @GetMapping("/api/v1/documents/{documentId}")
     public DocumentDetailResponse getDocument(@PathVariable long documentId) {
         return documentManagementService.getDocument(documentId);

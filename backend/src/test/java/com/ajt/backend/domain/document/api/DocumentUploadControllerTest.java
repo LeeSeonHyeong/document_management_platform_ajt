@@ -137,6 +137,42 @@ class DocumentUploadControllerTest {
     }
 
     @Test
+    @DisplayName("문서 목록 조회 성공 시 200과 목록·페이지 정보를 반환한다")
+    void listsDocuments() throws Exception {
+        given(documentManagementService.findDocuments(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .willReturn(new DocumentListResponse(
+                        List.of(new DocumentSummaryResponse(
+                                "15",
+                                "rule.md",
+                                "ALL",
+                                new DocumentSummaryResponse.CategoryResponse("7", "취업규칙"),
+                                "uploaded",
+                                "10",
+                                Instant.parse("2026-07-28T05:00:00Z")
+                        )),
+                        1,
+                        20,
+                        1,
+                        1
+                ));
+
+        mockMvc.perform(get("/api/v1/documents")
+                        .param("scopeKey", "ALL")
+                        .param("status", "uploaded"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].documentId").value("15"))
+                .andExpect(jsonPath("$.items[0].originalFileName").value("rule.md"))
+                .andExpect(jsonPath("$.items[0].scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.items[0].category.name").value("취업규칙"))
+                .andExpect(jsonPath("$.items[0].status").value("uploaded"))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
     @DisplayName("실패 문서 재시도 성공 시 202와 새 AI 작업 정보를 반환한다")
     void retriesFailedDocument() throws Exception {
         given(documentManagementService.retry(15L)).willReturn(new DocumentRetryResponse(
