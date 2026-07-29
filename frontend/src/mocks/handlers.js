@@ -181,20 +181,52 @@ export const handlers = [
   }),
 
   http.get('/api/v1/signup-requests', ({ request }) => {
-    const status = new URL(request.url).searchParams.get('status')
+    const url = new URL(request.url)
+    const status = url.searchParams.get('status')
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
+    const size = Math.max(1, Number(url.searchParams.get('size')) || 100)
     const items = signupRequests.filter((item) => !status || item.signupStatus === status)
-    // Figma 시연용 누적 건수입니다. 실제 환경에서는 DB 집계 결과가 totalCount로 내려옵니다.
-    const mockTotalCount = { pending: 6, approved: 24, rejected: 12 }
-    const totalCount = status ? (mockTotalCount[status] ?? items.length) : items.length
-    return HttpResponse.json({ items, page: 1, size: 100, totalCount, totalPages: 1 })
+    const start = (page - 1) * size
+    return HttpResponse.json({
+      items: items.slice(start, start + size),
+      page,
+      size,
+      totalCount: items.length,
+      totalPages: Math.max(1, Math.ceil(items.length / size)),
+    })
   }),
 
   http.post('/api/v1/signup-requests/:userId/approve', ({ params }) => {
     const signup = signupRequests.find((item) => item.userId === params.userId)
     if (!signup) return HttpResponse.json(errorBody(404, 'USER_NOT_FOUND', '가입 요청을 찾을 수 없습니다.', `/api/v1/signup-requests/${params.userId}/approve`), { status: 404 })
+    const approvedAt = new Date().toISOString()
     signup.signupStatus = 'approved'
     signup.employeeNo = `2026-${params.userId}`
-    return HttpResponse.json({ userId: signup.userId, employeeNo: signup.employeeNo, signupStatus: 'approved', accountStatus: 'active', approvedAt: new Date().toISOString() })
+
+    // 실제 환경에서는 백엔드가 승인 트랜잭션에서 회원을 활성 직원으로 변경합니다.
+    // 목 환경에서도 같은 결과를 확인할 수 있도록 직원 목록 데이터에 승인자를 반영합니다.
+    if (!users.some((user) => user.userId === signup.userId)) {
+      users.push({
+        userId: signup.userId,
+        email: signup.email,
+        name: signup.name,
+        employeeNo: signup.employeeNo,
+        role: 'employee',
+        department: signup.department,
+        signupStatus: 'approved',
+        accountStatus: 'active',
+        createdAt: signup.requestedAt,
+        updatedAt: approvedAt,
+      })
+    }
+
+    return HttpResponse.json({
+      userId: signup.userId,
+      employeeNo: signup.employeeNo,
+      signupStatus: 'approved',
+      accountStatus: 'active',
+      approvedAt,
+    })
   }),
 
   http.post('/api/v1/signup-requests/:userId/reject', ({ params }) => {
