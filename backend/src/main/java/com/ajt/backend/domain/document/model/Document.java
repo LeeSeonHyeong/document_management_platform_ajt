@@ -126,8 +126,32 @@ public class Document {
         this.status = DocumentStatus.PROCESSING;
     }
 
+    /**
+     * Wiki 변환 결과까지 반영된 문서를 완료 처리합니다.
+     * 변환으로 생성·수정된 Wiki가 문서의 참조 목록이 됩니다.
+     */
+    public void completeProcessing(List<Long> documentWikiRefs) {
+        if (status != DocumentStatus.PROCESSING) {
+            throw new IllegalStateException("PROCESSING 상태의 문서만 완료할 수 있습니다.");
+        }
+        this.documentWikiRefs = List.copyOf(documentWikiRefs);
+        this.failureReason = null;
+        this.status = DocumentStatus.COMPLETED;
+    }
+
     public void failParsing(String failureReason) {
         ensureParsing();
+        this.failureReason = failureReason;
+        this.status = DocumentStatus.FAILED;
+    }
+
+    /**
+     * Wiki 변환 단계에서 실패한 문서를 실패 처리합니다.
+     */
+    public void failProcessing(String failureReason) {
+        if (status != DocumentStatus.PROCESSING) {
+            throw new IllegalStateException("PROCESSING 상태의 문서만 변환 실패로 처리할 수 있습니다.");
+        }
         this.failureReason = failureReason;
         this.status = DocumentStatus.FAILED;
     }
