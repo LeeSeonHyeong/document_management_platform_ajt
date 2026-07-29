@@ -1,0 +1,34 @@
+{
+  "scope": "ALL",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-4-6",
+  "order": [
+    "01-training.md"
+  ],
+  "documents": [
+    {
+      "seq": 1,
+      "jobId": "9001",
+      "documentId": "101",
+      "document": "01-training.md",
+      "elapsedSeconds": 54.8,
+      "toolCalls": {
+        "guide": 1,
+        "read": 4,
+        "search": 1,
+        "lint": 1
+      },
+      "inputTokens": 346689,
+      "outputTokens": 2038,
+      "turns": 11,
+      "costUsd": 0.3136,
+      "error": null,
+      "reply": "**error 0.** warn만 16건 — 전부 `stale-page`(시간 경과 경고)와 unused footnote 1건. 이 작업과 무관한 기존 항목들.\n\n`sources/101/parsed/content.md` 반영 완료:\n- `pages/75759a021a75.md` (교육 훈련 예산) — 훈련 예산, 컨퍼런스 전부 커버\n- `pages/b63430958f86.md` (도서 지원 정책) — 도서 구매, BookHog 커버\n- `index.md` — 이미 두 페이지 모두 등재, 최근 변경 기록 있음\n- lint error 0",
+      "changes": [],
+      "lint": "**lint 16건** — ALL 범위 (error 0, warn 16; 33건 검사).\n\n**Warnings**\n- [unused-footnote-definition] `pages/2d0c4dd38694.md` — 각주 `^36` 정의가 쓰이지 않는다\n- [stale-page] `pages/6466ec527a71.md` — 2026-07-27 12:55:16 이후 오래됐을 수 있다\n- [stale-page] `pages/2c1213716122.md` — 2026-07-27 12:54:38 이후 오래됐을 수 있다\n- [stale-page] `pages/2d0c4dd38694.md` — 2026-07-27 12:40:08 이후 오래됐을 수 있다\n- [stale-page] `pages/469b409d9597.md` — 2026-07-27 12:40:08 이후 오래됐을 수 있다\n- [stale-page] `pages/f7c1e9d5478f.md` — 2026-07-27 12:40:08 이후 오래됐을 수 있다\n- [stale-page] `pages/b5f176c9b3e6.md` — 2026-07-27 12:24:59 이후 오래됐을 수 있다\n- [stale-page] `pages/bfd285bfd962.md` — 2026-07-27 12:24:59 이후 오래됐을 수 있다\n- [stale-page] `pages/541dfd02bd51.md` — 2026-07-27 12:24:34 이후 오래됐을 수 있다\n- [stale-page] `pages/64f41068e524.md` — 2026-07-27 12:24:34 이후 오래됐을 수 있다\n- [stale-page] `pages/95d744e18b48.md` — 2026-07-27 12:09:25 이후 오래됐을 수 있다\n- [stale-page] `pages/177011e0ae2c.md` — 2026-07-27 11:59:17 이후 오래됐을 수 있다\n- [stale-page] `pages/eddb3cec8f14.md` — 2026-07-27 11:59:17 이후 오래됐을 수 있다\n- [stale-page] `pages/b63430958f86.md` — 2026-07-27 11:39:30 이후 오래됐을 수 있다\n- [stale-page] `pages/75759a021a75.md` — 2026-07-27 11:39:27 이후 오래됐을 수 있다\n- [stale-page] `pages/e785ad1e47c9.md` — 2026-07-27 11:29:47 이후 오래됐을 수 있다",
+      "outcome": "unchanged",
+      "committed": [],
+      "discarded": 0
+    }
+  ]
+}

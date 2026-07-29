@@ -441,3 +441,95 @@ class SourceParseResponse(Strict):
     sourceId: str
     parsedMarkdown: str
     warnings: list[str] = Field(default_factory=list)
+
+
+# ---- 챗봇 답변 (계약 v1.3.0 「답변 생성」) ------------------------------------
+
+SELECTION_PATH = "/internal/v1/answer-context-selections"
+ANSWER_PATH = "/internal/v1/answers"
+
+
+class ConversationMessage(Strict):
+    """이전 대화 1건.
+
+    `wiki-edits` 의 `ChatMessage` 와 형태가 다르다 — 그쪽은 `senderType: admin|agent` 이고
+    이쪽은 계약대로 `role: user|assistant` 다. 재사용하지 않는다.
+    """
+
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class WikiIndexEntry(Strict):
+    scopeKey: str
+    indexMarkdown: str
+
+
+class ScheduleSummary(Strict):
+    """1단계에 오는 일정 후보. **본문은 없다** — 목차·요약만 보고 고른다."""
+
+    scheduleId: str
+    title: str
+    startAt: str
+    endAt: str
+    targetText: str | None = None
+    location: str | None = None
+
+
+class AnswerContextRequest(Strict):
+    questionId: str
+    conversationId: str
+    question: str
+    conversationMessages: list[ConversationMessage] = Field(default_factory=list)
+    wikiIndexes: list[WikiIndexEntry] = Field(default_factory=list)
+    scheduleSummaries: list[ScheduleSummary] = Field(default_factory=list)
+
+
+class AnswerContextResponse(Strict):
+    questionType: Literal["wiki", "schedule", "mixed"]
+    wikiIds: list[str] = Field(default_factory=list)
+    scheduleIds: list[str] = Field(default_factory=list)
+    reason: str = ""
+
+
+class AnswerWiki(Strict):
+    """2단계에 오는 위키 본문. **변환용 `SelectedWiki` 와 모양이 다르다** — 계약의 답변
+    생성 요청은 세 필드뿐이고 카테고리·요약·참조가 없다."""
+
+    wikiId: str
+    title: str
+    contentMarkdown: str
+
+
+class AnswerSchedule(Strict):
+    scheduleId: str
+    title: str
+    content: str
+    startAt: str
+    endAt: str
+    targetText: str | None = None
+    location: str | None = None
+
+
+class AnswerRequest(Strict):
+    questionId: str
+    conversationId: str
+    questionType: Literal["wiki", "schedule", "mixed"]
+    question: str
+    conversationMessages: list[ConversationMessage] = Field(default_factory=list)
+    selectedWikis: list[AnswerWiki] = Field(default_factory=list)
+    selectedSchedules: list[AnswerSchedule] = Field(default_factory=list)
+
+
+class AnswerSource(Strict):
+    """출처 1건. 한쪽 ID 만 채운다 — `answer_source` 가 두 컬럼을 NULL 허용으로 둔 이유다."""
+
+    type: Literal["wiki", "schedule"]
+    wikiId: str | None = None
+    scheduleId: str | None = None
+    title: str
+
+
+class AnswerResponse(Strict):
+    answer: str
+    sources: list[AnswerSource] = Field(default_factory=list)

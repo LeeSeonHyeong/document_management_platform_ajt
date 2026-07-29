@@ -1,0 +1,106 @@
+{
+  "api": "http://127.0.0.1:8123",
+  "stage": "both",
+  "rows": [
+    {
+      "question": "연차 며칠까지 쓸 수 있어?",
+      "stage1Status": 200,
+      "stage1": {
+        "questionType": "mixed",
+        "wikiIds": [
+          "eddb3cec8f14",
+          "177011e0ae2c",
+          "64f41068e524"
+        ],
+        "scheduleIds": [
+          "9001"
+        ],
+        "reason": "연차 사용 가능 일수는 휴가 정책에서 확인할 수 있으며, 육아휴직과 복지 혜택 개요에서 추가 휴가 유형을 참고할 수 있습니다. 여름 휴가 기간은 실제 휴가 일정과의 관련성을 위해 포함했습니다."
+      },
+      "wikiScore": {
+        "expected": [
+          "eddb3cec8f14"
+        ],
+        "actual": [
+          "eddb3cec8f14",
+          "177011e0ae2c",
+          "64f41068e524"
+        ],
+        "hit": true,
+        "allHit": true,
+        "rankOfFirstHit": 1,
+        "noise": 2
+      },
+      "scheduleScore": {
+        "expected": [],
+        "actual": [
+          "9001"
+        ],
+        "hit": false,
+        "allHit": true,
+        "rankOfFirstHit": null,
+        "noise": 1
+      },
+      "typeHit": false,
+      "stage2Status": 200,
+      "stage2": {
+        "answer": "PostHog는 무제한 휴가 정책을 운영하고 있어 상한선은 없습니다. 다만 연간 **최소 25일**(공휴일 포함)은 반드시 사용해야 하며, 이는 가이드라인이 아닌 최소 기준입니다. People & Ops팀이 사용 현황을 주기적으로 확인해 최소 일수를 채우지 못한 구성원에게 사용을 권장합니다.",
+        "sources": [
+          {
+            "type": "wiki",
+            "wikiId": "eddb3cec8f14",
+            "title": "휴가 정책"
+          }
+        ]
+      }
+    },
+    {
+      "question": "책 사는 거 지원되나?",
+      "stage1Status": 200,
+      "stage1": {
+        "questionType": "wiki",
+        "wikiIds": [
+          "b63430958f86",
+          "75759a021a75",
+          "64f41068e524"
+        ],
+        "scheduleIds": [],
+        "reason": "도서 지원 정책이 직접 관련되며, 교육 훈련 예산과 복지 혜택 개요에서 추가 정보를 제공합니다."
+      },
+      "wikiScore": {
+        "expected": [
+          "b63430958f86"
+        ],
+        "actual": [
+          "b63430958f86",
+          "75759a021a75",
+          "64f41068e524"
+        ],
+        "hit": true,
+        "allHit": true,
+        "rankOfFirstHit": 1,
+        "noise": 2
+      },
+      "scheduleScore": {
+        "expected": [],
+        "actual": [],
+        "hit": false,
+        "allHit": true,
+        "rankOfFirstHit": null,
+        "noise": 0
+      },
+      "typeHit": true,
+      "stage2Status": 200,
+      "stage2": {
+        "answer": "네, 지원됩니다. PostHog 전 구성원은 업무에 도움이 되는 도서를 회사 비용으로 구매할 수 있습니다.\n\n주요 내용은 다음과 같습니다.\n\n- **월 한도**: 약 $50까지 별도 승인 없이 구매 가능\n- **월 구매 권수**: 승인 없이 2권 이내\n- **사용 가능 형태**: 종이책, 오디오북, 팟캐스트\n- **도서 선택 기준**: 담당 업무에 직접 관련될 필요 없이, 업무와 느슨하게 관련되면 충분 (예: 매니저에게 리더 전기, 엔지니어에게 디자인 서적 등)\n- **BookHog 북클럽**: 매월 운영되는 사내 북클럽 도서도 이 예산으로 구매 가능",
+        "sources": [
+          {
+            "type": "wiki",
+            "wikiId": "b63430958f86",
+            "title": "도서 지원 정책"
+          }
+        ]
+      }
+    }
+  ]
+}

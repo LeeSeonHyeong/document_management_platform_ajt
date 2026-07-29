@@ -16,16 +16,12 @@ Spring 이 없는 위키를 조회하거나(다행) 다른 범위의 위키를 �
 
 from __future__ import annotations
 
-import asyncio
-import inspect
 import json
 import re
-import tempfile
-from pathlib import Path
 
-from agent_runtime.base import selection_instruction
+from agent_runtime.base import FAST, selection_instruction
 
-from .errors import FailureStage, InternalError
+from .completion import complete
 from .schemas import SelectionRequest, SelectionResponse
 
 # 계약의 상한 (`docs/FastAPI명세서.json` — "중복 없이 관련도 순서로 최대 5개").
@@ -37,6 +33,7 @@ MAX_WIKIS = 5
 SELECTION_TIMEOUT_SECONDS = 300
 
 ERROR_CODE = "WIKI_CONTEXT_SELECTION_FAILED"
+PATH = "/internal/v1/wiki-context-selections"
 
 # 목차의 페이지 링크. v1.1.0 예시가 `pages/{wikiId}.md` 다 (설계 §3).
 _INDEX_LINK_RE = re.compile(r"pages/([A-Za-z0-9_-]+)\.md")
@@ -101,67 +98,27 @@ def _json_object(text: str) -> dict | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-async def select_wikis(runtime, payload: SelectionRequest) -> SelectionResponse:
+async def select_wikis(runtime, payload: SelectionRequest, *,
+                       request_id: str = "") -> SelectionResponse:
+    """목차만 보고 이번 변환에 필요한 위키를 고른다.
+
+    호출은 `wiki_api/completion.py` 를 지난다. 런타임의 `complete` 를 직접 부르면 sync
+    반환이 이벤트 루프를 최대 `SELECTION_TIMEOUT_SECONDS` 동안 막는다 — 그 사이 서버의
+    모든 요청이 대기한다.
+
+    tier 는 `fast` 다. 목차에서 ID 를 고르는 일이고, 모델이 지어낸 ID 는 `parse_selection`
+    이 화이트리스트로 거르고 Spring 이 다시 재검증한다.
+    """
     prompt = selection_instruction(payload.parsedMarkdown, payload.currentIndex,
                                    payload.changeType, payload.removedParsedMarkdown)
-    text = await _complete(runtime, prompt, payload.scopeKey, payload.jobId)
-    wiki_ids, reason = parse_selection(text, payload.currentIndex)
+    result = await complete(
+        runtime, [{"role": "user", "content": prompt}], tier=FAST,
+        timeout=SELECTION_TIMEOUT_SECONDS, error_code=ERROR_CODE, path=PATH,
+        request_id=request_id,
+        # `complete` 가 없는 런타임은 빈 임시 루트로 띄운다 (`completion._fallback`).
+        fallback_kwargs={"scope_key": payload.scopeKey, "job_id": payload.jobId},
+    )
+    wiki_ids, reason = parse_selection(result.text, payload.currentIndex)
     if not reason:
         reason = "관련된 위키를 찾지 못했습니다." if not wiki_ids else "선택 근거가 없습니다."
     return SelectionResponse(wikiIds=wiki_ids, reason=reason)
-
-
-async def _complete(runtime, prompt: str, scope_key: str, job_id: str) -> str:
-    """런타임에 한 번 묻고 텍스트를 받는다.
-
-    셋 중 하나로 부른다:
-
-      1. `complete(prompt, timeout=…)` — MCP 없는 단발 호출. **선호한다** (base.py 주석)
-      2. `arun(...)` — async 런타임. 테스트의 FakeRuntime 이 이 모양이다
-      3. `run(...)` — sync 런타임(두 프로덕션 런타임). 취소할 수 없으므로 `wait_for` 를
-         걸지 않고 계산된 상한을 런타임에 넘긴다 (`api/session.py.run_agent` 와 같은 이유)
-
-    2·3 은 MCP 루트를 요구하므로 **빈 임시 디렉터리**를 준다. 툴이 뜨더라도 아무것도 없는
-    범위를 보게 되어 라이브 위키를 만질 수 없다 — 선택 호출이 위키를 고치는 사고를 구조로
-    막는다.
-    """
-    try:
-        complete = getattr(runtime, "complete", None)
-        if complete is not None:
-            result = complete(prompt, timeout=SELECTION_TIMEOUT_SECONDS)
-            if inspect.isawaitable(result):
-                # `timeout` 을 넘겨도 지킨다는 보장이 없다 — async 구현이 그것을 무시하면
-                # 이 await 는 무한정 매달리고, Spring 은 1단계에서 읽기 타임아웃을 먹는다.
-                # 취소가 실제로 먹는 async 경로에서는 우리도 상한을 건다 (sync 경로는
-                # 스레드를 취소할 수 없어 런타임 자체 timeout 이 유일한 수단이다).
-                result = await asyncio.wait_for(result, timeout=SELECTION_TIMEOUT_SECONDS)
-        elif hasattr(runtime, "arun"):
-            with tempfile.TemporaryDirectory(prefix="ajt-select-") as tmp:
-                result = await asyncio.wait_for(
-                    runtime.arun(prompt, fs=None, scope_id=None, root=Path(tmp),
-                                 scope_key=scope_key, job_id=job_id),
-                    timeout=SELECTION_TIMEOUT_SECONDS)
-        else:
-            with tempfile.TemporaryDirectory(prefix="ajt-select-") as tmp:
-                result = await asyncio.to_thread(
-                    runtime.run, prompt, root=Path(tmp), scope_key=scope_key,
-                    job_id=job_id, timeout=SELECTION_TIMEOUT_SECONDS)
-    except asyncio.TimeoutError as exc:
-        raise InternalError(
-            ERROR_CODE,
-            f"문맥 선택이 제한 시간({SELECTION_TIMEOUT_SECONDS}초)을 초과했습니다.",
-            FailureStage.AGENT_TIMEOUT) from exc
-    except InternalError:
-        raise
-    except Exception as exc:
-        raise InternalError(ERROR_CODE, f"문맥 선택에 실패했습니다 — {exc}",
-                            FailureStage.AGENT_ERROR) from exc
-
-    # 런타임은 실패를 예외가 아니라 `RunResult.error` 로 돌려준다 (CLI 는 오류에도 종료
-    # 코드 0 이다). 그것을 안 보면 실패가 「관련 위키 없음」으로 둔갑해 2단계가 문맥 없이
-    # 돌고, 에이전트가 이미 있는 페이지를 새로 만든다.
-    error = getattr(result, "error", None)
-    if error:
-        raise InternalError(ERROR_CODE, f"문맥 선택에 실패했습니다 — {error}",
-                            FailureStage.AGENT_ERROR)
-    return str(getattr(result, "text", result) or "")

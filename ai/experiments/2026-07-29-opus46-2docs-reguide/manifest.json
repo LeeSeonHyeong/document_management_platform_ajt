@@ -1,0 +1,32 @@
+{
+  "slug": "2026-07-29-opus46-2docs-reguide",
+  "startedAt": "2026-07-29T08:23:09",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "purpose": "opus-4-6 2건을 현재 guide(b5444b72e5a4)로 재측정 — sonnet 대조의 기준선. 기존 opus 측정은 guideSha 가 사후기록이라 판본을 증명할 수 없다",
+  "dryRun": false,
+  "code": {
+    "guideChars": 4549,
+    "guideSha": "b5444b72e5a4",
+    "schemaSha": "b1e3ca6e12ac",
+    "instructionSha": "b73c4ed0b020",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "finishedAt": "2026-07-29T08:26:34"
+}

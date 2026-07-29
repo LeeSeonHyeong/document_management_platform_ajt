@@ -77,7 +77,7 @@ def build_router(app: FastAPI) -> APIRouter:
         세션을 열지 않는다: 임시 색인도 MCP 서버도 필요 없고, 그래서 전역 직렬
         잠금(`_SESSION_LOCK`)도 잡지 않는다 — 선택이 변환 큐를 막으면 안 된다.
         """
-        return await select_wikis(app.state.runtime, payload)
+        return await select_wikis(app.state.runtime, payload, request_id=rid)
 
     @router.post("/wiki-transformations", response_model=TransformResponse)
     async def transform(payload: TransformRequest, request: Request,
