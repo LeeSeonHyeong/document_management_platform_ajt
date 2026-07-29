@@ -15,9 +15,12 @@ import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.lang.reflect.Field;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -31,12 +34,14 @@ class DocumentManagementServiceTest {
     private final DocumentCategoryRepository documentCategoryRepository = mock(DocumentCategoryRepository.class);
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final DocumentParseJobLauncher parseJobLauncher = mock(DocumentParseJobLauncher.class);
+    private final DocumentFileStorage documentFileStorage = mock(DocumentFileStorage.class);
     private final DocumentManagementService service = new DocumentManagementService(
             currentMemberProvider,
             documentRepository,
             documentCategoryRepository,
             aiJobRepository,
-            parseJobLauncher
+            parseJobLauncher,
+            documentFileStorage
     );
 
     @Test
@@ -74,6 +79,51 @@ class DocumentManagementServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("관리자는 원본문서 파일을 원래 파일명·타입으로 다운로드할 수 있다")
+    void downloadFileForAdmin() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        Resource resource = new ByteArrayResource("hello".getBytes());
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.load("wiki/ALL/sources/15/original.md")).willReturn(resource);
+
+        DocumentFileDownload download = service.downloadFile(15L);
+
+        assertThat(download.fileName()).isEqualTo("rule.md");
+        assertThat(download.contentType()).isEqualTo("text/markdown");
+        assertThat(download.resource()).isSameAs(resource);
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 파일을 다운로드할 수 없다")
+    void rejectsNonAdminDownload() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+
+        assertThatThrownBy(() -> service.downloadFile(15L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("실제 파일이 없으면(유실) 다운로드는 404를 반환한다")
+    void downloadFileReturnsNotFoundWhenFileMissing() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        Resource missing = mock(Resource.class);
+        given(missing.isReadable()).willReturn(false);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.load("wiki/ALL/sources/15/original.md")).willReturn(missing);
+
+        assertThatThrownBy(() -> service.downloadFile(15L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NOT_FOUND);
     }
 
     @Test
