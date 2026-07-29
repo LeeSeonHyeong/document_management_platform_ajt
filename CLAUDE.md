@@ -20,7 +20,15 @@
 - `docs/conventions/git-convention.md` — 브랜치·커밋·PR 규칙. **브랜치 생성·커밋·PR 전 반드시 읽는다.**
 - `docs/conventions/rest-api-convention.md` — REST API 설계 규칙. API 추가·수정 전 읽는다.
 - `docs/requirements/요구사항정의서.md` — 기능·데이터 요구사항 확정본. 기능 구현 전 해당 FR/DR 항목을 확인한다.
-- `docs/db/erd.sql` — MySQL DDL. 스키마 변경 시 이 파일을 먼저 갱신한다.
+- `docs/db/erd.sql` — DB 스키마 SSOT (현재 MySQL 8.4 기준).
+
+> ⚠️ **DB 스키마 변경 금지 원칙**
+> `docs/db/erd.sql`과 엔티티 스키마 매핑(`@Table`, `@Column`의 name·타입·제약, DDL)을 **임의로 변경하지 않는다.**
+> 코드와 ERD가 어긋나면 **ERD를 정답으로 보고 코드(엔티티)를 ERD에 맞춘다.**
+> ERD 자체를 바꿔야 한다고 판단되면 **직접 수정하지 말고** 해당 위치에 아래 형식의 주석을 남기고 **사용자에게 질문한다.**
+> ```
+> // TODO(DB): <무엇을 왜 바꿔야 하는지>. erd.sql 변경 필요 — 팀원 합의 후 진행. (임의 변경 금지)
+> ```
 
 ## API 계약 (docs/api/)
 
