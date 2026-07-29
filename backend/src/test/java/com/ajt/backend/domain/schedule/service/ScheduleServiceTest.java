@@ -307,6 +307,18 @@ class ScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("목록: 조회 기간이 1년을 초과하면 400으로 거절한다")
+    void listRejectsRangeLongerThanOneYear() {
+        Member admin = memberRepository.save(admin(departmentRepository.save(new Department("개발부"))));
+
+        assertThatThrownBy(() -> scheduleService.list(
+                        authOf(admin), "2026-01-01", "2027-01-02", null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_SCHEDULE_RANGE);
+    }
+
+    @Test
     @DisplayName("수정: 사원은 본인 personal 일정의 제목과 시간을 바꿀 수 있다")
     void updateOwnPersonalSchedule() {
         Member employee = memberRepository.save(employee(departmentRepository.save(new Department("개발부"))));
@@ -323,7 +335,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("수정: 사원이 남의 개인 일정을 수정하려 하면 403이다")
+    @DisplayName("수정: 사원이 남의 personal 일정을 수정하려 하면 존재를 숨기기 위해 404다")
     void updateOthersScheduleRejected() {
         Department dev = departmentRepository.save(new Department("개발부"));
         Member owner = memberRepository.save(employee(dev));
@@ -336,7 +348,7 @@ class ScheduleServiceTest {
         assertThatThrownBy(() -> scheduleService.update(authOf(other), schedule.id(), request))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
     }
 
     @Test
@@ -410,7 +422,7 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("삭제: 관리자도 타인의 personal 일정은 삭제할 수 없다")
+    @DisplayName("삭제: 관리자도 타인의 personal 일정을 삭제하려 하면 존재를 숨기기 위해 404다")
     void adminCannotDeleteOthersPersonalSchedule() {
         Department dev = departmentRepository.save(new Department("개발부"));
         Member employee = memberRepository.save(employee(dev));
@@ -421,7 +433,7 @@ class ScheduleServiceTest {
         assertThatThrownBy(() -> scheduleService.delete(authOf(admin), personal.id()))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.FORBIDDEN);
+                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
     }
 
     @Test
