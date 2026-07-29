@@ -1219,7 +1219,7 @@ const publicFolders = [
         summary: "기간과 공개 범위에 맞는 일정 목록을 조회합니다.",
         usage: "달력과 관리자 일정 검수 화면에서 사용합니다.",
         queryParams: [
-          "`startDate`, `endDate`: 조회 기간",
+          "`startDate`, `endDate`: 조회 기간, 최대 1년",
           "`status`: 관리자의 `draft` 또는 `approved` 필터",
           "`visibilityType`: `all`, `department`, `personal`",
           "`departmentId`: 부서 일정 필터",

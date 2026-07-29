@@ -115,8 +115,13 @@ public class Document {
     }
 
     public void completeParsing(String parsedPath) {
+        completeParsing(parsedPath, List.of());
+    }
+
+    public void completeParsing(String parsedPath, List<Long> documentWikiRefs) {
         ensureParsing();
         this.parsedPath = parsedPath;
+        this.documentWikiRefs = List.copyOf(documentWikiRefs);
         this.failureReason = null;
         this.status = DocumentStatus.PROCESSING;
     }
@@ -177,6 +182,10 @@ public class Document {
 
     public String parsedPath() {
         return parsedPath;
+    }
+
+    public List<Long> documentWikiRefs() {
+        return List.copyOf(documentWikiRefs);
     }
 
     public String mimeType() {

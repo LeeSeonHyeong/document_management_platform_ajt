@@ -201,6 +201,7 @@ CREATE TABLE `schedule` (
     `author_id` BIGINT UNSIGNED NOT NULL,
     `source_group_key` VARCHAR(100) NULL,
     `source_original_path` VARCHAR(500) NULL,
+    `source_original_file_name` VARCHAR(255) NULL,
     `source_parsed_path` VARCHAR(500) NULL,
     `title` VARCHAR(200) NOT NULL,
     `content` TEXT NULL,

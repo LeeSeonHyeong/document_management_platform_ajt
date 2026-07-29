@@ -10,6 +10,9 @@ import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
 import com.ajt.backend.global.ai.client.SourceParseResponse;
 import com.ajt.backend.global.ai.client.SourceType;
+import com.ajt.backend.global.ai.client.WikiContextSelectionRequest;
+import com.ajt.backend.global.ai.client.WikiContextSelectionResponse;
+import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Comparator;
@@ -46,7 +49,7 @@ public class DocumentParseWorker {
         job.start();
         aiJobRepository.save(job);
         for (Document document : orderedDocuments(job.documentIds())) {
-            parseDocument(document);
+            parseDocument(job, document);
         }
     }
 
@@ -60,7 +63,7 @@ public class DocumentParseWorker {
                 .toList();
     }
 
-    private void parseDocument(Document document) {
+    private void parseDocument(AiJob job, Document document) {
         document.startParsing();
         try {
             SourceParseResponse response = aiClient.parseSource(new SourceParseRequest(
@@ -72,12 +75,36 @@ public class DocumentParseWorker {
                     document.mimeType()
             ));
             String parsedPath = storeParsedMarkdown(document, response.parsedMarkdown());
-            document.completeParsing(parsedPath);
+            WikiContextSelectionResponse selection = aiClient.selectWikiContext(new WikiContextSelectionRequest(
+                    String.valueOf(job.id()),
+                    String.valueOf(document.id()),
+                    document.scopeKey(),
+                    WikiDocumentChangeType.DOCUMENT_ADDED,
+                    response.parsedMarkdown(),
+                    null,
+                    currentIndex(document.scopeKey())
+            ));
+            document.completeParsing(parsedPath, wikiIds(selection));
         } catch (AiClientException exception) {
             document.failParsing(failureReason(exception));
         } catch (RuntimeException exception) {
             document.failParsing(exception.getMessage());
         }
+    }
+
+    private String currentIndex(String scopeKey) {
+        try {
+            return fileStorage.readText("wiki/" + scopeKey + "/index.md");
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    private List<Long> wikiIds(WikiContextSelectionResponse selection) {
+        return selection.wikiIds()
+                .stream()
+                .map(Long::parseLong)
+                .toList();
     }
 
     private String storeParsedMarkdown(Document document, String parsedMarkdown) {
