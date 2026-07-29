@@ -18,15 +18,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Sparkles,
   MapPin,
-  CalendarPlus,
   AlertTriangle,
   RotateCw,
 } from 'lucide-react'
 import CalendarGrid from '@/components/calendar/CalendarGrid'
 import ScheduleFormModal from '@/components/calendar/ScheduleFormModal'
-import Fab from '@/components/layout/Fab'
 import { Button, Card, EmptyState, Badge } from '@/components/ui'
 import { useToast } from '@/components/ui'
 import { useSchedules } from '@/features/schedule/useSchedules'
@@ -245,18 +242,8 @@ export default function HomePage() {
         </div>
       )}
 
-      <Fab
-        items={[
-          {
-            icon: Sparkles,
-            label: 'AI 검색 어시스턴트',
-            tone: 'secondary',
-            onClick: () => toast.info('AI 검색 어시스턴트', '챗봇 화면은 이후 스토리에서 제공됩니다 (S15P11B106-88).'),
-          },
-          { icon: CalendarPlus, label: '일정 추가', onClick: openCreate },
-        ]}
-      />
-
+      {/* AI 어시스턴트 FAB은 전역 ChatAssistant(AppShell)가 담당하고,
+          일정 추가는 상단 헤더 버튼이 담당하므로 페이지 자체 Fab은 두지 않는다. */}
       <ScheduleFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
