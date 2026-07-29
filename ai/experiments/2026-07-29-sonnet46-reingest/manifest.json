@@ -1,0 +1,32 @@
+{
+  "slug": "2026-07-29-sonnet46-reingest",
+  "startedAt": "2026-07-29T09:18:16",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md"
+  ],
+  "purpose": "20페이지 위키에 01-training 재투입 (sonnet-4-6). opus reingest(반영 0건, 툴 8회)와 대조 — 큰 위키에서 search 가 기존 페이지를 찾아내는지, 못 찾아 중복을 만드는지",
+  "dryRun": false,
+  "code": {
+    "guideChars": 4549,
+    "guideSha": "b5444b72e5a4",
+    "schemaSha": "b1e3ca6e12ac",
+    "instructionSha": "b73c4ed0b020",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "copiedFrom": "2026-07-27-opus46-12docs",
+  "finishedAt": "2026-07-29T09:19:12"
+}

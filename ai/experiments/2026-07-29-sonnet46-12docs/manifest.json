@@ -1,0 +1,42 @@
+{
+  "slug": "2026-07-29-sonnet46-12docs",
+  "startedAt": "2026-07-29T08:26:35",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md",
+    "03-career-progression.md",
+    "04-benefits.md",
+    "05-offboarding.md",
+    "06-security.md",
+    "07-time-off.md",
+    "08-compensation.md",
+    "09-spending-money.md",
+    "10-onboarding.md",
+    "11-offsites.md",
+    "12-communication.md"
+  ],
+  "purpose": "sonnet-4-6 12건 누적 — 페이지간 링크(opus 69)와 각주(opus 616)로 밀도 회귀 판정",
+  "dryRun": false,
+  "code": {
+    "guideChars": 4549,
+    "guideSha": "b5444b72e5a4",
+    "schemaSha": "b1e3ca6e12ac",
+    "instructionSha": "b73c4ed0b020",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "finishedAt": "2026-07-29T10:15:25"
+}

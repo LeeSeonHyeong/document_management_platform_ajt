@@ -1,0 +1,17 @@
+{
+  "slug": "2026-07-29-chat-haiku",
+  "purpose": "챗봇 1단계 분류·선택 정확도와 2단계 답변·출처 (fast tier 단독)",
+  "runtime": "deepagents",
+  "gateway": "https://gms.ssafy.io/gmsapi/api.anthropic.com",
+  "tierModels": {
+    "fast": "anthropic:claude-haiku-4-5-20251001",
+    "quality": "anthropic:claude-sonnet-4-6 (이번 측정에서는 쓰지 않았다)"
+  },
+  "respondedModel": "claude-haiku-4-5-20251001",
+  "wikiSource": "2026-07-27-opus46-12docs/data/wiki/ALL",
+  "questions": 8,
+  "stages": {"1": "8질문 전체", "2": "앞 2질문"},
+  "harness": "chat_sim.py",
+  "promptCache": "게이트웨이가 지원하지 않는다 — cache_control 을 붙여도 cache_creation 0",
+  "note": "응답이 말한 모델은 completions.jsonl 의 model 필드를 본다. 게이트웨이가 바꿔 끼울 수 있다"
+}

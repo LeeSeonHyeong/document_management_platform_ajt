@@ -72,7 +72,8 @@ from pathlib import Path
 
 from wiki_mcp.telemetry import read_counts
 
-from .base import RunResult
+from .base import (DEFAULT_COMPLETE_TIMEOUT, FAST, QUALITY, CompletionResult,
+                   RunResult, render_messages)
 from .stream_json import parse_stream
 
 SERVER_MODULE = "wiki_mcp.local_server"
@@ -83,6 +84,13 @@ CALL_TIMEOUT_SECONDS = 900
 
 # `--effort` 가 받는 값. CLI `--help` 기준 (2026-07-29).
 EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+# CLI 표기는 `anthropic:` 접두사가 없다. 별칭(`sonnet`)을 쓰지 않는 이유는 시점에 따라
+# 다른 모델로 해석돼 두 측정의 비교를 조용히 깨뜨리기 때문이다.
+CLI_TIER_MODELS = {
+    FAST: "claude-haiku-4-5-20251001",
+    QUALITY: "claude-sonnet-4-6",
+}
 
 
 class CliError(RuntimeError):
@@ -113,6 +121,54 @@ class ClaudeCodeRuntime:
         self.model = model
         self.effort = effort
         self.query_log = Path(query_log) if query_log else None
+
+    def _model_for(self, tier: str) -> str:
+        if tier not in CLI_TIER_MODELS:
+            raise ValueError(f"모르는 tier: {tier!r} (가능: {sorted(CLI_TIER_MODELS)})")
+        return CLI_TIER_MODELS[tier]
+
+    def complete(self, messages: list[dict], *, tier: str = QUALITY,
+                 timeout: int | None = None) -> CompletionResult:
+        """MCP 없는 단발 호출. **테스트 경로다.**
+
+        `--mcp-config` 를 붙이지 않는다 — 툴이 없으면 에이전트 루프가 없고 응답이 한 번에
+        온다. `run` 이 담고 있는 네 함정(모듈 docstring)은 여기에도 둘이 적용된다:
+        종료 코드가 0 이어도 `is_error` 가 실패이고, 입력 토큰은 캐시 필드를 합해야 한다.
+
+        `run` 을 손대지 않고 새 메서드로 둔 이유는 측정 재현성이다. `experiments/` 규칙이
+        "CLI 수치는 CLI 수치끼리만 비교"이므로 기존 경로가 바뀌면 대조가 깨진다.
+        """
+        limit = timeout or DEFAULT_COMPLETE_TIMEOUT
+        started = time.monotonic()
+        with tempfile.TemporaryDirectory(prefix="llmwiki-complete-") as tmp:
+            argv = [
+                "claude", "-p", render_messages(messages, label_single=True,
+                                trailing_newline=True),
+                "--model", self._model_for(tier),
+                "--output-format", "json",
+            ]
+            # 임시 cwd 는 이 저장소의 CLAUDE.md 가 프롬프트에 섞이지 않게 한다
+            # (모듈 docstring 함정 1 — `--bare` 는 로그인 세션을 못 읽는다).
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  timeout=limit, cwd=tmp, env=os.environ.copy())
+
+        payload = _payload(proc.stdout)
+        if proc.returncode != 0 or payload.get("is_error") or not payload:
+            detail = (payload.get("result") or proc.stderr.strip()
+                      or proc.stdout[:400] or "출력이 비었거나 JSON 이 아니다")
+            raise RuntimeError(f"claude 실패 (코드 {proc.returncode}): {str(detail)[:400]}")
+
+        usage = payload.get("usage") or {}
+        usage = usage if isinstance(usage, dict) else {}
+        return CompletionResult(
+            text=str(payload.get("result") or ""),
+            input_tokens=_input_tokens(usage),
+            output_tokens=int(usage.get("output_tokens", 0) or 0),
+            cache_read_tokens=int(usage.get("cache_read_input_tokens", 0) or 0),
+            cache_creation_tokens=int(usage.get("cache_creation_input_tokens", 0) or 0),
+            model=self._model_for(tier),
+            elapsed_seconds=round(time.monotonic() - started, 2),
+        )
 
     def _mcp_config(self, root: Path, scope_key: str, job_id: str, tool_log: Path) -> str:
         """Passed as a JSON string, not a file: the workspace differs per run and
@@ -209,6 +265,23 @@ class ClaudeCodeRuntime:
             elapsed_seconds=elapsed,
             detail=detail,
         )
+
+
+def _payload(stdout: str) -> dict:
+    """`--output-format json` 한 덩어리를 읽는다. **`complete` 전용이다.**
+
+    `run` 은 `stream-json` 이라 `stream_json.parse_stream` 이 읽는다. `complete` 는 MCP 가
+    없어 응답이 한 번에 오므로 스트림으로 받을 이득이 없다 — 턴이 하나뿐이라 턴별 내역도
+    없다.
+
+    파싱 실패에 `{}` 를 돌려주므로 **호출부가 빈 dict 를 실패로 봐야 한다.** 그러지 않으면
+    아무것도 안 한 호출이 빈 본문의 성공이 된다. `run` 에서 실제로 그랬다.
+    """
+    try:
+        parsed = json.loads(stdout)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def _decode(stdout: str | bytes | None) -> str:

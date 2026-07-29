@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from wiki_api.app import create_app
 from wiki_api.selection import MAX_WIKIS, index_wiki_ids, parse_selection
-from agent_runtime.base import RunResult, selection_instruction
+from agent_runtime.base import CompletionResult, RunResult, selection_instruction
 
 API_KEY = "secret-key"
 SCOPE = "D1-D2"
@@ -45,10 +45,25 @@ class FakeRuntime:
         self.text = text
         self.error = error
         self.prompts: list[str] = []
+        self.tiers: list[str] = []
 
-    def complete(self, prompt, *, timeout=None) -> RunResult:
-        self.prompts.append(prompt)
+    def complete(self, messages, *, tier="quality", timeout=None) -> RunResult:
+        # 문맥 선택은 단일 user 메시지다. 프롬프트 검증은 그 본문을 본다.
+        self.prompts.append(_text_of(messages))
+        self.tiers.append(tier)
         return RunResult(text=self.text, error=self.error)
+
+
+def _text_of(messages) -> str:
+    """content 가 문자열이거나 block 목록이다. 테스트는 둘 다 문자열로 본다."""
+    parts = []
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            parts.append(content)
+        else:
+            parts.extend(block.get("text", "") for block in content or [])
+    return "\n".join(parts)
 
 
 class ArunOnlyRuntime:
@@ -87,7 +102,7 @@ class HangingRuntime:
 
     name = "fake-select-hang"
 
-    async def complete(self, prompt, *, timeout=None):
+    async def complete(self, messages, *, tier="quality", timeout=None):
         import asyncio
 
         await asyncio.sleep(30)
@@ -332,3 +347,37 @@ def test_an_added_selection_still_needs_the_new_document_markdown():
     assert response.status_code == 400
     fields = [e["field"] for e in response.json()["fieldErrors"]]
     assert "parsedMarkdown" in fields
+
+
+def test_선택_중에_다른_요청이_막히지_않는다():
+    """sync `complete` 가 도는 동안 서버가 살아 있어야 한다.
+
+    어댑터를 거치지 않으면 이 테스트가 실패한다 — 그것이 이 파일을 옮긴 이유다.
+    """
+    import threading
+    import time as _time
+
+    class SlowRuntime(FakeRuntime):
+        def complete(self, messages, *, tier="quality", timeout=None):
+            _time.sleep(0.4)
+            return super().complete(messages, tier=tier, timeout=timeout)
+
+    app = create_app(api_key=API_KEY)
+    app.state.runtime = SlowRuntime(text='{"wikiIds": ["101"], "reason": "휴가"}')
+    client = TestClient(app)
+    headers = {"X-Internal-API-Key": API_KEY}
+
+    seen: list[int] = []
+
+    def poke():
+        _time.sleep(0.1)
+        seen.append(client.get("/openapi.json", headers=headers).status_code)
+
+    thread = threading.Thread(target=poke)
+    thread.start()
+    response = client.post("/internal/v1/wiki-context-selections",
+                           json=REQUEST, headers=headers)
+    thread.join()
+
+    assert response.status_code == 200
+    assert seen == [200]
