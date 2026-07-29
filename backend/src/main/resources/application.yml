@@ -17,9 +17,13 @@ ajt:
     cookie-secure: ${AJT_AUTH_COOKIE_SECURE:true}
   ai:
     base-url: ${AI_BASE_URL:http://localhost:8000}
-    internal-api-key: ${AI_INTERNAL_API_KEY:local-dev-key}
+    # 기본값을 두지 않는다. 비어 있으면 기동을 실패시켜 알려진 키로 내부 API가 열리는 것을 막는다.
+    # 로컬 기본값은 application-local.yml에만 둔다.
+    internal-api-key: ${AI_INTERNAL_API_KEY:}
     connect-timeout: ${AI_CONNECT_TIMEOUT:5s}
     read-timeout: ${AI_READ_TIMEOUT:10m}
+    # 일정 추출은 계약상 최대 180초 동기 처리다. 파싱·Wiki 변환보다 짧게 따로 건다.
+    schedule-extraction-read-timeout: ${AI_SCHEDULE_EXTRACTION_READ_TIMEOUT:180s}
   document:
     storage:
       root-path: ${DOCUMENT_STORAGE_ROOT:build/ajt-documents}
