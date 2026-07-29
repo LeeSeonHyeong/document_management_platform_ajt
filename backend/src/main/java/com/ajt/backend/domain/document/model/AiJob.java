@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -46,6 +47,9 @@ public class AiJob {
     @Column(name = "failure_reason", length = 1000)
     private String failureReason;
 
+    @Column(name = "created_at", nullable = false)
+    private LocalDateTime createdAt;
+
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
@@ -75,6 +79,11 @@ public class AiJob {
         startedAt = LocalDateTime.now();
     }
 
+    @PrePersist
+    void prePersist() {
+        createdAt = LocalDateTime.now();
+    }
+
     public Long id() {
         return id;
     }
@@ -99,8 +108,20 @@ public class AiJob {
         return List.copyOf(documentIds);
     }
 
+    public LocalDateTime createdAt() {
+        return createdAt;
+    }
+
     public LocalDateTime startedAt() {
         return startedAt;
+    }
+
+    public LocalDateTime finishedAt() {
+        return finishedAt;
+    }
+
+    public String failureReason() {
+        return failureReason;
     }
 
     public record DocumentParseResult(long documentId, boolean success, String failureReason) {

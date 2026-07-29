@@ -32,21 +32,27 @@ import org.springframework.transaction.annotation.Transactional;
 class MemberControllerTest {
 
     private static final String CSRF_TOKEN = "csrf-token";
+    private final MockMvc mockMvc;
+    private final DepartmentRepository departmentRepository;
+    private final MemberRepository memberRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final AccessTokenService accessTokenService;
+
 
     @Autowired
-    MockMvc mockMvc;
-
-    @Autowired
-    DepartmentRepository departmentRepository;
-
-    @Autowired
-    MemberRepository memberRepository;
-
-    @Autowired
-    PasswordEncoder passwordEncoder;
-
-    @Autowired
-    AccessTokenService accessTokenService;
+    MemberControllerTest(
+            MockMvc mockMvc,
+            DepartmentRepository departmentRepository,
+            MemberRepository memberRepository,
+            PasswordEncoder passwordEncoder,
+            AccessTokenService accessTokenService
+    ) {
+        this.mockMvc = mockMvc;
+        this.departmentRepository = departmentRepository;
+        this.memberRepository = memberRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.accessTokenService = accessTokenService;
+    }
 
     @Test
     @DisplayName("GET /api/v1/me는 로그인한 사용자 정보를 반환한다")

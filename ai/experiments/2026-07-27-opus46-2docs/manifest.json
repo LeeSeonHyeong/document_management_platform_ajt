@@ -1,0 +1,31 @@
+{
+  "slug": "2026-07-27-opus46-2docs",
+  "startedAt": "2026-07-27T19:05",
+  "runtime": "claude-code",
+  "model": "claude-opus-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "purpose": "버그 4개(인용문 잘림·각주 위치·stale 오탐·관계 그래프 ID→주소) 수정 후 재측정",
+  "code": {
+    "guideSha": "unknown (사후 기록)",
+    "schemaSha": "unknown (사후 기록)",
+    "instructionSha": "unknown (사후 기록)",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ],
+    "note": "12건 런과 같은 코드. 이 이후 mcp/ 는 건드리지 않았다."
+  },
+  "backfilled": true
+}

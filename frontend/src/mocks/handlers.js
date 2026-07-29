@@ -1,10 +1,21 @@
 import { http, HttpResponse } from 'msw'
-import { departments, users, signupRequests, inquiries, credentials, findUserById } from './db'
+import {
+  departments,
+  users,
+  signupRequests,
+  inquiries,
+  credentials,
+  findUserById,
+  schedules,
+} from './db'
 
 // 목 세션(데모용). HttpOnly 쿠키를 흉내 내는 대신 메모리 플래그로 로그인 상태를 유지한다.
 let currentUserId = null
 const inquiryAttachmentFiles = new Map()
 const questionHistory = []
+
+// 일정 목 저장소(런타임 변경 가능). 생성 ID용 시퀀스.
+let scheduleSeq = 100
 
 function errorBody(status, code, message, path, fieldErrors = []) {
   return {
@@ -493,5 +504,67 @@ export const handlers = [
       totalCount: items.length,
       totalPages: Math.max(1, Math.ceil(items.length / size)),
     })
+  }),
+
+  // --- 일정 ---
+  http.get('/api/v1/schedules', ({ request }) => {
+    const url = new URL(request.url)
+    const startDate = url.searchParams.get('startDate')
+    const endDate = url.searchParams.get('endDate')
+    const status = url.searchParams.get('status')
+    const visibilityType = url.searchParams.get('visibilityType')
+    const departmentId = url.searchParams.get('departmentId')
+    let items = schedules
+    // 기간 필터(겹치는 일정만).
+    if (startDate && endDate) {
+      const from = new Date(`${startDate}T00:00:00Z`).getTime()
+      const to = new Date(`${endDate}T23:59:59Z`).getTime()
+      items = items.filter(
+        (s) => new Date(s.endAt).getTime() >= from && new Date(s.startAt).getTime() <= to,
+      )
+    }
+    if (status) items = items.filter((s) => s.status === status)
+    if (visibilityType) items = items.filter((s) => s.visibilityType === visibilityType)
+    if (departmentId) items = items.filter((s) => (s.departmentIds ?? []).includes(departmentId))
+    return HttpResponse.json({ items })
+  }),
+
+  http.post('/api/v1/schedules/:id/approve', ({ params }) => {
+    const target = schedules.find((s) => s.scheduleId === params.id)
+    if (!target) return new HttpResponse(null, { status: 404 })
+    target.status = 'approved'
+    return HttpResponse.json(target)
+  }),
+
+  http.post('/api/v1/schedules', async ({ request }) => {
+    const body = await request.json()
+    const created = {
+      scheduleId: String(++scheduleSeq),
+      title: body.title,
+      content: body.content ?? null,
+      targetText: body.targetText ?? null,
+      location: body.location ?? null,
+      visibilityType: body.visibilityType ?? 'personal',
+      departmentIds: body.departmentIds ?? [],
+      startAt: body.startAt,
+      endAt: body.endAt,
+      status: 'approved',
+    }
+    schedules.push(created)
+    return HttpResponse.json(created, { status: 201 })
+  }),
+
+  http.patch('/api/v1/schedules/:id', async ({ params, request }) => {
+    const body = await request.json()
+    const target = schedules.find((s) => s.scheduleId === params.id)
+    if (!target) return new HttpResponse(null, { status: 404 })
+    Object.assign(target, body)
+    return HttpResponse.json(target)
+  }),
+
+  http.delete('/api/v1/schedules/:id', ({ params }) => {
+    const idx = schedules.findIndex((s) => s.scheduleId === params.id)
+    if (idx !== -1) schedules.splice(idx, 1)
+    return new HttpResponse(null, { status: 204 })
   }),
 ]

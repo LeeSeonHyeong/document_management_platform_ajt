@@ -9,8 +9,9 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
 import PasswordFindPage from '@/pages/auth/PasswordFindPage'
 import PasswordResetPage from '@/pages/auth/PasswordResetPage'
-import DashboardPage from '@/pages/DashboardPage'
+import HomePage from '@/pages/home/HomePage'
 import AdminPage from '@/pages/AdminPage'
+import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
 import EmployeeListPage from '@/features/member/pages/EmployeeListPage'
@@ -49,7 +50,7 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <DashboardPage /> },
+          { index: true, element: <HomePage /> },
           { path: 'me', element: <MyProfilePage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.EMPLOYEE]} />,
@@ -69,6 +70,7 @@ export const router = createBrowserRouter([
               { path: 'admin/departments', element: <DepartmentManagementPage /> },
               { path: 'admin/inquiries', element: <InquiryManagementPage /> },
               { path: 'admin/inquiries/:inquiryId', element: <InquiryDetailPage /> },
+              { path: 'admin/schedules', element: <AdminSchedulePage /> },
             ],
           },
         ],
