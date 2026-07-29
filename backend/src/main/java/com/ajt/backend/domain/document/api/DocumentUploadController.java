@@ -1,8 +1,15 @@
 package com.ajt.backend.domain.document.api;
 
+import com.ajt.backend.domain.document.service.DocumentFileDownload;
 import com.ajt.backend.domain.document.service.DocumentUploadService;
 import com.ajt.backend.domain.document.service.DocumentManagementService;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.HttpStatus;
@@ -46,6 +53,28 @@ public class DocumentUploadController {
     @GetMapping("/api/v1/documents/{documentId}")
     public DocumentDetailResponse getDocument(@PathVariable long documentId) {
         return documentManagementService.getDocument(documentId);
+    }
+
+    // 작업(DOC-06): 원본문서 파일 다운로드. 권한 검사는 서비스가 하고, 여기선 파일명·타입 헤더만 구성한다.
+    @GetMapping("/api/v1/documents/{documentId}/file")
+    public ResponseEntity<Resource> downloadFile(@PathVariable long documentId) {
+        DocumentFileDownload download = documentManagementService.downloadFile(documentId);
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(download.contentType());
+        } catch (RuntimeException exception) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(download.fileName(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString()
+                )
+                .body(download.resource());
     }
 
     @PostMapping("/api/v1/documents/{documentId}/retry")
