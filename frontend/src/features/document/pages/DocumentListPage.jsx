@@ -1,86 +1,69 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, Settings2, FileText } from 'lucide-react'
-import { Button, Pagination, EmptyState } from '@/components/ui'
+import { useNavigate } from 'react-router-dom'
+import { Upload, FileText, CalendarDays } from 'lucide-react'
+import { Button, EmptyState } from '@/components/ui'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
-import DocumentFilterBar from '../components/DocumentFilterBar'
 import DocumentUploadModal from '../components/DocumentUploadModal'
-
-const PAGE_SIZE = 20
-
-function filtersFromParams(params) {
-  const filters = { page: Number(params.get('page') ?? '1'), size: PAGE_SIZE }
-  for (const key of ['scopeKey', 'categoryId', 'status', 'keyword', 'fileType', 'departmentId', 'uploadedFrom', 'uploadedTo']) {
-    const value = params.get(key)
-    if (value) filters[key] = value
-  }
-  return filters
-}
+import DocumentSectionTabs from '../components/DocumentSectionTabs'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 export default function DocumentListPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [uploadOpen, setUploadOpen] = useState(false)
-  const filters = filtersFromParams(searchParams)
-
-  const { data, isLoading } = useDocuments(filters)
-
-  function updateFilters(patch) {
-    const next = { ...filters, ...patch, page: 1 }
-    const params = new URLSearchParams()
-    for (const [key, value] of Object.entries(next)) {
-      if (value && key !== 'size') params.set(key, String(value))
-    }
-    setSearchParams(params)
-  }
-
-  function goToPage(page) {
-    const params = new URLSearchParams(searchParams)
-    params.set('page', String(page))
-    setSearchParams(params)
-  }
+  const { data, isLoading } = useDocuments({ page: 1, size: 20 })
 
   return (
-    <section className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">문서 관리</h1>
-        <div className="flex gap-2">
-          <Link to="/admin/documents/source">
-            <Button variant="outline">
-              <FileText className="size-4" />
-              원본 문서
-            </Button>
-          </Link>
-          <Link to="/admin/documents/categories">
-            <Button variant="outline">
-              <Settings2 className="size-4" />
-              카테고리 관리
-            </Button>
-          </Link>
-          <Button variant="primary" onClick={() => setUploadOpen(true)}>
-            <Upload className="size-4" />
-            업로드
-          </Button>
-        </div>
+    <section className="space-y-5">
+      <DocumentSectionTabs />
+
+      <div className="grid gap-5 lg:grid-cols-2">
+        <UploadCard
+          tone="document"
+          icon={FileText}
+          title="문서 파일"
+          description="일반 문서, 규정, 안내문 등 다양한 문서를 업로드하세요."
+          extensions={['TXT', 'MD', 'PDF', 'DOCX']}
+          onClick={() => setUploadOpen(true)}
+        />
+        <UploadCard
+          tone="schedule"
+          icon={CalendarDays}
+          title="일정 파일"
+          description="회의, 교육, 행사 등 일정 파일을 업로드하세요."
+          extensions={['TXT', 'MD', 'DOCX', 'PDF', 'CSV', 'XLSX']}
+          onClick={() => setUploadOpen(true)}
+        />
       </div>
 
-      <DocumentFilterBar filters={filters} onChange={updateFilters} />
+      <div className="min-h-[420px] overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-800">AI 작업 대기</h2>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
+                {data?.items?.length ?? 0}개
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-slate-400">카테고리와 공개 부서를 지정한 뒤 AI 작업을 시작하세요.</p>
+          </div>
+          <Button variant="primary" disabled={!data?.items?.length}>
+            AI 작업 시작
+          </Button>
+        </div>
 
-      <DocumentTable
-        documents={data?.items ?? []}
-        loading={isLoading}
-        onRowClick={(doc) => navigate(`/admin/documents/source/${doc.documentId}`)}
-        emptyState={
-          <EmptyState
-            title="업로드된 문서가 없습니다"
-            description="Wiki 원본문서를 업로드하면 여기에서 처리 현황을 확인할 수 있습니다."
-          />
-        }
-      />
-
-      <Pagination page={filters.page} totalPages={data?.totalPages ?? 0} onChange={goToPage} />
+        <DocumentTable
+          documents={data?.items ?? []}
+          loading={isLoading}
+          onRowClick={(doc) => navigate(`/admin/documents/source/${doc.documentId}`)}
+          emptyState={
+            <EmptyState
+              title="업로드가 끝난 파일이 여기에 쌓입니다."
+              description="카테고리와 공개 부서를 지정한 뒤 AI 작업을 시작하세요."
+            />
+          }
+        />
+      </div>
 
       <DocumentUploadModal
         open={uploadOpen}
@@ -92,5 +75,64 @@ export default function DocumentListPage() {
         }}
       />
     </section>
+  )
+}
+
+function UploadCard({ tone, icon: Icon, title, description, extensions, onClick }) {
+  const schedule = tone === 'schedule'
+
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex items-start gap-3">
+        <span
+          className={`flex size-10 shrink-0 items-center justify-center rounded-xl text-white ${
+            schedule ? 'bg-emerald-600' : 'bg-gradient-to-br from-blue-500 to-violet-600'
+          }`}
+        >
+          <Icon className="size-5" />
+        </span>
+        <div>
+          <h2 className="font-bold text-slate-800">{title}</h2>
+          <p className="mt-0.5 text-xs text-slate-400">{description}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {extensions.map((extension) => (
+          <span
+            key={extension}
+            className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+              schedule
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
+                : 'border-primary-200 bg-primary-50 text-primary-600'
+            }`}
+          >
+            {extension}
+          </span>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={onClick}
+        className={`focus-ring mt-4 flex h-40 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition ${
+          schedule
+            ? 'border-emerald-300 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50'
+            : 'border-primary-300 bg-primary-50/50 text-primary-700 hover:bg-primary-50'
+        }`}
+      >
+        <span className="flex size-11 items-center justify-center rounded-full bg-white shadow-sm">
+          <Upload className="size-5" />
+        </span>
+        <span className="text-xs text-slate-500">파일을 끌어다 놓거나 클릭하여 업로드</span>
+        <span
+          className={`rounded-lg px-5 py-2 text-sm font-semibold text-white ${
+            schedule ? 'bg-emerald-600' : 'bg-gradient-to-r from-blue-500 to-violet-600'
+          }`}
+        >
+          파일 선택
+        </span>
+      </button>
+    </article>
   )
 }
