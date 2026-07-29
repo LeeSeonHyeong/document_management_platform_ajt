@@ -72,11 +72,17 @@ export default function InquiryDetailPage() {
             <h3 className="mt-4 text-sm font-semibold text-slate-400">첨부 파일</h3>
             <div className="mt-3 flex flex-wrap gap-2">
               {(inquiry.attachments ?? []).length ? inquiry.attachments.map((file) => (
-                <div key={file.attachmentId ?? file.name} className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3">
-                  <span className="rounded-lg bg-primary-50 p-2 text-primary-500"><FileImage className="size-4" /></span>
-                  <span className="text-sm font-semibold">{file.name}</span>
-                  <span className="text-xs text-slate-400">{file.sizeLabel ?? ''}</span>
-                </div>
+                <a key={file.attachmentId ?? file.name} href={file.downloadUrl} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-slate-200">
+                  {file.downloadUrl ? (
+                    <img src={file.downloadUrl} alt={file.name} className="h-32 w-48 object-cover" />
+                  ) : (
+                    <span className="flex h-20 w-48 items-center justify-center bg-slate-50 text-primary-500"><FileImage className="size-6" /></span>
+                  )}
+                  <span className="flex items-center justify-between gap-3 px-3 py-2">
+                    <span className="max-w-32 truncate text-xs font-semibold">{file.name}</span>
+                    <span className="text-xs text-slate-400">{file.sizeLabel ?? ''}</span>
+                  </span>
+                </a>
               )) : <span className="text-sm text-slate-400">첨부 파일 없음</span>}
             </div>
           </Card>

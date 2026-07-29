@@ -3,6 +3,7 @@ import { departments, users, signupRequests, inquiries, credentials, findUserByI
 
 // 목 세션(데모용). HttpOnly 쿠키를 흉내 내는 대신 메모리 플래그로 로그인 상태를 유지한다.
 let currentUserId = null
+const inquiryAttachmentFiles = new Map()
 
 function errorBody(status, code, message, path, fieldErrors = []) {
   return {
@@ -246,7 +247,11 @@ export const handlers = [
     const [sortField, sortDirection = 'desc'] = (url.searchParams.get('sort') ?? 'createdAt,desc').split(',')
     const priorityOrder = { high: 3, normal: 2, low: 1 }
 
-    const items = inquiries
+    const currentUser = findUserById(currentUserId)
+    const visibleInquiries = currentUser?.role === 'employee'
+      ? inquiries.filter((inquiry) => inquiry.author.userId === currentUserId)
+      : inquiries.filter((inquiry) => inquiry.author.userId !== '1')
+    const items = visibleInquiries
       .filter((inquiry) => {
         const searchable = `${inquiry.title} ${inquiry.author.name}`.toLowerCase()
         return (!keyword || searchable.includes(keyword))
@@ -269,6 +274,83 @@ export const handlers = [
     })
   }),
 
+  http.get('/api/v1/inquiry-assignees', ({ request }) => {
+    const keyword = (new URL(request.url).searchParams.get('keyword') ?? '').toLowerCase()
+    const items = users
+      .filter((user) =>
+        user.role === 'admin'
+        && user.signupStatus === 'approved'
+        && user.accountStatus === 'active'
+        && (!keyword || user.name.toLowerCase().includes(keyword)),
+      )
+      .map((user) => ({
+        assigneeId: user.userId,
+        name: user.name,
+        department: user.department,
+      }))
+    return HttpResponse.json({ items })
+  }),
+
+  http.post('/api/v1/inquiries', async ({ request }) => {
+    const author = findUserById(currentUserId)
+    if (!author) {
+      return HttpResponse.json(
+        errorBody(401, 'INVALID_ACCESS_TOKEN', '로그인이 필요합니다.', '/api/v1/inquiries'),
+        { status: 401 },
+      )
+    }
+    const formData = await request.formData()
+    const assigneeId = String(formData.get('assigneeId') ?? '')
+    const assignee = users.find((user) =>
+      user.userId === assigneeId
+      && user.role === 'admin'
+      && user.signupStatus === 'approved'
+      && user.accountStatus === 'active',
+    )
+    if (!assignee) {
+      return HttpResponse.json(
+        errorBody(400, 'INVALID_INQUIRY_ASSIGNEE', '선택할 수 없는 담당자입니다.', '/api/v1/inquiries'),
+        { status: 400 },
+      )
+    }
+    const nextId = String(Math.max(...inquiries.map((item) => Number(item.inquiryId)), 0) + 1)
+    const attachmentFiles = formData.getAll('attachments')
+    const attachments = attachmentFiles.map((file, index) => {
+      const attachmentId = `${nextId}-${index + 1}`
+      inquiryAttachmentFiles.set(attachmentId, file)
+      return {
+        attachmentId,
+        name: file.name,
+        sizeLabel: `${Math.max(1, Math.ceil(file.size / 1024))}KB`,
+        contentType: file.type,
+        downloadUrl: `/api/v1/inquiries/${nextId}/attachments/${attachmentId}`,
+      }
+    })
+    const inquiry = {
+      inquiryId: nextId,
+      displayId: `INQ-2024-${String(nextId).padStart(3, '0')}`,
+      title: String(formData.get('title') ?? ''),
+      content: String(formData.get('content') ?? ''),
+      priority: String(formData.get('priority') ?? 'normal'),
+      status: 'pending',
+      author: {
+        userId: author.userId,
+        name: author.name,
+        department: author.department,
+      },
+      assignee: {
+        assigneeId: assignee.userId,
+        name: assignee.name,
+        department: assignee.department,
+      },
+      attachments,
+      answer: null,
+      createdAt: new Date().toISOString(),
+    }
+    inquiries.unshift(inquiry)
+    return HttpResponse.json(inquiry, { status: 201 })
+  }),
+
   http.get('/api/v1/inquiries/:inquiryId', ({ params }) => {
     const inquiry = inquiries.find((item) => item.inquiryId === params.inquiryId)
     if (!inquiry) {
@@ -278,6 +360,29 @@ export const handlers = [
       )
     }
     return HttpResponse.json(inquiry)
+  }),
+
+  http.get('/api/v1/inquiries/:inquiryId/attachments/:attachmentId', ({ params }) => {
+    const inquiry = inquiries.find((item) => item.inquiryId === params.inquiryId)
+    const attachment = inquiry?.attachments?.find((item) => item.attachmentId === params.attachmentId)
+    const file = inquiryAttachmentFiles.get(params.attachmentId)
+    if (!inquiry || !attachment || !file) {
+      return HttpResponse.json(
+        errorBody(
+          404,
+          'INQUIRY_ATTACHMENT_NOT_FOUND',
+          '첨부 이미지를 찾을 수 없습니다.',
+          `/api/v1/inquiries/${params.inquiryId}/attachments/${params.attachmentId}`,
+        ),
+        { status: 404 },
+      )
+    }
+    return new HttpResponse(file, {
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'Content-Disposition': `inline; filename="${encodeURIComponent(file.name)}"`,
+      },
+    })
   }),
 
   http.put('/api/v1/inquiries/:inquiryId/answer', async ({ params, request }) => {

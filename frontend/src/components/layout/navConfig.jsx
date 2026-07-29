@@ -34,7 +34,8 @@ export const ADMIN_FOOTER_ITEMS = [{ to: '/settings', label: '설정', icon: Set
 export const ROUTE_LABELS = {
   '/': '홈',
   '/wiki': '위키',
-  '/inquiries': '문의하기',
+  '/inquiries': '문의 사항',
+  '/inquiries/new': '문의 작성',
   '/schedules': '일정',
   '/me': '내 정보',
   '/settings': '설정',

@@ -22,3 +22,26 @@ export async function saveInquiryAnswer(inquiryId, content) {
   })
   return data
 }
+
+// 문의 작성 화면의 담당자 후보입니다.
+// assigneeId, name, department 필드는 DB 칼럼명이 아니라 공개 API 응답 이름입니다.
+export async function fetchInquiryAssignees(keyword = '') {
+  const { data } = await apiClient.get('/inquiry-assignees', {
+    params: { keyword: keyword || undefined },
+  })
+  return data
+}
+
+// 문의 등록 API는 이미지 파일을 함께 보내므로 multipart/form-data를 사용합니다.
+export async function createInquiry({ assigneeId, title, content, priority, attachments }) {
+  const formData = new FormData()
+  formData.append('assigneeId', assigneeId)
+  formData.append('title', title)
+  formData.append('content', content)
+  formData.append('priority', priority)
+  attachments.forEach((file) => formData.append('attachments', file))
+  const { data } = await apiClient.post('/inquiries', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}

@@ -20,6 +20,8 @@ import SignupRequestsPage from '@/features/member/pages/SignupRequestsPage'
 import DepartmentManagementPage from '@/features/department/pages/DepartmentManagementPage'
 import InquiryManagementPage from '@/features/inquiry/pages/InquiryManagementPage'
 import InquiryDetailPage from '@/features/inquiry/pages/InquiryDetailPage'
+import EmployeeInquiriesPage from '@/features/inquiry/pages/EmployeeInquiriesPage'
+import CreateInquiryPage from '@/features/inquiry/pages/CreateInquiryPage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -47,6 +49,13 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <DashboardPage /> },
+          {
+            element: <RoleRoute allowedRoles={[ROLES.EMPLOYEE]} />,
+            children: [
+              { path: 'inquiries', element: <EmployeeInquiriesPage /> },
+              { path: 'inquiries/new', element: <CreateInquiryPage /> },
+            ],
+          },
           {
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
             children: [
