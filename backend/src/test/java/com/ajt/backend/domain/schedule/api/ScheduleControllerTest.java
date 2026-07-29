@@ -208,6 +208,19 @@ class ScheduleControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/schedules는 1년 초과 조회 기간에 400을 반환한다")
+    void listRejectsRangeLongerThanOneYear() throws Exception {
+        Member employee = memberRepository.save(employee(departmentRepository.save(new Department("개발부"))));
+
+        mockMvc.perform(get("/api/v1/schedules")
+                        .cookie(accessTokenCookie(employee))
+                        .param("startDate", "2026-01-01")
+                        .param("endDate", "2027-01-02"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SCHEDULE_RANGE"));
+    }
+
+    @Test
     @DisplayName("PATCH /api/v1/schedules/{id}는 관리자가 제목을 수정한다")
     void updateScheduleAsAdmin() throws Exception {
         Member admin = memberRepository.save(admin(departmentRepository.save(new Department("개발부"))));

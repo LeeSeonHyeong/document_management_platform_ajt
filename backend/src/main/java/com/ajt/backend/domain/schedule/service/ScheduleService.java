@@ -103,7 +103,7 @@ public class ScheduleService {
             String visibilityType,
             String departmentId
     ) {
-        // TODO(스케일 검토): 계약상 목록은 페이지네이션이 없어 기간 내 전체를 반환한다.
+        // TODO(스케일 검토): 계약상 목록은 페이지네이션이 없어 최대 1년 기간 내 전체를 반환한다.
         //  또한 사원 가시성/부서 필터는 조회 후 인메모리로 거른다(부서 목록은 BatchSize로 모아 읽는다).
         //  기간 내 일정이 대량이면 성능 이슈 가능 → 데이터 증가 시 페이지네이션/DB 필터 도입 검토.
         requireAuthenticated(loginMember);
@@ -111,6 +111,9 @@ public class ScheduleService {
         LocalDate to = parseDate(endDate);
         if (from.isAfter(to)) {
             throw new BusinessException(ErrorCode.INVALID_SCHEDULE_RANGE, "조회 시작일이 종료일보다 늦습니다.");
+        }
+        if (to.isAfter(from.plusYears(1))) {
+            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_RANGE, "일정 조회 기간은 최대 1년입니다.");
         }
         Instant windowStart = from.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant windowEndExclusive = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -274,9 +277,7 @@ public class ScheduleService {
         if (schedule.visibilityType() == ScheduleVisibility.PERSONAL) {
             // personal 일정은 작성자 본인만 수정/삭제할 수 있다. 관리자도 타인의 personal 일정은 수정/삭제할 수 없다.
             if (schedule.authorId() != loginMember.memberId()) {
-                // TODO(에러 코드 확인): 소유권 위반을 FORBIDDEN으로 반환한다. 존재를 숨기려면 404(SCHEDULE_NOT_FOUND)가
-                //  더 맞을 수 있음. 계약에 수정/삭제 403·404 구분 예시가 없어 팀 확정 필요.
-                throw new BusinessException(ErrorCode.FORBIDDEN);
+                throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
             }
             return;
         }
