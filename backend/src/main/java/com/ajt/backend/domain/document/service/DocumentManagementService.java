@@ -8,10 +8,15 @@ import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.model.DocumentStatus;
+import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.member.Member;
+import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
@@ -20,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,6 +55,9 @@ public class DocumentManagementService {
     private final DocumentParseJobLauncher parseJobLauncher;
     // 작업: 파일 다운로드용 저장소. 저장된 원본 파일을 Resource로 읽는다.
     private final DocumentFileStorage documentFileStorage;
+    // 작업(DOC-03): 사원 접근권한 판정용. 소속 부서와 접근 가능한 공개범위(scopeKey)를 구한다.
+    private final MemberRepository memberRepository;
+    private final WikiScopeRepository wikiScopeRepository;
 
     public DocumentManagementService(
             CurrentMemberProvider currentMemberProvider,
@@ -56,7 +65,9 @@ public class DocumentManagementService {
             DocumentCategoryRepository documentCategoryRepository,
             AiJobRepository aiJobRepository,
             DocumentParseJobLauncher parseJobLauncher,
-            DocumentFileStorage documentFileStorage
+            DocumentFileStorage documentFileStorage,
+            MemberRepository memberRepository,
+            WikiScopeRepository wikiScopeRepository
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.documentRepository = documentRepository;
@@ -64,6 +75,8 @@ public class DocumentManagementService {
         this.aiJobRepository = aiJobRepository;
         this.parseJobLauncher = parseJobLauncher;
         this.documentFileStorage = documentFileStorage;
+        this.memberRepository = memberRepository;
+        this.wikiScopeRepository = wikiScopeRepository;
     }
 
     @Transactional(readOnly = true)
@@ -135,9 +148,10 @@ public class DocumentManagementService {
     }
 
     /**
-     * 작업(DOC-04, FR-DOC-011): 관리자 원본문서 목록 조회.
-     * 관리자만 접근하며 공개범위·카테고리·상태·검색어·파일형식·업로드기간 필터와 페이지네이션을 지원한다.
-     * (사원의 scope 접근 판정은 사원 문서 목록(DOC-03)에서 추가 예정. departmentId 필터도 그때 함께.)
+     * 작업(DOC-03/DOC-04): 원본문서 목록 조회.
+     * 관리자는 전체를, 사원은 접근 가능한 문서(전체 공개 ALL + 본인 소속 부서 공개)만 조회한다(FR-ACL-002).
+     * 공개범위·카테고리·상태·검색어·파일형식·부서·업로드기간 필터와 페이지네이션을 지원한다.
+     * 인증은 시큐리티 계층에서 강제되므로 여기서는 역할(관리자/사원)에 따라 노출 범위만 나눈다.
      */
     @Transactional(readOnly = true)
     public DocumentListResponse findDocuments(
@@ -148,14 +162,31 @@ public class DocumentManagementService {
             String status,
             String keyword,
             String fileType,
+            Long departmentId,
             String uploadedFrom,
             String uploadedTo,
             String sort
     ) {
-        requireAdmin();
+        CurrentMember currentMember = currentMemberProvider.currentMember();
+
+        // 접근 가능한 공개범위(scopeKey) 제한을 계산한다. null이면 제한 없음(관리자이면서 부서 필터도 없는 경우).
+        Set<String> allowedScopeKeys = null;
+        if (!currentMember.isAdmin()) {
+            // 사원: 전체 공개(ALL) + 본인 소속 부서를 포함하는 부서 공개 범위만 볼 수 있다.
+            allowedScopeKeys = accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
+        }
+        if (departmentId != null) {
+            // departmentId 필터(계약): 해당 부서를 department_refs에 포함하는 공개범위로 좁힌다. 사원이면 기존 접근권한과 교집합.
+            // 의도된 동작: 전사 공개(ALL)는 이 필터에서 제외한다. "특정 부서 전용 문서만" 보기 위한 필터이기 때문.
+            Set<String> departmentScopeKeys = scopeKeysContaining(departmentId);
+            allowedScopeKeys = (allowedScopeKeys == null)
+                    ? departmentScopeKeys
+                    : intersect(allowedScopeKeys, departmentScopeKeys);
+        }
+
         Pageable pageable = createPageable(page, size, sort);
-        Specification<Document> specification =
-                documentSpecification(scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo);
+        Specification<Document> specification = documentSpecification(
+                allowedScopeKeys, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo);
         Page<Document> documents = documentRepository.findAll(specification, pageable);
 
         // 카테고리 이름은 문서마다 개별 조회하면 N+1이 되므로, 페이지의 카테고리 ID를 한 번에 모아 매핑한다.
@@ -206,6 +237,7 @@ public class DocumentManagementService {
     }
 
     private Specification<Document> documentSpecification(
+            Set<String> allowedScopeKeys,
             String scopeKey,
             Long categoryId,
             String status,
@@ -216,6 +248,12 @@ public class DocumentManagementService {
     ) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
+            if (allowedScopeKeys != null) {
+                // 접근 가능한 공개범위로 제한한다. 접근 가능 범위가 하나도 없으면 결과도 없어야 한다.
+                predicates.add(allowedScopeKeys.isEmpty()
+                        ? criteriaBuilder.disjunction()
+                        : root.get("scopeKey").in(allowedScopeKeys));
+            }
             if (scopeKey != null && !scopeKey.isBlank()) {
                 predicates.add(criteriaBuilder.equal(root.get("scopeKey"), scopeKey));
             }
@@ -278,6 +316,39 @@ public class DocumentManagementService {
                 .replace("\\", "\\\\")
                 .replace("%", "\\%")
                 .replace("_", "\\_");
+    }
+
+    private Long memberDepartmentId(long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        return member.getDepartment().getId();
+    }
+
+    /** 사원이 접근 가능한 공개범위: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위(FR-ACL-002/005). */
+    private Set<String> accessibleScopeKeys(Long departmentId) {
+        Set<String> scopeKeys = new HashSet<>();
+        scopeKeys.add("ALL");
+        if (departmentId != null) {
+            scopeKeys.addAll(scopeKeysContaining(departmentId));
+        }
+        return scopeKeys;
+    }
+
+    /**
+     * 해당 부서를 department_refs에 포함하는 부서 공개 scopeKey 집합.
+     * department_refs가 JSON이라 DB 조인이 불가하므로(backend-spring-convention 3절) 메모리에서 판정한다.
+     */
+    private Set<String> scopeKeysContaining(long departmentId) {
+        return wikiScopeRepository.findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT).stream()
+                .filter(scope -> scope.departmentRefs().contains(departmentId))
+                .map(WikiScope::scopeKey)
+                .collect(Collectors.toSet());
+    }
+
+    private static Set<String> intersect(Set<String> left, Set<String> right) {
+        Set<String> result = new HashSet<>(left);
+        result.retainAll(right);
+        return result;
     }
 
     private CurrentMember requireAdmin() {

@@ -140,7 +140,7 @@ class DocumentUploadControllerTest {
     @DisplayName("문서 목록 조회 성공 시 200과 목록·페이지 정보를 반환한다")
     void listsDocuments() throws Exception {
         given(documentManagementService.findDocuments(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .willReturn(new DocumentListResponse(
                         List.of(new DocumentSummaryResponse(
                                 "15",
