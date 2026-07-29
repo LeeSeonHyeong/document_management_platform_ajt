@@ -33,6 +33,11 @@ export const qk = {
     detail: (documentId) => ['documents', 'detail', String(documentId)],
   },
 
+  documentCategories: {
+    all: ['document-categories'],
+    list: (scopeKey) => ['document-categories', 'list', scopeKey ?? null],
+  },
+
   aiJobs: {
     all: ['ai-jobs'],
     detail: (jobId) => ['ai-jobs', 'detail', String(jobId)],

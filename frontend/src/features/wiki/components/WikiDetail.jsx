@@ -1,0 +1,119 @@
+import { useMemo, useState } from 'react'
+import { FileText, Bot } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Badge, Tabs, Spinner, EmptyState } from '@/components/ui'
+import { useAuth } from '@/hooks/useAuth'
+import { ROLES } from '@/shared/constants/enums'
+import { useWiki, useWikis } from '../queries'
+import WikiMarkdown from './WikiMarkdown'
+import WikiSourcePreviewModal from './WikiSourcePreviewModal'
+import WikiAgentChat from './WikiAgentChat'
+
+function formatDateTime(iso) {
+  if (!iso) return '-'
+  return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+// Figma 6R(관리자)·S2(사원) 우측 — Wiki 상세. 같은 컴포넌트를 role로 분기한다.
+export default function WikiDetail({ wikiId }) {
+  const { role } = useAuth()
+  const isAdmin = role === ROLES.ADMIN
+  const [tab, setTab] = useState('toc')
+  const [previewDoc, setPreviewDoc] = useState(null)
+
+  const { data: wiki, isLoading, isError } = useWiki(wikiId)
+  // 본문 내부 링크의 유효성 판정을 위해 같은 공간의 Wiki ID 집합을 준비한다.
+  const { data: scopeWikiPage } = useWikis(wiki ? { scopeKey: wiki.scopeKey, size: 200 } : undefined)
+
+  const validWikiIds = useMemo(() => {
+    const ids = new Set()
+    if (wiki) ids.add(String(wiki.wikiId))
+    ;(scopeWikiPage?.items ?? []).forEach((w) => ids.add(String(w.wikiId)))
+    ;(wiki?.relatedWikis ?? []).forEach((w) => ids.add(String(w.wikiId)))
+    return ids
+  }, [wiki, scopeWikiPage])
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 justify-center py-16">
+        <Spinner />
+      </div>
+    )
+  }
+  if (isError || !wiki) {
+    return <EmptyState title="Wiki를 찾을 수 없습니다" description="삭제되었거나 접근 권한이 없을 수 있습니다." />
+  }
+
+  const tabItems = [
+    { value: 'toc', label: '본문·관련 문서' },
+    ...(isAdmin ? [{ value: 'agent', label: 'AI 에이전트', icon: <Bot className="size-4" /> }] : []),
+  ]
+
+  return (
+    <div className="min-w-0 flex-1">
+      <header className="mb-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-slate-800">{wiki.title}</h1>
+          {wiki.category && <Badge tone="neutral">{wiki.category.name}</Badge>}
+        </div>
+        <p className="mt-1 text-sm text-slate-400">수정 {formatDateTime(wiki.updatedAt)}</p>
+      </header>
+
+      <Tabs items={tabItems} value={tab} onChange={setTab} className="mb-4" />
+
+      {tab === 'toc' && (
+        <div className="space-y-6">
+          <article>
+            <WikiMarkdown markdown={wiki.contentMarkdown} validWikiIds={validWikiIds} />
+          </article>
+
+          <section>
+            <h2 className="mb-2 text-sm font-semibold text-slate-700">원본 문서</h2>
+            {wiki.evidenceDocuments?.length > 0 ? (
+              <ul className="space-y-1.5">
+                {/* 항목 클릭 시 미리보기 모달(6-2R/S2-1). 다운로드·상세 이동은 모달 안에서 role로 분기한다. */}
+                {wiki.evidenceDocuments.map((doc) => (
+                  <li key={doc.documentId}>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewDoc(doc)}
+                      className="focus-ring flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    >
+                      <FileText className="size-4 shrink-0 text-slate-400" />
+                      <span className="min-w-0 flex-1 truncate text-slate-700">{doc.originalFileName}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-400">연결된 원본 문서가 없습니다.</p>
+            )}
+          </section>
+
+          {wiki.relatedWikis?.length > 0 && (
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-slate-700">연관 Wiki</h2>
+              <ul className="space-y-1">
+                {wiki.relatedWikis.map((w) => (
+                  <li key={w.wikiId}>
+                    <Link to={`/wiki/${w.wikiId}`} className="text-sm text-primary-600 underline-offset-2 hover:underline">
+                      {w.title}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+
+      {tab === 'agent' && isAdmin && <WikiAgentChat wikiId={wikiId} />}
+
+      <WikiSourcePreviewModal
+        open={Boolean(previewDoc)}
+        evidenceDocument={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
+    </div>
+  )
+}

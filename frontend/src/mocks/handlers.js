@@ -8,6 +8,9 @@ import {
   findUserById,
   schedules,
 } from './db'
+import { documentHandlers } from './handlers/document'
+import { aiJobHandlers } from './handlers/aiJob'
+import { wikiHandlers } from './handlers/wiki'
 
 // 목 세션(데모용). HttpOnly 쿠키를 흉내 내는 대신 메모리 플래그로 로그인 상태를 유지한다.
 let currentUserId = null
@@ -114,6 +117,9 @@ export const handlers = [
 
   http.post('/api/v1/auth/password-resets', () => new HttpResponse(null, { status: 204 })),
 
+  ...documentHandlers,
+  ...aiJobHandlers,
+  ...wikiHandlers,
   http.get('/api/v1/users', ({ request }) => {
     const url = new URL(request.url)
     const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase()

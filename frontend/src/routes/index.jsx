@@ -14,6 +14,14 @@ import AdminPage from '@/pages/AdminPage'
 import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import DocumentListPage from '@/features/document/pages/DocumentListPage'
+import SourceDocumentListPage from '@/features/document/pages/SourceDocumentListPage'
+import SourceDocumentDetailPage from '@/features/document/pages/SourceDocumentDetailPage'
+import AiJobQueuePage from '@/features/document/pages/AiJobQueuePage'
+import AiJobProgressPage from '@/features/document/pages/AiJobProgressPage'
+import AiJobSummaryPage from '@/features/document/pages/AiJobSummaryPage'
+import DocumentCategoryPage from '@/features/document/pages/DocumentCategoryPage'
+import WikiPage from '@/features/wiki/pages/WikiPage'
 import EmployeeListPage from '@/features/member/pages/EmployeeListPage'
 import EmployeeDetailPage from '@/features/member/pages/EmployeeDetailPage'
 import EmployeeEditPage from '@/features/member/pages/EmployeeEditPage'
@@ -51,6 +59,9 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <HomePage /> },
+          // Wiki 열람은 관리자·사원 공통(6R/S2). ADMIN 전용 블록 밖에 둔다.
+          { path: 'wiki', element: <WikiPage /> },
+          { path: 'wiki/:wikiId', element: <WikiPage /> },
           { path: 'me', element: <MyProfilePage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.EMPLOYEE]} />,
@@ -71,6 +82,13 @@ export const router = createBrowserRouter([
               { path: 'admin/inquiries', element: <InquiryManagementPage /> },
               { path: 'admin/inquiries/:inquiryId', element: <InquiryDetailPage /> },
               { path: 'admin/schedules', element: <AdminSchedulePage /> },
+              { path: 'admin/documents', element: <DocumentListPage /> },
+              { path: 'admin/documents/source', element: <SourceDocumentListPage /> },
+              { path: 'admin/documents/source/:documentId', element: <SourceDocumentDetailPage /> },
+              { path: 'admin/documents/jobs/:jobId', element: <AiJobQueuePage /> },
+              { path: 'admin/documents/jobs/:jobId/progress', element: <AiJobProgressPage /> },
+              { path: 'admin/documents/jobs/:jobId/summary', element: <AiJobSummaryPage /> },
+              { path: 'admin/documents/categories', element: <DocumentCategoryPage /> },
             ],
           },
         ],
