@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { Upload, Settings2 } from 'lucide-react'
+import { Upload, Settings2, FileText } from 'lucide-react'
 import { Button, Pagination, EmptyState } from '@/components/ui'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
@@ -47,6 +47,12 @@ export default function DocumentListPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">문서 관리</h1>
         <div className="flex gap-2">
+          <Link to="/admin/documents/source">
+            <Button variant="outline">
+              <FileText className="size-4" />
+              원본 문서
+            </Button>
+          </Link>
           <Link to="/admin/documents/categories">
             <Button variant="outline">
               <Settings2 className="size-4" />

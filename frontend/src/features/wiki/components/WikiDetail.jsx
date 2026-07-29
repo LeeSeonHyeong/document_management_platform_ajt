@@ -46,7 +46,7 @@ export default function WikiDetail({ wikiId }) {
 
   const tabItems = [
     { value: 'toc', label: '본문·관련 문서' },
-    ...(isAdmin ? [{ value: 'agent', label: 'AI 에이전트', icon: <Bot className="size-4" /> }] : []),
+    ...(isAdmin ? [{ value: 'agent', label: 'AI 문서 편집', icon: <Bot className="size-4" /> }] : []),
   ]
 
   return (
