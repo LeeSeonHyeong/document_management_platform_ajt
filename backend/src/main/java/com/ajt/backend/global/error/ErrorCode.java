@@ -17,6 +17,8 @@ public enum ErrorCode {
     ADMIN_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "관리자 권한이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
+    // 수정: 신규 추가. 동시성으로 DB 유니크/FK 제약 위반이 사전 체크를 빠져나간 경우의 공통 409 코드.
+    RESOURCE_CONFLICT(HttpStatus.CONFLICT, "요청이 현재 리소스 상태와 충돌합니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
 
     DEPARTMENT_NOT_FOUND(HttpStatus.BAD_REQUEST, "존재하지 않는 부서입니다."),
