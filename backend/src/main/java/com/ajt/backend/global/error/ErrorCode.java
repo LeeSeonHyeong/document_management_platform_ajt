@@ -12,6 +12,7 @@ public enum ErrorCode {
     INVALID_SCOPE_KEY(HttpStatus.BAD_REQUEST, "scopeKey 형식이 올바르지 않습니다."),
     WIKI_SCOPE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않거나 접근할 수 없는 Wiki 공간입니다."),
     WIKI_NOT_FOUND(HttpStatus.NOT_FOUND, "Wiki가 없거나 접근할 수 없습니다."),
+    INVALID_WIKI_FILTER(HttpStatus.BAD_REQUEST, "Wiki 조회 조건이 올바르지 않습니다."),
     EMPTY_CHAT_CONTENT(HttpStatus.BAD_REQUEST, "대화 내용을 입력해주세요."),
     WIKI_EDIT_IN_PROGRESS(HttpStatus.CONFLICT, "같은 Wiki 공간의 변환 작업이 처리 중입니다."),
     WIKI_EDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Wiki 수정에 실패했습니다."),
