@@ -54,7 +54,7 @@ class WikiTransformationServiceTest {
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
         given(applier.apply(any(), anyLong(), any())).willReturn(List.of(101L));
 
-        List<Long> affected = service.transformForAddedDocument(
+        WikiTransformationService.WikiTransformationResult result = service.transformForAddedDocument(
                 42L,
                 15L,
                 SCOPE_KEY,
@@ -62,7 +62,8 @@ class WikiTransformationServiceTest {
                 List.of(101L, 108L)
         );
 
-        assertThat(affected).containsExactly(101L);
+        assertThat(result.affectedWikiIds()).containsExactly(101L);
+        assertThat(result.summary()).isEqualTo("요약");
         ArgumentCaptor<WikiTransformationRequest> captor =
                 ArgumentCaptor.forClass(WikiTransformationRequest.class);
         org.mockito.Mockito.verify(aiClient).transformWiki(captor.capture());
@@ -138,9 +139,10 @@ class WikiTransformationServiceTest {
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
         given(applier.apply(any(), anyLong(), any())).willReturn(List.of(201L));
 
-        List<Long> affected = service.transformForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of());
+        WikiTransformationService.WikiTransformationResult result =
+                service.transformForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of());
 
-        assertThat(affected).containsExactly(201L);
+        assertThat(result.affectedWikiIds()).containsExactly(201L);
         org.mockito.Mockito.verify(wikiRepository, org.mockito.Mockito.never())
                 .findAllByScopeKeyAndIdIn(any(), any());
     }

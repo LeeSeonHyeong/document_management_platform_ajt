@@ -22,7 +22,8 @@ final class AiClientErrorMapper {
                 errorResponse == null ? null : errorResponse.code(),
                 errorResponse == null ? null : errorResponse.message(),
                 errorResponse == null ? List.<FieldErrorResponse>of() : errorResponse.fieldErrors(),
-                null
+                null,
+                errorResponse == null ? null : errorResponse.failureStage()
         );
     }
 

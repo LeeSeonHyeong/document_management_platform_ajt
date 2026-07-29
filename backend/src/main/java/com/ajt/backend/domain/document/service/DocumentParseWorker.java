@@ -6,6 +6,7 @@ import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.wiki.service.WikiTransformationService;
+import com.ajt.backend.domain.wiki.service.WikiTransformationService.WikiTransformationResult;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
@@ -16,6 +17,7 @@ import com.ajt.backend.global.ai.client.WikiContextSelectionResponse;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -52,22 +54,42 @@ public class DocumentParseWorker {
     public void parse(AiJob job) {
         job.start();
         aiJobRepository.save(job);
-        for (Document document : orderedDocuments(job.documentIds())) {
-            parseDocument(job, document);
+        Map<Long, Document> documentsById;
+        try {
+            documentsById = documentsById(job.documentIds());
+        } catch (RuntimeException exception) {
+            job.fail("작업 대상 문서를 읽지 못했습니다: " + exception.getMessage());
+            aiJobRepository.save(job);
+            return;
         }
+        List<AiJob.DocumentParseResult> documentResults = new ArrayList<>();
+        for (Long documentId : job.documentIds()) {
+            Document document = documentsById.get(documentId);
+            if (document == null) {
+                // 업로드 후 삭제된 문서다. 나머지 문서는 계속 처리하고 이 문서만 실패로 남긴다.
+                documentResults.add(AiJob.DocumentParseResult.failed(
+                        documentId,
+                        "문서를 찾을 수 없습니다.",
+                        null
+                ));
+                continue;
+            }
+            documentResults.add(parseDocument(job, document));
+        }
+        job.finish(documentResults);
+        aiJobRepository.save(job);
     }
 
-    private List<Document> orderedDocuments(List<Long> documentIds) {
-        Map<Long, Document> documentsById = documentRepository.findAllById(documentIds)
+    /**
+     * 업로드 순서대로 처리하기 위해 문서를 ID로 찾을 수 있게 모읍니다.
+     */
+    private Map<Long, Document> documentsById(List<Long> documentIds) {
+        return documentRepository.findAllById(documentIds)
                 .stream()
                 .collect(Collectors.toMap(Document::id, Function.identity()));
-        return documentIds.stream()
-                .map(documentsById::get)
-                .sorted(Comparator.comparing(document -> documentIds.indexOf(document.id())))
-                .toList();
     }
 
-    private void parseDocument(AiJob job, Document document) {
+    private AiJob.DocumentParseResult parseDocument(AiJob job, Document document) {
         document.startParsing();
         String parsedMarkdown;
         List<Long> selectedWikiIds;
@@ -95,32 +117,48 @@ public class DocumentParseWorker {
             document.completeParsing(parsedPath, selectedWikiIds);
         } catch (AiClientException exception) {
             document.failParsing(failureReason(exception));
-            return;
+            return AiJob.DocumentParseResult.failed(
+                    document.id(),
+                    failureReason(exception),
+                    exception.failureStage()
+            );
         } catch (RuntimeException exception) {
             document.failParsing(exception.getMessage());
-            return;
+            return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
-        transformWiki(job, document, parsedMarkdown, selectedWikiIds);
+        return transformWiki(job, document, parsedMarkdown, selectedWikiIds);
     }
 
     /**
      * 파싱된 문서를 Wiki로 변환하고 결과를 반영합니다.
      * 변환이 실패해도 이 문서만 실패로 남기고 작업의 다음 문서는 계속 처리합니다.
      */
-    private void transformWiki(AiJob job, Document document, String parsedMarkdown, List<Long> selectedWikiIds) {
+    private AiJob.DocumentParseResult transformWiki(
+            AiJob job,
+            Document document,
+            String parsedMarkdown,
+            List<Long> selectedWikiIds
+    ) {
         try {
-            List<Long> affectedWikiIds = wikiTransformationService.transformForAddedDocument(
+            WikiTransformationResult result = wikiTransformationService.transformForAddedDocument(
                     job.id(),
                     document.id(),
                     document.scopeKey(),
                     parsedMarkdown,
                     selectedWikiIds
             );
-            document.completeProcessing(affectedWikiIds);
+            document.completeProcessing(result.affectedWikiIds());
+            return AiJob.DocumentParseResult.succeeded(document.id(), result.summary());
         } catch (AiClientException exception) {
             document.failProcessing(failureReason(exception));
+            return AiJob.DocumentParseResult.failed(
+                    document.id(),
+                    failureReason(exception),
+                    exception.failureStage()
+            );
         } catch (RuntimeException exception) {
             document.failProcessing(exception.getMessage());
+            return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
     }
 
