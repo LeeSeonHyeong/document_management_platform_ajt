@@ -36,7 +36,9 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
   const searching = keyword.trim().length > 0
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col gap-3 border-r border-slate-200 pr-4">
+    <aside className="flex w-72 shrink-0 flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+      <h2 className="text-base font-bold text-slate-800">문서 목록</h2>
+
       <Select
         value={scopeKey}
         onChange={(e) => setScopeKey(e.target.value)}
@@ -44,7 +46,7 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
         options={spaces.map((s) => ({ value: s.scopeKey, label: `${s.displayName} (${s.wikiCount})` }))}
       />
 
-      <SearchBar placeholder="Wiki 검색" defaultValue={keyword} onSearch={setKeyword} />
+      <SearchBar placeholder="문서명으로 검색" defaultValue={keyword} onSearch={setKeyword} />
 
       {isLoading ? (
         <div className="flex justify-center py-8">

@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
-import { Sparkles, CheckCircle2 } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
+import ajtLogo from '@/assets/ajt-logo.png'
 
 // 인증 화면(로그인/회원가입/비밀번호) 공통 레이아웃.
 // 좌측 브랜드 패널(보라 그라데이션) + 우측 폼 영역.
@@ -8,8 +9,8 @@ export default function AuthLayout() {
     <div className="flex min-h-screen bg-white">
       <div className="relative hidden w-1/2 flex-col justify-between overflow-hidden bg-gradient-to-br from-primary-600 to-primary-800 p-12 text-white lg:flex">
         <div className="flex items-center gap-2">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-white/15">
-            <Sparkles className="size-6" />
+          <span className="flex size-10 items-center justify-center rounded-xl bg-white">
+            <img src={ajtLogo} alt="" className="size-9 object-contain" />
           </span>
           <span className="text-lg font-bold">AJT</span>
         </div>

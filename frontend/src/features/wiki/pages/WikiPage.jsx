@@ -10,15 +10,17 @@ export default function WikiPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="flex gap-6">
+    <div className="flex min-h-[calc(100vh-124px)] items-stretch gap-4">
       <WikiNavSidebar selectedWikiId={wikiId} onSelectWiki={(id) => navigate(`/wiki/${id}`)} />
-      {wikiId ? (
-        <WikiDetail wikiId={wikiId} />
-      ) : (
-        <div className="flex-1">
+      <section className="flex min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white p-6">
+        {wikiId ? (
+          <WikiDetail wikiId={wikiId} />
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
           <EmptyState title="Wiki를 선택하세요" description="좌측 목차에서 문서를 선택하면 내용을 볼 수 있습니다." />
-        </div>
-      )}
+          </div>
+        )}
+      </section>
     </div>
   )
 }
