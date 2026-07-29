@@ -86,7 +86,8 @@ public class ScheduleService {
         if (!canAccess(loginMember, schedule, memberDepartmentId)) {
             throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
         }
-        return ScheduleDetailResponse.from(schedule);
+        // 수정: 사원에게는 원본문서(파일명·다운로드 URL)를 노출하지 않도록 관리자 여부를 전달한다(FR-SCH-009).
+        return ScheduleDetailResponse.from(schedule, loginMember.isAdmin());
     }
 
     /**
@@ -174,7 +175,8 @@ public class ScheduleService {
         schedule.replaceDepartments(newDepartments);
         // TODO(계약 확인): 수정 응답의 저장 예시가 계약에 없어 상세(ScheduleDetailResponse) 형태로 반환한다.
         //  Postman 계약에 수정 응답 예시가 추가되면 형태를 맞출 것.
-        return ScheduleDetailResponse.from(schedule);
+        // 수정: 원본문서 노출 여부로 관리자 여부를 전달(update·approve는 관리자 경로).
+        return ScheduleDetailResponse.from(schedule, loginMember.isAdmin());
     }
 
     /**
@@ -192,7 +194,8 @@ public class ScheduleService {
         } catch (IllegalStateException exception) {
             throw new BusinessException(ErrorCode.INVALID_SCHEDULE_STATUS, exception.getMessage());
         }
-        return ScheduleDetailResponse.from(schedule);
+        // 수정: 원본문서 노출 여부로 관리자 여부를 전달(update·approve는 관리자 경로).
+        return ScheduleDetailResponse.from(schedule, loginMember.isAdmin());
     }
 
     /**

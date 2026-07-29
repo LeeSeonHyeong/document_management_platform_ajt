@@ -28,8 +28,12 @@ public record ScheduleDetailResponse(
     ) {
     }
 
-    public static ScheduleDetailResponse from(Schedule schedule) {
-        SourceDocument sourceDocument = schedule.hasSourceDocument()
+    // 수정: from(Schedule) → from(Schedule, boolean)로 변경. 원본문서 노출 여부를 인자로 받는다.
+    //       사원에게는 일정 원본문서의 파일명·다운로드 URL을 노출하면 안 되므로(FR-SCH-009),
+    //       관리자(includeSourceDocument=true)일 때만 sourceDocument를 채우고, 사원이면 null로 둔다.
+    public static ScheduleDetailResponse from(Schedule schedule, boolean includeSourceDocument) {
+        // 수정: 기존엔 hasSourceDocument()만 보고 채웠으나, 관리자 여부(includeSourceDocument)도 함께 확인한다.
+        SourceDocument sourceDocument = (includeSourceDocument && schedule.hasSourceDocument())
                 ? new SourceDocument(
                         schedule.sourceOriginalFileName(),
                         "/api/v1/schedules/%d/source-file".formatted(schedule.id()))
