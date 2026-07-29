@@ -4,3 +4,14 @@ __pycache__/
 *.egg-info/
 viewer/dist/
 node_modules/
+
+# 실제 환경변수. 템플릿(src/.env.example)만 커밋한다.
+# `.env.*` 까지 막는 이유: `git add .` 금지 규칙 하나에만 의존하면 한 번의 실수로 키가 커밋된다.
+.env
+.env.*
+!.env.example
+!src/.env.example
+
+# SQLite 임시 파일. 측정 결과에 섞여 들어간다.
+*.db-shm
+*.db-wal

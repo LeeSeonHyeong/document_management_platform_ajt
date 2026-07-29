@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
+import sys
 from pathlib import Path
 
 from wiki_mcp.telemetry import read_counts
@@ -42,7 +43,6 @@ EXCLUDED_BUILTIN_TOOLS = frozenset({
     "glob", "grep", "execute", "task",
 })
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SERVER_MODULE = "wiki_mcp.local_server"
 
 # NFR-PERF-002: a document over ten minutes must be failed. The CLI runtime gets
@@ -56,14 +56,23 @@ MAX_TURNS = 60
 
 def _server_config(root: Path, scope_key: str, job_id: str,
                    tool_log: Path | None = None) -> dict:
-    """Same stdio server the CLI runtime launches, described for MCP adapters."""
+    """Same stdio server the CLI runtime launches, described for MCP adapters.
+
+    `sys.executable`, not `uv run --project`. The CLI runtime hit this first
+    (`claude_code.py` trap 5): `uv run` re-resolves the project on every spawn and
+    the MCP client gave up before the handshake finished — the server showed as
+    `pending`, no tools arrived, and the agent flailed with its own file tools
+    while the run still reported no error. The same spawn is used here, so the
+    same fix applies. **Unverified on this runtime** — DeepAgents is not installed
+    in the measurement environment yet (plan Task 7).
+    """
     args = [
-        "run", "--project", str(PROJECT_ROOT), "python", "-m", SERVER_MODULE,
+        "-m", SERVER_MODULE,
         "--root", str(root), "--scope", scope_key, "--job-id", job_id,
     ]
     if tool_log:
         args += ["--tool-log", str(tool_log)]
-    return {"wiki": {"transport": "stdio", "command": "uv", "args": args}}
+    return {"wiki": {"transport": "stdio", "command": sys.executable, "args": args}}
 
 
 EXPECTED_TOOLS = frozenset({

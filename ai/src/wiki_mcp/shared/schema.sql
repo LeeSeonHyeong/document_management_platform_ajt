@@ -125,7 +125,16 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL,
+    -- 원문. 스니펫과 각주 원문 대조가 이것을 읽는다 — 절대 전처리본으로 덮지 않는다.
     content TEXT NOT NULL,
+    -- 색인 전용 전처리본. `services/chunker.py` 의 `search_tokens` 가 만든다: 한글 어절을
+    -- 2글자 겹침으로 나눈 것. FTS5 `unicode61` 이 공백으로만 자르는데 한국어는 조사가
+    -- 붙어 오므로 원문을 그대로 색인하면 `"연차"` 로 `"연차를"` 을 못 찾는다 (측정: R@5
+    -- 0.33 → 0.60).
+    --
+    -- 별도 컬럼인 이유는 `chunks_fts` 가 external content 방식이라서다 — FTS 가 자기
+    -- 컬럼과 같은 이름의 컬럼을 이 표에서 읽는다. 같은 컬럼에 둘 다 담을 수 없다.
+    search_text TEXT NOT NULL DEFAULT '',
     page INTEGER,
     start_char INTEGER,
     token_count INTEGER NOT NULL,
@@ -160,24 +169,31 @@ CREATE TABLE IF NOT EXISTS document_references (
     UNIQUE(scope_id, source_address, target_address, reference_type, footnote_label)
 );
 
+-- FTS 는 `search_text`(전처리본)를 색인한다. `content`(원문)가 아니다 — 한국어는 조사가
+-- 붙어 오므로 원문을 그대로 색인하면 2글자 질의가 아무것도 찾지 못한다.
+--
+-- `tokenize='unicode61'` 그대로다. 전처리가 이미 2글자로 나눠 놓았으므로 토크나이저는
+-- 공백만 자르면 된다. `trigram` 을 쓰지 않는 이유는 `chunker.search_tokens` 참고.
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-    content,
+    search_text,
     content='document_chunks',
     content_rowid='rowid',
     tokenize='unicode61'
 );
 
 CREATE TRIGGER IF NOT EXISTS chunks_fts_insert AFTER INSERT ON document_chunks BEGIN
-    INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
+    INSERT INTO chunks_fts(rowid, search_text) VALUES (new.rowid, new.search_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_fts_delete AFTER DELETE ON document_chunks BEGIN
-    INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.rowid, old.content);
+    INSERT INTO chunks_fts(chunks_fts, rowid, search_text)
+        VALUES('delete', old.rowid, old.search_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS chunks_fts_update AFTER UPDATE ON document_chunks BEGIN
-    INSERT INTO chunks_fts(chunks_fts, rowid, content) VALUES('delete', old.rowid, old.content);
-    INSERT INTO chunks_fts(rowid, content) VALUES (new.rowid, new.content);
+    INSERT INTO chunks_fts(chunks_fts, rowid, search_text)
+        VALUES('delete', old.rowid, old.search_text);
+    INSERT INTO chunks_fts(rowid, search_text) VALUES (new.rowid, new.search_text);
 END;
 
 CREATE INDEX IF NOT EXISTS idx_documents_address ON documents(scope_id, address);

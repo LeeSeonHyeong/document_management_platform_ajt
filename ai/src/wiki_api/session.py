@@ -25,18 +25,16 @@ from wiki_mcp.vaultfs import INDEX_ADDRESS, LocalVaultFS, SpringVaultFS
 
 from .errors import FailureStage, InternalError
 
-# `LintHandler.run()` 은 목록이 아니라 요약 문자열을 낸다 — 개별 항목은
-# "- [code] `address` — message" 줄로, error/warn 은 "**Errors**"/"**Warnings**"
-# 절 아래에 나뉘어 나온다. `mcp/tools/lint.py` 를 고치지 않으므로 그 형태를 그대로
-# 읽어 파싱한다.
-_ISSUE_LINE_RE = re.compile(r"^- \[(?P<code>[a-z0-9-]+)\] `(?P<address>[^`]+)` — (?P<message>.*)$")
-
-# `unresolved-citation` 메시지에서 각주 라벨을 뽑는다. `tools/lint.py` 의 문장(고치지
-# 않는다): "각주 `^1`가 `취업규칙.pdf`을 가리키는데 그런 원본문서가 없다".
-_FOOTNOTE_LABEL_RE = re.compile(r"각주 `\^(?P<label>[^`]+)`")
-
-# `dangling-link` 메시지에서 대상 주소를 뽑는다: "본문 링크 `pages/x.md`가 …".
-_LINK_TARGET_RE = re.compile(r"본문 링크 `(?P<target>[^`]+)`")
+# `LintHandler.collect()` 가 `LintIssue` 목록을 준다. 앞 판본은 `run()` 의 마크다운
+# 보고서를 정규식 3개로 되파싱했는데 두 가지가 깨졌다:
+#
+#   * `_MAX_PER_GROUP` 절단 — 보고서는 group 당 40건만 찍고 나머지를 "... N건 더" 로
+#     접는다. 라이브 전용 error 40건이 앞을 채우면 작업 층 error 가 보고서에서 사라지고
+#     게이트가 조용히 통과했다(fail-open). 주소별로 나눠 돌려 우회하고 있었다
+#   * 문장 결합 — `tools/lint.py` 의 한국어 문장을 다듬으면 여기 정규식이 안 맞고,
+#     그러면 막아야 할 것을 막지 않는다. 테스트가 그것을 잡지 못한다
+#
+# 이제 코드·주소·각주 라벨·링크 대상을 구조화된 필드로 받는다.
 
 # 본문에서 각주 정의 줄을 찾는다 — `tools/lint.py` 의 `_FOOTNOTE_DEF_RE` 와 같은 모양이다.
 _FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]]+)\]:\s*(.+)$", re.MULTILINE)
@@ -246,56 +244,53 @@ class WikiSession:
     async def assert_lint_clean(self) -> None:
         """반영 전 기계 검증. error 가 남으면 이 문서분을 반영하지 않는다.
 
-        **작업 층은 주소별로 따로 검사한다.** `LintHandler._lines` 가 group 당 40건
-        (`_MAX_PER_GROUP`)만 찍고 나머지를 "... N건 더" 로 접는다 — 범위 전체를 한 번에
-        돌리면 라이브 전용 error 40건이 앞을 채우는 순간 작업 층 error 가 보고서에서
-        사라지고 게이트가 조용히 통과한다(fail-open). 주소마다 따로 돌면 그 페이지의
-        error 가 목록 맨 앞에 온다. `run()` 은 `pattern` 과 무관하게 `wiki_docs` 를 전체
-        문서에서 만들므로 `dangling-link` 판정은 그대로 정확하다.
+        한 번만 돌린다. 앞 판본이 주소별로 나눠 돌린 것은 보고서 절단(`_MAX_PER_GROUP`)을
+        피하려는 우회였고, `collect()` 는 절단하지 않으므로 필요 없다.
 
-        라이브 전용 페이지는 전체 pass 에서 한 번만 보고, 거기서는 **이번 요청이 만든
-        `dangling-link`** 만 막는다 (`_LIVE_ONLY_BLOCKING_CODES` 주석).
+        막는 기준은 그대로다:
+
+          * 작업 층 주소 — 모든 error 가 막는다. 단 목차의 frontmatter 계열과 실행 전부터
+            있던 각주(`_is_legacy_footnote`)는 뺀다
+          * 라이브 전용 주소 — `_LIVE_ONLY_BLOCKING_CODES` 만, 그것도 링크 대상이 이번
+            작업이 건드린 주소일 때만 막는다
+          * `uncited-source` 는 버린다 (FR-DOC-012) — 정당한 무변경 재투입이 있다.
+            에이전트에게는 보이고 게이트는 통과시킨다
         """
-        from wiki_mcp.tools.lint import LintHandler
+        from wiki_mcp.tools.lint import LintHandler, LintIssue
 
         scope_row = {"id": self.scope_id, "scope_key": self.scope_key}
         work_addresses = {change["address"]
                           for change in await self.fs.pending_changes(self.scope_id)}
 
-        blocking: list[tuple[str, str, str]] = []
-        for address in sorted(work_addresses):
-            report = await LintHandler(self.fs, scope_row).run(pattern=address,
-                                                              include_graph=False)
-            for code, addr, message in self._errors(report):
-                if addr == INDEX_ADDRESS and code in _INDEX_FRONTMATTER_CODES:
+        blocking: list[LintIssue] = []
+        for issue in await LintHandler(self.fs, scope_row).collect(pattern="*",
+                                                                  include_graph=True):
+            if issue.severity != "error" or issue.code == "uncited-source":
+                continue
+            if issue.address in work_addresses:
+                if issue.address == INDEX_ADDRESS and issue.code in _INDEX_FRONTMATTER_CODES:
                     # Spring 이 주는 목차 본문에는 frontmatter 가 없다 — 에이전트가 목차를
                     # 고쳐도 그 사실은 변하지 않는다. dangling-link·인용은 예외가 아니다.
                     continue
-                if code == "unresolved-citation" and \
-                        await self._is_legacy_footnote(addr, message):
+                if issue.code == "unresolved-citation" and \
+                        await self._is_legacy_footnote(issue.address, issue.footnote):
                     continue
-                blocking.append((code, addr, message))
-
-        # `include_graph=True`: `uncited-source` 는 아래에서 버리지만, 라이브 페이지의
-        # dangling-link 를 보려면 전체 pass 가 필요하다.
-        report = await LintHandler(self.fs, scope_row).run(pattern="*", include_graph=True)
-        for code, address, message in self._errors(report):
-            if address in work_addresses:
-                continue                      # 위에서 주소별로 이미 봤다
-            if code not in _LIVE_ONLY_BLOCKING_CODES:
+                blocking.append(issue)
                 continue
-            target = _LINK_TARGET_RE.search(message)
-            if target and target["target"] in work_addresses:
-                blocking.append((code, address, message))
+            # 라이브 전용 페이지.
+            if issue.code not in _LIVE_ONLY_BLOCKING_CODES:
+                continue
+            if issue.link_target in work_addresses:
+                blocking.append(issue)
 
         if blocking:
-            code, address, message = blocking[0]
+            first = blocking[0]
             raise InternalError(
                 self.error_code,
-                f"검증에 실패했습니다 — [{code}] `{address}` — {message}",
+                f"검증에 실패했습니다 — [{first.code}] `{first.address}` — {first.message}",
                 FailureStage.LINT_FAILED)
 
-    async def _is_legacy_footnote(self, address: str, message: str) -> bool:
+    async def _is_legacy_footnote(self, address: str, label: str | None) -> bool:
         """이 각주 정의가 에이전트 실행 **전부터** 그 페이지에 있었나 (F1).
 
         미해결 인용을 파일명으로 가려내려던 앞 판본은 죽은 분기였다 — `find_source` 가
@@ -308,12 +303,15 @@ class WikiSession:
         라이브 층 행은 실행 전 상태 그대로다. 같은 각주 정의 줄이 라이브 본문에 그대로
         있으면 그 각주는 처음 쓰일 때 검증된 것이고 지금 원문이 없을 뿐이다 — 통과시킨다.
         새로 쓰거나 고친 각주 정의는 라이브에 없으므로 그대로 막는다.
+
+        라벨은 `LintIssue.footnote` 로 받는다. 앞 판본은 메시지 문장을 정규식으로 뜯었고,
+        `tools/lint.py` 의 한국어 문장이 바뀌면 라벨을 못 찾아 **모든** 미해결 인용을
+        막는 쪽으로 조용히 넘어갔다.
         """
-        label = _FOOTNOTE_LABEL_RE.search(message)
         if not label:
             return False
         current = (await self.fs.get(self.scope_id, address) or {}).get("content") or ""
-        definition = self._definition_line(current, label["label"])
+        definition = self._definition_line(current, label)
         if not definition:
             return False
         live = await self.fs.live_content(self.scope_id, address)
@@ -346,26 +344,3 @@ class WikiSession:
         raise InternalError("INVALID_WIKI_EDIT_REQUEST",
                             "요청에 실린 Wiki 컨텍스트에서 대상 Wiki를 찾을 수 없습니다.",
                             status=400)
-
-    @staticmethod
-    def _errors(report: str) -> list[tuple[str, str, str]]:
-        """`LintHandler.run()`의 마크다운 보고서에서 error 항목만 뽑는다.
-        `**Errors**`와 `**Warnings**` 사이의 줄만 본다 — warn 은 게이트 대상이 아니다.
-
-        `uncited-source`는 여기서 버린다 (FR-DOC-012): 이 세션에서 방금 올린 원본문서를,
-        이번이 정당한 무변경 재투입이면 아무 페이지도 인용하지 않는다. 그것은 실패가
-        아니라 "변경 0"이라는 정상 결과다.
-        """
-        if "**Errors**" not in report:
-            return []
-        body = report.split("**Errors**", 1)[1].split("**Warnings**", 1)[0]
-
-        found: list[tuple[str, str, str]] = []
-        for line in body.splitlines():
-            match = _ISSUE_LINE_RE.match(line.strip())
-            if not match:
-                continue
-            if match["code"] == "uncited-source":
-                continue
-            found.append((match["code"], match["address"], match["message"]))
-        return found
