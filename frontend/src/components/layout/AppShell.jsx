@@ -10,7 +10,7 @@ export default function AppShell() {
   const { role } = useAuth()
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-[#eef4ff]">
       <Sidebar role={role} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />

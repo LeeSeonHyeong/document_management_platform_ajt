@@ -9,7 +9,6 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
 import PasswordFindPage from '@/pages/auth/PasswordFindPage'
 import PasswordResetPage from '@/pages/auth/PasswordResetPage'
-import HomePage from '@/pages/home/HomePage'
 import AdminPage from '@/pages/AdminPage'
 import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
@@ -32,6 +31,7 @@ import InquiryDetailPage from '@/features/inquiry/pages/InquiryDetailPage'
 import EmployeeInquiriesPage from '@/features/inquiry/pages/EmployeeInquiriesPage'
 import CreateInquiryPage from '@/features/inquiry/pages/CreateInquiryPage'
 import MyProfilePage from '@/features/me/pages/MyProfilePage'
+import RoleHomePage from './RoleHomePage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -58,7 +58,7 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <HomePage /> },
+          { index: true, element: <RoleHomePage /> },
           // Wiki 열람은 관리자·사원 공통(6R/S2). ADMIN 전용 블록 밖에 둔다.
           { path: 'wiki', element: <WikiPage /> },
           { path: 'wiki/:wikiId', element: <WikiPage /> },
