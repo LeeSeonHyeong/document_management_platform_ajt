@@ -1,7 +1,6 @@
 package com.ajt.backend.domain.member.dto;
 
 import com.ajt.backend.domain.member.Member;
-import com.ajt.backend.domain.member.Role;
 import java.time.Instant;
 
 /**
@@ -20,7 +19,9 @@ public record UserSummaryResponse(
         boolean isDepartmentManager,
         Instant createdAt
 ) {
-    public static UserSummaryResponse from(Member member) {
+    // 수정: from(Member) → from(Member, boolean)으로 변경. 부서장 여부를 인자로 받는다.
+    //       (역할로 부서장을 판단하던 로직을 제거하고, 실제 부서장 지정 여부를 호출부에서 넘겨받도록 함)
+    public static UserSummaryResponse from(Member member, boolean isDepartmentManager) {
         return new UserSummaryResponse(
                 String.valueOf(member.getId()),
                 member.getEmail(),
@@ -30,7 +31,10 @@ public record UserSummaryResponse(
                 UserDepartmentResponse.from(member.getDepartment()),
                 member.getSignupStatus().apiValue(),
                 member.getAccountStatus().apiValue(),
-                member.getRole() == Role.ADMIN,
+                // 수정: 기존 (member.getRole() == Role.ADMIN)을 제거하고, 실제 부서장 지정 여부로 대체.
+                //       전체 관리자·부서 관리자는 같은 ADMIN 역할이지만, 부서장은 department.manager_id로
+                //       지정된 사람만 해당한다(FR-USR-006).
+                isDepartmentManager,
                 member.getCreatedAt()
         );
     }
