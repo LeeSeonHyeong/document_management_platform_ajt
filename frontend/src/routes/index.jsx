@@ -20,6 +20,7 @@ import AiJobQueuePage from '@/features/document/pages/AiJobQueuePage'
 import AiJobProgressPage from '@/features/document/pages/AiJobProgressPage'
 import AiJobSummaryPage from '@/features/document/pages/AiJobSummaryPage'
 import DocumentCategoryPage from '@/features/document/pages/DocumentCategoryPage'
+import WikiPage from '@/features/wiki/pages/WikiPage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -47,6 +48,9 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { index: true, element: <DashboardPage /> },
+          // Wiki 열람은 관리자·사원 공통(6R/S2). ADMIN 전용 블록 밖에 둔다.
+          { path: 'wiki', element: <WikiPage /> },
+          { path: 'wiki/:wikiId', element: <WikiPage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
             children: [
