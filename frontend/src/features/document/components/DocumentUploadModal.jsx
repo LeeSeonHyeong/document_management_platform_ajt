@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Upload, FileText, X } from 'lucide-react'
 import { Modal, Button, Select, Chip } from '@/components/ui'
 import { FILE_ACCEPT, MAX_FILE_SIZE_BYTES } from '@/shared/constants/enums'
-import { useDepartments } from '@/features/department/queries'
+import { useDepartments } from '@/features/department/useDepartments'
 import { useUploadDocuments, useDocumentCategories } from '../queries'
 import { buildScopeKey } from '../scope'
 

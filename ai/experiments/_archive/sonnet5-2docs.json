@@ -1,0 +1,46 @@
+{
+  "scope": "ALL",
+  "runtime": "claude-code",
+  "documents": [
+    {
+      "seq": 1,
+      "document": "01-training.md",
+      "elapsedSeconds": 61.2,
+      "toolCalls": {
+        "guide": 1,
+        "read": 4,
+        "search": 3,
+        "create": 1,
+        "edit": 2,
+        "append": 1,
+        "lint": 2
+      },
+      "inputTokens": 691409,
+      "outputTokens": 3529,
+      "turns": 16,
+      "costUsd": 0.4549,
+      "error": null,
+      "reply": "error 0 됐다. warn 2 는 오늘 만든 페이지라 신경 안 써도 됨.\n\n작업 끝. 원본문서 01-training.md 반영해 `/wiki/복지 제도/도서-및-교육-예산.md` 새로 생성 (도서 구입비, 연간 교육 예산, 콘퍼런스 규정), index.md·log.md 갱신, lint error 0 확인."
+    },
+    {
+      "seq": 2,
+      "document": "02-side-gigs.md",
+      "elapsedSeconds": 79.0,
+      "toolCalls": {
+        "guide": 1,
+        "read": 5,
+        "search": 3,
+        "create": 1,
+        "edit": 3,
+        "append": 1,
+        "lint": 2
+      },
+      "inputTokens": 665465,
+      "outputTokens": 5281,
+      "turns": 18,
+      "costUsd": 0.5056,
+      "error": null,
+      "reply": "error 0 됐다. warn 2건은 stale-page — 방금 갱신한 index/log 페이지라 문제 없음. 끝.\n\n새 페이지 `/wiki/인사 정책/사이드-기그부업.md` 생성, index.md·log.md 갱신, lint error 0 확인 완료."
+    }
+  ]
+}

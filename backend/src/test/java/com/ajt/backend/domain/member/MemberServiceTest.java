@@ -26,18 +26,24 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Transactional
 class MemberServiceTest {
+    private final MemberService memberService;
+    private final DepartmentRepository departmentRepository;
+    private final MemberRepository memberRepository;
+    private final PasswordEncoder passwordEncoder;
+
 
     @Autowired
-    MemberService memberService;
-
-    @Autowired
-    DepartmentRepository departmentRepository;
-
-    @Autowired
-    MemberRepository memberRepository;
-
-    @Autowired
-    PasswordEncoder passwordEncoder;
+    MemberServiceTest(
+            MemberService memberService,
+            DepartmentRepository departmentRepository,
+            MemberRepository memberRepository,
+            PasswordEncoder passwordEncoder
+    ) {
+        this.memberService = memberService;
+        this.departmentRepository = departmentRepository;
+        this.memberRepository = memberRepository;
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Test
     @DisplayName("내 정보 조회는 토큰의 회원 ID로 최신 회원 정보를 반환한다")
