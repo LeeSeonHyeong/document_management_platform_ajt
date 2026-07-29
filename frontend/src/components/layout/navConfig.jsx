@@ -42,6 +42,7 @@ export const ROUTE_LABELS = {
   '/admin/departments': '부서 관리',
   '/admin/inquiries': '문의 관리',
   '/admin/documents': '문서 관리',
+  '/admin/documents/summaries': '문서 관리',
   '/admin/schedules': '일정 관리',
 }
 
