@@ -16,6 +16,7 @@ import com.ajt.backend.domain.wiki.model.WikiCategory;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
+import com.ajt.backend.domain.wiki.storage.WikiFileMutation;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.CategoryChange;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.Evidence;
@@ -29,6 +30,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @DisplayName("FastAPI Wiki 변환 결과 반영")
 class WikiTransformationApplierTest {
@@ -71,6 +74,7 @@ class WikiTransformationApplierTest {
     private final WikiRepository wikiRepository = mock(WikiRepository.class);
     private final WikiCategoryRepository wikiCategoryRepository = mock(WikiCategoryRepository.class);
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
+    private final WikiFileMutation wikiFileMutation = mock(WikiFileMutation.class);
     private final WikiSearchIndexer wikiSearchIndexer = mock(WikiSearchIndexer.class);
     private final WikiTransformationApplier applier =
             new WikiTransformationApplier(
@@ -89,6 +93,7 @@ class WikiTransformationApplierTest {
     @BeforeEach
     void setUpRepositories() throws Exception {
         given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn("# 목차");
+        given(wikiFileStorage.beginMutation()).willReturn(wikiFileMutation);
         given(wikiRepository.saveAndFlush(any(Wiki.class))).willAnswer(invocation -> {
             Wiki wiki = invocation.getArgument(0);
             assignId(wiki, nextWikiId.getAndIncrement());
@@ -151,10 +156,10 @@ class WikiTransformationApplierTest {
         assertThat(created.wikiCategoryId()).isEqualTo(10L);
         assertThat(created.wikiPath()).isEqualTo("wiki/ALL/pages/leave-policy.md");
         assertThat(created.documentRefs()).containsExactly(15L);
-        then(wikiFileStorage).should().storeWikiMarkdown(
+        then(wikiFileMutation).should().storeWikiMarkdown(
                 "wiki/ALL/pages/leave-policy.md", "# 휴가 규정\n연차는 15일"
         );
-        then(wikiFileStorage).should().storeIndex(
+        then(wikiFileMutation).should().storeIndex(
                 SCOPE_KEY,
                 "# 목차\n\n- [휴가 규정](pages/101.md) — 연차와 반차 사용 기준"
         );
@@ -216,10 +221,10 @@ class WikiTransformationApplierTest {
         assertThat(existing.wikiRefs()).containsExactly(108L);
         assertThat(existing.documentRefs()).containsExactly(15L);
         assertThat(related.wikiRefs()).isEmpty();
-        then(wikiFileStorage).should().storeWikiMarkdown(
+        then(wikiFileMutation).should().storeWikiMarkdown(
                 existing.wikiPath(), "# 휴가 규정 개정"
         );
-        then(wikiFileStorage).should().storeIndex(
+        then(wikiFileMutation).should().storeIndex(
                 SCOPE_KEY,
                 "# 목차\n\n- [휴가 규정 개정](pages/101.md) — 개정된 휴가 기준\n- [근태 관리](pages/108.md)"
         );
@@ -243,7 +248,7 @@ class WikiTransformationApplierTest {
 
         assertThat(affectedWikiIds).isEmpty();
         assertThat(survivor.wikiRefs()).isEmpty();
-        then(wikiFileStorage).should().deleteWikiMarkdown(removed.wikiPath());
+        then(wikiFileMutation).should().deleteWikiMarkdown(removed.wikiPath());
         then(wikiRepository).should().delete(removed);
     }
 
@@ -265,10 +270,60 @@ class WikiTransformationApplierTest {
 
         applier.apply(SCOPE_KEY, DOCUMENT_ID, response);
 
-        then(wikiFileStorage).should().storeIndex(
+        then(wikiFileMutation).should().storeIndex(
                 SCOPE_KEY,
                 "# 목차\n\n- [근태 관리](pages/108.md) — 출퇴근"
         );
+    }
+
+    @Test
+    @DisplayName("목차 파일 반영에 실패하면 앞서 바꾼 Wiki 파일을 보상한다")
+    void rollsBackFilesWhenApplyFails() throws Exception {
+        existingCategory(10L, "인사");
+        given(wikiFileMutation.storeIndex(anyString(), anyString()))
+                .willThrow(new java.io.IOException("index write failed"));
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(),
+                List.of(new WikiChange(
+                        "create", null, "wiki-temp-1", "10",
+                        "wiki/ALL/pages/leave.md", "휴가 규정", "# 휴가 규정", List.of()
+                )),
+                List.of(),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
+                .isInstanceOf(java.io.UncheckedIOException.class);
+
+        then(wikiFileMutation).should().rollback();
+    }
+
+    @Test
+    @DisplayName("DB 트랜잭션이 롤백되면 파일 보상 작업을 실행한다")
+    void rollsBackFilesWhenDatabaseTransactionRollsBack() throws Exception {
+        existingCategory(10L, "인사");
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(),
+                List.of(new WikiChange(
+                        "create", null, "wiki-temp-1", "10",
+                        "wiki/ALL/pages/leave.md", "휴가 규정", "# 휴가 규정", List.of()
+                )),
+                List.of(),
+                List.of()
+        );
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            applier.apply(SCOPE_KEY, DOCUMENT_ID, response);
+
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(synchronization -> synchronization.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+
+            then(wikiFileMutation).should().rollback();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
