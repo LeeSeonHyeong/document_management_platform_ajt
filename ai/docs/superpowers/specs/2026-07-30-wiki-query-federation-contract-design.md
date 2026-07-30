@@ -288,6 +288,21 @@ scope_changed  ← 신규 제안: 작업 중 같은 범위의 위키가 바뀜
 
 프론트엔드 영향은 없다. 내부 API 만 다룬다.
 
+### 8.1 계약 말고도 개정이 필요한 공통 문서
+
+**이 문서는 공통 문서를 수정하지 않는다.** 합의 뒤 각 담당자가 반영한다. 무엇을 고쳐야 하는지만 적는다.
+
+| 문서 | 개정 내용 | 왜 필요한가 |
+| --- | --- | --- |
+| `../docs/requirements/요구사항정의서.md` — **NFR-AI-003** | 실패 단계에 `scope_changed` 추가 | 지금 조항이 *"`context_load`, `agent_timeout`, `agent_error`, `lint_failed`, `assemble` **중 하나로** 저장한다"* 로 목록을 닫아뒀다. 계약만 바꾸면 요구사항과 어긋난다 |
+| `../docs/api/AJT-FastAPI-Internal-API.postman_collection.json` | 창구 7개 · `X-Wiki-Capability` 신설, `failureStage` 값 추가 | 계약이 정본이므로 구현 전에 서 있어야 한다 |
+| `../docs/api/README.md` | `contractVersion` 상향 | 엔드포인트 신설은 하위 호환이 아니므로 minor 이상 (절차 4번) |
+| `../docs/conventions/rest-api-convention.md` | 확인만 | 내부 창구가 `404` 로 존재를 숨기는 것이 기존 규약과 충돌하지 않는지 |
+
+ERD 개정은 **필요 없다.** `wiki_scope.scope_version`·`wiki.summary`·`wiki.content_hash`·`wiki_search_chunk` 가 S15P11B106-139 에서 이미 들어갔다.
+
+**순서가 있다.** NFR-AI-003 개정이 계약 개정보다 먼저다 — 요구사항이 목록을 닫아둔 상태에서 계약에 값을 더하면 그 순간 두 문서가 모순된다.
+
 ## 9. AI 쪽 작업
 
 ### 9.1 진행 방식
