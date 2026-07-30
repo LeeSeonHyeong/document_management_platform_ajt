@@ -316,10 +316,11 @@ expect(internalRequests.length === 14, `내부 API 수가 14개가 아님: ${int
 
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
-// Wiki 조회 창구 7개 신설로 minor 상향 (docs/api/README.md 절차 4번). 1.4.0 을 건너뛴
-// 이유는 README 가 1.4.0, 컬렉션이 1.3.1 로 갈라져 있었기 때문이다 — 어느 쪽 번호도
-// 재사용하지 않고 둘을 1.5.0 으로 합친다.
-const expectedContractVersion = "1.5.0";
+// 1.5.0 은 Wiki 조회 창구 7개 신설. 1.6.0 은 그 창구를 실제로 부를 입력 계약이다 —
+// wiki-transformations·wiki-edits 에 wikiCapability·scopeVersion 을 더하고
+// selectedWikis[].wikiPath 를 필수화한다. 필수화는 하위 호환이 아니라 minor 이상이다.
+// 1.4.0 을 건너뛴 이유는 README 가 1.4.0, 컬렉션이 1.3.1 로 갈라져 있었기 때문이다.
+const expectedContractVersion = "1.6.0";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

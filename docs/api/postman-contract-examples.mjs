@@ -1,4 +1,4 @@
-export const contractVersion = "1.5.0";
+export const contractVersion = "1.6.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -805,6 +805,9 @@ const contracts = {
       httpStatus: 200,
       body: {
         scopeVersion: 47,
+        // 다음 페이지가 없으면 null. 정렬이 wikiId 오름차순이라 커서가 항목을
+        // 건너뛰거나 겹치지 않는다.
+        nextCursor: null,
         items: [
           {
             wikiId: "101",

@@ -408,9 +408,20 @@ scope_changed  ← 신규 제안: 작업 중 같은 범위의 위키가 바뀜
 | --- | --- | --- |
 | `../docs/requirements/요구사항정의서.md` v2.10 → **v2.11** | `NFR-AI-003` 실패 단계에 `scope_changed` 추가 | 완료 |
 | `../docs/api/generate-postman-collections.mjs` | 「Wiki 조회 창구」 폴더 · 요청 7개 · `X-Wiki-Capability` · `wikiCapability` 환경변수 | 완료 |
-| `../docs/api/postman-contract-examples.mjs` | 창구 7개 Saved Example, `contractVersion` 1.3.1 → **1.5.0** | 완료 |
-| `../docs/api/README.md` | 버전 1.5.0, 기준 요구사항 v2.11, 창구 7개 명시 | 완료 |
-| `../scripts/validate-artifact-consistency.mjs` | 내부 API 7 → 14, 기대 버전 1.5.0 | 완료 |
+| `../docs/api/postman-contract-examples.mjs` | 창구 7개 Saved Example, `contractVersion` 1.3.1 → **1.5.0** → **1.6.0** | 완료 |
+| `../docs/api/README.md` | 버전 1.6.0, 기준 요구사항 v2.11, 창구 7개 명시, `failureStage` 목록에 `scope_changed`, `wikiCapability` 환경변수 설명 | 완료 |
+| `../scripts/validate-artifact-consistency.mjs` | 내부 API 7 → 14, 기대 버전 1.6.0 | 완료 |
+
+**1.6.0 에서 더한 것** (Codex 검토 반영분, 12절 참고)
+
+| 대상 | 변경 |
+| --- | --- |
+| `wiki-transformations`·`wiki-edits` 요청 | `wikiCapability`·`scopeVersion` 선택 필드 |
+| `selectedWikis[].wikiPath` | 기존 Wiki 에 필수 |
+| `currentWiki.wikiPath` | 필수 (관리자 수정) |
+| 검색 창구 | `limit` 기본 10·최대 50, 정렬·질의 모드 확정 |
+| 목록 창구 | `limit`·`cursor` 파라미터, `nextCursor` 응답, `wikiId` 오름차순 |
+| 창구 `404` | `WIKI_CAPABILITY_EXPIRED`·`WIKI_SCOPE_NOT_FOUND`·`WIKI_NOT_FOUND`·`DOCUMENT_NOT_FOUND` 로 구분 |
 | `../docs/conventions/rest-api-convention.md` | **변경 없음** — `:365-373` 이 이미 "권한 없는 자료와 존재하지 않는 자료는 동일한 오류 코드" 를 정해뒀다 | 확인 완료 |
 
 **JSON 컬렉션을 직접 고치지 않았다.** README 절차가 *"생성된 JSON을 직접 수정한 뒤 생성기를 실행하면 변경 내용이 사라진다"* 로 정했으므로 생성기와 예시 모듈만 고치고 재생성했다.

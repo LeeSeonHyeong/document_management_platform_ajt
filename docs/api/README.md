@@ -2,7 +2,7 @@
 
 ## 계약 버전
 
-- 현재 버전: `1.5.0`
+- 현재 버전: `1.6.0`
 - 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.11
 - 공개 API: 56개
 - Spring Boot → FastAPI 내부 API: 7개
@@ -26,6 +26,7 @@ Postman에서 아래 파일 3개를 모두 Import한다.
 - `backendBaseUrl`: Spring Boot 로컬 주소
 - `aiBaseUrl`: FastAPI 로컬 주소
 - `internalApiKey`: Spring Boot와 FastAPI가 공유하는 내부 API 키
+- `wikiCapability`: Wiki 조회 창구를 Postman에서 직접 호출해 볼 때만 채운다. 실제 운영에서는 Spring Boot가 변환·수정 요청마다 발급하므로 사람이 넣는 값이 아니다
 
 Frontend는 `AJT Backend Public API`만 호출한다. `AJT FastAPI Internal API`는 Spring Boot만 호출한다.
 
@@ -52,7 +53,7 @@ P0 Request의 `Examples`에는 성공 응답과 대표 오류 응답이 저장�
 - 페이지 응답: `items`, `page`, `size`, `totalCount`, `totalPages`
 - FastAPI 내부 API 응답: 계약에 정의되지 않은 필드는 소비자가 무시한다. 추가 필드는 하위 호환으로 제공하며, 필수 필드의 삭제·의미 변경은 minor 이상 계약 버전 변경이 필요하다.
 
-Wiki 변환·문맥 선택 오류 응답은 공통 오류 구조에 선택 필드 `failureStage`를 추가할 수 있다. 값은 `context_load`, `agent_timeout`, `agent_error`, `lint_failed`, `assemble`이며 Spring Boot는 이를 `ai_job.document_results` JSON의 문서별 실패 단계로 저장한다.
+Wiki 변환·문맥 선택 오류 응답은 공통 오류 구조에 선택 필드 `failureStage`를 추가할 수 있다. 값은 `context_load`, `agent_timeout`, `agent_error`, `lint_failed`, `assemble`, `scope_changed`이며 Spring Boot는 이를 `ai_job.document_results` JSON의 문서별 실패 단계로 저장한다. `scope_changed`는 변환 중 같은 `scope_key`의 Wiki가 바뀌어(DR-030) 반영하지 않고 종료한 경우다.
 
 공통 오류 응답은 다음 구조를 사용한다.
 
