@@ -69,7 +69,7 @@ public class WikiTransformationService {
                 null,
                 currentIndex,
                 currentCategories(scopeKey),
-                selectedWikis(scopeKey, selectedWikiIds, currentIndex)
+                selectedWikis(scopeKey, selectedWikiIds)
         ));
         return new WikiTransformationResult(
                 applier.apply(scopeKey, documentId, response),
@@ -111,13 +111,11 @@ public class WikiTransformationService {
 
     private List<WikiTransformationRequest.SelectedWiki> selectedWikis(
             String scopeKey,
-            List<Long> selectedWikiIds,
-            String currentIndex
+            List<Long> selectedWikiIds
     ) {
         if (selectedWikiIds.isEmpty()) {
             return List.of();
         }
-        WikiIndex index = WikiIndex.parse(currentIndex);
         List<WikiTransformationRequest.SelectedWiki> selectedWikis = new ArrayList<>();
         for (Wiki wiki : wikiRepository.findAllByScopeKeyAndIdIn(scopeKey, selectedWikiIds)) {
             String contentMarkdown = readWikiMarkdown(wiki.wikiPath());
@@ -129,22 +127,13 @@ public class WikiTransformationService {
                     String.valueOf(wiki.id()),
                     String.valueOf(wiki.wikiCategoryId()),
                     wiki.title(),
-                    summaryOf(index, wiki),
+                    wiki.summary() == null ? wiki.title() : wiki.summary(),
                     contentMarkdown,
                     toStrings(wiki.documentRefs()),
                     toStrings(wiki.wikiRefs())
             ));
         }
         return selectedWikis;
-    }
-
-    /**
-     * 계약은 요약을 필수로 요구하지만 wiki 테이블에 summary 컬럼이 없어 목차에서 되읽습니다.
-     * 목차에 요약이 없으면 제목으로 대체합니다. (Wiki 엔티티의 TODO(DB) 참고)
-     */
-    private String summaryOf(WikiIndex index, Wiki wiki) {
-        String summary = index.summaryOf(wiki.id());
-        return summary == null ? wiki.title() : summary;
     }
 
     private String readWikiMarkdown(String wikiPath) {

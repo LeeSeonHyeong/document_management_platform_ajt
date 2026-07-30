@@ -33,14 +33,47 @@ import org.junit.jupiter.api.Test;
 @DisplayName("FastAPI Wiki 변환 결과 반영")
 class WikiTransformationApplierTest {
 
+    @Test
+    @DisplayName("여러 신규 카테고리와 AI 발급 Wiki 경로를 각각 반영한다")
+    void appliesEachWikiCategoryReferenceAndAgentIssuedPath() {
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(
+                        new CategoryChange("create", null, "category-temp-1", "인사"),
+                        new CategoryChange("create", null, "category-temp-2", "보안")
+                ),
+                List.of(
+                        new WikiChange(
+                                "create", null, "wiki-temp-1", "category-temp-1",
+                                "wiki/ALL/pages/leave-policy.md", "휴가 규정", "# 휴가 규정", List.of()
+                        ),
+                        new WikiChange(
+                                "create", null, "wiki-temp-2", "category-temp-2",
+                                "wiki/ALL/pages/security-policy.md", "보안 규정", "# 보안 규정", List.of()
+                        )
+                ),
+                List.of(),
+                List.of()
+        );
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, response);
+
+        assertThat(savedWikis).extracting(Wiki::wikiCategoryId).containsExactly(10L, 11L);
+        assertThat(savedWikis).extracting(Wiki::wikiPath).containsExactly(
+                "wiki/ALL/pages/leave-policy.md",
+                "wiki/ALL/pages/security-policy.md"
+        );
+    }
+
     private static final String SCOPE_KEY = "ALL";
     private static final long DOCUMENT_ID = 15L;
 
     private final WikiRepository wikiRepository = mock(WikiRepository.class);
     private final WikiCategoryRepository wikiCategoryRepository = mock(WikiCategoryRepository.class);
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
+    private final WikiSearchIndexer wikiSearchIndexer = mock(WikiSearchIndexer.class);
     private final WikiTransformationApplier applier =
-            new WikiTransformationApplier(wikiRepository, wikiCategoryRepository, wikiFileStorage);
+            new WikiTransformationApplier(wikiRepository, wikiCategoryRepository, wikiFileStorage, wikiSearchIndexer);
 
     private final List<Wiki> savedWikis = new ArrayList<>();
     private final List<WikiCategory> savedCategories = new ArrayList<>();
@@ -89,7 +122,8 @@ class WikiTransformationApplierTest {
                         "create",
                         null,
                         "wiki-temp-1",
-                        null,
+                        "category-temp-1",
+                        "wiki/ALL/pages/leave-policy.md",
                         "휴가 규정",
                         "# 휴가 규정\n연차는 15일",
                         List.of(new Evidence("15", "1", "3장 휴가", "연차는 15일을 부여한다"))
@@ -105,8 +139,9 @@ class WikiTransformationApplierTest {
                 .satisfies(category -> assertThat(category.name()).isEqualTo("휴가 및 근태"));
         Wiki created = savedWikis.get(0);
         assertThat(created.title()).isEqualTo("휴가 규정");
+        assertThat(created.summary()).isEqualTo("연차와 반차 사용 기준");
         assertThat(created.wikiCategoryId()).isEqualTo(10L);
-        assertThat(created.wikiPath()).isEqualTo("wiki/ALL/pages/101.md");
+        assertThat(created.wikiPath()).isEqualTo("wiki/ALL/pages/leave-policy.md");
         assertThat(created.documentRefs()).containsExactly(15L);
         then(wikiFileStorage).should().storeWikiMarkdown(SCOPE_KEY, 101L, "# 휴가 규정\n연차는 15일");
         then(wikiFileStorage).should().storeIndex(
@@ -238,12 +273,12 @@ class WikiTransformationApplierTest {
 
         assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("카테고리가 지정되지 않아");
+                .hasMessageContaining("wikiCategoryRef는 필수");
     }
 
     @Test
-    @DisplayName("공간에 카테고리가 하나뿐이면 그 카테고리에 Wiki를 만든다")
-    void usesOnlyCategoryInScope() throws Exception {
+    @DisplayName("카테고리가 하나여도 wikiCategoryRef 없이는 Wiki를 만들지 않는다")
+    void rejectsMissingCategoryReferenceEvenWhenOneCategoryExists() throws Exception {
         existingCategory(10L, "인사");
         WikiTransformationResponse response = new WikiTransformationResponse(
                 "요약",
@@ -253,9 +288,9 @@ class WikiTransformationApplierTest {
                 List.of()
         );
 
-        applier.apply(SCOPE_KEY, DOCUMENT_ID, response);
-
-        assertThat(savedWikis.get(0).wikiCategoryId()).isEqualTo(10L);
+        assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("wikiCategoryRef는 필수");
     }
 
     @Test

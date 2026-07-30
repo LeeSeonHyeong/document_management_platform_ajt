@@ -45,6 +45,7 @@ class WikiTransformationServiceTest {
     @DisplayName("선택된 Wiki를 같은 공간에서 재검증해 본문과 요약까지 채워 보낸다")
     void buildsRequestFromVerifiedWikis() throws Exception {
         Wiki selected = wiki(101L, 10L, "휴가 규정", List.of(15L, 18L), List.of(108L));
+        selected.changeSummary("연차와 반차 사용 기준");
         given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn(CURRENT_INDEX);
         given(wikiRepository.findAllByScopeKeyAndIdIn(SCOPE_KEY, List.of(101L, 108L)))
                 .willReturn(List.of(selected));
@@ -93,7 +94,7 @@ class WikiTransformationServiceTest {
     }
 
     @Test
-    @DisplayName("목차에 요약이 없으면 제목으로 대체한다")
+    @DisplayName("저장된 요약이 없으면 제목으로 대체한다")
     void fallsBackToTitleWhenSummaryMissing() throws Exception {
         Wiki selected = wiki(108L, 10L, "근태 관리", List.of(), List.of());
         given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn(CURRENT_INDEX);
