@@ -10,6 +10,16 @@ import org.junit.jupiter.api.Test;
 class DocumentTest {
 
     @Test
+    void cancelsOnlyWaitingDocument() {
+        Document document = Document.uploaded(10L, 3L, "ALL", "규정.md",
+                "documents/ALL/1/original.md", "text/markdown", 100L);
+
+        document.cancel();
+
+        assertThat(document.status()).isEqualTo(DocumentStatus.CANCELLED);
+    }
+
+    @Test
     @DisplayName("업로드된 문서는 파싱 성공 후 처리 대기 상태가 된다")
     void movesFromUploadedToProcessingAfterParseSuccess() {
         Document document = Document.uploaded(

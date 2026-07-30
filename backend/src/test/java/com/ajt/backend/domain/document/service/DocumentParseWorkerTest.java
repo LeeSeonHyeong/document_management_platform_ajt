@@ -30,6 +30,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -37,6 +38,40 @@ import org.springframework.transaction.annotation.Transactional;
 
 @DisplayName("원본문서 순차 파싱 워커")
 class DocumentParseWorkerTest {
+
+    @Test
+    @DisplayName("첫 문서가 끝난 뒤 취소된 작업은 다음 문서 AI 호출을 시작하지 않는다")
+    void stopsBeforeNextDocumentWhenCancellationIsObserved() throws Exception {
+        Document first = document(15L, "first.md");
+        Document second = document(16L, "second.md");
+        AiJob job = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L, 16L));
+        AiJob cancelled = AiJob.waiting(10L, "ALL", "wiki/ALL/jobs/1", List.of(15L, 16L));
+        assignId(job, 42L);
+        assignId(cancelled, 42L);
+        cancelled.start();
+        cancelled.cancel();
+        given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job), Optional.of(cancelled));
+        given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
+        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
+        given(aiClient.parseSource(any(SourceParseRequest.class))).willReturn(response("15", "# first"));
+        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
+                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
+        given(fileStorage.storeParsedMarkdown(eq("ALL"), eq(15L), anyString()))
+                .willReturn("wiki/ALL/sources/15/parsed.md");
+        given(wikiTransformationService.requestForAddedDocument(anyLong(), anyLong(), anyString(), anyString(), anyList()))
+                .willReturn(transformationResponse("반영 완료"));
+        given(transactionService.applyAddedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(101L), "반영 완료"));
+
+        worker.parse(job);
+
+        org.mockito.Mockito.verify(aiClient).parseSource(org.mockito.ArgumentMatchers.argThat(
+                request -> request.sourceId().equals("15")));
+        org.mockito.Mockito.verify(aiClient, org.mockito.Mockito.never()).parseSource(org.mockito.ArgumentMatchers.argThat(
+                request -> request.sourceId().equals("16")));
+        assertThat(second.status()).isEqualTo(DocumentStatus.UPLOADED);
+    }
 
     private final DocumentRepository documentRepository = org.mockito.Mockito.mock(DocumentRepository.class);
     private final AiJobRepository aiJobRepository = org.mockito.Mockito.mock(AiJobRepository.class);

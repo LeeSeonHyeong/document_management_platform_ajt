@@ -3,10 +3,12 @@ package com.ajt.backend.domain.document.api;
 import static org.hamcrest.Matchers.empty;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.ajt.backend.domain.document.service.AiJobQueryService;
+import com.ajt.backend.domain.document.service.AiJobCancelService;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import com.ajt.backend.global.error.GlobalExceptionHandler;
@@ -22,12 +24,13 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class AiJobControllerTest {
 
     private final AiJobQueryService aiJobQueryService = org.mockito.Mockito.mock(AiJobQueryService.class);
+    private final AiJobCancelService aiJobCancelService = org.mockito.Mockito.mock(AiJobCancelService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new AiJobController(aiJobQueryService))
+                .standaloneSetup(new AiJobController(aiJobQueryService, aiJobCancelService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -93,5 +96,15 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.message").value("AI 작업을 찾을 수 없습니다."))
                 .andExpect(jsonPath("$.path").value("/api/v1/ai-jobs/42"))
                 .andExpect(jsonPath("$.fieldErrors", empty()));
+    }
+
+    @Test
+    void acceptsAiJobCancellation() throws Exception {
+        given(aiJobCancelService.cancel(42L)).willReturn(new AiJobCancelResponse("42", "cancelled"));
+
+        mockMvc.perform(post("/api/v1/ai-jobs/{jobId}/cancel", 42L))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.status").value("cancelled"));
     }
 }
