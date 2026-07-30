@@ -134,6 +134,98 @@ class MemberServiceTest {
     }
 
     @Test
+    @DisplayName("부서장인 회원을 사원으로 강등하면 그 부서의 부서장 지정이 자동 해제된다")
+    void updateUserClearsDepartmentManagerOnDemotion() {
+        Department department = departmentRepository.save(new Department("기획부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        // role만 전달(부분 수정): 사원으로 강등
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("employee");
+
+        UserResponse response = memberService.updateUser(actor, manager.getId(), request);
+
+        assertThat(response.role()).isEqualTo("employee");
+        assertThat(departmentRepository.findById(department.getId()).orElseThrow().getManager()).isNull();
+    }
+
+    @Test
+    @DisplayName("부서장인 회원을 비활성화하면 그 부서의 부서장 지정이 자동 해제된다")
+    void updateUserClearsDepartmentManagerOnDeactivation() {
+        Department department = departmentRepository.save(new Department("기획부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        // accountStatus만 전달(부분 수정): 비활성화. 역할은 여전히 admin이지만 활성 자격을 잃음
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setAccountStatus("inactive");
+
+        UserResponse response = memberService.updateUser(actor, manager.getId(), request);
+
+        assertThat(response.accountStatus()).isEqualTo("inactive");
+        assertThat(departmentRepository.findById(department.getId()).orElseThrow().getManager()).isNull();
+    }
+
+    @Test
+    @DisplayName("부서장 자격을 유지하면 이름만 수정해도 부서장 지정은 유지된다")
+    void updateUserKeepsDepartmentManagerOnNameChange() {
+        Department department = departmentRepository.save(new Department("기획부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setName("새이름");
+
+        UserResponse response = memberService.updateUser(actor, manager.getId(), request);
+
+        assertThat(response.name()).isEqualTo("새이름");
+        assertThat(response.role()).isEqualTo("admin");
+        assertThat(response.accountStatus()).isEqualTo("active");
+        // 자격을 유지하므로 부서장 지정은 그대로여야 한다
+        assertThat(departmentRepository.findById(department.getId()).orElseThrow().getManager().getId())
+                .isEqualTo(manager.getId());
+    }
+
+    @Test
+    @DisplayName("부서장 자격을 유지하면 부서장인 회원을 다른 부서로 이동할 수 있다")
+    void updateUserAllowsMovingDepartmentManagerToAnotherDepartment() {
+        // 부서장 지정은 담당 부서 소속 여부를 검사하지 않으므로, 부서 이동은 지정 자격을 깨지 않는다.
+        Department department = departmentRepository.save(new Department("기획부"));
+        Department otherDepartment = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setDepartmentId(String.valueOf(otherDepartment.getId()));
+
+        UserResponse response = memberService.updateUser(actor, manager.getId(), request);
+
+        assertThat(response.department().name()).isEqualTo("개발부");
+        // 부서 이동은 부서장 자격을 깨지 않으므로 기획부 부서장 지정은 유지된다(자동 해제 대상 아님)
+        assertThat(departmentRepository.findById(department.getId()).orElseThrow().getManager().getId())
+                .isEqualTo(manager.getId());
+    }
+
+    @Test
+    @DisplayName("부서장이 아닌 관리자는 사원으로 강등할 수 있다")
+    void updateUserAllowsDemotingNonManagerAdmin() {
+        Department department = departmentRepository.save(new Department("기획부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("employee");
+
+        UserResponse response = memberService.updateUser(actor, admin.getId(), request);
+
+        assertThat(response.role()).isEqualTo("employee");
+    }
+
+    @Test
     @DisplayName("가입 신청 승인은 사번을 발급하고 approved active 상태로 바꾼다")
     void approveSignupRequestActivatesMember() {
         Department department = departmentRepository.save(new Department("개발부"));
