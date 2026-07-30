@@ -15,6 +15,7 @@ export default function DataTable({
   onRowClick,
   toolbar,
   className,
+  headerAlign = 'left',
 }) {
   const keyOf = (row, i) => (typeof rowKey === 'function' ? rowKey(row) : (row[rowKey] ?? i))
   const alignClass = { left: 'text-left', center: 'text-center', right: 'text-right' }
@@ -35,7 +36,7 @@ export default function DataTable({
                   key={col.key}
                   className={cn(
                     'whitespace-nowrap px-4 py-3',
-                    alignClass[col.align] ?? 'text-left',
+                    alignClass[col.headerAlign] ?? alignClass[headerAlign] ?? 'text-left',
                     col.headerClassName,
                   )}
                 >

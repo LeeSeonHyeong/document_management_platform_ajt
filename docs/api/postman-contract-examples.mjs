@@ -1,4 +1,4 @@
-export const contractVersion = "1.4.1";
+export const contractVersion = "1.6.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -766,6 +766,152 @@ const contracts = {
       httpStatus: 400,
       errorCode: "INVALID_ANSWER_GENERATION_REQUEST",
       message: "답변 생성 요청 문맥이 올바르지 않습니다.",
+    },
+  },
+
+  // ---- Wiki 조회 창구 (FastAPI → Spring Boot) --------------------------------
+  // FR-WIKI-002 가 요구하는 "백엔드가 검색·본문·관계 조회 수단을 제공하고 에이전트가
+  // 필요한 Wiki 를 선택해 조회한다"의 창구다. 방향이 나머지와 반대다 — FastAPI 가
+  // 호출자이고 Spring Boot 가 응답한다.
+  //
+  // 대표 오류를 404 로 둔 이유: 허가 범위 밖 조회를 403 이 아니라 404 로 돌려주는 것이
+  // 이 창구의 핵심 규약이다 (NFR-SEC-003 · FR-ACL-006 존재 여부 비노출).
+  "GET /internal/v1/wiki-search": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        items: [
+          {
+            wikiId: "101",
+            title: "휴가 규정",
+            breadcrumb: "휴가 규정 > 연차 > 이월",
+            snippet: "연차는 다음 해 3월까지 이월할 수 있다...",
+            chunkIndex: 3,
+            contentHash:
+              "9f2a1c8e4b7d0a35f6c9e2b8d1a4f7c0e3b6d9a2c5f8e1b4d7a0c3f6e9b2d5a8",
+          },
+        ],
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_SCOPE_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/wiki-pages": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        // 다음 페이지가 없으면 null. 정렬이 wikiId 오름차순이라 커서가 항목을
+        // 건너뛰거나 겹치지 않는다.
+        nextCursor: null,
+        items: [
+          {
+            wikiId: "101",
+            title: "휴가 규정",
+            summary: "연차와 반차 사용 기준",
+            wikiCategoryId: "9",
+            categoryName: "휴가 및 근태",
+            wikiPath: "wiki/D1-D2/pages/a3f2c1d4.md",
+            contentHash:
+              "9f2a1c8e4b7d0a35f6c9e2b8d1a4f7c0e3b6d9a2c5f8e1b4d7a0c3f6e9b2d5a8",
+            updatedAt: timestamp,
+          },
+        ],
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_SCOPE_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/wikis/:wikiId/content": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        wikiId: "101",
+        title: "휴가 규정",
+        wikiPath: "wiki/D1-D2/pages/a3f2c1d4.md",
+        contentMarkdown:
+          "---\ntitle: 휴가 규정\ndescription: 연차와 반차 사용 기준\n---\n\n## 연차\n본문...",
+        contentHash:
+          "9f2a1c8e4b7d0a35f6c9e2b8d1a4f7c0e3b6d9a2c5f8e1b4d7a0c3f6e9b2d5a8",
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/wikis/:wikiId/relations": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        wikiId: "101",
+        wikiRefs: ["102", "115"],
+        documentRefs: ["15"],
+        backlinks: ["108"],
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/wiki-spaces/:scopeKey/index": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        scopeKey: "D1-D2",
+        indexMarkdown:
+          "# 목차\n\n## 휴가 및 근태\n- [휴가 규정](pages/a3f2c1d4.md) — 연차와 반차 사용 기준\n",
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_SCOPE_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/wiki-spaces/:scopeKey/categories": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        items: [
+          { wikiCategoryId: "9", name: "휴가 및 근태", wikiCount: 12 },
+          { wikiCategoryId: "10", name: "보안", wikiCount: 4 },
+        ],
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_SCOPE_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/documents/:documentId/parsed": {
+    success: {
+      httpStatus: 200,
+      body: {
+        documentId: "15",
+        originalFileName: "취업규칙.pdf",
+        parsedMarkdown: "# 취업 규칙\n본문...",
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "DOCUMENT_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
     },
   },
 };

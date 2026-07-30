@@ -310,17 +310,24 @@ expect(
   "삭제된 일정 첨부파일 API가 남아 있음",
 );
 expect(publicRequests.length === 56, `공개 API 수가 56개가 아님: ${publicRequests.length}`);
-expect(internalRequests.length === 7, `내부 API 수가 7개가 아님: ${internalRequests.length}`);
+// 기존 7개 + Wiki 조회 창구 7개. 창구는 FastAPI 가 Spring Boot 를 호출하는 반대 방향이라
+// 같은 내부 컬렉션에 있지만 baseVariable 이 backendBaseUrl 이다.
+expect(internalRequests.length === 14, `내부 API 수가 14개가 아님: ${internalRequests.length}`);
 
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
+// 1.5.0 은 Wiki 조회 창구 7개 신설. 1.6.0 은 그 창구를 실제로 부를 입력 계약이다 —
+// wiki-transformations·wiki-edits 에 wikiCapability·scopeVersion 을 더하고
+// selectedWikis[].wikiPath 를 필수화한다. 필수화는 하위 호환이 아니라 minor 이상이다.
+// 1.4.0 을 건너뛴 이유는 README 가 1.4.0, 컬렉션이 1.3.1 로 갈라져 있었기 때문이다.
+const expectedContractVersion = "1.6.0";
 expect(
-  collectionVariable(publicCollection, "contractVersion") === "1.4.1",
-  "공개 API 계약 버전이 1.4.1이 아님",
+  collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
+  `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
 );
 expect(
-  collectionVariable(internalCollection, "contractVersion") === "1.4.1",
-  "내부 API 계약 버전이 1.4.1이 아님",
+  collectionVariable(internalCollection, "contractVersion") === expectedContractVersion,
+  `내부 API 계약 버전이 ${expectedContractVersion}이 아님`,
 );
 
 const p0PublicEndpoints = [
