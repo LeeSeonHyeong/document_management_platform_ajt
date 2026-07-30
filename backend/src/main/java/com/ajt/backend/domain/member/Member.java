@@ -179,8 +179,20 @@ public class Member {
     /**
      * MEM-02 관리자 사용자 수정 규칙입니다.
      * null로 들어온 값은 변경하지 않고, 전달된 값만 현재 회원 정보에 반영합니다.
+     *
+     * <p>수정(S15P11B106-69): 부서장 자동 해제 규칙을 이 메서드 안으로 옮겼다. 역할·계정 상태 변경으로
+     * 부서장 자격(APPROVED·ACTIVE·ADMIN)을 잃으면 인자로 받은 담당 부서(managedDepartment)의 부서장
+     * 지정을 해제한다(FR-USR-008, 요구사항 v2.12). 어떤 경로로 강등·비활성해도 이 메서드를 거치면
+     * 자격을 잃은 부서장 지정이 남지 않는다. 담당 부서 조회는 저장소 계층 책임이므로 서비스가 조회해
+     * 넘겨준다(엔티티는 저장소에 직접 접근하지 않는다). 담당 부서가 없으면 null을 넘긴다.
      */
-    public void updateByAdmin(Department department, String name, Role role, AccountStatus accountStatus) {
+    public void updateByAdmin(
+            Department department,
+            String name,
+            Role role,
+            AccountStatus accountStatus,
+            Department managedDepartment
+    ) {
         if (department != null) {
             this.department = department;
         }
@@ -193,7 +205,26 @@ public class Member {
         if (accountStatus != null) {
             this.accountStatus = accountStatus;
         }
+        // 자기-부서 가드: 넘겨받은 부서의 부서장이 실제로 이 회원일 때만 해제한다.
+        //   (엉뚱한 부서가 전달돼도 남의 부서장 지정을 건드리지 않도록 방어.)
+        //   참조 비교(==)는 JPA 프록시 때문에 어긋날 수 있어 ID로 비교한다.
+        if (managedDepartment != null
+                && managedDepartment.getManager() != null
+                && Objects.equals(managedDepartment.getManager().getId(), this.id)
+                && !isEligibleAsDepartmentManager()) {
+            managedDepartment.clearManager();
+        }
         touch();
+    }
+
+    /**
+     * FR-USR-008 부서장 지정 자격입니다.
+     * 부서장은 가입 승인(APPROVED)·계정 활성(ACTIVE) 상태의 관리자(ADMIN)만 맡을 수 있습니다.
+     */
+    public boolean isEligibleAsDepartmentManager() {
+        return role == Role.ADMIN
+                && signupStatus == SignupStatus.APPROVED
+                && accountStatus == AccountStatus.ACTIVE;
     }
 
     @PrePersist

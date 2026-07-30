@@ -75,7 +75,8 @@ class InquiryServiceTest {
         Member admin = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
         memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
         Member inactiveAdmin = memberRepository.save(approvedAdmin(department, "old@ajt.com", "이관리"));
-        inactiveAdmin.updateByAdmin(null, null, null, AccountStatus.INACTIVE); // 비활성 관리자는 후보에서 빠져야 한다.
+        // 부서장이 아니므로 담당 부서(자동 해제 대상)는 null이다.
+        inactiveAdmin.updateByAdmin(null, null, null, AccountStatus.INACTIVE, null); // 비활성 관리자는 후보에서 빠져야 한다.
 
         InquiryAssigneeListResponse response = inquiryService.findAssignees(login(admin), null);
 

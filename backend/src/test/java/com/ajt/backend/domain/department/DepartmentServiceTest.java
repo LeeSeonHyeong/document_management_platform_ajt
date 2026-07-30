@@ -209,6 +209,54 @@ class DepartmentServiceTest {
         assertThat(departmentRepository.findById(unreferenced.getId())).isEmpty();
     }
 
+    @Test
+    @DisplayName("정합성 정리는 자격을 잃은 기존 부서장 지정을 해제한다")
+    void releaseIneligibleDepartmentManagersClearsDemotedManager() {
+        Department department = departmentRepository.save(new Department("기획부"));
+        Member manager = memberRepository.save(approvedAdmin(department, "manager@ajt.com", "AJT-2026-9101"));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        // 자동 해제 도입 이전 상태를 재현: 부서장이 사원으로 강등됐지만 부서장 지정이 남아 있음(담당 부서 null 전달)
+        manager.updateByAdmin(null, null, Role.EMPLOYEE, null, null);
+
+        int cleared = departmentService.releaseIneligibleDepartmentManagers();
+
+        assertThat(cleared).isEqualTo(1);
+        assertThat(departmentRepository.findById(department.getId()).orElseThrow().getManager()).isNull();
+    }
+
+    @Test
+    @DisplayName("정합성 정리는 자격을 유지한 부서장 지정은 그대로 둔다")
+    void releaseIneligibleDepartmentManagersKeepsEligibleManager() {
+        Department department = departmentRepository.save(new Department("기획부"));
+        Member manager = memberRepository.save(approvedAdmin(department, "manager@ajt.com", "AJT-2026-9101"));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+
+        int cleared = departmentService.releaseIneligibleDepartmentManagers();
+
+        assertThat(cleared).isEqualTo(0);
+        assertThat(departmentRepository.findById(department.getId()).orElseThrow().getManager().getId())
+                .isEqualTo(manager.getId());
+    }
+
+    @Test
+    @DisplayName("updateByAdmin에 담당하지 않는 부서를 넘겨도 그 부서의 부서장은 해제되지 않는다")
+    void updateByAdminDoesNotClearUnmanagedDepartment() {
+        Department mine = departmentRepository.save(new Department("기획부"));
+        Department other = departmentRepository.save(new Department("개발부"));
+        Member me = memberRepository.save(approvedAdmin(mine, "me@ajt.com", "AJT-2026-9201"));
+        Member otherManager = memberRepository.save(approvedAdmin(other, "other@ajt.com", "AJT-2026-9202"));
+        other.assignManager(otherManager);
+        departmentRepository.save(other);
+        // me를 강등하면서, 실수로 me가 담당하지 않는 other 부서를 넘긴다
+        me.updateByAdmin(null, null, Role.EMPLOYEE, null, other);
+
+        // 자기-부서 가드: other의 부서장은 me가 아니라 otherManager이므로 해제되지 않아야 한다
+        assertThat(departmentRepository.findById(other.getId()).orElseThrow().getManager().getId())
+                .isEqualTo(otherManager.getId());
+    }
+
     private AuthenticatedMember authenticated(Member member) {
         return new AuthenticatedMember(member.getId(), member.getEmail(), member.getRole());
     }
