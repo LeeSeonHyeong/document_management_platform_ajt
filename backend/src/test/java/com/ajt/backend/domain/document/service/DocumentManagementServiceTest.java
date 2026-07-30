@@ -13,11 +13,13 @@ import static org.mockito.Mockito.verify;
 import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.document.api.DocumentDeleteResponse;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
+import com.ajt.backend.domain.document.api.DocumentFileReplaceResponse;
 import com.ajt.backend.domain.document.api.DocumentListResponse;
 import com.ajt.backend.domain.document.api.DocumentMetadataUpdateRequest;
 import com.ajt.backend.domain.document.api.DocumentRetryResponse;
 import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
 import com.ajt.backend.domain.document.api.DocumentUpdateResponse;
+import com.ajt.backend.domain.document.api.DocumentUploadValidationException;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
@@ -44,6 +46,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.mock.web.MockMultipartFile;
 
 @DisplayName("원본문서 관리 서비스")
 class DocumentManagementServiceTest {
@@ -186,6 +189,97 @@ class DocumentManagementServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+    }
+
+    @Test
+    @DisplayName("파일 교체 시 새 파일을 저장하고 파일 메타를 갱신한 뒤 재처리 작업을 생성한다")
+    void replaceFileStoresNewFileAndReprocesses() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        // 같은 확장자(.md)라 저장 경로는 그대로 → 이전 파일 삭제 불필요
+        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
+                .willReturn("wiki/ALL/sources/15/original.md");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        DocumentFileReplaceResponse response = service.replaceFile(15L,
+                new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes()));
+
+        assertThat(response.jobId()).isEqualTo("42");
+        assertThat(response.documentId()).isEqualTo("15");
+        assertThat(response.status()).isEqualTo("waiting");
+        assertThat(document.originalFileName()).isEqualTo("updated.md");
+        assertThat(document.status().name()).isEqualTo("UPLOADED");
+        verify(documentFileStorage).storeOriginal(any(), anyLong(), any());
+        verify(documentFileStorage, never()).delete(any());
+        verify(parseJobLauncher).launch(any(AiJob.class));
+    }
+
+    @Test
+    @DisplayName("파일 교체로 확장자가 바뀌어 경로가 달라지면 이전 파일을 정리한다")
+    void replaceFileDeletesPreviousFileWhenPathChanges() throws Exception {
+        Document document = uploadedDocument(); // 기존 경로: wiki/ALL/sources/15/original.md
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
+                .willReturn("wiki/ALL/sources/15/original.pdf"); // 확장자 변경 → 새 경로
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        service.replaceFile(15L,
+                new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+
+        assertThat(document.originalPath()).isEqualTo("wiki/ALL/sources/15/original.pdf");
+        verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+    }
+
+    @Test
+    @DisplayName("허용되지 않는 형식의 파일로 교체하면 업로드 검증 오류를 반환한다")
+    void rejectsReplaceForInvalidFile() {
+        Document document = uploadedDocument();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service.replaceFile(15L,
+                new MockMultipartFile("file", "bad.exe", "application/octet-stream", "x".getBytes())))
+                .isInstanceOf(DocumentUploadValidationException.class);
+    }
+
+    @Test
+    @DisplayName("처리 중인 문서는 파일을 교체할 수 없다")
+    void rejectsReplaceWhenInProgress() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.startParsing(); // PARSING 상태로 전환
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service.replaceFile(15L,
+                new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 파일을 교체할 수 없다")
+    void rejectsNonAdminReplace() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.EMPLOYEE));
+
+        assertThatThrownBy(() -> service.replaceFile(15L,
+                new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes())))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
     }
 
     @Test
