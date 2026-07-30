@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
 import { Badge, Button, Spinner, useToast } from '@/components/ui'
+import WikiMarkdown from '@/features/wiki/components/WikiMarkdown'
+import { useAuth } from '@/hooks/useAuth'
 import { fetchDocumentFile } from '../api'
-import { useDocument } from '../queries'
+import { useDocument, useUpdateDocument } from '../queries'
 import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
-import DocumentMetaEditModal from '../components/DocumentMetaEditModal'
+import { QueueCategorySelect, QueueVisibilityDropdown } from '../components/QueueDocumentFields'
+import { readPreviewSourceDocuments, updatePreviewDocument } from '../previewStorage'
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '-'
@@ -41,11 +44,28 @@ export default function SourceDocumentDetailPage() {
   const { documentId } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
+  const { user } = useAuth()
   const [downloading, setDownloading] = useState(false)
-  const [metaOpen, setMetaOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  const { data: doc, isLoading } = useDocument(documentId)
+  const [previewDocument, setPreviewDocument] = useState(() =>
+    readPreviewSourceDocuments().find((document) => document.documentId === documentId),
+  )
+  const { data: serverDocument, isLoading } = useDocument(previewDocument ? undefined : documentId)
+  const doc = previewDocument ?? serverDocument
+  const updateMutation = useUpdateDocument(previewDocument ? undefined : documentId)
+  const [metadataDraft, setMetadataDraft] = useState(null)
+
+  useEffect(() => {
+    if (!doc) return
+    setMetadataDraft({
+      documentCategoryId: doc.documentCategoryId ?? null,
+      documentCategoryName: doc.documentCategoryName ?? null,
+      visibilityType: doc.visibilityType ?? null,
+      departments: doc.departments ?? [],
+      scopeKey: doc.scopeKey ?? null,
+    })
+  }, [doc])
 
   async function handleDownload() {
     setDownloading(true)
@@ -70,6 +90,46 @@ export default function SourceDocumentDetailPage() {
       <div className="flex justify-center py-16">
         <Spinner />
       </div>
+    )
+  }
+
+  const draftDocument = { ...doc, ...metadataDraft }
+  const metadataChanged =
+    String(draftDocument.documentCategoryId ?? '') !== String(doc.documentCategoryId ?? '') ||
+    draftDocument.scopeKey !== doc.scopeKey
+  const metadataComplete =
+    Boolean(draftDocument.documentCategoryId) &&
+    (draftDocument.visibilityType === 'all' ||
+      (draftDocument.visibilityType === 'department' && draftDocument.departments.length > 0))
+  const canSaveMetadata = metadataChanged && metadataComplete && !updateMutation.isPending
+
+  function handleMetadataSave() {
+    if (!canSaveMetadata) return
+    const changes = {
+      documentCategoryId: draftDocument.documentCategoryId,
+      documentCategoryName: draftDocument.documentCategoryName,
+      visibilityType: draftDocument.visibilityType,
+      departments: draftDocument.departments,
+      scopeKey: draftDocument.scopeKey,
+    }
+
+    if (doc.previewOnly) {
+      const updated = updatePreviewDocument(doc.documentId, changes)
+      if (updated) setPreviewDocument(updated)
+      toast.success('문서 정보가 저장되었습니다.')
+      return
+    }
+
+    updateMutation.mutate(
+      {
+        documentCategoryId: changes.documentCategoryId,
+        visibilityType: changes.visibilityType,
+        departmentIds: changes.departments.map((department) => department.departmentId),
+      },
+      {
+        onSuccess: () => toast.success('문서 정보가 저장되었습니다.'),
+        onError: () => toast.error('문서 정보 저장에 실패했습니다.'),
+      },
     )
   }
 
@@ -112,11 +172,17 @@ export default function SourceDocumentDetailPage() {
 
         <div className="mt-4 flex flex-1 flex-col items-center rounded-2xl bg-slate-50 p-8">
           <div className="min-h-80 w-full max-w-2xl rounded-md border border-slate-200 bg-white p-10 shadow-sm">
-            <p className="text-center text-lg font-bold text-slate-800">원본 문서 미리보기</p>
-            <p className="mt-8 text-sm font-semibold text-slate-700">{doc.originalFileName}</p>
-            <p className="mt-5 text-sm leading-8 text-slate-500">
-              파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
-            </p>
+            {doc.previewContent ? (
+              <WikiMarkdown markdown={doc.previewContent} validWikiIds={new Set()} />
+            ) : (
+              <>
+                <p className="text-center text-lg font-bold text-slate-800">원본 문서 미리보기</p>
+                <p className="mt-8 text-sm font-semibold text-slate-700">{doc.originalFileName}</p>
+                <p className="mt-5 text-sm leading-8 text-slate-500">
+                  파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
+                </p>
+              </>
+            )}
           </div>
           {/* TODO(API): 미리보기 본문·페이지 수 필드가 계약에 없어 플레이스홀더와 1 / 1로 둔다. */}
           <span className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">1 / 1</span>
@@ -125,11 +191,11 @@ export default function SourceDocumentDetailPage() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-400">삭제하면 위키 반영이 먼저 정리되고, 완료된 뒤 원본이 삭제됩니다.</p>
           <div className="flex gap-2">
-            <Button variant="danger" onClick={() => setDeleteOpen(true)}>
+            <Button variant="danger" onClick={() => setDeleteOpen(true)} disabled={doc.previewOnly}>
               <Trash2 className="size-4" />
               삭제
             </Button>
-            <Button variant="primary" onClick={handleDownload} loading={downloading}>
+            <Button variant="primary" onClick={handleDownload} loading={downloading} disabled={doc.previewOnly}>
               <Download className="size-4" />
               다운로드
             </Button>
@@ -143,27 +209,36 @@ export default function SourceDocumentDetailPage() {
             <h2 className="font-bold text-slate-800">문서 정보</h2>
           </div>
           <dl>
-            <InfoRow label="카테고리">
-              <MetadataButton onClick={() => setMetaOpen(true)}>
-                {doc.documentCategoryName ?? '미분류'}
-              </MetadataButton>
-            </InfoRow>
             <InfoRow label="공개 부서">
-              <MetadataButton onClick={() => setMetaOpen(true)}>
-                {doc.visibilityType === 'all'
-                  ? '전체 공개'
-                  : (doc.departments ?? []).length > 1
-                    ? `${doc.departments[0].name} 외 ${doc.departments.length - 1}`
-                    : doc.departments?.[0]?.name ?? '미지정'}
-              </MetadataButton>
+              <QueueVisibilityDropdown
+                item={draftDocument}
+                localOnly
+                onApplied={(changes) =>
+                  setMetadataDraft((current) => ({
+                    ...current,
+                    ...changes,
+                    documentCategoryId: null,
+                    documentCategoryName: null,
+                  }))
+                }
+              />
+            </InfoRow>
+            <InfoRow label="카테고리">
+              <QueueCategorySelect
+                item={draftDocument}
+                localOnly
+                onApplied={(changes) =>
+                  setMetadataDraft((current) => ({ ...current, ...changes }))
+                }
+              />
             </InfoRow>
             <div className="my-2 border-t border-slate-200" />
             <InfoRow label="업로더">
               <span className="flex items-center justify-end gap-2">
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
-                  {doc.uploadedBy?.name?.slice(0, 1) ?? '?'}
+                  {(doc.previewOnly ? user?.name : doc.uploadedBy?.name)?.slice(0, 1) ?? '?'}
                 </span>
-                {doc.uploadedBy?.name ?? '-'}
+                {doc.previewOnly ? user?.name ?? '-' : doc.uploadedBy?.name ?? '-'}
               </span>
             </InfoRow>
             <InfoRow label="업로드일">{formatDateTime(doc.uploadedAt)}</InfoRow>
@@ -171,6 +246,17 @@ export default function SourceDocumentDetailPage() {
               {formatBytes(doc.fileSize)} · {fileExtension(doc.originalFileName)}
             </InfoRow>
           </dl>
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            variant="primary"
+            onClick={handleMetadataSave}
+            loading={updateMutation.isPending}
+            disabled={!canSaveMetadata}
+          >
+            저장
+          </Button>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -200,12 +286,6 @@ export default function SourceDocumentDetailPage() {
       </aside>
       </div>
 
-      <DocumentMetaEditModal
-        open={metaOpen}
-        doc={doc}
-        onClose={() => setMetaOpen(false)}
-        onSaved={() => setMetaOpen(false)}
-      />
       <DocumentDeleteDialog
         open={deleteOpen}
         document={doc}
@@ -224,18 +304,5 @@ export default function SourceDocumentDetailPage() {
         }}
       />
     </section>
-  )
-}
-
-function MetadataButton({ children, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="focus-ring flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:border-primary-300"
-    >
-      <span className="truncate">{children}</span>
-      <ChevronDown className="size-4 shrink-0 text-slate-400" />
-    </button>
   )
 }

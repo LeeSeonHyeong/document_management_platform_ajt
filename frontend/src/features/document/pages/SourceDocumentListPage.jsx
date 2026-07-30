@@ -7,6 +7,7 @@ import { useDepartments } from '@/features/department/useDepartments'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
+import { readPreviewSourceDocuments } from '../previewStorage'
 
 const PAGE_SIZE = 20
 
@@ -26,18 +27,36 @@ export default function SourceDocumentListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [sortOrder, setSortOrder] = useState('latest')
+  const [previewDocuments] = useState(readPreviewSourceDocuments)
   const filters = filtersFromParams(searchParams)
 
   const { data, isLoading } = useDocuments(filters)
   const { data: allData } = useDocuments({ page: 1, size: 100 })
   const { data: departments = [] } = useDepartments()
-  const documents = data?.items ?? []
+  const matchingPreviewDocuments = previewDocuments.filter((document) => {
+    if (filters.keyword && !document.originalFileName.toLowerCase().includes(filters.keyword.toLowerCase())) {
+      return false
+    }
+    if (filters.categoryId && String(document.documentCategoryId) !== String(filters.categoryId)) {
+      return false
+    }
+    if (
+      filters.departmentId &&
+      !(document.departments ?? []).some(
+        (department) => String(department.departmentId) === String(filters.departmentId),
+      )
+    ) {
+      return false
+    }
+    return true
+  })
+  const documents = [...matchingPreviewDocuments, ...(data?.items ?? [])]
   const sortedDocuments = [...documents].sort((a, b) => {
     const left = new Date(a.uploadedAt ?? 0).getTime()
     const right = new Date(b.uploadedAt ?? 0).getTime()
     return sortOrder === 'latest' ? right - left : left - right
   })
-  const allDocuments = allData?.items ?? []
+  const allDocuments = [...previewDocuments, ...(allData?.items ?? [])]
   const visibleDepartments = departments.slice(0, 5)
   const selectedDepartment = departments.find(
     (department) => String(department.departmentId) === String(filters.departmentId),
@@ -50,10 +69,14 @@ export default function SourceDocumentListPage() {
       )
     : allDocuments
   const categoryCounts = departmentBaseDocuments.reduce((counts, document) => {
-    const key = document.documentCategoryId ?? 'uncategorized'
+    const categoryId = document.documentCategoryId
+      ? String(document.documentCategoryId)
+      : null
+    const categoryName = document.documentCategoryName?.trim() || '미분류'
+    const key = categoryId ?? 'uncategorized'
     const current = counts.get(key) ?? {
-      id: document.documentCategoryId,
-      name: document.documentCategoryName ?? '미분류',
+      id: categoryId,
+      name: categoryName,
       count: 0,
     }
     current.count += 1
@@ -112,7 +135,7 @@ export default function SourceDocumentListPage() {
               active={!filters.categoryId}
               onClick={() => updateFilters({ categoryId: undefined })}
             />
-            {[...categoryCounts.values()].map((category) => (
+            {[...categoryCounts.values()].filter((category) => category.count > 0).map((category) => (
               <FilterItem
                 key={category.id ?? category.name}
                 label={category.name}
@@ -131,7 +154,8 @@ export default function SourceDocumentListPage() {
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-bold text-slate-800">전체 문서</h2>
                   <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-600">
-                    {data?.totalItems ?? data?.totalElements ?? documents.length}건
+                    {(data?.totalItems ?? data?.totalElements ?? data?.items?.length ?? 0) +
+                      matchingPreviewDocuments.length}건
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
