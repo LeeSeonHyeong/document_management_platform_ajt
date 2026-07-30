@@ -58,6 +58,7 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
   const fileSeq = useRef(0)
   const [files, setFiles] = useState([]) // [{ id, file, error }]
   const [progress, setProgress] = useState(0)
+  const [transferred, setTransferred] = useState({ loaded: 0, total: 0 }) // 업로드 진행 바이트
 
   const {
     register,
@@ -138,12 +139,14 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
     reset()
     setFiles([])
     setProgress(0)
+    setTransferred({ loaded: 0, total: 0 })
     onClose?.()
   }
 
   function onSubmit(values) {
     if (!canSubmit) return
     setProgress(0)
+    setTransferred({ loaded: 0, total: 0 })
     uploadMutation.mutate(
       {
         files: validFiles.map((f) => f.file),
@@ -152,6 +155,7 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
         departmentIds: values.departmentIds,
         onUploadProgress: (e) => {
           if (e.total) setProgress(Math.round((e.loaded / e.total) * 100))
+          setTransferred({ loaded: e.loaded, total: e.total ?? 0 })
         },
       },
       {
@@ -159,6 +163,7 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
           reset()
           setFiles([])
           setProgress(0)
+          setTransferred({ loaded: 0, total: 0 })
           onUploaded?.(data)
           onClose?.()
         },
@@ -305,9 +310,41 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
           {...register('documentCategoryId')}
         />
 
+        {/* Figma 4-1R — 업로드 진행 카드. 와이어프레임은 이 카드를 문서 카드 안에 인라인으로 두지만,
+            POST /documents가 카테고리·공개 범위를 필수로 요구해 업로드 전에 이 모달에서 함께 받는다. */}
         {uploading && (
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${progress}%` }} />
+          <div className="rounded-xl border border-primary-200 bg-primary-50/40 p-3">
+            <div className="flex items-center gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white">
+                <Upload className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-800">업로드 중</p>
+                <p className="text-xs text-slate-400">완료되면 아래 AI 작업 대기 목록에 추가됩니다</p>
+              </div>
+              <span className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
+                {validFiles.length} / {validFiles.length}
+              </span>
+            </div>
+
+            <div className="mt-3 rounded-lg bg-white px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <FileText className="size-4 shrink-0 text-slate-400" />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700">
+                  {validFiles[0]?.file.name}
+                  {validFiles.length > 1 ? ` 외 ${validFiles.length - 1}건` : ''}
+                </span>
+                <span className="shrink-0 text-sm font-bold text-primary-600">{progress}%</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-primary-500 transition-all" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-400">
+                {transferred.total
+                  ? `${formatBytes(transferred.loaded)} / ${formatBytes(transferred.total)}`
+                  : '전송 준비 중'}
+              </p>
+            </div>
           </div>
         )}
       </form>
