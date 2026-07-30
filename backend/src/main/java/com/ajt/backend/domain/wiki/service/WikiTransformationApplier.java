@@ -4,6 +4,7 @@ import com.ajt.backend.domain.wiki.model.Wiki;
 import com.ajt.backend.domain.wiki.model.WikiCategory;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
+import com.ajt.backend.domain.wiki.storage.WikiFileMutation;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
 import com.ajt.backend.global.ai.client.WikiEditResponse;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
@@ -24,6 +25,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * FastAPI Wiki 변환·수정 결과를 Spring Boot가 검증해 DB와 Wiki 파일에 반영합니다.
@@ -101,19 +104,27 @@ public class WikiTransformationApplier {
             List<RelationChange> relationChanges,
             List<IndexEntry> indexEntries
     ) {
-        WikiIndex previousIndex = WikiIndex.parse(readIndex(scopeKey));
-        Map<String, Long> categoryIdsByRef = applyCategoryChanges(scopeKey, categoryChanges);
-        Set<String> allowedWikiAddresses = allowedWikiAddresses(scopeKey, nullSafe(wikiChanges));
-        WikiChangeResult wikiResult = applyWikiChanges(
-                scopeKey,
-                originDocumentId,
-                nullSafe(wikiChanges),
-                categoryIdsByRef,
-                allowedWikiAddresses
-        );
-        applyRelationChanges(scopeKey, nullSafe(relationChanges), wikiResult.wikiIdsByRef());
-        writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex);
-        return List.copyOf(wikiResult.affectedWikiIds());
+        WikiFileMutation fileMutation = beginFileMutation();
+        try {
+            WikiIndex previousIndex = WikiIndex.parse(readIndex(scopeKey));
+            Map<String, Long> categoryIdsByRef = applyCategoryChanges(scopeKey, categoryChanges);
+            Set<String> allowedWikiAddresses = allowedWikiAddresses(scopeKey, nullSafe(wikiChanges));
+            WikiChangeResult wikiResult = applyWikiChanges(
+                    scopeKey,
+                    originDocumentId,
+                    nullSafe(wikiChanges),
+                    categoryIdsByRef,
+                    allowedWikiAddresses,
+                    fileMutation
+            );
+            applyRelationChanges(scopeKey, nullSafe(relationChanges), wikiResult.wikiIdsByRef());
+            writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex, fileMutation);
+            completeFileMutationAfterTransaction(fileMutation);
+            return List.copyOf(wikiResult.affectedWikiIds());
+        } catch (RuntimeException exception) {
+            rollbackFileMutation(fileMutation, exception);
+            throw exception;
+        }
     }
 
     private Map<String, Long> applyCategoryChanges(String scopeKey, List<CategoryChange> changes) {
@@ -151,7 +162,8 @@ public class WikiTransformationApplier {
             Long originDocumentId,
             List<WikiChange> changes,
             Map<String, Long> categoryIdsByRef,
-            Set<String> allowedWikiAddresses
+            Set<String> allowedWikiAddresses,
+            WikiFileMutation fileMutation
     ) {
         Map<String, Long> wikiIdsByRef = new LinkedHashMap<>();
         Set<Long> affectedWikiIds = new LinkedHashSet<>();
@@ -166,7 +178,7 @@ public class WikiTransformationApplier {
                     created.addDocumentRefs(evidenceDocumentIds(originDocumentId, change.evidence()));
                     String contentMarkdown = requireContent(change);
                     validateWikiLinks(contentMarkdown, allowedWikiAddresses);
-                    storeContent(created.wikiPath(), contentMarkdown);
+                    storeContent(fileMutation, created.wikiPath(), contentMarkdown);
                     wikiSearchIndexer.replace(created, contentMarkdown);
                     wikiRepository.save(created);
                     if (change.tempWikiId() != null && !change.tempWikiId().isBlank()) {
@@ -184,7 +196,7 @@ public class WikiTransformationApplier {
                     }
                     if (isPresent(change.contentMarkdown())) {
                         validateWikiLinks(change.contentMarkdown(), allowedWikiAddresses);
-                        storeContent(wiki.wikiPath(), change.contentMarkdown());
+                        storeContent(fileMutation, wiki.wikiPath(), change.contentMarkdown());
                         wikiSearchIndexer.replace(wiki, change.contentMarkdown());
                     }
                     wiki.addDocumentRefs(evidenceDocumentIds(originDocumentId, change.evidence()));
@@ -192,7 +204,7 @@ public class WikiTransformationApplier {
                 }
                 case ACTION_DELETE -> {
                     Wiki wiki = findWiki(scopeKey, change.wikiId());
-                    deleteWikiMarkdown(wiki.wikiPath());
+                    deleteWikiMarkdown(fileMutation, wiki.wikiPath());
                     wikiSearchIndexer.deleteByWikiId(wiki.id());
                     wikiRepository.delete(wiki);
                     deletedWikiIds.add(wiki.id());
@@ -243,12 +255,13 @@ public class WikiTransformationApplier {
             String scopeKey,
             List<IndexEntry> indexEntries,
             WikiChangeResult wikiResult,
-            WikiIndex previousIndex
+            WikiIndex previousIndex,
+            WikiFileMutation fileMutation
     ) {
         List<WikiIndex.Entry> entries = indexEntries.isEmpty()
                 ? survivingPreviousEntries(scopeKey, previousIndex, wikiResult.deletedWikiIds())
                 : resolvedEntries(scopeKey, indexEntries, wikiResult.wikiIdsByRef());
-        storeIndex(scopeKey, WikiIndex.render(entries));
+        storeIndex(fileMutation, scopeKey, WikiIndex.render(entries));
     }
 
     /**
@@ -409,17 +422,25 @@ public class WikiTransformationApplier {
         wikiMarkdownLinkValidator.validate(contentMarkdown, allowedWikiAddresses);
     }
 
-    private void storeContent(String wikiPath, String contentMarkdown) {
+    private WikiFileMutation beginFileMutation() {
         try {
-            wikiFileStorage.storeWikiMarkdown(wikiPath, contentMarkdown);
+            return wikiFileStorage.beginMutation();
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
     }
 
-    private void deleteWikiMarkdown(String wikiPath) {
+    private void storeContent(WikiFileMutation fileMutation, String wikiPath, String contentMarkdown) {
         try {
-            wikiFileStorage.deleteWikiMarkdown(wikiPath);
+            fileMutation.storeWikiMarkdown(wikiPath, contentMarkdown);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    private void deleteWikiMarkdown(WikiFileMutation fileMutation, String wikiPath) {
+        try {
+            fileMutation.deleteWikiMarkdown(wikiPath);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
@@ -433,11 +454,40 @@ public class WikiTransformationApplier {
         }
     }
 
-    private void storeIndex(String scopeKey, String indexMarkdown) {
+    private void storeIndex(WikiFileMutation fileMutation, String scopeKey, String indexMarkdown) {
         try {
-            wikiFileStorage.storeIndex(scopeKey, indexMarkdown);
+            fileMutation.storeIndex(scopeKey, indexMarkdown);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
+        }
+    }
+
+    private void completeFileMutationAfterTransaction(WikiFileMutation fileMutation) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            fileMutation.discardBackup();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) {
+                    fileMutation.discardBackup();
+                    return;
+                }
+                rollbackFileMutation(fileMutation, null);
+            }
+        });
+    }
+
+    private void rollbackFileMutation(WikiFileMutation fileMutation, RuntimeException originalException) {
+        try {
+            fileMutation.rollback();
+        } catch (IOException rollbackException) {
+            if (originalException != null) {
+                originalException.addSuppressed(rollbackException);
+                return;
+            }
+            throw new UncheckedIOException(rollbackException);
         }
     }
 
