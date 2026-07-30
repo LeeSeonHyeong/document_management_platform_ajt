@@ -13,8 +13,13 @@ public record WikiEditRequest(
         String instruction,
         WikiBody currentWiki,
         List<EvidenceDocument> evidenceDocuments,
-        List<ChatMessage> chatHistory
+        List<ChatMessage> chatHistory,
+        String wikiCapability,
+        Long scopeVersion
 ) {
+    public WikiEditRequest(String wikiId, String scopeKey, String instruction, WikiBody currentWiki, List<EvidenceDocument> evidenceDocuments, List<ChatMessage> chatHistory) {
+        this(wikiId, scopeKey, instruction, currentWiki, evidenceDocuments, chatHistory, null, null);
+    }
     public WikiEditRequest {
         wikiId = requireNotBlank(wikiId, "wikiId");
         scopeKey = requireNotBlank(scopeKey, "scopeKey");
@@ -22,11 +27,13 @@ public record WikiEditRequest(
         currentWiki = Objects.requireNonNull(currentWiki, "currentWiki must not be null");
         evidenceDocuments = evidenceDocuments == null ? List.of() : List.copyOf(evidenceDocuments);
         chatHistory = chatHistory == null ? List.of() : List.copyOf(chatHistory);
+        if (wikiCapability != null && wikiCapability.isBlank()) throw new IllegalArgumentException("wikiCapability must not be blank");
     }
 
-    public record WikiBody(String title, String contentMarkdown) {
+    public record WikiBody(String title, String wikiPath, String contentMarkdown) {
         public WikiBody {
             title = requireNotBlank(title, "title");
+            wikiPath = requireNotBlank(wikiPath, "wikiPath");
             contentMarkdown = requireNotBlank(contentMarkdown, "contentMarkdown");
         }
     }

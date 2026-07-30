@@ -61,12 +61,15 @@ class RestClientAiClientTest {
                           "currentCategories": [
                             {"categoryId": "10", "name": "인사·복무"}
                           ],
+                          "wikiCapability": "capability",
+                          "scopeVersion": 47,
                           "selectedWikis": [
                             {
                               "wikiId": "101",
                               "categoryId": "10",
                               "title": "휴가 규정",
                               "summary": "연차와 반차 사용 기준",
+                              "wikiPath": "wiki/D1-D2/pages/101.md",
                               "contentMarkdown": "# 휴가 규정\\n...",
                               "documentRefs": ["15", "18"],
                               "wikiRefs": ["108"]
@@ -126,10 +129,13 @@ class RestClientAiClientTest {
                         "10",
                         "휴가 규정",
                         "연차와 반차 사용 기준",
+                        "wiki/D1-D2/pages/101.md",
                         "# 휴가 규정\n...",
                         List.of("15", "18"),
                         List.of("108")
-                ))
+                )),
+                "capability",
+                47L
         ));
 
         assertThat(response.summary()).isEqualTo("휴가 규정 Wiki를 생성했습니다.");
@@ -532,8 +538,11 @@ class RestClientAiClientTest {
                           "wikiId": "100",
                           "scopeKey": "D1-D2",
                           "instruction": "중복된 휴가 규정을 하나로 정리해줘.",
+                          "wikiCapability": "capability",
+                          "scopeVersion": 47,
                           "currentWiki": {
                             "title": "휴가 규정",
+                            "wikiPath": "wiki/D1-D2/pages/100.md",
                             "contentMarkdown": "# 휴가 규정\\n..."
                           },
                           "evidenceDocuments": [],
@@ -564,7 +573,16 @@ class RestClientAiClientTest {
                         }
                         """, MediaType.APPLICATION_JSON));
 
-        WikiEditResponse response = client.editWiki(wikiEditRequest());
+        WikiEditResponse response = client.editWiki(new WikiEditRequest(
+                "100",
+                "D1-D2",
+                "중복된 휴가 규정을 하나로 정리해줘.",
+                new WikiEditRequest.WikiBody("휴가 규정", "wiki/D1-D2/pages/100.md", "# 휴가 규정\n..."),
+                List.of(),
+                List.of(),
+                "capability",
+                47L
+        ));
 
         assertThat(response.agentMessage()).isEqualTo("중복된 휴가 규정을 하나로 정리했습니다.");
         assertThat(response.wikiChanges()).hasSize(1);
@@ -630,7 +648,7 @@ class RestClientAiClientTest {
                 "100",
                 "D1-D2",
                 "중복된 휴가 규정을 하나로 정리해줘.",
-                new WikiEditRequest.WikiBody("휴가 규정", "# 휴가 규정\n..."),
+                new WikiEditRequest.WikiBody("휴가 규정", "wiki/D1-D2/pages/100.md", "# 휴가 규정\n..."),
                 List.of(new WikiEditRequest.EvidenceDocument("15", "취업규칙.pdf", "# 취업 규칙\n본문...")),
                 List.of(
                         new WikiEditRequest.ChatMessage("admin", "중복을 정리해줘"),
@@ -758,7 +776,7 @@ class RestClientAiClientTest {
                 "100",
                 "D1-D2",
                 "중복된 휴가 규정을 하나로 정리해줘.",
-                new WikiEditRequest.WikiBody("휴가 규정", "# 휴가 규정\n..."),
+                new WikiEditRequest.WikiBody("휴가 규정", "wiki/D1-D2/pages/100.md", "# 휴가 규정\n..."),
                 List.of(),
                 List.of()
         );

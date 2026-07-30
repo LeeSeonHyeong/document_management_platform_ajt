@@ -12,8 +12,13 @@ public record WikiTransformationRequest(
         String removedParsedMarkdown,
         String currentIndex,
         List<CurrentCategory> currentCategories,
-        List<SelectedWiki> selectedWikis
+        List<SelectedWiki> selectedWikis,
+        String wikiCapability,
+        Long scopeVersion
 ) {
+    public WikiTransformationRequest(String jobId, String documentId, String scopeKey, WikiDocumentChangeType changeType, String parsedMarkdown, String removedParsedMarkdown, String currentIndex, List<CurrentCategory> currentCategories, List<SelectedWiki> selectedWikis) {
+        this(jobId, documentId, scopeKey, changeType, parsedMarkdown, removedParsedMarkdown, currentIndex, currentCategories, selectedWikis, null, null);
+    }
     public WikiTransformationRequest {
         jobId = requireNotBlank(jobId, "jobId");
         documentId = requireNotBlank(documentId, "documentId");
@@ -25,6 +30,7 @@ public record WikiTransformationRequest(
                 "currentCategories must not be null"
         ));
         selectedWikis = List.copyOf(Objects.requireNonNull(selectedWikis, "selectedWikis must not be null"));
+        if (wikiCapability != null && wikiCapability.isBlank()) throw new IllegalArgumentException("wikiCapability must not be blank");
 
         if (changeType != WikiDocumentChangeType.DOCUMENT_REMOVED) {
             parsedMarkdown = requireNotBlank(parsedMarkdown, "parsedMarkdown");
@@ -49,6 +55,7 @@ public record WikiTransformationRequest(
             String categoryId,
             String title,
             String summary,
+            String wikiPath,
             String contentMarkdown,
             List<String> documentRefs,
             List<String> wikiRefs
@@ -58,6 +65,7 @@ public record WikiTransformationRequest(
             categoryId = requireNotBlank(categoryId, "categoryId");
             title = requireNotBlank(title, "title");
             summary = requireNotBlank(summary, "summary");
+            wikiPath = requireNotBlank(wikiPath, "wikiPath");
             contentMarkdown = requireNotBlank(contentMarkdown, "contentMarkdown");
             documentRefs = List.copyOf(Objects.requireNonNull(documentRefs, "documentRefs must not be null"));
             wikiRefs = List.copyOf(Objects.requireNonNull(wikiRefs, "wikiRefs must not be null"));
