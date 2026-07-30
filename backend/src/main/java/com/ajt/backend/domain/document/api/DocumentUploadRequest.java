@@ -58,18 +58,30 @@ public record DocumentUploadRequest(
 
         long totalSize = 0;
         for (MultipartFile file : files) {
-            if (file == null || file.isEmpty()) {
-                throw new DocumentUploadValidationException("빈 파일은 업로드할 수 없습니다.");
-            }
-            if (file.getSize() > MAX_FILE_SIZE) {
-                throw new DocumentUploadValidationException("파일당 최대 크기는 20MB입니다.");
-            }
-            validateFileType(file);
+            validateSingleFile(file);
             totalSize += file.getSize();
             if (totalSize > MAX_TOTAL_SIZE) {
                 throw new DocumentUploadValidationException("요청 전체 파일 크기는 최대 100MB입니다.");
             }
         }
+    }
+
+    /**
+     * 파일 교체(PUT /documents/{id}/file)용 단일 파일 검증.
+     * 업로드와 동일한 형식·용량 규칙(빈 파일 불가, 20MB 이하, TXT/MD/PDF/DOCX)을 재사용한다.
+     */
+    public static void validateReplacementFile(MultipartFile file) {
+        validateSingleFile(file);
+    }
+
+    private static void validateSingleFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new DocumentUploadValidationException("빈 파일은 업로드할 수 없습니다.");
+        }
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new DocumentUploadValidationException("파일당 최대 크기는 20MB입니다.");
+        }
+        validateFileType(file);
     }
 
     private static void validateFileType(MultipartFile file) {

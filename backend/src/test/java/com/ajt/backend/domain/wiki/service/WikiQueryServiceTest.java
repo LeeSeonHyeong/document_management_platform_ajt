@@ -9,7 +9,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.ajt.backend.domain.department.Department;
+import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
@@ -43,13 +45,17 @@ class WikiQueryServiceTest {
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
     private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
+    private final DocumentRepository documentRepository = mock(DocumentRepository.class);
+    private final DepartmentRepository departmentRepository = mock(DepartmentRepository.class);
     private final WikiQueryService service = new WikiQueryService(
             currentMemberProvider,
             wikiRepository,
             wikiCategoryRepository,
             wikiFileStorage,
             wikiScopeRepository,
-            memberRepository
+            memberRepository,
+            documentRepository,
+            departmentRepository
     );
 
     @Test

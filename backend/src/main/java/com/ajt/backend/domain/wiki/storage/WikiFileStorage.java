@@ -9,9 +9,14 @@ import java.io.IOException;
 public interface WikiFileStorage {
 
     /**
-     * Wiki 본문을 저장하고 저장 경로를 반환합니다.
+     * Wiki 반영 단위의 파일 변경을 시작합니다.
+     *
+     * <p>반환한 작업 단위는 DB 트랜잭션이 롤백될 때 파일을 원래 상태로 되돌릴 수 있어야 합니다.
      */
-    String storeWikiMarkdown(String scopeKey, long wikiId, String contentMarkdown) throws IOException;
+    WikiFileMutation beginMutation() throws IOException;
+
+    /** 검증된 Wiki 상대 경로에 본문을 저장합니다. */
+    void storeWikiMarkdown(String wikiPath, String contentMarkdown) throws IOException;
 
     /**
      * Wiki 본문을 읽습니다. 파일이 없으면 빈 문자열을 반환합니다.

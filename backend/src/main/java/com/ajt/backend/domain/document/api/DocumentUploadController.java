@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -103,6 +104,16 @@ public class DocumentUploadController {
     @ResponseStatus(HttpStatus.ACCEPTED)
     public DocumentRetryResponse retry(@PathVariable long documentId) {
         return documentManagementService.retry(documentId);
+    }
+
+    // 작업(DOC): 원본문서 파일 교체. 문서 ID를 유지한 채 원본 파일만 새 파일로 바꾸고 재처리한다(202 + jobId).
+    @PutMapping("/api/v1/documents/{documentId}/file")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public DocumentFileReplaceResponse replaceFile(
+            @PathVariable long documentId,
+            @RequestParam(name = "file", required = false) MultipartFile file
+    ) {
+        return documentManagementService.replaceFile(documentId, file);
     }
 
     // 작업(DOC-05): 문서 메타데이터(카테고리·공개범위) 수정 → 재처리.

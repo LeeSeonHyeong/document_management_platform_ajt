@@ -1,10 +1,15 @@
 package com.ajt.backend.domain.wiki.storage;
 
-import com.ajt.backend.domain.wiki.model.Wiki;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class LocalWikiFileStorage implements WikiFileStorage {
 
@@ -21,10 +26,13 @@ public class LocalWikiFileStorage implements WikiFileStorage {
     }
 
     @Override
-    public String storeWikiMarkdown(String scopeKey, long wikiId, String contentMarkdown) throws IOException {
-        String storedPath = Wiki.storagePathOf(scopeKey, wikiId);
-        writeString(storedPath, contentMarkdown);
-        return storedPath;
+    public WikiFileMutation beginMutation() {
+        return new LocalWikiFileMutation();
+    }
+
+    @Override
+    public void storeWikiMarkdown(String wikiPath, String contentMarkdown) throws IOException {
+        writeString(wikiPath, contentMarkdown);
     }
 
     @Override
@@ -65,7 +73,20 @@ public class LocalWikiFileStorage implements WikiFileStorage {
     private void writeString(String storedPath, String content) throws IOException {
         Path target = resolve(storedPath);
         Files.createDirectories(target.getParent());
-        Files.writeString(target, content, StandardCharsets.UTF_8);
+        Path temporary = Files.createTempFile(target.getParent(), ".wiki-", ".tmp");
+        try {
+            Files.writeString(temporary, content, StandardCharsets.UTF_8);
+            Files.move(
+                    temporary,
+                    target,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
+        } catch (AtomicMoveNotSupportedException exception) {
+            throw new IOException("Wiki 파일 시스템이 원자적 교체를 지원하지 않습니다: " + target, exception);
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
     }
 
     private Path resolve(String storedPath) {
@@ -74,5 +95,78 @@ public class LocalWikiFileStorage implements WikiFileStorage {
             throw new IllegalArgumentException("저장 경로가 유효하지 않습니다.");
         }
         return path;
+    }
+
+    private final class LocalWikiFileMutation implements WikiFileMutation {
+
+        private final Map<Path, byte[]> originalContents = new LinkedHashMap<>();
+
+        @Override
+        public void storeWikiMarkdown(String wikiPath, String contentMarkdown) throws IOException {
+            write(wikiPath, contentMarkdown);
+        }
+
+        @Override
+        public void deleteWikiMarkdown(String wikiPath) throws IOException {
+            Path target = resolve(wikiPath);
+            remember(target);
+            Files.deleteIfExists(target);
+        }
+
+        @Override
+        public String storeIndex(String scopeKey, String indexMarkdown) throws IOException {
+            String storedPath = indexPathOf(scopeKey);
+            write(storedPath, indexMarkdown);
+            return storedPath;
+        }
+
+        @Override
+        public void rollback() throws IOException {
+            List<Map.Entry<Path, byte[]>> snapshots = new ArrayList<>(originalContents.entrySet());
+            for (int index = snapshots.size() - 1; index >= 0; index--) {
+                Map.Entry<Path, byte[]> snapshot = snapshots.get(index);
+                if (snapshot.getValue() == null) {
+                    Files.deleteIfExists(snapshot.getKey());
+                } else {
+                    writeBytes(snapshot.getKey(), snapshot.getValue());
+                }
+            }
+            originalContents.clear();
+        }
+
+        @Override
+        public void discardBackup() {
+            originalContents.clear();
+        }
+
+        private void write(String storedPath, String content) throws IOException {
+            Path target = resolve(storedPath);
+            remember(target);
+            writeString(storedPath, content);
+        }
+
+        private void remember(Path target) throws IOException {
+            if (!originalContents.containsKey(target)) {
+                originalContents.put(target, Files.exists(target) ? Files.readAllBytes(target) : null);
+            }
+        }
+
+        private void writeBytes(Path target, byte[] content) throws IOException {
+            Files.createDirectories(target.getParent());
+            Path temporary = Files.createTempFile(target.getParent(), ".wiki-", ".tmp");
+            try {
+                Files.write(temporary, content);
+                Files.move(
+                        temporary,
+                        target,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            } catch (AtomicMoveNotSupportedException exception) {
+                throw new IOException("Wiki 파일 시스템이 원자적 교체를 지원하지 않습니다: " + target, exception);
+            } finally {
+                Files.deleteIfExists(temporary);
+            }
+        }
     }
 }

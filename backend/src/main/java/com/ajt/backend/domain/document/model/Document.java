@@ -168,6 +168,17 @@ public class Document {
         this.originalPath = originalPath;
     }
 
+    /**
+     * DOC: 원본 파일 교체. 파일명·저장경로·MIME·크기를 새 파일 기준으로 갱신한다.
+     * 문서 ID·카테고리·공개범위(scopeKey)는 유지한다. 재처리 전환은 별도 호출({@link #markForReprocess()})로 한다.
+     */
+    public void replaceFile(String originalFileName, String originalPath, String mimeType, long fileSize) {
+        this.originalFileName = originalFileName;
+        this.originalPath = originalPath;
+        this.mimeType = mimeType;
+        this.fileSize = fileSize;
+    }
+
     /** 처리 중(파싱·변환 진행)인지 여부. 수정·교체·삭제 요청은 처리 중이면 거부한다(409). */
     public boolean isInProgress() {
         return status == DocumentStatus.PARSING || status == DocumentStatus.PROCESSING;

@@ -22,6 +22,14 @@ public enum ErrorCode {
     ADMIN_PERMISSION_REQUIRED(HttpStatus.FORBIDDEN, "관리자 권한이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 리소스를 찾을 수 없습니다."),
+    // 수정: 신규 추가. 존재하는 경로에 허용되지 않은 HTTP 메서드로 요청한 경우의 공통 405 코드.
+    METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "허용되지 않은 요청 메서드입니다."),
+    // 수정: 신규 추가. 지원하지 않는 요청 Content-Type(415)에 대한 공통 코드.
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "지원하지 않는 Content-Type입니다."),
+    // 수정: 신규 추가. 제공할 수 없는 응답 형식(Accept, 406)에 대한 공통 코드.
+    NOT_ACCEPTABLE(HttpStatus.NOT_ACCEPTABLE, "요청한 응답 형식을 제공할 수 없습니다."),
+    // 수정: 신규 추가. 업로드 파일이 multipart 최대 크기를 초과한 경우의 공통 413 코드.
+    PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "업로드 가능한 최대 파일 크기를 초과했습니다."),
     // 수정: 신규 추가. 동시성으로 DB 유니크/FK 제약 위반이 사전 체크를 빠져나간 경우의 공통 409 코드.
     RESOURCE_CONFLICT(HttpStatus.CONFLICT, "요청이 현재 리소스 상태와 충돌합니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "서버 내부 오류가 발생했습니다."),
