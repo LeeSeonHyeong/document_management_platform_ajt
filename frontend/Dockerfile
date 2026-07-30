@@ -19,5 +19,5 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # SPA 라우팅용 커스텀 설정으로 교체
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 443
 # nginx:alpine 은 기본으로 nginx를 포그라운드 실행하므로 ENTRYPOINT/CMD 불필요

@@ -38,7 +38,9 @@ services:
   frontend:
     build: ./frontend                       # frontend/Dockerfile 로 이미지 빌드
     ports:
-      - "${FRONTEND_PORT:-80}:80"            # 회사별로 다른 호스트 포트 (기본 80). silo 데모: 8081, 8082 …
+      - "${FRONTEND_PORT:-443}:443"          # 호스트포트 → 컨테이너 443(TLS). silo 데모: 8081, 8082
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro # 인증서를 컨테이너 안에서 읽게 마운트 (live/ 가 archive/ 심볼릭이라 통째로)
     depends_on: [backend]
     restart: unless-stopped
 
