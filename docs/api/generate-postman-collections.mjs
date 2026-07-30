@@ -848,7 +848,11 @@ const publicFolders = [
           "공개 범위가 바뀌면 새 scopeKey 카테고리를 지정해야 합니다.",
           "기존 범위와 새 범위 Wiki를 각각 최신 문서 기준으로 재처리합니다.",
         ],
-        response: ["`202 Accepted`와 재처리 `jobId`", "수정된 문서 정보"],
+        response: [
+          "`202 Accepted`와 새 scope 재처리 `jobId`",
+          "`reprocessJobs`: 공개 범위가 바뀐 경우 이전·새 scope별 재처리 job 목록",
+          "수정된 문서 정보",
+        ],
         errors: [
           "`400 Bad Request`: 카테고리와 공개 범위 조합 오류",
           "`403 Forbidden`: 관리자 권한 없음",

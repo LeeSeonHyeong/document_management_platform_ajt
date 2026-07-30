@@ -242,6 +242,7 @@ public class DocumentManagementService {
         return new DocumentUpdateResponse(
                 String.valueOf(job.id()),
                 job.status().name().toLowerCase(),
+                List.of(),
                 toDetail(document, category)
         );
     }

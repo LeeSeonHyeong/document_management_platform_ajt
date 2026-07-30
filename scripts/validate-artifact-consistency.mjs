@@ -315,12 +315,12 @@ expect(internalRequests.length === 7, `내부 API 수가 7개가 아님: ${inter
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
 expect(
-  collectionVariable(publicCollection, "contractVersion") === "1.3.1",
-  "공개 API 계약 버전이 1.3.1이 아님",
+  collectionVariable(publicCollection, "contractVersion") === "1.4.1",
+  "공개 API 계약 버전이 1.4.1이 아님",
 );
 expect(
-  collectionVariable(internalCollection, "contractVersion") === "1.3.1",
-  "내부 API 계약 버전이 1.3.1이 아님",
+  collectionVariable(internalCollection, "contractVersion") === "1.4.1",
+  "내부 API 계약 버전이 1.4.1이 아님",
 );
 
 const p0PublicEndpoints = [
