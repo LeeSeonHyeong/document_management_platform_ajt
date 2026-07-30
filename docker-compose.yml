@@ -1,0 +1,47 @@
+# AJT 배포용 docker-compose
+# backend + frontend + mysql 를 한 번에 띄운다.
+# 실행: 같은 폴더에 실제 값이 담긴 .env 를 두고  ->  docker compose up -d --build
+#
+# 손으로 하던 docker network create / docker run -p / network connect 가
+# 이 파일 하나로 대체된다. (네트워크는 compose 가 자동 생성하고 서비스 이름으로 서로 찾음)
+
+services:
+  # ---------- MySQL ----------
+  mysql:
+    image: mysql:8.4
+    env_file: [.env]                       # MYSQL_ROOT_PASSWORD / MYSQL_DATABASE / MYSQL_USER / MYSQL_PASSWORD
+    volumes:
+      - mysql-data:/var/lib/mysql          # 데이터 영속 (컨테이너 지워도 볼륨에 남음)
+      - ./docs/db/erd.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      # ↑ 볼륨이 "비어있는 최초 1회"에만 실행돼 스키마를 만든다. (스키마 바꾸면 볼륨 지우고 재생성)
+    healthcheck:                            # "DB가 진짜 접속 가능하나" 확인 → 백엔드가 이걸 기다림
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ---------- 백엔드 (Spring Boot) ----------
+  backend:
+    build: ./backend                        # backend/Dockerfile 로 이미지 빌드
+    env_file: [.env]                        # SPRING_PROFILES_ACTIVE=prod, SPRING_DATASOURCE_*, AJT_*, AI_*, *_STORAGE_ROOT
+    depends_on:
+      mysql:
+        condition: service_healthy          # MySQL 준비(healthy)된 뒤에 시작
+    volumes:
+      - ajt-files:/data/ajt                 # 업로드 파일 영속 (.env 의 *_STORAGE_ROOT 가 /data/ajt/* 를 가리킴)
+    restart: unless-stopped
+    # 호스트 포트를 열지 않는다 → 외부에서 백엔드 직접 접근 불가, 프론트가 내부 네트워크로만 접근 (보안)
+
+  # ---------- 프론트 (nginx: 정적 서빙 + /api 프록시) ----------
+  frontend:
+    build: ./frontend                       # frontend/Dockerfile 로 이미지 빌드
+    ports:
+      - "80:80"                             # 외부 공개 문 (지금은 http, HTTPS 는 다음 단계)
+    depends_on: [backend]
+    restart: unless-stopped
+
+volumes:
+  mysql-data:      # MySQL 데이터 보관
+  ajt-files:       # 업로드 파일 보관
