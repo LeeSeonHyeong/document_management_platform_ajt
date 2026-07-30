@@ -3,6 +3,8 @@ package com.ajt.backend.domain.document.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -30,6 +32,7 @@ import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.document.storage.DocumentFileMutation;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.error.BusinessException;
@@ -57,6 +60,7 @@ class DocumentManagementServiceTest {
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final DocumentParseJobLauncher parseJobLauncher = mock(DocumentParseJobLauncher.class);
     private final DocumentFileStorage documentFileStorage = mock(DocumentFileStorage.class);
+    private final DocumentFileMutation documentFileMutation = mock(DocumentFileMutation.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
     private final DocumentManagementService service = new DocumentManagementService(
@@ -403,8 +407,12 @@ class DocumentManagementServiceTest {
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(documentCategoryRepository.findById(4L)).willReturn(Optional.of(category(4L, "D1-D3", "사규")));
         given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
-        // 기존 범위 검사에서는 [문서], 문서 이동 후 재처리에서는 [] (남은 문서 없음)
+        given(documentFileStorage.moveToScope(anyString(), any(), eq("D1-D3"), eq(15L))).willReturn(documentFileMutation);
+        given(documentFileMutation.originalPath()).willReturn("wiki/D1-D3/sources/15/original.md");
+        given(documentFileMutation.parsedPath()).willReturn(null);
+        // 양쪽 범위 검사 뒤, 기존 범위는 문서 이동 후 재처리하면 비고 신규 범위에는 이동 문서가 포함된다.
         given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document), List.of());
+        given(documentRepository.findByScopeKey("D1-D3")).willReturn(List.of(), List.of(document));
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -421,6 +429,54 @@ class DocumentManagementServiceTest {
         assertThat(document.status().name()).isEqualTo("UPLOADED");
         // 새 범위(문서 단위) + 기존 범위(범위 단위) → 재처리 작업 2건
         verify(parseJobLauncher, times(2)).launch(any(AiJob.class));
+    }
+
+    @Test
+    @DisplayName("공개 범위 변경은 새 범위에 처리 중 문서가 있으면 막는다")
+    void rejectsScopeChangeWhenNewScopeIsProcessing() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        Document processing = uploadedDocument();
+        assignId(processing, 16L);
+        processing.startParsing();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(4L)).willReturn(Optional.of(category(4L, "D1-D3", "사규")));
+        given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentRepository.findByScopeKey("D1-D3")).willReturn(List.of(processing));
+
+        assertThatThrownBy(() -> service.update(
+                15L, new DocumentMetadataUpdateRequest(4L, "department", List.of(1L, 3L))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.WIKI_EDIT_IN_PROGRESS);
+
+        verify(documentFileStorage, never()).moveToScope(any(), any(), any(), anyLong());
+    }
+
+    @Test
+    @DisplayName("공개 범위 이동 뒤 작업 생성이 실패하면 파일 이동을 되돌린다")
+    void rollsBackFilesWhenScopeReprocessCreationFails() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(4L)).willReturn(Optional.of(category(4L, "D1-D3", "사규")));
+        given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document), List.of());
+        given(documentRepository.findByScopeKey("D1-D3")).willReturn(List.of(), List.of(document));
+        given(documentFileStorage.moveToScope(anyString(), any(), eq("D1-D3"), eq(15L))).willReturn(documentFileMutation);
+        given(documentFileMutation.originalPath()).willReturn("wiki/D1-D3/sources/15/original.md");
+        given(documentFileMutation.parsedPath()).willReturn(null);
+        given(aiJobRepository.save(any(AiJob.class))).willThrow(new IllegalStateException("작업 저장 실패"));
+
+        assertThatThrownBy(() -> service.update(
+                15L, new DocumentMetadataUpdateRequest(4L, "department", List.of(1L, 3L))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("작업 저장 실패");
+
+        verify(documentFileMutation).rollback();
     }
 
     @Test

@@ -1,10 +1,9 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ChevronRight, Download, FileText, Pencil, RefreshCw, Trash2 } from 'lucide-react'
-import { Badge, Button, Chip, Spinner, useToast } from '@/components/ui'
+import { ArrowLeft, ChevronDown, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
+import { Badge, Button, Spinner, useToast } from '@/components/ui'
 import { fetchDocumentFile } from '../api'
-import { useDocument, useReplaceDocumentFile } from '../queries'
-import { DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../status'
+import { useDocument } from '../queries'
 import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
 import DocumentMetaEditModal from '../components/DocumentMetaEditModal'
 
@@ -16,7 +15,13 @@ function formatBytes(bytes) {
 
 function formatDateTime(iso) {
   if (!iso) return '-'
-  return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+  const date = new Date(iso)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hour}:${minute}`
 }
 
 function fileExtension(name) {
@@ -36,13 +41,11 @@ export default function SourceDocumentDetailPage() {
   const { documentId } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
-  const fileInputRef = useRef(null)
   const [downloading, setDownloading] = useState(false)
   const [metaOpen, setMetaOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
   const { data: doc, isLoading } = useDocument(documentId)
-  const replaceMutation = useReplaceDocumentFile(documentId)
 
   async function handleDownload() {
     setDownloading(true)
@@ -62,16 +65,6 @@ export default function SourceDocumentDetailPage() {
     }
   }
 
-  function handleReplaceFile(event) {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    replaceMutation.mutate(file, {
-      onSuccess: () => toast.success('파일을 교체했습니다. 문서가 다시 처리됩니다.'),
-      onError: () => toast.error('파일 교체에 실패했습니다.'),
-    })
-  }
-
   if (isLoading || !doc) {
     return (
       <div className="flex justify-center py-16">
@@ -81,8 +74,17 @@ export default function SourceDocumentDetailPage() {
   }
 
   return (
-    <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="flex min-h-[720px] min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5">
+    <section>
+      <Link
+        to="/admin/documents/source"
+        className="focus-ring mb-4 inline-flex cursor-pointer items-center gap-1.5 rounded-md text-sm font-semibold text-slate-500 hover:text-primary-600"
+      >
+        <ArrowLeft className="size-3.5" />
+        원본 문서
+      </Link>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="flex min-h-[760px] min-w-0 flex-col rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-500">
@@ -90,14 +92,15 @@ export default function SourceDocumentDetailPage() {
             </span>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-bold text-slate-800">{doc.originalFileName}</h1>
+              {/* TODO(API): 문서 페이지 수 필드가 계약에 없어 1페이지로 고정 표시된다. */}
               <p className="mt-0.5 text-xs text-slate-400">
-                {fileExtension(doc.originalFileName)} · {formatBytes(doc.fileSize)}
+                {fileExtension(doc.originalFileName)} · {formatBytes(doc.fileSize)} · 1페이지
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()} loading={replaceMutation.isPending}>
-            <RefreshCw className="size-4" />
-            파일 교체
+          <Button variant="outline">
+            <Maximize2 className="size-4" />
+            전체 화면
           </Button>
         </div>
 
@@ -107,13 +110,16 @@ export default function SourceDocumentDetailPage() {
           </p>
         )}
 
-        <div className="mt-4 flex flex-1 items-start justify-center rounded-2xl bg-slate-50 p-8">
-          <div className="min-h-80 w-full max-w-xl rounded-md border border-slate-200 bg-white p-8 shadow-sm">
-            <p className="text-center text-lg font-bold text-slate-800">{doc.originalFileName}</p>
-            <p className="mt-10 text-sm leading-7 text-slate-500">
-              원본 문서 미리보기 영역입니다. 파일 미리보기 데이터가 연결되면 이 영역에 문서 내용이 표시됩니다.
+        <div className="mt-4 flex flex-1 flex-col items-center rounded-2xl bg-slate-50 p-8">
+          <div className="min-h-80 w-full max-w-2xl rounded-md border border-slate-200 bg-white p-10 shadow-sm">
+            <p className="text-center text-lg font-bold text-slate-800">원본 문서 미리보기</p>
+            <p className="mt-8 text-sm font-semibold text-slate-700">{doc.originalFileName}</p>
+            <p className="mt-5 text-sm leading-8 text-slate-500">
+              파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
             </p>
           </div>
+          {/* TODO(API): 미리보기 본문·페이지 수 필드가 계약에 없어 플레이스홀더와 1 / 1로 둔다. */}
+          <span className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">1 / 1</span>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -129,44 +135,49 @@ export default function SourceDocumentDetailPage() {
             </Button>
           </div>
         </div>
-        <input ref={fileInputRef} type="file" className="hidden" onChange={handleReplaceFile} />
       </div>
 
       <aside className="space-y-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-4">
+          <div className="border-b border-slate-200 pb-4">
             <h2 className="font-bold text-slate-800">문서 정보</h2>
-            <Button size="sm" variant="ghost" onClick={() => setMetaOpen(true)}>
-              <Pencil className="size-4" />
-              수정
-            </Button>
           </div>
-          <dl className="mt-2">
-            <InfoRow label="카테고리">{doc.documentCategoryName ?? '-'}</InfoRow>
-            <InfoRow label="공개 부서">
-              {doc.visibilityType === 'all' ? (
-                <Badge tone="primary">전체 공개</Badge>
-              ) : (
-                <div className="flex flex-wrap gap-1">
-                  {(doc.departments ?? []).map((department) => (
-                    <Chip key={department.departmentId}>{department.name}</Chip>
-                  ))}
-                </div>
-              )}
+          <dl>
+            <InfoRow label="카테고리">
+              <MetadataButton onClick={() => setMetaOpen(true)}>
+                {doc.documentCategoryName ?? '미분류'}
+              </MetadataButton>
             </InfoRow>
-            <InfoRow label="업로더">{doc.uploadedBy?.name ?? '-'}</InfoRow>
+            <InfoRow label="공개 부서">
+              <MetadataButton onClick={() => setMetaOpen(true)}>
+                {doc.visibilityType === 'all'
+                  ? '전체 공개'
+                  : (doc.departments ?? []).length > 1
+                    ? `${doc.departments[0].name} 외 ${doc.departments.length - 1}`
+                    : doc.departments?.[0]?.name ?? '미지정'}
+              </MetadataButton>
+            </InfoRow>
+            <div className="my-2 border-t border-slate-200" />
+            <InfoRow label="업로더">
+              <span className="flex items-center justify-end gap-2">
+                <span className="flex size-6 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
+                  {doc.uploadedBy?.name?.slice(0, 1) ?? '?'}
+                </span>
+                {doc.uploadedBy?.name ?? '-'}
+              </span>
+            </InfoRow>
             <InfoRow label="업로드일">{formatDateTime(doc.uploadedAt)}</InfoRow>
             <InfoRow label="용량 · 형식">
               {formatBytes(doc.fileSize)} · {fileExtension(doc.originalFileName)}
             </InfoRow>
           </dl>
-          <Badge tone={DOC_STATUS_TONE[doc.status] ?? 'neutral'}>
-            {DOC_STATUS_LABEL[doc.status] ?? doc.status}
-          </Badge>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
-          <h2 className="mb-4 font-bold text-slate-800">연결된 위키 문서</h2>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-bold text-slate-800">연결된 위키 문서</h2>
+            {doc.relatedWikis?.length > 0 && <Badge tone="success">반영 완료</Badge>}
+          </div>
           {doc.relatedWikis?.length > 0 ? (
             <ul className="space-y-2">
               {doc.relatedWikis.map((wiki) => (
@@ -187,6 +198,7 @@ export default function SourceDocumentDetailPage() {
           )}
         </div>
       </aside>
+      </div>
 
       <DocumentMetaEditModal
         open={metaOpen}
@@ -196,13 +208,34 @@ export default function SourceDocumentDetailPage() {
       />
       <DocumentDeleteDialog
         open={deleteOpen}
-        documentId={documentId}
+        document={doc}
         onClose={() => setDeleteOpen(false)}
-        onDeleted={() => {
+        onBackground={() => {
+          setDeleteOpen(false)
+          navigate('/admin/documents/source')
+        }}
+        onViewWiki={(wikiId) => {
+          setDeleteOpen(false)
+          navigate(`/wiki/${wikiId}`)
+        }}
+        onGoToList={() => {
           setDeleteOpen(false)
           navigate('/admin/documents/source')
         }}
       />
     </section>
+  )
+}
+
+function MetadataButton({ children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="focus-ring flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:border-primary-300"
+    >
+      <span className="truncate">{children}</span>
+      <ChevronDown className="size-4 shrink-0 text-slate-400" />
+    </button>
   )
 }

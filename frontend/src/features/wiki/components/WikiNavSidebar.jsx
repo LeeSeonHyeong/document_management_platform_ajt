@@ -1,30 +1,44 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { SearchBar, Spinner } from '@/components/ui'
+import { SearchBar, Select, Spinner } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
 import { useWikiCategories, useWikis, useWikiSpaces } from '../queries'
 
 export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
+  // scopeKey === '' 이면 전체 부서(스코프 필터 없이 조회).
   const [scopeKey, setScopeKey] = useState('')
   const [keyword, setKeyword] = useState('')
   const [expanded, setExpanded] = useState(() => new Set())
-  const initializedScope = useRef('')
+  const initializedScope = useRef(null)
 
   const { data: spaces = [] } = useWikiSpaces()
-  const { data: categories = [] } = useWikiCategories(scopeKey)
-  const { data: wikiPage, isLoading } = useWikis(
-    scopeKey ? { scopeKey, keyword: keyword || undefined, size: 200 } : undefined,
+  const { data: scopeCategories = [] } = useWikiCategories(scopeKey)
+  const filters = useMemo(
+    () => ({ scopeKey: scopeKey || undefined, keyword: keyword || undefined, size: 200 }),
+    [scopeKey, keyword],
   )
+  const { data: wikiPage, isLoading } = useWikis(filters)
   const wikis = wikiPage?.items ?? []
   const firstWikiId = wikis[0]?.wikiId
   const searching = keyword.trim().length > 0
+  const selectedSpace = spaces.find((space) => space.scopeKey === scopeKey)
+
+  // /wiki-categories 는 scopeKey 가 필수라 전체 부서에서는 호출할 수 없다.
+  // 이때는 목록 응답의 wikiCategoryId·wikiCategoryName 으로 트리를 구성한다.
+  const listCategories = useMemo(() => {
+    const map = new Map()
+    ;(wikiPage?.items ?? []).forEach((wiki) => {
+      const id = String(wiki.wikiCategoryId)
+      if (!map.has(id)) {
+        map.set(id, { wikiCategoryId: wiki.wikiCategoryId, name: wiki.wikiCategoryName })
+      }
+    })
+    return [...map.values()]
+  }, [wikiPage])
+  const categories = scopeKey ? scopeCategories : listCategories
 
   useEffect(() => {
-    if (!scopeKey && spaces.length) setScopeKey(spaces[0].scopeKey)
-  }, [scopeKey, spaces])
-
-  useEffect(() => {
-    if (!scopeKey || !categories.length || initializedScope.current === scopeKey) return
+    if (!categories.length || initializedScope.current === scopeKey) return
     setExpanded(new Set(categories.map((category) => category.wikiCategoryId)))
     initializedScope.current = scopeKey
   }, [categories, scopeKey])
@@ -47,26 +61,37 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
   return (
     <aside className="flex w-56 shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-3">
       <div className="flex items-center justify-between px-2 py-2">
-        <h2 className="text-base font-bold text-slate-800">문서 목록</h2>
+        <h2 className="text-base font-bold text-slate-800">부서</h2>
+        <span className="text-xs font-semibold text-slate-400">{spaces.length}</span>
+      </div>
+
+      <Select
+        aria-label="부서 스코프"
+        value={scopeKey}
+        onChange={(event) => setScopeKey(event.target.value)}
+        className="text-xs"
+      >
+        <option value="">전체 부서</option>
+        {spaces.map((space) => (
+          <option key={space.scopeKey} value={space.scopeKey}>
+            {space.displayName}
+          </option>
+        ))}
+      </Select>
+
+      <div className="mt-3 flex items-center justify-between border-t border-slate-100 px-2 pt-3 pb-2">
+        <h2 className="text-base font-bold text-slate-800">위키 목록</h2>
         <span className="text-xs font-semibold text-slate-400">
           {wikiPage?.totalCount ?? wikis.length}
         </span>
       </div>
 
       <SearchBar
-        placeholder="문서명으로 검색"
+        placeholder="위키 문서명으로 검색"
         defaultValue={keyword}
         onSearch={setKeyword}
         className="mb-2"
       />
-
-      <div className="mb-2 flex gap-1.5">
-        <span className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold text-primary-600">
-          전체
-        </span>
-        <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-400">문서</span>
-        <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-400">위키</span>
-      </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
@@ -133,6 +158,12 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
           </div>
         )}
       </div>
+
+      {selectedSpace && (
+        <p className="mt-2 px-2 text-[11px] leading-4 text-slate-400">
+          {selectedSpace.displayName}에 공개된 위키만 표시됩니다
+        </p>
+      )}
     </aside>
   )
 }

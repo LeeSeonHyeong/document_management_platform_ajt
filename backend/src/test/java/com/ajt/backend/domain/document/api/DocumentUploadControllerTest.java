@@ -269,7 +269,10 @@ class DocumentUploadControllerTest {
     @DisplayName("문서 메타데이터 수정 성공 시 202와 재처리 작업·수정된 문서를 반환한다")
     void updatesDocumentMetadata() throws Exception {
         given(documentManagementService.update(eq(15L), any(DocumentMetadataUpdateRequest.class)))
-                .willReturn(new DocumentUpdateResponse("42", "waiting", new DocumentDetailResponse(
+                .willReturn(new DocumentUpdateResponse("42", "waiting", List.of(
+                        new ReprocessJobResponse("ALL", "43"),
+                        new ReprocessJobResponse("D1-D3", "42")
+                ), new DocumentDetailResponse(
                         "15",
                         "rule.md",
                         "D1-D3",
@@ -288,6 +291,10 @@ class DocumentUploadControllerTest {
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.jobId").value("42"))
                 .andExpect(jsonPath("$.status").value("waiting"))
+                .andExpect(jsonPath("$.reprocessJobs[0].scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.reprocessJobs[0].jobId").value("43"))
+                .andExpect(jsonPath("$.reprocessJobs[1].scopeKey").value("D1-D3"))
+                .andExpect(jsonPath("$.reprocessJobs[1].jobId").value("42"))
                 .andExpect(jsonPath("$.document.documentId").value("15"))
                 .andExpect(jsonPath("$.document.scopeKey").value("D1-D3"))
                 .andExpect(jsonPath("$.document.category.name").value("사규"));

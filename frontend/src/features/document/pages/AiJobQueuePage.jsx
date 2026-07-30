@@ -12,7 +12,7 @@ function VisibilityCell({ doc }) {
   if (!doc) return <span className="text-slate-300">…</span>
   if (doc.visibilityType === 'all') return <Badge tone="primary">전체</Badge>
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex flex-wrap justify-center gap-1">
       {(doc.departments ?? []).map((dept) => (
         <Chip key={dept.departmentId}>{dept.name}</Chip>
       ))}
@@ -65,7 +65,7 @@ export default function AiJobQueuePage() {
         </Button>
       ),
     },
-  ]
+  ].map((column, index) => ({ ...column, align: index === 0 ? 'left' : 'center' }))
 
   if (isLoading) {
     return (
@@ -88,7 +88,7 @@ export default function AiJobQueuePage() {
         같은 공개 범위(scopeKey)의 문서들이 하나의 AI 작업으로 처리됩니다. 특정 문서의 공개 범위를 바꾸면 작업 묶음이 나뉠 수 있습니다.
       </p>
 
-      <DataTable columns={columns} rows={results} rowKey="documentId" />
+      <DataTable columns={columns} rows={results} rowKey="documentId" headerAlign="center" />
 
       <div className="flex items-center justify-between">
         <span className="text-sm text-slate-500">

@@ -29,6 +29,8 @@ export default function AiJobSummaryListPage() {
     <section className="space-y-5">
       <DocumentSectionTabs />
 
+      {/* TODO(API): AI 작업 목록 엔드포인트가 없어(GET /ai-jobs/:jobId 단건만) 작업 회차별로
+          그룹핑할 수 없다. 완료 문서를 단일 카드로 묶고 회차는 1회로 표시한다. */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
           총 <strong className="text-slate-800">{documents.length ? 1 : 0}회 작업</strong>
@@ -66,11 +68,11 @@ export default function AiJobSummaryListPage() {
 
           <div className="grid grid-cols-[minmax(0,2fr)_1fr_1fr_minmax(0,1.4fr)_110px_100px] gap-3 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500">
             <span>파일명</span>
-            <span>공개 부서</span>
-            <span>카테고리</span>
-            <span>생성된 위키 문서</span>
-            <span>상태</span>
-            <span className="text-right">관리</span>
+            <span className="text-center">공개 부서</span>
+            <span className="text-center">카테고리</span>
+            <span className="text-center">생성된 위키 문서</span>
+            <span className="text-center">상태</span>
+            <span className="text-center">관리</span>
           </div>
 
           <ul className="divide-y divide-slate-100">
@@ -88,17 +90,19 @@ export default function AiJobSummaryListPage() {
                     <p className="text-xs text-slate-400">{formatFileSize(document.fileSize)}</p>
                   </div>
                 </div>
-                <span className="truncate text-slate-500">
+                <span className="truncate text-center text-slate-500">
                   {document.visibilityType === 'all'
                     ? '전체 공개'
                     : (document.departments ?? []).map((department) => department.name).join(', ') || '-'}
                 </span>
-                <span className="truncate text-slate-500">{document.documentCategoryName ?? '미분류'}</span>
-                <span className="truncate font-semibold text-primary-600">
+                <span className="truncate text-center text-slate-500">{document.documentCategoryName ?? '미분류'}</span>
+                <span className="truncate text-center font-semibold text-primary-600">
                   {document.relatedWikis?.[0]?.title ?? '위키 반영 완료'}
                 </span>
-                <Badge tone="success">반영 완료</Badge>
-                <div className="text-right">
+                <div className="flex justify-center">
+                  <Badge tone="success">반영 완료</Badge>
+                </div>
+                <div className="flex justify-center">
                   <Link to={`/admin/documents/source/${document.documentId}`}>
                     <Button size="sm" variant="outline">요약 보기</Button>
                   </Link>
