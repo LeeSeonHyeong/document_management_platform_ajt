@@ -2,6 +2,7 @@ package com.ajt.backend.domain.wiki.service;
 
 import com.ajt.backend.domain.wiki.model.Wiki;
 import com.ajt.backend.domain.wiki.model.WikiCategory;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileMutation;
@@ -50,19 +51,22 @@ public class WikiTransformationApplier {
     private final WikiFileStorage wikiFileStorage;
     private final WikiSearchIndexer wikiSearchIndexer;
     private final WikiMarkdownLinkValidator wikiMarkdownLinkValidator;
+    private final WikiScopeRepository wikiScopeRepository;
 
     public WikiTransformationApplier(
             WikiRepository wikiRepository,
             WikiCategoryRepository wikiCategoryRepository,
             WikiFileStorage wikiFileStorage,
             WikiSearchIndexer wikiSearchIndexer,
-            WikiMarkdownLinkValidator wikiMarkdownLinkValidator
+            WikiMarkdownLinkValidator wikiMarkdownLinkValidator,
+            WikiScopeRepository wikiScopeRepository
     ) {
         this.wikiRepository = wikiRepository;
         this.wikiCategoryRepository = wikiCategoryRepository;
         this.wikiFileStorage = wikiFileStorage;
         this.wikiSearchIndexer = wikiSearchIndexer;
         this.wikiMarkdownLinkValidator = wikiMarkdownLinkValidator;
+        this.wikiScopeRepository = wikiScopeRepository;
     }
 
     /**
@@ -119,12 +123,31 @@ public class WikiTransformationApplier {
             );
             applyRelationChanges(scopeKey, nullSafe(relationChanges), wikiResult.wikiIdsByRef());
             writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex, fileMutation);
+            incrementScopeVersionIfChanged(scopeKey, categoryChanges, wikiChanges, relationChanges, indexEntries);
             completeFileMutationAfterTransaction(fileMutation);
             return List.copyOf(wikiResult.affectedWikiIds());
         } catch (RuntimeException exception) {
             rollbackFileMutation(fileMutation, exception);
             throw exception;
         }
+    }
+
+    private void incrementScopeVersionIfChanged(
+            String scopeKey,
+            List<CategoryChange> categoryChanges,
+            List<WikiChange> wikiChanges,
+            List<RelationChange> relationChanges,
+            List<IndexEntry> indexEntries
+    ) {
+        if (nullSafe(categoryChanges).isEmpty()
+                && nullSafe(wikiChanges).isEmpty()
+                && nullSafe(relationChanges).isEmpty()
+                && nullSafe(indexEntries).isEmpty()) {
+            return;
+        }
+        wikiScopeRepository.findById(scopeKey)
+                .orElseThrow(() -> new IllegalStateException("Wiki 공간을 찾을 수 없습니다: " + scopeKey))
+                .incrementScopeVersion();
     }
 
     private Map<String, Long> applyCategoryChanges(String scopeKey, List<CategoryChange> changes) {
