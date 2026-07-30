@@ -1,12 +1,20 @@
 package com.ajt.backend.domain.wiki.service;
 
+import com.ajt.backend.domain.department.DepartmentRepository;
+import com.ajt.backend.domain.document.model.Document;
+import com.ajt.backend.domain.document.model.WikiScope;
 import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
+import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.wiki.api.WikiCategoryListResponse;
+import com.ajt.backend.domain.wiki.api.WikiDetailResponse;
 import com.ajt.backend.domain.wiki.api.WikiListResponse;
+import com.ajt.backend.domain.wiki.api.WikiSpaceListResponse;
+import com.ajt.backend.domain.wiki.api.WikiSpaceResponse;
 import com.ajt.backend.domain.wiki.api.WikiSummaryResponse;
 import com.ajt.backend.domain.wiki.model.Wiki;
 import com.ajt.backend.domain.wiki.model.WikiCategory;
@@ -17,13 +25,16 @@ import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -34,20 +45,26 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 작업(WIKI-01): Wiki 목록·검색 조회.
+ * Wiki 조회 서비스입니다.
+ * Wiki 목록·검색(WIKI-01)과 Wiki 공간 목록, 공간별 카테고리 목록, Wiki 상세 조회를 담당합니다.
  * 관리자는 전체를, 사원은 접근 가능한 Wiki(전체 공개 ALL + 본인 소속 부서 공개)만 조회한다(FR-ACL-002).
- * 공개범위·카테고리·검색어 필터와 페이지네이션을 지원한다.
  */
 @Service
 public class WikiQueryService {
+
+    private static final Pattern SCOPE_KEY_PATTERN = Pattern.compile("ALL|D[1-9][0-9]*(-D[1-9][0-9]*)*");
 
     private final CurrentMemberProvider currentMemberProvider;
     private final WikiRepository wikiRepository;
     private final WikiCategoryRepository wikiCategoryRepository;
     private final WikiFileStorage wikiFileStorage;
     // 사원 접근권한 판정용(소속 부서 → 접근 가능한 공개범위). document 도메인의 것을 재사용한다.
+    // TODO(팀 협업): WikiScope가 document 도메인에 있어 wiki 도메인이 document 저장소에 의존한다.
+    //  (기존 WikiChatMessageService도 동일) WikiScope를 공용/wiki 도메인으로 옮길지 팀과 정리한다.
     private final WikiScopeRepository wikiScopeRepository;
     private final MemberRepository memberRepository;
+    private final DocumentRepository documentRepository;
+    private final DepartmentRepository departmentRepository;
 
     public WikiQueryService(
             CurrentMemberProvider currentMemberProvider,
@@ -55,7 +72,9 @@ public class WikiQueryService {
             WikiCategoryRepository wikiCategoryRepository,
             WikiFileStorage wikiFileStorage,
             WikiScopeRepository wikiScopeRepository,
-            MemberRepository memberRepository
+            MemberRepository memberRepository,
+            DocumentRepository documentRepository,
+            DepartmentRepository departmentRepository
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiRepository = wikiRepository;
@@ -63,7 +82,11 @@ public class WikiQueryService {
         this.wikiFileStorage = wikiFileStorage;
         this.wikiScopeRepository = wikiScopeRepository;
         this.memberRepository = memberRepository;
+        this.documentRepository = documentRepository;
+        this.departmentRepository = departmentRepository;
     }
+
+    // ===== WIKI-01 Wiki 목록·검색 =====
 
     @Transactional(readOnly = true)
     public WikiListResponse findWikis(
@@ -109,6 +132,111 @@ public class WikiQueryService {
         return WikiListResponse.from(mapped);
     }
 
+    // ===== Wiki 공간 목록 =====
+
+    @Transactional(readOnly = true)
+    public WikiSpaceListResponse findAccessibleSpaces() {
+        AccessScope access = accessScopeOf(currentMemberProvider.currentMember());
+
+        // TODO(팀 협업): 현재는 모든 공간을 읽어와 메모리에서 접근 필터링한다. 공간(부서 조합) 수가 커지면
+        //  visibility_type='ALL' OR JSON_CONTAINS(department_refs, myDept) 형태의 쿼리로 내려야 한다.
+        //  department_refs가 JSON 컬럼이라 DB 종속적이므로 도입 시점·방식은 팀과 협의한다.
+        List<WikiScope> accessibleScopes = wikiScopeRepository.findAll().stream()
+                .filter(access::canAccess)
+                .toList();
+
+        Map<Long, String> departmentNames = resolveDepartmentNames(accessibleScopes);
+        Map<String, Long> wikiCounts = resolveWikiCounts(accessibleScopes);
+        List<WikiSpaceResponse> items = accessibleScopes.stream()
+                .map(scope -> toSpaceResponse(scope, departmentNames, wikiCounts))
+                .toList();
+        return new WikiSpaceListResponse(items);
+    }
+
+    // ===== Wiki 카테고리 목록 =====
+
+    @Transactional(readOnly = true)
+    public WikiCategoryListResponse findCategories(String scopeKey) {
+        AccessScope access = accessScopeOf(currentMemberProvider.currentMember());
+        String validatedScopeKey = validateScopeKey(scopeKey);
+        WikiScope scope = wikiScopeRepository.findById(validatedScopeKey)
+                .orElseThrow(() -> new BusinessException(ErrorCode.WIKI_SCOPE_NOT_FOUND));
+        if (!access.canAccess(scope)) {
+            throw new BusinessException(ErrorCode.WIKI_SCOPE_NOT_FOUND);
+        }
+        return WikiCategoryListResponse.from(
+                wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(validatedScopeKey));
+    }
+
+    // ===== Wiki 상세 =====
+
+    @Transactional(readOnly = true)
+    public WikiDetailResponse getWiki(long wikiId) {
+        AccessScope access = accessScopeOf(currentMemberProvider.currentMember());
+        Wiki wiki = wikiRepository.findById(wikiId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.WIKI_NOT_FOUND));
+        WikiScope scope = wikiScopeRepository.findById(wiki.scopeKey())
+                .orElseThrow(() -> new BusinessException(ErrorCode.WIKI_NOT_FOUND));
+        if (!access.canAccess(scope)) {
+            throw new BusinessException(ErrorCode.WIKI_NOT_FOUND);
+        }
+        return toDetail(wiki);
+    }
+
+    // ===== 접근 권한 =====
+
+    private AccessScope accessScopeOf(CurrentMember member) {
+        // TODO(팀 협업): 관리자는 모든 Wiki 공간을 조회할 수 있다고 가정한다(FR-ACL-002는 사원 기준만 명시).
+        //  관리자 접근 범위 정책이 확정되면 이 가정을 검토한다.
+        if (member.isAdmin()) {
+            return AccessScope.forAdmin();
+        }
+        return AccessScope.forEmployee(memberDepartmentId(member.memberId()));
+    }
+
+    private record AccessScope(boolean admin, Long departmentId) {
+
+        static AccessScope forAdmin() {
+            return new AccessScope(true, null);
+        }
+
+        static AccessScope forEmployee(Long departmentId) {
+            return new AccessScope(false, departmentId);
+        }
+
+        boolean canAccess(WikiScope scope) {
+            if (admin) {
+                return true;
+            }
+            if (scope.visibilityType() == WikiScopeVisibilityType.ALL) {
+                return true;
+            }
+            return departmentId != null && scope.departmentRefs().contains(departmentId);
+        }
+    }
+
+    // TODO(공통화): 소속 부서 → 접근 가능 scopeKey 판정이 schedule/document/wiki 세 도메인에 중복돼 있다.
+    //  공통 컴포넌트(예: ScopeAccessResolver)로 추출 예정 — 후속 과제. (지금은 도메인별 차이가 있어 섣부른 추상화는 보류)
+    private Long memberDepartmentId(long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+        return member.getDepartment().getId();
+    }
+
+    /** 사원이 접근 가능한 공개범위: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위. */
+    private Set<String> accessibleScopeKeys(Long departmentId) {
+        Set<String> scopeKeys = new HashSet<>();
+        scopeKeys.add("ALL");
+        if (departmentId != null) {
+            wikiScopeRepository.findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT).stream()
+                    .filter(scope -> scope.departmentRefs().contains(departmentId))
+                    .forEach(scope -> scopeKeys.add(scope.scopeKey()));
+        }
+        return scopeKeys;
+    }
+
+    // ===== 목록 검색 스펙 / 페이지네이션 =====
+
     private Specification<Wiki> wikiSpecification(
             Set<String> allowedScopeKeys,
             String scopeKey,
@@ -146,26 +274,6 @@ public class WikiQueryService {
             // 목차를 읽지 못하면 요약 없이 목록만 내려준다(목록 자체는 정상).
             return WikiIndex.parse(null);
         }
-    }
-
-    // TODO(공통화): 소속 부서 → 접근 가능 scopeKey 판정이 schedule/document/wiki 세 도메인에 중복돼 있다.
-    //  공통 컴포넌트(예: ScopeAccessResolver)로 추출 예정 — 후속 과제. (지금은 도메인별 차이가 있어 섣부른 추상화는 보류)
-    private Long memberDepartmentId(long memberId) {
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
-        return member.getDepartment().getId();
-    }
-
-    /** 사원이 접근 가능한 공개범위: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위. */
-    private Set<String> accessibleScopeKeys(Long departmentId) {
-        Set<String> scopeKeys = new HashSet<>();
-        scopeKeys.add("ALL");
-        if (departmentId != null) {
-            wikiScopeRepository.findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT).stream()
-                    .filter(scope -> scope.departmentRefs().contains(departmentId))
-                    .forEach(scope -> scopeKeys.add(scope.scopeKey()));
-        }
-        return scopeKeys;
     }
 
     // TODO(#43): createPageable/parseSort가 member/document 등 여러 도메인에 중복된다.
@@ -207,5 +315,143 @@ public class WikiQueryService {
                 .replace("\\", "\\\\")
                 .replace("%", "\\%")
                 .replace("_", "\\_");
+    }
+
+    // ===== 공간/상세 매핑 =====
+
+    private WikiSpaceResponse toSpaceResponse(
+            WikiScope scope,
+            Map<Long, String> departmentNames,
+            Map<String, Long> wikiCounts
+    ) {
+        List<WikiSpaceResponse.Department> departments = scope.departmentRefs().stream()
+                .map(departmentId -> new WikiSpaceResponse.Department(
+                        String.valueOf(departmentId),
+                        departmentNames.getOrDefault(departmentId, "")
+                ))
+                .toList();
+        return new WikiSpaceResponse(
+                scope.scopeKey(),
+                scope.visibilityType().name().toLowerCase(Locale.ROOT),
+                departments,
+                displayName(scope, departments),
+                wikiCounts.getOrDefault(scope.scopeKey(), 0L)
+        );
+    }
+
+    private String displayName(WikiScope scope, List<WikiSpaceResponse.Department> departments) {
+        if (scope.visibilityType() == WikiScopeVisibilityType.ALL) {
+            return "전체";
+        }
+        return departments.stream()
+                .map(WikiSpaceResponse.Department::name)
+                .filter(name -> !name.isBlank())
+                .reduce((left, right) -> left + " + " + right)
+                .orElse(scope.scopeKey());
+    }
+
+    private Map<Long, String> resolveDepartmentNames(List<WikiScope> scopes) {
+        List<Long> departmentIds = scopes.stream()
+                .flatMap(scope -> scope.departmentRefs().stream())
+                .distinct()
+                .toList();
+        Map<Long, String> names = new LinkedHashMap<>();
+        departmentRepository.findAllById(departmentIds)
+                .forEach(department -> names.put(department.getId(), department.getName()));
+        return names;
+    }
+
+    /**
+     * 접근 가능한 공간들의 Wiki 개수를 한 번의 집계 쿼리로 구합니다.
+     */
+    private Map<String, Long> resolveWikiCounts(List<WikiScope> scopes) {
+        if (scopes.isEmpty()) {
+            return Map.of();
+        }
+        List<String> scopeKeys = scopes.stream().map(WikiScope::scopeKey).toList();
+        Map<String, Long> counts = new LinkedHashMap<>();
+        wikiRepository.countByScopeKeys(scopeKeys)
+                .forEach(row -> counts.put(row.getScopeKey(), row.getWikiCount()));
+        return counts;
+    }
+
+    // TODO(팀 협업): 아래 Wiki 상세 조립 로직은 WikiChatMessageService.toDetail과 사실상 동일하다.
+    //  공용 컴포넌트(WikiDetailAssembler 등)로 추출해 양쪽이 함께 쓰도록 통합할지 팀과 협의한다.
+    private WikiDetailResponse toDetail(Wiki wiki) {
+        return new WikiDetailResponse(
+                String.valueOf(wiki.id()),
+                wiki.title(),
+                readWikiContent(wiki),
+                category(wiki.wikiCategoryId()),
+                wiki.scopeKey(),
+                evidenceDocumentSummaries(wiki.documentRefs()),
+                relatedWikis(wiki.scopeKey(), wiki.wikiRefs()),
+                wiki.updatedAt()
+        );
+    }
+
+    private WikiDetailResponse.Category category(long wikiCategoryId) {
+        return wikiCategoryRepository.findById(wikiCategoryId)
+                .map(category -> new WikiDetailResponse.Category(
+                        String.valueOf(category.id()),
+                        category.name()
+                ))
+                .orElse(null);
+    }
+
+    private List<WikiDetailResponse.EvidenceDocument> evidenceDocumentSummaries(List<Long> documentRefs) {
+        if (documentRefs.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Document> documentsById = new LinkedHashMap<>();
+        documentRepository.findAllById(documentRefs)
+                .forEach(document -> documentsById.put(document.id(), document));
+        return documentRefs.stream()
+                .map(documentsById::get)
+                .filter(document -> document != null)
+                .map(document -> WikiDetailResponse.EvidenceDocument.of(
+                        document.id(),
+                        document.originalFileName()
+                ))
+                .toList();
+    }
+
+    private List<WikiDetailResponse.RelatedWiki> relatedWikis(String scopeKey, List<Long> wikiRefs) {
+        if (wikiRefs.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Wiki> wikisById = new LinkedHashMap<>();
+        wikiRepository.findAllByScopeKeyAndIdIn(scopeKey, wikiRefs)
+                .forEach(related -> wikisById.put(related.id(), related));
+        return wikiRefs.stream()
+                .map(wikisById::get)
+                .filter(related -> related != null)
+                .map(related -> new WikiDetailResponse.RelatedWiki(
+                        String.valueOf(related.id()),
+                        related.title()
+                ))
+                .toList();
+    }
+
+    private String readWikiContent(Wiki wiki) {
+        if (wiki.wikiPath() == null || wiki.wikiPath().isBlank()) {
+            return "";
+        }
+        try {
+            return wikiFileStorage.readWikiMarkdown(wiki.wikiPath());
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    private String validateScopeKey(String scopeKey) {
+        if (scopeKey == null || scopeKey.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_SCOPE_KEY);
+        }
+        String trimmed = scopeKey.trim();
+        if (!SCOPE_KEY_PATTERN.matcher(trimmed).matches()) {
+            throw new BusinessException(ErrorCode.INVALID_SCOPE_KEY);
+        }
+        return trimmed;
     }
 }
