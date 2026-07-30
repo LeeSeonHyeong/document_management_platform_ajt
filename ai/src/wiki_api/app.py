@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 
 from fastapi import FastAPI, Request
@@ -16,14 +15,18 @@ from .errors import install_error_handlers
 
 def create_app(*, api_key: str | None = None,
                backend_base_url: str | None = None) -> FastAPI:
+    """설정은 호출자가 다 채워서 넘긴다. **여기서 `os.environ` 을 읽지 않는다** — 유일한
+    조립 지점인 `serve.py` 가 `ServerSettings` 로 이미 병합한 값을 인자로 준다
+    (`초기화 인자 > 환경변수 > .env > 기본값`). 여기서 다시 환경을 읽으면 설정 출처가
+    갈리는 문제(이 브랜치가 고친 것)가 이 파일에서 되살아난다.
+    """
     app = FastAPI(title="AJT FastAPI Internal API", version="1.0.0",
                   docs_url=None, redoc_url=None)
-    app.state.api_key = api_key or os.environ.get("INTERNAL_API_KEY", "")
+    app.state.api_key = api_key or ""
     # Wiki 조회 창구(계약 1.6.0)의 백엔드 주소. **없으면 창구 경로를 쓰지 않는다** —
     # 요청이 `wikiCapability` 를 실어 와도 주소가 없으면 push 로 돈다
     # (`session.py._federated`). 백엔드가 창구를 배포하기 전의 기본 상태가 이것이다.
-    app.state.backend_base_url = (backend_base_url
-                                  or os.environ.get("BACKEND_BASE_URL", ""))
+    app.state.backend_base_url = backend_base_url or ""
 
     install_error_handlers(app)
 

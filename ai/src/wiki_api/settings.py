@@ -1,0 +1,107 @@
+"""서버 설정 한 곳.
+
+**설정은 가장자리에서 한 번 읽고 인자로 내린다.** 안쪽 코드가 `os.environ` 을 보지
+않는다 — 그렇게 하면 설정 출처가 갈리고, 어디에 넣어야 먹는지 아무도 모르게 된다.
+실제로 그 상태였다: `.env` 에 API 키를 넣어도 조용히 무시됐다.
+
+우선순위는 `초기화 인자 > 환경변수 > .env > 기본값` 이고 **pydantic-settings 의 기본
+동작이 그것이다.** `load_dotenv` 로 `os.environ` 에 올리지 않는다 — 전역 가변 상태를
+만들고, 그것이 애초의 문제다.
+
+`.env` 파일은 `wiki_mcp/config.py` 와 같은 `src/.env` 다. 파일 하나를 두 층이 읽고
+각 층은 자기 필드만 선언한다. 남의 변수는 `extra="ignore"` 로 통과한다.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+RUNTIMES = ("claude-code", "deepagents")
+
+
+class ServerSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=str(_ENV_FILE),
+        extra="ignore",
+        populate_by_name=True,
+    )
+
+    internal_api_key: str = Field("", validation_alias="INTERNAL_API_KEY")
+    backend_base_url: str = Field("", validation_alias="BACKEND_BASE_URL")
+
+    runtime: str = Field("claude-code", validation_alias="AI_RUNTIME")
+    # 정확한 이름을 쓴다 (`anthropic:claude-opus-4-6`). 별칭은 시점에 따라 다른 모델로
+    # 해석돼 두 측정의 비교를 조용히 깨뜨린다.
+    model: str | None = Field(None, validation_alias="AI_MODEL")
+    model_fast: str | None = Field(None, validation_alias="AI_MODEL_FAST")
+    model_quality: str | None = Field(None, validation_alias="AI_MODEL_QUALITY")
+
+    anthropic_api_key: str = Field("", validation_alias="ANTHROPIC_API_KEY")
+    anthropic_base_url: str = Field("", validation_alias="ANTHROPIC_BASE_URL")
+    openai_api_key: str = Field("", validation_alias="OPENAI_API_KEY")
+    openai_base_url: str = Field("", validation_alias="OPENAI_BASE_URL")
+
+    @field_validator("runtime")
+    @classmethod
+    def _known_runtime(cls, value: str) -> str:
+        """오타를 여기서 막는다.
+
+        `argparse` 의 `choices` 는 기본값을 검사하지 않아 `AI_RUNTIME=deepagent` 가
+        조용히 통과했다. 그러면 `deepagents` 로 뜬 줄 알고 배포한 채 첫 변환 요청에서
+        실패한다.
+        """
+        if value not in RUNTIMES:
+            raise ValueError(
+                f"AI_RUNTIME 값이 올바르지 않다: {value!r} — "
+                f"{', '.join(RUNTIMES)} 중 하나여야 한다")
+        return value
+
+
+# 프로바이더 접두사 → 설정 필드 이름. 여기서 프로바이더 목록을 관리하지 않는다 —
+# 모르는 접두사는 빈 값을 돌려주고 SDK 의 기본 동작에 맡긴다.
+_CREDENTIAL_FIELDS = {
+    "anthropic": ("anthropic_api_key", "anthropic_base_url"),
+    "openai": ("openai_api_key", "openai_base_url"),
+}
+
+
+def credentials_for(model: str | None, settings: ServerSettings) -> tuple[str, str]:
+    """모델 문자열의 `provider:name` 접두사로 `(api_key, base_url)` 을 고른다.
+
+    빈 값을 그대로 돌려주는 것이 의도다. 호출자가 빈 값을 SDK 에 넘기지 않는다 —
+    빈 문자열을 넘기면 SDK 가 「빈 키」로 읽어 자기 폴백조차 막는다.
+
+    **`serve.py` 는 이 함수를 더 이상 쓰지 않는다** — 에이전트 모델 하나만 보고 자격증명
+    하나를 고르면, 에이전트와 티어 모델의 프로바이더가 갈릴 때 한쪽이 틀린 벤더의 키를
+    받는다 (Important 1). `credential_table` 이 그 자리를 대신한다. 이 함수는 "모델
+    하나 → 자격증명 하나" 라는 더 단순한 질문에는 여전히 유효해 테스트에 남긴다.
+    """
+    provider = (model or "").split(":", 1)[0]
+    fields = _CREDENTIAL_FIELDS.get(provider)
+    if fields is None:
+        return "", ""
+    return getattr(settings, fields[0]), getattr(settings, fields[1])
+
+
+def credential_table(settings: ServerSettings) -> dict[str, tuple[str, str]]:
+    """프로바이더 이름 → `(api_key, base_url)` 표. 값이 하나도 없는 프로바이더는 뺀다.
+
+    `load_runtime` 에 이 표를 그대로 넘긴다. 에이전트 모델과 티어 모델
+    (`AI_MODEL_FAST`·`AI_MODEL_QUALITY`)의 프로바이더가 다를 수 있어서 모델 하나 기준
+    쌍 하나로는 부족하다 — `DeepAgentsRuntime` 이 호출할 모델마다 이 표에서 자기
+    프로바이더 몫을 조회한다.
+
+    평범한 `dict` 를 돌려준다. `agent_runtime` 이 `ServerSettings` 를 몰라도 되게 하기
+    위해서다 (의존 방향은 `wiki_api → agent_runtime → wiki_mcp` 단방향).
+    """
+    table: dict[str, tuple[str, str]] = {}
+    for provider, fields in _CREDENTIAL_FIELDS.items():
+        api_key, base_url = getattr(settings, fields[0]), getattr(settings, fields[1])
+        if api_key or base_url:
+            table[provider] = (api_key, base_url)
+    return table
