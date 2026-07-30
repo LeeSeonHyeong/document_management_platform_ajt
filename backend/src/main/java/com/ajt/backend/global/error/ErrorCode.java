@@ -11,6 +11,11 @@ public enum ErrorCode {
     DOCUMENT_CATEGORY_IN_USE(HttpStatus.CONFLICT, "사용 중인 문서 카테고리는 삭제할 수 없습니다."),
     INVALID_SCOPE_KEY(HttpStatus.BAD_REQUEST, "scopeKey 형식이 올바르지 않습니다."),
     WIKI_SCOPE_NOT_FOUND(HttpStatus.NOT_FOUND, "존재하지 않거나 접근할 수 없는 Wiki 공간입니다."),
+    WIKI_NOT_FOUND(HttpStatus.NOT_FOUND, "Wiki가 없거나 접근할 수 없습니다."),
+    INVALID_WIKI_FILTER(HttpStatus.BAD_REQUEST, "Wiki 조회 조건이 올바르지 않습니다."),
+    EMPTY_CHAT_CONTENT(HttpStatus.BAD_REQUEST, "대화 내용을 입력해주세요."),
+    WIKI_EDIT_IN_PROGRESS(HttpStatus.CONFLICT, "같은 Wiki 공간의 변환 작업이 처리 중입니다."),
+    WIKI_EDIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "Wiki 수정에 실패했습니다."),
     AI_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "AI 작업을 찾을 수 없습니다."),
     INVALID_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "인증이 필요합니다."),
@@ -34,6 +39,10 @@ public enum ErrorCode {
     SIGNUP_ALREADY_PENDING(HttpStatus.CONFLICT, "이미 가입 승인 대기 중인 이메일입니다."),
     SIGNUP_ALREADY_APPROVED(HttpStatus.CONFLICT, "이미 가입 완료된 이메일입니다."),
     INVALID_OR_EXPIRED_RESET_TOKEN(HttpStatus.BAD_REQUEST, "비밀번호 재설정 토큰이 올바르지 않거나 만료되었습니다."),
+    // 수정: 인증번호 방식 재설정용 코드 신규 추가.
+    INVALID_OR_EXPIRED_RESET_CODE(HttpStatus.BAD_REQUEST, "인증번호가 올바르지 않거나 만료되었습니다."),
+    // 수정: 재설정 요청 rate limit 초과용 429 코드 신규 추가.
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "CSRF 토큰이 올바르지 않습니다."),
     CSRF_TOKEN_ISSUE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "CSRF 토큰을 발급하지 못했습니다."),
 

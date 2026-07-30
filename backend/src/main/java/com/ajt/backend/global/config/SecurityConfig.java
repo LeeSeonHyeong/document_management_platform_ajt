@@ -36,6 +36,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/csrf",
                                 "/api/v1/auth/signup",
                                 "/api/v1/auth/password-reset-requests",
+                                "/api/v1/auth/password-reset-verify",
                                 "/api/v1/auth/password-resets",
                                 "/api/v1/signup-departments"
                         ).permitAll()

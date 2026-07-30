@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ajt.backend.domain.auth.dto.LoginRequest;
 import com.ajt.backend.domain.auth.dto.LoginResult;
+import com.ajt.backend.domain.auth.dto.AuthMessageResponse;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
+import com.ajt.backend.domain.auth.dto.PasswordResetVerifyRequest;
 import com.ajt.backend.domain.auth.dto.SignupRequest;
 import com.ajt.backend.domain.auth.dto.SignupResponse;
 import com.ajt.backend.domain.department.Department;
@@ -14,7 +16,7 @@ import com.ajt.backend.domain.member.AccountStatus;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.SignupStatus;
-import com.ajt.backend.global.auth.PasswordResetTokenService;
+import com.ajt.backend.global.auth.PasswordResetCodeStore;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import org.junit.jupiter.api.DisplayName;
@@ -34,7 +36,7 @@ class AuthServiceTest {
     private final DepartmentRepository departmentRepository;
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
-    private final PasswordResetTokenService passwordResetTokenService;
+    private final PasswordResetCodeStore passwordResetCodeStore;
 
 
     @Autowired
@@ -43,13 +45,13 @@ class AuthServiceTest {
             DepartmentRepository departmentRepository,
             MemberRepository memberRepository,
             PasswordEncoder passwordEncoder,
-            PasswordResetTokenService passwordResetTokenService
+            PasswordResetCodeStore passwordResetCodeStore
     ) {
         this.authService = authService;
         this.departmentRepository = departmentRepository;
         this.memberRepository = memberRepository;
         this.passwordEncoder = passwordEncoder;
-        this.passwordResetTokenService = passwordResetTokenService;
+        this.passwordResetCodeStore = passwordResetCodeStore;
     }
 
     @Test
@@ -150,8 +152,8 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("유효한 재설정 토큰으로 비밀번호를 변경하면 기존 토큰은 다시 사용할 수 없다")
-    void resetPasswordChangesPasswordAndInvalidatesOldToken() {
+    @DisplayName("유효한 인증번호로 비밀번호를 변경하면 인증번호는 다시 사용할 수 없다")
+    void resetPasswordChangesPasswordAndConsumesCode() {
         Department department = departmentRepository.save(new Department("개발부"));
         Member member = memberRepository.save(Member.approvedEmployee(
                 department,
@@ -160,23 +162,46 @@ class AuthServiceTest {
                 passwordEncoder.encode("password123!"),
                 "AJT-2026-0001"
         ));
-        String token = passwordResetTokenService.createToken(member);
+        passwordResetCodeStore.save("employee@ajt.com", "123456");
 
-        authService.resetPassword(new PasswordResetConfirmRequest(token, "newPassword123!"));
+        authService.resetPassword(new PasswordResetConfirmRequest("employee@ajt.com", "123456", "newPassword123!"));
 
         assertThat(passwordEncoder.matches("newPassword123!", member.getPasswordHash())).isTrue();
-        assertThatThrownBy(() -> authService.resetPassword(new PasswordResetConfirmRequest(token, "otherPassword123!")))
+        assertThatThrownBy(() -> authService.resetPassword(
+                new PasswordResetConfirmRequest("employee@ajt.com", "123456", "otherPassword123!")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_OR_EXPIRED_RESET_TOKEN);
+                .isEqualTo(ErrorCode.INVALID_OR_EXPIRED_RESET_CODE);
     }
 
     @Test
-    @DisplayName("올바르지 않은 재설정 토큰으로 비밀번호를 변경하면 토큰 오류가 발생한다")
-    void resetPasswordRejectsInvalidToken() {
-        assertThatThrownBy(() -> authService.resetPassword(new PasswordResetConfirmRequest("wrong-token", "newPassword123!")))
+    @DisplayName("올바르지 않은 인증번호로 비밀번호를 변경하면 인증번호 오류가 발생한다")
+    void resetPasswordRejectsInvalidCode() {
+        assertThatThrownBy(() -> authService.resetPassword(
+                new PasswordResetConfirmRequest("employee@ajt.com", "000000", "newPassword123!")))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_OR_EXPIRED_RESET_TOKEN);
+                .isEqualTo(ErrorCode.INVALID_OR_EXPIRED_RESET_CODE);
+    }
+
+    @Test
+    @DisplayName("유효한 인증번호를 확인하면 확인 메시지를 반환한다")
+    void verifyResetCodeReturnsMessageForValidCode() {
+        passwordResetCodeStore.save("employee@ajt.com", "123456");
+
+        AuthMessageResponse response = authService.verifyResetCode(
+                new PasswordResetVerifyRequest("employee@ajt.com", "123456"));
+
+        assertThat(response.message()).isEqualTo("인증번호가 확인되었습니다.");
+    }
+
+    @Test
+    @DisplayName("올바르지 않은 인증번호 확인은 인증번호 오류가 발생한다")
+    void verifyResetCodeRejectsInvalidCode() {
+        assertThatThrownBy(() -> authService.verifyResetCode(
+                new PasswordResetVerifyRequest("employee@ajt.com", "000000")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_OR_EXPIRED_RESET_CODE);
     }
 }

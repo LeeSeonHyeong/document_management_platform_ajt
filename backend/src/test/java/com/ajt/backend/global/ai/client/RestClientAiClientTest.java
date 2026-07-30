@@ -170,6 +170,74 @@ class RestClientAiClientTest {
     }
 
     @Test
+    @DisplayName("Wiki 변환 실패 응답의 failureStage를 읽는다")
+    void readsWikiTransformationFailureStage() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-transformations"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "timestamp": "2026-07-27T09:00:00Z",
+                                  "status": 500,
+                                  "error": "Internal Server Error",
+                                  "code": "WIKI_TRANSFORMATION_FAILED",
+                                  "message": "Wiki 변환에 실패했습니다.",
+                                  "path": "/internal/v1/wiki-transformations",
+                                  "fieldErrors": [],
+                                  "failureStage": "agent_timeout"
+                                }
+                                """));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.transformWiki(minimalTransformationRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.upstreamCode()).isEqualTo("WIKI_TRANSFORMATION_FAILED");
+        assertThat(error.failureStage()).isEqualTo("agent_timeout");
+    }
+
+    @Test
+    @DisplayName("failureStage가 없는 오류 응답은 실패 단계를 비워 둔다")
+    void leavesFailureStageEmptyWhenAbsent() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-transformations"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "timestamp": "2026-07-27T09:00:00Z",
+                                  "status": 400,
+                                  "error": "Bad Request",
+                                  "code": "INVALID_WIKI_TRANSFORMATION_REQUEST",
+                                  "message": "Wiki 변환 요청 구조가 올바르지 않습니다.",
+                                  "path": "/internal/v1/wiki-transformations",
+                                  "fieldErrors": []
+                                }
+                                """));
+
+        AiClientException error = catchThrowableOfType(
+                () -> client.transformWiki(minimalTransformationRequest()),
+                AiClientException.class
+        );
+
+        assertThat(error.failureStage()).isNull();
+    }
+
+    private WikiTransformationRequest minimalTransformationRequest() {
+        return new WikiTransformationRequest(
+                "42",
+                "15",
+                "ALL",
+                WikiDocumentChangeType.DOCUMENT_ADDED,
+                "# parsed",
+                null,
+                "# index",
+                List.of(),
+                List.of()
+        );
+    }
+
+    @Test
     @DisplayName("Wiki 문맥 선택 요청을 JSON 계약대로 보내고 선택된 Wiki ID를 읽는다")
     void sendsWikiContextSelectionContractAndReadsPostmanSuccess() {
         server.expect(requestTo("http://localhost:8000/internal/v1/wiki-context-selections"))

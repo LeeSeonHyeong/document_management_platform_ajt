@@ -29,6 +29,8 @@ dependencies = [
 # 배포 형태의 런타임. claude-code 런타임은 로그인 세션만 쓰므로 필요 없다.
 deepagents = [
     "deepagents",
+    # `init_chat_model` 을 직접 임포트한다. 전이 의존성이어도 명시한다 (CLAUDE.md 함정).
+    "langchain",
     "langchain-mcp-adapters",
     "langchain-anthropic",
     "python-dotenv",

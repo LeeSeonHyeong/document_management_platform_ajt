@@ -1,0 +1,292 @@
+{
+  "version": 1,
+  "note": "질의 40개(정확어 20 + 자연어 20). 이것이 정본이다 — 초기 48개 세트는 폐기했다. 수치가 달라 두 세트가 섞이면 비교가 조용히 깨진다.",
+  "split": {
+    "dev": "튜닝·반복 측정에 쓴다. 여러 번 봐도 된다.",
+    "test": "판정에만 쓴다. 한 번만 본다 — 보고 나서 구현을 고치면 dev 로 강등한다."
+  },
+  "dev": [
+    {
+      "query": "연차",
+      "gold": [
+        "annual-leave"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "반차",
+      "gold": [
+        "annual-leave"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "병가",
+      "gold": [
+        "sick-leave"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "스톡옵션",
+      "gold": [
+        "stock-option"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "클리프",
+      "gold": [
+        "stock-option"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "벤치마크",
+      "gold": [
+        "salary"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "건강검진",
+      "gold": [
+        "health"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "피싱",
+      "gold": [
+        "security"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "인수인계",
+      "gold": [
+        "offboarding"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "법인카드",
+      "gold": [
+        "expense"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "쉬는 날 며칠 받나",
+      "gold": [
+        "annual-leave"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "아파서 못 나갈 때",
+      "gold": [
+        "sick-leave"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "주식 받은 거 언제 팔 수 있어",
+      "gold": [
+        "stock-option"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "월급 어떻게 정해지나",
+      "gold": [
+        "salary"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "자격증 따면 지원되나",
+      "gold": [
+        "education"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "집에서 일할 때 책상 사기",
+      "gold": [
+        "equipment"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "집에서 일해도 되나",
+      "gold": [
+        "remote"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "고객 정보 함부로 보면 안 되는 이유",
+      "gold": [
+        "data-privacy"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "나갈 때 뭐 해야 하나",
+      "gold": [
+        "offboarding"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "다른 데서 알바해도 되나",
+      "gold": [
+        "side-job"
+      ],
+      "kind": "para"
+    }
+  ],
+  "test": [
+    {
+      "query": "이월",
+      "gold": [
+        "annual-leave"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "육아휴직",
+      "gold": [
+        "parental-leave"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "경조 휴가",
+      "gold": [
+        "sick-leave"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "베스팅",
+      "gold": [
+        "stock-option"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "지역 계수",
+      "gold": [
+        "salary"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "교육비",
+      "gold": [
+        "education"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "패스키",
+      "gold": [
+        "security"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "수습 기간",
+      "gold": [
+        "onboarding"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "퇴직금",
+      "gold": [
+        "offboarding"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "동호회",
+      "gold": [
+        "offsite"
+      ],
+      "kind": "exact"
+    },
+    {
+      "query": "아이 낳고 쉬는 제도",
+      "gold": [
+        "parental-leave"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "결혼하면 쉴 수 있나",
+      "gold": [
+        "sick-leave"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "회사 그만두면 주식 어떻게 되나",
+      "gold": [
+        "stock-option"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "책 사도 돈 주나",
+      "gold": [
+        "education"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "몸 안 좋을 때 검사받기",
+      "gold": [
+        "health"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "컴퓨터 새로 받고 싶다",
+      "gold": [
+        "equipment"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "비밀번호 안전하게 쓰기",
+      "gold": [
+        "security"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "처음 들어와서 뭐부터 하나",
+      "gold": [
+        "onboarding"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "쓴 돈 돌려받기",
+      "gold": [
+        "expense"
+      ],
+      "kind": "para"
+    },
+    {
+      "query": "위로 올라가려면",
+      "gold": [
+        "promotion"
+      ],
+      "kind": "para"
+    }
+  ]
+}

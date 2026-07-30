@@ -126,8 +126,32 @@ public class Document {
         this.status = DocumentStatus.PROCESSING;
     }
 
+    /**
+     * Wiki 변환 결과까지 반영된 문서를 완료 처리합니다.
+     * 변환으로 생성·수정된 Wiki가 문서의 참조 목록이 됩니다.
+     */
+    public void completeProcessing(List<Long> documentWikiRefs) {
+        if (status != DocumentStatus.PROCESSING) {
+            throw new IllegalStateException("PROCESSING 상태의 문서만 완료할 수 있습니다.");
+        }
+        this.documentWikiRefs = List.copyOf(documentWikiRefs);
+        this.failureReason = null;
+        this.status = DocumentStatus.COMPLETED;
+    }
+
     public void failParsing(String failureReason) {
         ensureParsing();
+        this.failureReason = failureReason;
+        this.status = DocumentStatus.FAILED;
+    }
+
+    /**
+     * Wiki 변환 단계에서 실패한 문서를 실패 처리합니다.
+     */
+    public void failProcessing(String failureReason) {
+        if (status != DocumentStatus.PROCESSING) {
+            throw new IllegalStateException("PROCESSING 상태의 문서만 변환 실패로 처리할 수 있습니다.");
+        }
         this.failureReason = failureReason;
         this.status = DocumentStatus.FAILED;
     }
@@ -142,6 +166,29 @@ public class Document {
 
     public void changeOriginalPath(String originalPath) {
         this.originalPath = originalPath;
+    }
+
+    /** 처리 중(파싱·변환 진행)인지 여부. 수정·교체·삭제 요청은 처리 중이면 거부한다(409). */
+    public boolean isInProgress() {
+        return status == DocumentStatus.PARSING || status == DocumentStatus.PROCESSING;
+    }
+
+    /**
+     * 재처리를 위해 문서를 UPLOADED로 되돌린다(실패/취소/완료 문서를 다시 파싱 대상으로).
+     * 처리 중인 문서는 되돌릴 수 없다.
+     */
+    public void markForReprocess() {
+        if (isInProgress()) {
+            throw new IllegalStateException("처리 중인 문서는 재처리 대상으로 되돌릴 수 없습니다.");
+        }
+        this.status = DocumentStatus.UPLOADED;
+        this.failureReason = null;
+    }
+
+    /** DOC-05 메타데이터 수정: 카테고리와 공개 범위(scopeKey)를 함께 변경한다. */
+    public void changeCategoryAndScope(long documentCategoryId, String scopeKey) {
+        this.documentCategoryId = documentCategoryId;
+        this.scopeKey = scopeKey;
     }
 
     @PrePersist

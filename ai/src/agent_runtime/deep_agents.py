@@ -26,15 +26,26 @@ Optional dependency: install with `uv sync --extra deepagents`.
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 import time
+import sys
 from pathlib import Path
 
 from wiki_mcp.telemetry import read_counts
 
-from .base import RunResult
+from .base import DEFAULT_COMPLETE_TIMEOUT, FAST, QUALITY, CompletionResult, RunResult
 
 logger = logging.getLogger("llmwiki.deepagents")
+
+# tier → 모델. 게이트웨이가 가진 것에 묶인다 — GMS 실측(2026-07-29)으로 확인된 이름만
+# 쓴다. 짧은 별칭(`claude-haiku-4-5`)은 400 이고 `claude-sonnet-5` 는 GMS 에 없다.
+DEFAULT_TIER_MODELS = {
+    FAST: "anthropic:claude-haiku-4-5-20251001",
+    QUALITY: "anthropic:claude-sonnet-4-6",
+}
+# 코드 수정 없이 갈아끼우기 위한 환경변수. 게이트웨이 목록이 바뀌면 배포에서 먼저 막힌다.
+TIER_ENV = {FAST: "AI_MODEL_FAST", QUALITY: "AI_MODEL_QUALITY"}
 
 # DeepAgents' built-ins. Every one of these is a way around the MCP server.
 EXCLUDED_BUILTIN_TOOLS = frozenset({
@@ -42,7 +53,6 @@ EXCLUDED_BUILTIN_TOOLS = frozenset({
     "glob", "grep", "execute", "task",
 })
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SERVER_MODULE = "wiki_mcp.local_server"
 
 # NFR-PERF-002: a document over ten minutes must be failed. The CLI runtime gets
@@ -56,14 +66,23 @@ MAX_TURNS = 60
 
 def _server_config(root: Path, scope_key: str, job_id: str,
                    tool_log: Path | None = None) -> dict:
-    """Same stdio server the CLI runtime launches, described for MCP adapters."""
+    """Same stdio server the CLI runtime launches, described for MCP adapters.
+
+    `sys.executable`, not `uv run --project`. The CLI runtime hit this first
+    (`claude_code.py` trap 5): `uv run` re-resolves the project on every spawn and
+    the MCP client gave up before the handshake finished — the server showed as
+    `pending`, no tools arrived, and the agent flailed with its own file tools
+    while the run still reported no error. The same spawn is used here, so the
+    same fix applies. **Unverified on this runtime** — DeepAgents is not installed
+    in the measurement environment yet (plan Task 7).
+    """
     args = [
-        "run", "--project", str(PROJECT_ROOT), "python", "-m", SERVER_MODULE,
+        "-m", SERVER_MODULE,
         "--root", str(root), "--scope", scope_key, "--job-id", job_id,
     ]
     if tool_log:
         args += ["--tool-log", str(tool_log)]
-    return {"wiki": {"transport": "stdio", "command": "uv", "args": args}}
+    return {"wiki": {"transport": "stdio", "command": sys.executable, "args": args}}
 
 
 EXPECTED_TOOLS = frozenset({
@@ -97,6 +116,49 @@ class DeepAgentsRuntime:
 
     def __init__(self, model: str = "anthropic:claude-opus-4-6"):
         self.model = model
+
+    def _model_for(self, tier: str) -> str:
+        """tier → 모델 이름. 환경변수가 있으면 그것을 쓴다.
+
+        모르는 tier 를 조용히 기본 모델로 떨어뜨리지 않는다 — 오타 하나가 측정을
+        무의미하게 만드는 것보다 즉시 터지는 쪽이 낫다.
+        """
+        if tier not in DEFAULT_TIER_MODELS:
+            raise ValueError(f"모르는 tier: {tier!r} (가능: {sorted(DEFAULT_TIER_MODELS)})")
+        return os.environ.get(TIER_ENV[tier], "") or DEFAULT_TIER_MODELS[tier]
+
+    def complete(self, messages: list[dict], *, tier: str = QUALITY,
+                 timeout: int | None = None) -> CompletionResult:
+        """MCP 없는 단발 호출. 에이전트도 툴도 만들지 않고 모델만 부른다.
+
+        `timeout` 을 **모델 클라이언트에** 건다. 호출자의 `asyncio.wait_for` 는 코루틴을
+        풀어주지만 이미 떠난 HTTP 요청을 끊지 못한다 — 이 인자가 실제로 연결을 끊는
+        유일한 지점이다 (`run` 의 subprocess timeout 과 같은 이유).
+
+        `max_retries=0` 은 예산 방어다. 기본값은 재시도이므로 실패 1건이 조용히 2~3배
+        청구된다. 재시도가 필요하면 호출자가 명시적으로 다시 부른다.
+        """
+        from langchain.chat_models import init_chat_model
+
+        requested = self._model_for(tier)
+        model = init_chat_model(requested,
+                                timeout=timeout or DEFAULT_COMPLETE_TIMEOUT,
+                                max_retries=0)
+        started = time.monotonic()
+        reply = model.invoke(messages)
+        usage = getattr(reply, "usage_metadata", None) or {}
+        details = usage.get("input_token_details") or {}
+        meta = getattr(reply, "response_metadata", None) or {}
+        return CompletionResult(
+            text=_text_of(reply.content),
+            input_tokens=int(usage.get("input_tokens", 0) or 0),
+            output_tokens=int(usage.get("output_tokens", 0) or 0),
+            cache_read_tokens=int(details.get("cache_read", 0) or 0),
+            cache_creation_tokens=int(details.get("cache_creation", 0) or 0),
+            # 요청한 이름이 아니라 응답이 말한 모델. 게이트웨이가 바꿔 끼울 수 있다.
+            model=str(meta.get("model") or meta.get("model_name") or requested),
+            elapsed_seconds=round(time.monotonic() - started, 2),
+        )
 
     def run(self, instruction: str, *, root: Path, scope_key: str,
             job_id: str, timeout: int | None = None) -> RunResult:
@@ -207,3 +269,16 @@ def _usage(messages: list) -> dict:
 def _turns(messages: list) -> int:
     """Model turns, counted the way the CLI reports `num_turns`."""
     return sum(1 for m in messages if getattr(m, "type", "") == "ai")
+
+
+def _text_of(content) -> str:
+    """응답 content 를 문자열로. block 목록으로 오는 경우가 있다."""
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content or []:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "".join(parts)

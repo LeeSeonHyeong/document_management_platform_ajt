@@ -1,0 +1,32 @@
+{
+  "slug": "2026-07-29-sonnet46-2docs",
+  "startedAt": "2026-07-29T08:00:44",
+  "runtime": "claude-code",
+  "model": "claude-sonnet-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "purpose": "sonnet-4-6 가 guide 를 떠받치는지 — opus46-2docs 와 직접 대조",
+  "dryRun": false,
+  "code": {
+    "guideChars": 4549,
+    "guideSha": "b5444b72e5a4",
+    "schemaSha": "b1e3ca6e12ac",
+    "instructionSha": "b73c4ed0b020",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "finishedAt": "2026-07-29T08:04:54"
+}

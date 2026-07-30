@@ -12,6 +12,7 @@ export default function TopBar() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const pageEyebrow = getPageEyebrow(pathname)
+  const titleOnly = pathname === '/'
 
   const handleLogout = async () => {
     await logout()
@@ -21,7 +22,7 @@ export default function TopBar() {
   return (
     <header className="flex h-[76px] shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6">
       <div>
-        {pageEyebrow ? (
+        {titleOnly ? null : pageEyebrow ? (
           <p className="text-xs font-medium text-slate-400">
             <span className="text-primary-600">AJT</span>
             {pageEyebrow.slice(3)}
@@ -29,7 +30,7 @@ export default function TopBar() {
         ) : (
           <Breadcrumb />
         )}
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
+        <h1 className={`${titleOnly ? '' : 'mt-1'} text-2xl font-bold tracking-tight text-slate-900`}>
           {getPageTitle(pathname)}
         </h1>
       </div>

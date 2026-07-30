@@ -1,4 +1,4 @@
-export const contractVersion = "1.3.0";
+export const contractVersion = "1.3.1";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -628,6 +628,14 @@ const contracts = {
           {
             action: "create",
             tempWikiId: "wiki-temp-1",
+            // 이 Wiki가 속할 카테고리. 같은 응답의 `categoryChanges[].tempCategoryId`
+            // 또는 이미 존재하는 `wikiCategoryId`를 담는다. 이 필드가 없으면 백엔드는
+            // 카테고리를 추정해야 하고, 한 응답이 카테고리를 둘 이상 만들면 실패한다.
+            wikiCategoryRef: "category-temp-1",
+            // `action`이 `create`일 때만 실린다. 신규 페이지의 파일명은 에이전트가 발급한
+            // 값이라 `wikiId`에서 유도할 수 없다. 백엔드가 `wiki.wiki_path`(DR-016)를 채우고
+            // 본문에 남은 신규 페이지 링크를 실제 ID로 치환하는 데 필요하다.
+            wikiPath: "wiki/D1-D2/pages/a3f2c1d4.md",
             title: "휴가 규정",
             contentMarkdown: "# 휴가 규정\n...",
             evidence: [
@@ -663,10 +671,13 @@ const contracts = {
       httpStatus: 200,
       body: {
         agentMessage: "중복된 휴가 규정을 하나로 정리했습니다.",
+        // 응답 구조는 Wiki 변환과 같다. `action`이 `create`인 항목에는 Wiki 변환과 동일하게
+        // `wikiCategoryRef`와 `wikiPath`가 실린다.
         wikiChanges: [
           {
             action: "update",
             wikiId: "100",
+            wikiCategoryRef: "9",
             title: "휴가 규정",
             contentMarkdown: "# 휴가 규정\n정리된 본문...",
           },

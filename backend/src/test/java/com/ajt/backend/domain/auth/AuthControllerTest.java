@@ -189,18 +189,19 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/auth/password-resets 요청은 잘못된 토큰이면 400 오류를 반환한다")
-    void passwordResetRejectsInvalidToken() throws Exception {
+    @DisplayName("POST /api/v1/auth/password-resets 요청은 잘못된 인증번호면 400 오류를 반환한다")
+    void passwordResetRejectsInvalidCode() throws Exception {
         mockMvc.perform(post("/api/v1/auth/password-resets")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "token": "wrong-token",
+                                  "email": "unknown@ajt.com",
+                                  "code": "000000",
                                   "newPassword": "newPassword123!"
                                 }
                                 """))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("INVALID_OR_EXPIRED_RESET_TOKEN"))
-                .andExpect(jsonPath("$.message").value("비밀번호 재설정 토큰이 올바르지 않거나 만료되었습니다."));
+                .andExpect(jsonPath("$.code").value("INVALID_OR_EXPIRED_RESET_CODE"))
+                .andExpect(jsonPath("$.message").value("인증번호가 올바르지 않거나 만료되었습니다."));
     }
 }

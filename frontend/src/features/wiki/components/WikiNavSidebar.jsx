@@ -1,93 +1,138 @@
-import { useEffect, useState } from 'react'
-import { ChevronRight, ChevronDown } from 'lucide-react'
-import { Select, SearchBar, Spinner } from '@/components/ui'
+import { useEffect, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { SearchBar, Spinner } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
-import { useWikiSpaces, useWikiCategories, useWikis } from '../queries'
+import { useWikiCategories, useWikis, useWikiSpaces } from '../queries'
 
-// Figma 6R 좌측 (Jira -85) — Wiki 목차 사이드바.
-// 공간(scopeKey) → 카테고리 → Wiki 트리. 키워드 검색 시 평면 결과 목록으로 전환한다.
 export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
   const [scopeKey, setScopeKey] = useState('')
   const [keyword, setKeyword] = useState('')
   const [expanded, setExpanded] = useState(() => new Set())
+  const initializedScope = useRef('')
 
   const { data: spaces = [] } = useWikiSpaces()
   const { data: categories = [] } = useWikiCategories(scopeKey)
-  // 검색 중이 아니면 스코프 전체 Wiki를 받아 카테고리별로 묶는다. 검색 중이면 keyword 필터 결과(평면).
   const { data: wikiPage, isLoading } = useWikis(
     scopeKey ? { scopeKey, keyword: keyword || undefined, size: 200 } : undefined,
   )
   const wikis = wikiPage?.items ?? []
+  const firstWikiId = wikis[0]?.wikiId
+  const searching = keyword.trim().length > 0
 
-  // 접근 가능한 첫 공간을 기본 선택한다.
   useEffect(() => {
     if (!scopeKey && spaces.length) setScopeKey(spaces[0].scopeKey)
   }, [scopeKey, spaces])
 
+  useEffect(() => {
+    if (!scopeKey || !categories.length || initializedScope.current === scopeKey) return
+    setExpanded(new Set(categories.map((category) => category.wikiCategoryId)))
+    initializedScope.current = scopeKey
+  }, [categories, scopeKey])
+
+  useEffect(() => {
+    if (!selectedWikiId && !searching && firstWikiId) {
+      onSelectWiki(firstWikiId)
+    }
+  }, [firstWikiId, onSelectWiki, searching, selectedWikiId])
+
   function toggleCategory(categoryId) {
-    setExpanded((prev) => {
-      const next = new Set(prev)
+    setExpanded((previous) => {
+      const next = new Set(previous)
       if (next.has(categoryId)) next.delete(categoryId)
       else next.add(categoryId)
       return next
     })
   }
 
-  const searching = keyword.trim().length > 0
-
   return (
-    <aside className="flex w-72 shrink-0 flex-col gap-3 border-r border-slate-200 pr-4">
-      <Select
-        value={scopeKey}
-        onChange={(e) => setScopeKey(e.target.value)}
-        placeholder="Wiki 공간 선택"
-        options={spaces.map((s) => ({ value: s.scopeKey, label: `${s.displayName} (${s.wikiCount})` }))}
+    <aside className="flex w-56 shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between px-2 py-2">
+        <h2 className="text-base font-bold text-slate-800">문서 목록</h2>
+        <span className="text-xs font-semibold text-slate-400">
+          {wikiPage?.totalCount ?? wikis.length}
+        </span>
+      </div>
+
+      <SearchBar
+        placeholder="문서명으로 검색"
+        defaultValue={keyword}
+        onSearch={setKeyword}
+        className="mb-2"
       />
 
-      <SearchBar placeholder="Wiki 검색" defaultValue={keyword} onSearch={setKeyword} />
+      <div className="mb-2 flex gap-1.5">
+        <span className="rounded-full border border-primary-200 bg-primary-50 px-2.5 py-1 text-[11px] font-semibold text-primary-600">
+          전체
+        </span>
+        <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-400">문서</span>
+        <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-400">위키</span>
+      </div>
 
-      {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Spinner size="sm" />
-        </div>
-      ) : searching ? (
-        // 검색 결과: 카테고리 트리 대신 평면 목록
-        <ul className="space-y-0.5">
-          {wikis.length === 0 && <li className="px-2 py-1 text-sm text-slate-400">검색 결과가 없습니다.</li>}
-          {wikis.map((w) => (
-            <WikiItem key={w.wikiId} wiki={w} active={w.wikiId === selectedWikiId} onSelect={onSelectWiki} />
-          ))}
-        </ul>
-      ) : (
-        // 공간 → 카테고리 → Wiki 트리
-        <ul className="space-y-1">
-          {categories.map((cat) => {
-            const open = expanded.has(cat.wikiCategoryId)
-            const catWikis = wikis.filter((w) => w.wikiCategoryId === cat.wikiCategoryId)
-            return (
-              <li key={cat.wikiCategoryId}>
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(cat.wikiCategoryId)}
-                  className="focus-ring flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  {open ? <ChevronDown className="size-4 text-slate-400" /> : <ChevronRight className="size-4 text-slate-400" />}
-                  {cat.name}
-                  <span className="ml-auto text-xs text-slate-400">{catWikis.length}</span>
-                </button>
-                {open && (
-                  <ul className="mt-0.5 space-y-0.5 pl-5">
-                    {catWikis.length === 0 && <li className="px-2 py-1 text-xs text-slate-400">Wiki 없음</li>}
-                    {catWikis.map((w) => (
-                      <WikiItem key={w.wikiId} wiki={w} active={w.wikiId === selectedWikiId} onSelect={onSelectWiki} />
-                    ))}
-                  </ul>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner size="sm" />
+          </div>
+        ) : searching ? (
+          <ul className="space-y-1">
+            {wikis.length === 0 && (
+              <li className="px-2 py-8 text-center text-sm text-slate-400">검색 결과가 없습니다.</li>
+            )}
+            {wikis.map((wiki) => (
+              <WikiItem
+                key={wiki.wikiId}
+                wiki={wiki}
+                active={String(wiki.wikiId) === String(selectedWikiId)}
+                onSelect={onSelectWiki}
+              />
+            ))}
+          </ul>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-600">
+              <ChevronDown className="size-4 text-slate-400" />
+              위키
+            </div>
+            <ul className="space-y-1 pl-3">
+              {categories.map((category) => {
+                const open = expanded.has(category.wikiCategoryId)
+                const categoryWikis = wikis.filter(
+                  (wiki) => String(wiki.wikiCategoryId) === String(category.wikiCategoryId),
+                )
+                return (
+                  <li key={category.wikiCategoryId}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(category.wikiCategoryId)}
+                      className="focus-ring flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+                    >
+                      {open ? (
+                        <ChevronDown className="size-4 shrink-0 text-slate-400" />
+                      ) : (
+                        <ChevronRight className="size-4 shrink-0 text-slate-400" />
+                      )}
+                      <span className="truncate">{category.name}</span>
+                      <span className="ml-auto text-xs text-slate-400">{categoryWikis.length}</span>
+                    </button>
+                    {open && (
+                      <ul className="space-y-0.5 pl-5">
+                        {categoryWikis.map((wiki) => (
+                          <WikiItem
+                            key={wiki.wikiId}
+                            wiki={wiki}
+                            active={String(wiki.wikiId) === String(selectedWikiId)}
+                            onSelect={onSelectWiki}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
     </aside>
   )
 }
@@ -99,11 +144,14 @@ function WikiItem({ wiki, active, onSelect }) {
         type="button"
         onClick={() => onSelect(wiki.wikiId)}
         className={cn(
-          'focus-ring w-full truncate rounded-md px-2 py-1.5 text-left text-sm',
-          active ? 'bg-primary-50 font-medium text-primary-700' : 'text-slate-600 hover:bg-slate-50',
+          'focus-ring flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+          active
+            ? 'bg-primary-50 font-semibold text-primary-600'
+            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700',
         )}
       >
-        {wiki.title}
+        <span className={cn('size-1.5 shrink-0 rounded-full', active ? 'bg-primary-500' : 'bg-slate-300')} />
+        <span className="truncate">{wiki.title}</span>
       </button>
     </li>
   )

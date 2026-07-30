@@ -1,23 +1,35 @@
 package com.ajt.backend.domain.document.api;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.empty;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.ajt.backend.domain.document.service.DocumentFileDownload;
 import com.ajt.backend.domain.document.service.DocumentManagementService;
 import com.ajt.backend.domain.document.service.DocumentUploadService;
 import com.ajt.backend.global.error.GlobalExceptionHandler;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -129,6 +141,42 @@ class DocumentUploadControllerTest {
     }
 
     @Test
+    @DisplayName("문서 목록 조회 성공 시 200과 목록·페이지 정보를 반환한다")
+    void listsDocuments() throws Exception {
+        given(documentManagementService.findDocuments(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .willReturn(new DocumentListResponse(
+                        List.of(new DocumentSummaryResponse(
+                                "15",
+                                "rule.md",
+                                "ALL",
+                                new DocumentSummaryResponse.CategoryResponse("7", "취업규칙"),
+                                "uploaded",
+                                "10",
+                                Instant.parse("2026-07-28T05:00:00Z")
+                        )),
+                        1,
+                        20,
+                        1,
+                        1
+                ));
+
+        mockMvc.perform(get("/api/v1/documents")
+                        .param("scopeKey", "ALL")
+                        .param("status", "uploaded"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].documentId").value("15"))
+                .andExpect(jsonPath("$.items[0].originalFileName").value("rule.md"))
+                .andExpect(jsonPath("$.items[0].scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.items[0].category.name").value("취업규칙"))
+                .andExpect(jsonPath("$.items[0].status").value("uploaded"))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
     @DisplayName("실패 문서 재시도 성공 시 202와 새 AI 작업 정보를 반환한다")
     void retriesFailedDocument() throws Exception {
         given(documentManagementService.retry(15L)).willReturn(new DocumentRetryResponse(
@@ -159,6 +207,75 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_DOCUMENT_STATUS"))
                 .andExpect(jsonPath("$.message").value("문서 처리 상태를 확인해주세요."))
                 .andExpect(jsonPath("$.path").value("/api/v1/documents/15/retry"));
+    }
+
+    @Test
+    @DisplayName("문서 파일 다운로드 성공 시 200과 파일명·타입 헤더로 파일을 내려준다")
+    void downloadsDocumentFile() throws Exception {
+        Resource resource = new ByteArrayResource("hello".getBytes(StandardCharsets.UTF_8));
+        given(documentManagementService.downloadFile(15L))
+                .willReturn(new DocumentFileDownload(resource, "취업규칙.pdf", "application/pdf"));
+
+        mockMvc.perform(get("/api/v1/documents/{documentId}/file", 15L))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("application/pdf")))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("attachment")))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, containsString("filename")))
+                .andExpect(content().bytes("hello".getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    @DisplayName("문서 파일이 없으면 404를 반환한다")
+    void returnsNotFoundWhenFileMissing() throws Exception {
+        given(documentManagementService.downloadFile(15L))
+                .willThrow(new BusinessException(ErrorCode.NOT_FOUND));
+
+        mockMvc.perform(get("/api/v1/documents/{documentId}/file", 15L))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("문서 메타데이터 수정 성공 시 202와 재처리 작업·수정된 문서를 반환한다")
+    void updatesDocumentMetadata() throws Exception {
+        given(documentManagementService.update(eq(15L), any(DocumentMetadataUpdateRequest.class)))
+                .willReturn(new DocumentUpdateResponse("42", "waiting", new DocumentDetailResponse(
+                        "15",
+                        "rule.md",
+                        "D1-D3",
+                        new DocumentDetailResponse.CategoryResponse("4", "사규"),
+                        "uploaded",
+                        null,
+                        "/api/v1/documents/15/file",
+                        List.of(),
+                        Instant.parse("2026-07-28T05:00:00Z"),
+                        Instant.parse("2026-07-28T05:10:00Z")
+                )));
+
+        mockMvc.perform(patch("/api/v1/documents/{documentId}", 15L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"documentCategoryId\":4,\"visibilityType\":\"department\",\"departmentIds\":[1,3]}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.status").value("waiting"))
+                .andExpect(jsonPath("$.document.documentId").value("15"))
+                .andExpect(jsonPath("$.document.scopeKey").value("D1-D3"))
+                .andExpect(jsonPath("$.document.category.name").value("사규"));
+    }
+
+    @Test
+    @DisplayName("문서 삭제 성공 시 202와 Wiki 재처리 작업 정보를 반환한다")
+    void deletesDocument() throws Exception {
+        given(documentManagementService.delete(15L))
+                .willReturn(new DocumentDeleteResponse("42", "ALL", "waiting"));
+
+        mockMvc.perform(delete("/api/v1/documents/{documentId}", 15L))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.status").value("waiting"));
+
+        verify(documentManagementService).delete(15L);
     }
 
     private MockMultipartFile markdownFile(String name) {

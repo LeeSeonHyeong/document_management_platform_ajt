@@ -285,6 +285,20 @@
           "relGroupId": null
         },
         {
+          "_id": "AWidxurQHs0XVUSkY",
+          "name": "범위 버전",
+          "pName": "scope_version",
+          "domain": "",
+          "type": "BIGINT UNSIGNED",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "Wiki 변경마다 증가; 변환 반영 직전 동시 수정 감지용",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
           "_id": "gZ6I4OvnIjo6L0I4U",
           "name": "생성일시",
           "pName": "created_at",
@@ -991,6 +1005,20 @@
           "relGroupId": null
         },
         {
+          "_id": "H8ksHW9rmgdX1pC1W",
+          "name": "요약",
+          "pName": "summary",
+          "domain": "",
+          "type": "VARCHAR(500)",
+          "defaultValue": "",
+          "isAllowNull": true,
+          "comment": "목차·검색·선택 API가 쓰는 한 줄 요약",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
           "_id": "nst0h35Le9dHRpf9z",
           "name": "Wiki 경로",
           "pName": "wiki_path",
@@ -999,6 +1027,34 @@
           "defaultValue": "",
           "isAllowNull": false,
           "comment": "",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
+          "_id": "kAcF8uZEZiZgs2uv1",
+          "name": "본문 해시",
+          "pName": "content_hash",
+          "domain": "",
+          "type": "VARCHAR(64)",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "현재 Markdown 본문의 SHA-256",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
+          "_id": "TLTqpqVTlo0ZvmuTc",
+          "name": "색인 본문 해시",
+          "pName": "search_indexed_hash",
+          "domain": "",
+          "type": "VARCHAR(64)",
+          "defaultValue": "",
+          "isAllowNull": true,
+          "comment": "검색 색인이 반영한 본문 해시; content_hash와 다르면 색인이 낡음",
           "relEntity": null,
           "relFieldId": null,
           "relType": null,
@@ -2042,6 +2098,136 @@
             "defaultValue": "",
             "isAllowNull": false,
             "comment": "",
+            "relEntity": null,
+            "relFieldId": null,
+            "relType": null,
+            "relGroupId": null
+          }
+        ],
+        "fks": []
+      },
+      "color": "rgba(10, 10, 10, 0.5)"
+    },
+    {
+      "_id": "4V5yzy4Yb4BJj3Afu",
+      "_diagramId": "zMbO03J50A7p1AzQa",
+      "position": {
+        "x": 1500,
+        "y": 900
+      },
+      "name": "위키 검색 청크",
+      "pName": "wiki_search_chunk",
+      "fields": [
+        {
+          "_id": "qITBx9OG4j6thHt2c",
+          "name": "위키 ID",
+          "pName": "wiki_id",
+          "domain": "",
+          "type": "BIGINT UNSIGNED",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "",
+          "relEntity": "lXH5SrNrp2QvMkL0a",
+          "relFieldId": "Ai7ZXmYFlQ92ez22g",
+          "relType": "ONE_N",
+          "relGroupId": "f0Yc2yRVtFTBSky7m"
+        },
+        {
+          "_id": "pHEc4Tle2OYW8ETyz",
+          "name": "범위 키",
+          "pName": "scope_key",
+          "domain": "",
+          "type": "VARCHAR(255)",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "검색 시 스코프 필터를 SQL 안에서 적용하려고 중복 저장",
+          "relEntity": "i3KVyKLjxrYeBn01i",
+          "relFieldId": "hpPhFQGXwVyAG2Nd0",
+          "relType": "ONE_N",
+          "relGroupId": "9XLPU8L9IEp3ebc7Y"
+        },
+        {
+          "_id": "P1rlWmzcc9apQuHP3",
+          "name": "청크 순서",
+          "pName": "chunk_index",
+          "domain": "",
+          "type": "BIGINT UNSIGNED",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
+          "_id": "Bhq05S3F6Cem2WkHy",
+          "name": "헤더 경로",
+          "pName": "breadcrumb",
+          "domain": "",
+          "type": "VARCHAR(500)",
+          "defaultValue": "",
+          "isAllowNull": true,
+          "comment": "연차 > 부여 기준",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
+          "_id": "1bO3jTw7uwZubj7DL",
+          "name": "청크 본문",
+          "pName": "content",
+          "domain": "",
+          "type": "TEXT",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "FULLTEXT WITH PARSER ngram",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
+          "_id": "xQ20aW5FumKZuVmim",
+          "name": "본문 해시",
+          "pName": "content_hash",
+          "domain": "",
+          "type": "VARCHAR(64)",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "색인한 본문의 SHA-256",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        },
+        {
+          "_id": "jqQl46KDu1S2QhU3f",
+          "name": "색인 시각",
+          "pName": "indexed_at",
+          "domain": "",
+          "type": "DATETIME(6)",
+          "defaultValue": "",
+          "isAllowNull": false,
+          "comment": "",
+          "relEntity": null,
+          "relFieldId": null,
+          "relType": null,
+          "relGroupId": null
+        }
+      ],
+      "keys": {
+        "pks": [
+          {
+            "_id": "hkgSVyXOznPttV3sG",
+            "name": "청크 ID",
+            "pName": "chunk_id",
+            "domain": "",
+            "type": "BIGINT UNSIGNED",
+            "defaultValue": "",
+            "isAllowNull": false,
+            "comment": "AUTO_INCREMENT",
             "relEntity": null,
             "relFieldId": null,
             "relType": null,

@@ -1,35 +1,29 @@
-import { useMemo, useState } from 'react'
-import { FileText, Bot } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import { Badge, Tabs, Spinner, EmptyState } from '@/components/ui'
-import { useAuth } from '@/hooks/useAuth'
-import { ROLES } from '@/shared/constants/enums'
+import { useMemo } from 'react'
+import { Badge, EmptyState, Spinner } from '@/components/ui'
 import { useWiki, useWikis } from '../queries'
 import WikiMarkdown from './WikiMarkdown'
-import WikiSourcePreviewModal from './WikiSourcePreviewModal'
-import WikiAgentChat from './WikiAgentChat'
 
-function formatDateTime(iso) {
+function formatDate(iso) {
   if (!iso) return '-'
-  return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' })
+  const date = new Date(iso)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
-// Figma 6R(관리자)·S2(사원) 우측 — Wiki 상세. 같은 컴포넌트를 role로 분기한다.
 export default function WikiDetail({ wikiId }) {
-  const { role } = useAuth()
-  const isAdmin = role === ROLES.ADMIN
-  const [tab, setTab] = useState('toc')
-  const [previewDoc, setPreviewDoc] = useState(null)
-
   const { data: wiki, isLoading, isError } = useWiki(wikiId)
-  // 본문 내부 링크의 유효성 판정을 위해 같은 공간의 Wiki ID 집합을 준비한다.
   const { data: scopeWikiPage } = useWikis(wiki ? { scopeKey: wiki.scopeKey, size: 200 } : undefined)
 
+  const currentListItem = (scopeWikiPage?.items ?? []).find(
+    (item) => String(item.wikiId) === String(wikiId),
+  )
   const validWikiIds = useMemo(() => {
     const ids = new Set()
     if (wiki) ids.add(String(wiki.wikiId))
-    ;(scopeWikiPage?.items ?? []).forEach((w) => ids.add(String(w.wikiId)))
-    ;(wiki?.relatedWikis ?? []).forEach((w) => ids.add(String(w.wikiId)))
+    ;(scopeWikiPage?.items ?? []).forEach((item) => ids.add(String(item.wikiId)))
+    ;(wiki?.relatedWikis ?? []).forEach((item) => ids.add(String(item.wikiId)))
     return ids
   }, [wiki, scopeWikiPage])
 
@@ -40,80 +34,43 @@ export default function WikiDetail({ wikiId }) {
       </div>
     )
   }
+
   if (isError || !wiki) {
-    return <EmptyState title="Wiki를 찾을 수 없습니다" description="삭제되었거나 접근 권한이 없을 수 있습니다." />
+    return (
+      <EmptyState
+        title="위키를 찾을 수 없습니다"
+        description="삭제되었거나 접근 권한이 없는 문서일 수 있습니다."
+      />
+    )
   }
 
-  const tabItems = [
-    { value: 'toc', label: '본문·관련 문서' },
-    ...(isAdmin ? [{ value: 'agent', label: 'AI 에이전트', icon: <Bot className="size-4" /> }] : []),
-  ]
-
   return (
-    <div className="min-w-0 flex-1">
-      <header className="mb-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold text-slate-800">{wiki.title}</h1>
-          {wiki.category && <Badge tone="neutral">{wiki.category.name}</Badge>}
+    <div className="flex min-w-0 flex-1 flex-col">
+      <div className="border-b border-slate-200 pb-5">
+        <p className="text-xs font-medium text-slate-400">
+          위키　/　{wiki.category?.name ?? '미분류'}　/　
+          <span className="text-primary-600">{wiki.title}</span>
+        </p>
+        <div className="mt-4 flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-bold text-slate-900">{wiki.title}</h1>
+          </div>
         </div>
-        <p className="mt-1 text-sm text-slate-400">수정 {formatDateTime(wiki.updatedAt)}</p>
-      </header>
-
-      <Tabs items={tabItems} value={tab} onChange={setTab} className="mb-4" />
-
-      {tab === 'toc' && (
-        <div className="space-y-6">
-          <article>
-            <WikiMarkdown markdown={wiki.contentMarkdown} validWikiIds={validWikiIds} />
-          </article>
-
-          <section>
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">원본 문서</h2>
-            {wiki.evidenceDocuments?.length > 0 ? (
-              <ul className="space-y-1.5">
-                {/* 항목 클릭 시 미리보기 모달(6-2R/S2-1). 다운로드·상세 이동은 모달 안에서 role로 분기한다. */}
-                {wiki.evidenceDocuments.map((doc) => (
-                  <li key={doc.documentId}>
-                    <button
-                      type="button"
-                      onClick={() => setPreviewDoc(doc)}
-                      className="focus-ring flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                    >
-                      <FileText className="size-4 shrink-0 text-slate-400" />
-                      <span className="min-w-0 flex-1 truncate text-slate-700">{doc.originalFileName}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-slate-400">연결된 원본 문서가 없습니다.</p>
-            )}
-          </section>
-
-          {wiki.relatedWikis?.length > 0 && (
-            <section>
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">연관 Wiki</h2>
-              <ul className="space-y-1">
-                {wiki.relatedWikis.map((w) => (
-                  <li key={w.wikiId}>
-                    <Link to={`/wiki/${w.wikiId}`} className="text-sm text-primary-600 underline-offset-2 hover:underline">
-                      {w.title}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+        <div className="mt-4 rounded-xl bg-slate-50 px-4 py-3">
+          <p className="text-sm text-slate-500">
+            {currentListItem?.summary ?? `${wiki.title}에 관한 사내 기준과 내용을 정리한 문서입니다.`}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-400">
+            <span>작성일 {formatDate(wiki.updatedAt)}</span>
+            {wiki.category && <Badge tone="neutral">{wiki.category.name}</Badge>}
+            <span className="rounded-full bg-primary-50 px-2 py-1 text-primary-600">위키</span>
+          </div>
         </div>
-      )}
+      </div>
 
-      {tab === 'agent' && isAdmin && <WikiAgentChat wikiId={wikiId} />}
-
-      <WikiSourcePreviewModal
-        open={Boolean(previewDoc)}
-        evidenceDocument={previewDoc}
-        onClose={() => setPreviewDoc(null)}
-      />
+      <article className="min-w-0 flex-1 py-1">
+        <WikiMarkdown markdown={wiki.contentMarkdown} validWikiIds={validWikiIds} />
+      </article>
     </div>
   )
 }

@@ -35,6 +35,12 @@ def _parse_args() -> argparse.Namespace:
         "--tool-log", default=None,
         help="툴 호출을 한 줄씩 기록할 파일. 인자로 받는 이유는 telemetry.py 참고",
     )
+    parser.add_argument(
+        "--query-log", default=None,
+        help=("검색어를 줄 단위 JSON 으로 기록할 파일. **개인정보·사내 내용이 남으므로 "
+              "측정 세션에서만 켠다.** 목적은 설계 문서 §2.3 의 「변환 질의는 정확어 "
+              "성격」 재검증이다 — telemetry.py 참고"),
+    )
     return parser.parse_args()
 
 
@@ -44,7 +50,7 @@ def main() -> None:
 
     from mcp.server.fastmcp import FastMCP
 
-    from wiki_mcp.telemetry import count_tool_calls
+    from wiki_mcp.telemetry import count_tool_calls, enable_query_log
     from wiki_mcp.tools import register
     from wiki_mcp.vaultfs import LocalVaultFS
 
@@ -70,6 +76,8 @@ def main() -> None:
 
     register(mcp, _get_scope_key, lambda key: LocalVaultFS(key, args.job_id))
     count_tool_calls(mcp, args.tool_log)
+    if args.query_log:
+        enable_query_log(args.query_log)
 
     logger.info("MCP 서버 시작 — root %s, scope %s, job %s", root, args.scope, args.job_id)
     asyncio.run(mcp.run_stdio_async())

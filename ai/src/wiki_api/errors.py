@@ -75,6 +75,10 @@ _VALIDATION_CODES = {
         "INVALID_WIKI_CONTEXT_SELECTION_REQUEST", "Wiki 문맥 선택 요청 구조가 올바르지 않습니다."),
     "/internal/v1/source-parses": (
         "INVALID_SOURCE_PARSE_REQUEST", "파싱 요청 파일 또는 메타데이터가 올바르지 않습니다."),
+    "/internal/v1/answer-context-selections": (
+        "INVALID_ANSWER_CONTEXT_REQUEST", "질문 또는 후보 자료 구조가 올바르지 않습니다."),
+    "/internal/v1/answers": (
+        "INVALID_ANSWER_GENERATION_REQUEST", "답변 생성 요청 문맥이 올바르지 않습니다."),
     # `/internal/v1/wiki-reconciliations` 는 없다 — v1.1.0 계약이 그 경로를 없애고
     # `changeType` 분기로 흡수했다 (설계 §1, Task 3 에서 라우터·테스트와 함께 제거).
 }
@@ -87,6 +91,8 @@ _FAILURE_CODES = {
     "/internal/v1/wiki-transformations": "WIKI_TRANSFORMATION_FAILED",
     "/internal/v1/wiki-edits": "WIKI_EDIT_FAILED",
     "/internal/v1/source-parses": "DOCUMENT_PARSE_FAILED",
+    "/internal/v1/answer-context-selections": "ANSWER_CONTEXT_SELECTION_FAILED",
+    "/internal/v1/answers": "ANSWER_GENERATION_FAILED",
     # `/internal/v1/wiki-reconciliations` 는 없다 — v1.1.0 이 그 경로를 `changeType` 분기로
     # 흡수했다. 남겨두면 아무도 도달하지 않는 코드를 Spring 이 분기에 적어 넣는다 (M1).
 }

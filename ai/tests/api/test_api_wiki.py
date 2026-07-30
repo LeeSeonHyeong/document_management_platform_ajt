@@ -623,9 +623,15 @@ def _noisy_live_pages(count: int) -> list[dict]:
 
 
 def test_forty_live_only_errors_cannot_hide_a_work_layer_error(make_client):
-    """F2. `lint` 는 group 당 40건(`_MAX_PER_GROUP`)만 찍고 나머지를 「... N건 더」로
-    접는다. 범위 전체를 한 번에 돌리면 라이브 전용 error 가 앞을 채우는 순간 작업 층
-    error 가 보고서에서 사라지고 게이트가 조용히 통과한다 — fail-open 이다."""
+    """F2. 라이브 전용 error 가 많아도 작업 층 error 는 반드시 막는다.
+
+    이 테스트가 생긴 이유는 절단이었다 — `lint` 보고서가 group 당 40건(`_MAX_PER_GROUP`)만
+    찍고 나머지를 「... N건 더」로 접는데 게이트가 그 문자열을 되파싱하고 있었다. 라이브
+    전용 error 가 앞을 채우면 작업 층 error 가 보고서에서 사라져 fail-open 이 됐다.
+
+    Task 3 이 그 원인을 둘 다 없앴다. 게이트는 `LintHandler.collect()` 로 구조화된 결과를
+    받고(절단 없음), 에이전트용 검사가 라이브 전용 페이지의 내용을 아예 보지 않는다. 그래도
+    이 테스트는 남긴다 — 어느 쪽 변경으로도 다시 새면 안 되는 성질이다."""
     response = _post(
         make_client(FakeRuntime("bad_quote")),
         request_with(selectedWikis=[SELECTED_PAGE, *_noisy_live_pages(45)]))
@@ -760,3 +766,31 @@ def test_dangling_link_in_index_fails_lint(make_client):
     body = response.json()
     assert body["code"] == "WIKI_TRANSFORMATION_FAILED"
     assert body["failureStage"] == "lint_failed"
+
+
+# ----- 게이트가 구조화된 결과를 쓴다 (Task 3) ---------------------------------
+
+
+def test_the_gate_no_longer_reparses_the_lint_report():
+    """게이트는 `LintHandler.collect()` 의 `LintIssue` 를 읽는다.
+
+    앞 판본은 `run()` 의 마크다운 보고서를 정규식 3개로 되파싱했다. 그래서 `tools/lint.py`
+    의 한국어 문장을 다듬으면 게이트가 조용히 새거나 조용히 과하게 막았고, 테스트가
+    그것을 잡지 못했다. 이름이 남아 있으면 새 코드가 그것을 다시 붙잡는다."""
+    import wiki_api.session as session
+
+    for gone in ("_ISSUE_LINE_RE", "_FOOTNOTE_LABEL_RE", "_LINK_TARGET_RE"):
+        assert not hasattr(session, gone), gone
+    assert not hasattr(session.WikiSession, "_errors")
+
+
+def test_only_dangling_link_blocks_on_a_live_only_page():
+    """라이브 전용 페이지에서 막는 코드는 하나뿐이다.
+
+    하이드레이션은 위키를 전부 올리지만 원본문서는 이번 요청의 것만 올린다. 그래서 다른
+    문서를 인용하는 기존 각주와 Spring 이 준 그대로의 frontmatter 는 **이 요청으로 고칠 수
+    없다** — 막으면 그 범위가 영구히 반영 불능이 된다. 이 집합이 늘어나면 그 사고가
+    재발한다."""
+    from wiki_api.session import _LIVE_ONLY_BLOCKING_CODES
+
+    assert _LIVE_ONLY_BLOCKING_CODES == frozenset({"dangling-link"})

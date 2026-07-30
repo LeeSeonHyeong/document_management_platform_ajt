@@ -7,6 +7,7 @@ import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetRequestResponse;
+import com.ajt.backend.domain.auth.dto.PasswordResetVerifyRequest;
 import com.ajt.backend.domain.auth.dto.SignupRequest;
 import com.ajt.backend.domain.auth.dto.SignupResponse;
 import com.ajt.backend.global.auth.AuthCookieService;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 @RestController
@@ -94,14 +96,24 @@ public class AuthController {
      */
     @PostMapping("/password-reset-requests")
     public PasswordResetRequestResponse requestPasswordReset(
-            @Valid @RequestBody PasswordResetRequest request
+            @Valid @RequestBody PasswordResetRequest request,
+            HttpServletRequest httpRequest
     ) {
-        return authService.requestPasswordReset(request);
+        return authService.requestPasswordReset(request, httpRequest.getRemoteAddr());
+    }
+
+    /**
+     * AUTH-06a 인증번호 확인 API입니다. (신규)
+     * 인증번호가 유효하면 프론트는 비밀번호 수정 화면으로 진행합니다.
+     */
+    @PostMapping("/password-reset-verify")
+    public AuthMessageResponse verifyResetCode(@Valid @RequestBody PasswordResetVerifyRequest request) {
+        return authService.verifyResetCode(request);
     }
 
     /**
      * AUTH-06 비밀번호 재설정 API입니다.
-     * 유효한 재설정 토큰으로만 새 비밀번호를 저장합니다.
+     * 수정: 유효한 인증번호(이메일 + 6자리)로만 새 비밀번호를 저장합니다.
      */
     @PostMapping("/password-resets")
     @ResponseStatus(HttpStatus.NO_CONTENT)

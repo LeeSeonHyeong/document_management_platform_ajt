@@ -7,7 +7,6 @@ import {
   Inbox,
   FileText,
   CalendarDays,
-  Settings,
 } from 'lucide-react'
 import { ROLES } from '@/shared/constants/enums'
 
@@ -28,8 +27,6 @@ export const NAV_ITEMS = {
   ],
 }
 
-export const ADMIN_FOOTER_ITEMS = [{ to: '/settings', label: '설정', icon: Settings }]
-
 // 브레드크럼/타이틀용 경로 라벨. 세그먼트 경로 → 사람이 읽는 라벨.
 export const ROUTE_LABELS = {
   '/': '홈',
@@ -45,6 +42,7 @@ export const ROUTE_LABELS = {
   '/admin/departments': '부서 관리',
   '/admin/inquiries': '문의 관리',
   '/admin/documents': '문서 관리',
+  '/admin/documents/summaries': '문서 관리',
   '/admin/schedules': '일정 관리',
 }
 
@@ -54,6 +52,13 @@ export function getPageTitle(pathname) {
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return '직원 정보 수정'
   if (/^\/admin\/users\/[^/]+$/.test(pathname)) return '직원 상세'
   if (/^\/admin\/inquiries\/[^/]+$/.test(pathname)) return '문의 상세'
+  if (pathname === '/admin/documents/source') return '원본 문서'
+  if (/^\/admin\/documents\/source\/[^/]+$/.test(pathname)) return '원본 문서 상세'
+  if (/^\/admin\/documents\/jobs\/[^/]+\/progress$/.test(pathname)) return 'AI 작업 처리 중'
+  if (/^\/admin\/documents\/jobs\/[^/]+\/summary$/.test(pathname)) return 'AI 작업 요약'
+  if (/^\/admin\/documents\/jobs\/[^/]+$/.test(pathname)) return 'AI 작업 대기'
+  if (pathname === '/admin/documents/categories') return '문서 카테고리'
+  if (/^\/wiki\/[^/]+$/.test(pathname)) return '위키'
   return ROUTE_LABELS[pathname] ?? 'AJT'
 }
 
@@ -64,6 +69,9 @@ export function getPageEyebrow(pathname) {
   if (pathname === '/admin/departments') return 'AJT / 조직 관리'
   if (pathname === '/admin/signup-requests') return 'AJT / 직원 관리'
   if (pathname === '/admin/inquiries') return 'AJT / 지원 관리'
+  if (pathname.startsWith('/admin/documents')) return 'AJT / 업무 자동화'
+  if (pathname === '/admin/schedules') return 'AJT / 일정 관리'
+  if (pathname === '/wiki' || pathname.startsWith('/wiki/')) return 'AJT / 지식 관리'
   if (/^\/admin\/inquiries\/[^/]+$/.test(pathname)) return 'AJT / 문의 관리'
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return 'AJT / 직원 상세'
   if (/^\/admin\/users\/[^/]+$/.test(pathname)) return 'AJT / 직원 관리'
