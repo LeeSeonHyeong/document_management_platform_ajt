@@ -74,6 +74,12 @@ def main() -> None:
     def _get_scope_key(ctx) -> str:
         return args.scope
 
+    # **창구 모드(`FederatedVaultFS`)는 여기서 만들지 않는다.** 만들려면 이 프로세스가
+    # `X-Wiki-Capability` 를 알아야 하는데, CLI 인자는 `/proc/<pid>/cmdline` 으로 같은
+    # 호스트의 누구나 읽는다 — 계약이 마스킹을 요구하는 값이라 그 방식은 쓸 수 없다.
+    # 그래서 창구 요청은 `wiki_api/session.py` 가 접수 시점에 거절하고
+    # (`_assert_runtime_can_use_the_gateway`), 이 팩토리는 push 경로 그대로 남는다.
+    # 무엇이 더 필요한지는 task-7 보고서에 적혀 있다 (전달 수단 + 중단 신호 경로).
     register(mcp, _get_scope_key, lambda key: LocalVaultFS(key, args.job_id))
     count_tool_calls(mcp, args.tool_log)
     if args.query_log:

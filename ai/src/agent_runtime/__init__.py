@@ -1,7 +1,8 @@
-from .base import RunResult, Runtime, ingest_instruction
+from .base import RunResult, Runtime, ingest_instruction, spawns_mcp_server
 from .claude_code import ClaudeCodeRuntime
 
-__all__ = ["Runtime", "RunResult", "ingest_instruction", "ClaudeCodeRuntime", "load_runtime"]
+__all__ = ["Runtime", "RunResult", "ingest_instruction", "spawns_mcp_server",
+           "ClaudeCodeRuntime", "load_runtime"]
 
 
 # Exact names, not aliases: `opus` and `sonnet` resolve to whatever the CLI calls

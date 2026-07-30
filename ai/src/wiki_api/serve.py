@@ -38,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="정확한 이름을 쓴다 (claude-opus-4-6). 별칭은 비교를 깬다")
     parser.add_argument("--internal-api-key", default=None,
                         help="기본은 환경변수 INTERNAL_API_KEY")
+    parser.add_argument("--backend-base-url", default=None,
+                        help=("Spring 의 Wiki 조회 창구 주소 (기본은 환경변수 "
+                              "BACKEND_BASE_URL). 없으면 요청이 wikiCapability 를 "
+                              "실어 와도 push 경로로 돈다"))
     parser.add_argument("--log-level", default="info")
     return parser
 
@@ -46,8 +50,13 @@ def resolve_api_key(args: argparse.Namespace) -> str:
     return args.internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
 
 
-def build_app(*, runtime_name: str, model: str | None, api_key: str):
-    app = create_app(api_key=api_key)
+def resolve_backend_base_url(args: argparse.Namespace) -> str:
+    return args.backend_base_url or os.environ.get("BACKEND_BASE_URL", "")
+
+
+def build_app(*, runtime_name: str, model: str | None, api_key: str,
+              backend_base_url: str | None = None):
+    app = create_app(api_key=api_key, backend_base_url=backend_base_url)
     # 런타임은 프로세스 하나에 하나다. 요청마다 만들지 않는다 — 모델·설정이 요청 사이에
     # 흔들리면 두 측정의 비교가 조용히 깨진다.
     app.state.runtime = load_runtime(runtime_name, model)
@@ -63,7 +72,8 @@ def main() -> None:
         print("경고: 내부 API 키가 없다 — 모든 요청이 401 이다 "
               "(--internal-api-key 또는 INTERNAL_API_KEY)", file=sys.stderr)
 
-    app = build_app(runtime_name=args.runtime, model=args.model, api_key=api_key)
+    app = build_app(runtime_name=args.runtime, model=args.model, api_key=api_key,
+                    backend_base_url=resolve_backend_base_url(args))
     print(f"AI 서버 — 런타임 {app.state.runtime.name} "
           f"({getattr(app.state.runtime, 'model', '?')}), "
           f"http://{args.host}:{args.port}")

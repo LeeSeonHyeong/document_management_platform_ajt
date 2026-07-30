@@ -14,10 +14,16 @@ from fastapi import FastAPI, Request
 from .errors import install_error_handlers
 
 
-def create_app(*, api_key: str | None = None) -> FastAPI:
+def create_app(*, api_key: str | None = None,
+               backend_base_url: str | None = None) -> FastAPI:
     app = FastAPI(title="AJT FastAPI Internal API", version="1.0.0",
                   docs_url=None, redoc_url=None)
     app.state.api_key = api_key or os.environ.get("INTERNAL_API_KEY", "")
+    # Wiki 조회 창구(계약 1.6.0)의 백엔드 주소. **없으면 창구 경로를 쓰지 않는다** —
+    # 요청이 `wikiCapability` 를 실어 와도 주소가 없으면 push 로 돈다
+    # (`session.py._federated`). 백엔드가 창구를 배포하기 전의 기본 상태가 이것이다.
+    app.state.backend_base_url = (backend_base_url
+                                  or os.environ.get("BACKEND_BASE_URL", ""))
 
     install_error_handlers(app)
 
