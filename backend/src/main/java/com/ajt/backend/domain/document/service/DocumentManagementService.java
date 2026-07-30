@@ -3,11 +3,13 @@ package com.ajt.backend.domain.document.service;
 import com.ajt.backend.domain.document.ScopeKey;
 import com.ajt.backend.domain.document.api.DocumentDeleteResponse;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
+import com.ajt.backend.domain.document.api.DocumentFileReplaceResponse;
 import com.ajt.backend.domain.document.api.DocumentListResponse;
 import com.ajt.backend.domain.document.api.DocumentMetadataUpdateRequest;
 import com.ajt.backend.domain.document.api.DocumentRetryResponse;
 import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
 import com.ajt.backend.domain.document.api.DocumentUpdateResponse;
+import com.ajt.backend.domain.document.api.DocumentUploadRequest;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
@@ -25,6 +27,7 @@ import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -47,6 +50,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class DocumentManagementService {
@@ -149,6 +153,44 @@ public class DocumentManagementService {
                 String.valueOf(document.id()),
                 job.status().name().toLowerCase(),
                 LocalDateTime.now()
+        );
+    }
+
+    /**
+     * 작업(DOC): 원본문서 파일 교체 (PUT /documents/{id}/file).
+     * 문서 ID·카테고리·공개범위는 유지한 채 원본 파일만 새 파일로 교체하고, 해당 문서를 재처리한다(202 + jobId).
+     * 저장 경로는 문서 ID 기준으로 결정되므로, 확장자가 바뀌어 경로가 달라지면 이전 파일을 정리한다.
+     */
+    @Transactional
+    public DocumentFileReplaceResponse replaceFile(long documentId, MultipartFile file) {
+        CurrentMember admin = requireAdmin();
+        Document document = findDocument(documentId);
+        DocumentUploadRequest.validateReplacementFile(file);
+        ensureNotInProgress(document);
+
+        String previousPath = document.originalPath();
+        String newPath;
+        try {
+            newPath = documentFileStorage.storeOriginal(document.scopeKey(), document.id(), file);
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+        document.replaceFile(file.getOriginalFilename(), newPath, file.getContentType(), file.getSize());
+        if (previousPath != null && !previousPath.equals(newPath)) {
+            // 확장자가 바뀌어 저장 경로가 달라진 경우에만 이전 파일이 남으므로 정리한다.
+            deleteQuietly(previousPath);
+        }
+
+        // TODO(계약): 파일 교체 후 재처리 "범위" 해석 확인 필요.
+        //  명세 문구 "교체 후 해당 scopeKey의 최신 Wiki 문서를 재처리"가
+        //  (a) 이 문서 1건만 증분 재처리 vs (b) scope 전체 재처리 중 어느 쪽인지 모호하다.
+        //  현재는 update의 '같은 범위=단건 증분 재처리' 패턴에 맞춰 (a)로 구현했다.
+        //  팀/계약 합의 후 (b)가 맞으면 reprocessScope(admin.memberId(), document.scopeKey())로 교체. (S15P11B106-44)
+        AiJob job = reprocessDocument(admin.memberId(), document);
+        return new DocumentFileReplaceResponse(
+                String.valueOf(job.id()),
+                String.valueOf(document.id()),
+                job.status().name().toLowerCase()
         );
     }
 

@@ -6,7 +6,7 @@ import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.wiki.service.WikiTransformationService;
-import com.ajt.backend.domain.wiki.service.WikiTransformationService.WikiTransformationResult;
+import com.ajt.backend.domain.document.service.DocumentWikiTransformationTransactionService.WikiTransformationResult;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
@@ -25,7 +25,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class DocumentParseWorker {
@@ -35,22 +34,24 @@ public class DocumentParseWorker {
     private final DocumentFileStorage fileStorage;
     private final AiClient aiClient;
     private final WikiTransformationService wikiTransformationService;
+    private final DocumentWikiTransformationTransactionService transactionService;
 
     public DocumentParseWorker(
             DocumentRepository documentRepository,
             AiJobRepository aiJobRepository,
             DocumentFileStorage fileStorage,
             AiClient aiClient,
-            WikiTransformationService wikiTransformationService
+            WikiTransformationService wikiTransformationService,
+            DocumentWikiTransformationTransactionService transactionService
     ) {
         this.documentRepository = documentRepository;
         this.aiJobRepository = aiJobRepository;
         this.fileStorage = fileStorage;
         this.aiClient = aiClient;
         this.wikiTransformationService = wikiTransformationService;
+        this.transactionService = transactionService;
     }
 
-    @Transactional
     public void parse(AiJob job) {
         job.start();
         aiJobRepository.save(job);
@@ -91,6 +92,7 @@ public class DocumentParseWorker {
 
     private AiJob.DocumentParseResult parseDocument(AiJob job, Document document) {
         document.startParsing();
+        documentRepository.save(document);
         String parsedMarkdown;
         List<Long> selectedWikiIds;
         try {
@@ -115,8 +117,10 @@ public class DocumentParseWorker {
             ));
             selectedWikiIds = wikiIds(selection);
             document.completeParsing(parsedPath, selectedWikiIds);
+            documentRepository.save(document);
         } catch (AiClientException exception) {
             document.failParsing(failureReason(exception));
+            documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(
                     document.id(),
                     failureReason(exception),
@@ -124,6 +128,7 @@ public class DocumentParseWorker {
             );
         } catch (RuntimeException exception) {
             document.failParsing(exception.getMessage());
+            documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
         return transformWiki(job, document, parsedMarkdown, selectedWikiIds);
@@ -140,17 +145,22 @@ public class DocumentParseWorker {
             List<Long> selectedWikiIds
     ) {
         try {
-            WikiTransformationResult result = wikiTransformationService.transformForAddedDocument(
+            var response = wikiTransformationService.requestForAddedDocument(
                     job.id(),
                     document.id(),
                     document.scopeKey(),
                     parsedMarkdown,
                     selectedWikiIds
             );
+            WikiTransformationResult result = transactionService.applyAddedDocument(
+                    document.id(), document.scopeKey(), response);
+            // 반영 트랜잭션은 별도로 조회한 엔티티를 완료 처리한다. 이 인스턴스도 작업 결과를
+            // 조립할 때 일관된 상태를 보도록만 맞추며, 여기서 다시 저장하지는 않는다.
             document.completeProcessing(result.affectedWikiIds());
             return AiJob.DocumentParseResult.succeeded(document.id(), result.summary());
         } catch (AiClientException exception) {
             document.failProcessing(failureReason(exception));
+            documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(
                     document.id(),
                     failureReason(exception),
@@ -158,6 +168,7 @@ public class DocumentParseWorker {
             );
         } catch (RuntimeException exception) {
             document.failProcessing(exception.getMessage());
+            documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
     }

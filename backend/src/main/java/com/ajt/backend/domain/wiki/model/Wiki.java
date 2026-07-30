@@ -20,9 +20,6 @@ import org.hibernate.type.SqlTypes;
  *
  * <p>FastAPI Wiki 변환·수정 결과(wikiChanges)를 Spring Boot가 검증한 뒤 이 엔티티에 반영합니다.
  */
-// TODO(DB): FastAPI 내부 API 계약은 selectedWikis[].summary를 필수로 요구하지만 wiki 테이블에 summary 컬럼이 없다.
-//           현재는 index.md 항목에서 요약을 되읽어 채우고 없으면 제목으로 대체한다. 이 방식은 목차 파일 형식에 의존한다.
-//           wiki.summary VARCHAR(500) 추가가 정본 해결책이다. erd.sql 변경 필요 — 팀원 합의 후 진행. (임의 변경 금지)
 @Entity
 @Table(name = "wiki")
 public class Wiki {
@@ -45,6 +42,15 @@ public class Wiki {
 
     @Column(name = "wiki_path", nullable = false, length = 500)
     private String wikiPath;
+
+    @Column(name = "summary", length = 500)
+    private String summary;
+
+    @Column(name = "content_hash", nullable = false, length = 64)
+    private String contentHash;
+
+    @Column(name = "search_indexed_hash", length = 64)
+    private String searchIndexedHash;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "wiki_refs", nullable = false, columnDefinition = "json")
@@ -69,6 +75,7 @@ public class Wiki {
         this.title = requireTitle(title);
         // wiki_path는 발급된 wiki_id로 정해지므로 저장 직후 assignStoragePath()로 채운다.
         this.wikiPath = "";
+        this.contentHash = "";
     }
 
     public static Wiki create(String scopeKey, long wikiCategoryId, String title) {
@@ -86,12 +93,38 @@ public class Wiki {
         return this.wikiPath;
     }
 
+    public String assignStoragePath(String wikiPath) {
+        String normalized = requireText(wikiPath, "wikiPath는 필수입니다.");
+        String expectedPrefix = "wiki/" + scopeKey + "/pages/";
+        if (!normalized.startsWith(expectedPrefix) || !normalized.endsWith(".md") || normalized.contains("..")) {
+            throw new IllegalArgumentException("wikiPath는 해당 scope의 pages Markdown 경로여야 합니다.");
+        }
+        this.wikiPath = normalized;
+        return this.wikiPath;
+    }
+
     public static String storagePathOf(String scopeKey, long wikiId) {
         return "wiki/" + scopeKey + "/pages/" + wikiId + ".md";
     }
 
     public void changeTitle(String title) {
         this.title = requireTitle(title);
+    }
+
+    public void changeSummary(String summary) {
+        String normalized = summary == null ? null : summary.strip();
+        if (normalized != null && normalized.length() > 500) {
+            throw new IllegalArgumentException("Wiki 요약은 500자를 넘을 수 없습니다.");
+        }
+        this.summary = normalized == null || normalized.isEmpty() ? null : normalized;
+    }
+
+    public void changeContentHash(String contentHash) {
+        this.contentHash = requireHash(contentHash, "contentHash");
+    }
+
+    public void markSearchIndexed() {
+        this.searchIndexedHash = this.contentHash;
     }
 
     public void changeCategory(long wikiCategoryId) {
@@ -161,6 +194,18 @@ public class Wiki {
         return wikiPath;
     }
 
+    public String summary() {
+        return summary;
+    }
+
+    public String contentHash() {
+        return contentHash;
+    }
+
+    public String searchIndexedHash() {
+        return searchIndexedHash;
+    }
+
     public List<Long> wikiRefs() {
         return List.copyOf(wikiRefs);
     }
@@ -191,6 +236,13 @@ public class Wiki {
             throw new IllegalArgumentException("Wiki 제목은 200자 이하로 입력해주세요.");
         }
         return trimmed;
+    }
+
+    private static String requireHash(String hash, String fieldName) {
+        if (hash == null || !hash.matches("[0-9a-fA-F]{64}")) {
+            throw new IllegalArgumentException(fieldName + "는 SHA-256 64자리 16진수여야 합니다.");
+        }
+        return hash.toLowerCase(java.util.Locale.ROOT);
     }
 
     private static String requireText(String value, String message) {
