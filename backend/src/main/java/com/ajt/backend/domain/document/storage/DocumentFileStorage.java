@@ -6,6 +6,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 public interface DocumentFileStorage {
 
+    DocumentFileMutation moveToScope(
+            String originalPath,
+            String parsedPath,
+            String targetScopeKey,
+            long documentId
+    ) throws IOException;
+
     String storeOriginal(String scopeKey, long documentId, MultipartFile file) throws IOException;
 
     String storeParsedMarkdown(String scopeKey, long documentId, String parsedMarkdown) throws IOException;

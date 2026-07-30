@@ -21,6 +21,7 @@ import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.document.storage.DocumentFileMutation;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.error.BusinessException;
@@ -50,6 +51,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -227,24 +230,57 @@ public class DocumentManagementService {
         ensureWikiScope(newScope);
         if (scopeChanged) {
             // 범위가 바뀌면 기존 범위는 문서가 빠진 채 인덱스를 다시 만들어야 해 범위 전체를 재처리한다.
-            // 이때 기존 범위에 처리 중 문서가 있으면 안전하게 재생성할 수 없어 충돌로 막는다.
+            // 양쪽 범위 중 하나라도 처리 중 문서가 있으면 안전하게 재생성할 수 없어 충돌로 막는다.
             ensureScopeNotProcessing(oldScopeKey);
+            ensureScopeNotProcessing(newScopeKey);
         }
 
-        document.changeCategoryAndScope(request.documentCategoryId(), newScopeKey);
-
-        // 새(또는 같은) 범위에는 이 문서만 증분 재처리한다(업로드·재시도와 동일한 문서 단위 패턴).
-        AiJob job = reprocessDocument(admin.memberId(), document);
-        if (scopeChanged) {
-            reprocessScope(admin.memberId(), oldScopeKey);
+        if (!scopeChanged) {
+            document.changeCategoryAndScope(request.documentCategoryId(), newScopeKey);
+            AiJob job = reprocessDocument(admin.memberId(), document);
+            return new DocumentUpdateResponse(String.valueOf(job.id()), job.status().name().toLowerCase(), List.of(), toDetail(document, category));
         }
+        try {
+            DocumentFileMutation fileMutation = documentFileStorage.moveToScope(
+                    document.originalPath(), document.parsedPath(), newScopeKey, document.id());
+            try {
+                document.changeCategoryScopeAndPaths(request.documentCategoryId(), newScopeKey, fileMutation.originalPath(), fileMutation.parsedPath());
+                AiJob oldJob = reprocessScope(admin.memberId(), oldScopeKey);
+                AiJob newJob = reprocessScope(admin.memberId(), newScopeKey);
+                registerFileRollback(fileMutation);
+                return new DocumentUpdateResponse(
+                        String.valueOf(newJob.id()), newJob.status().name().toLowerCase(),
+                        List.of(new com.ajt.backend.domain.document.api.ReprocessJobResponse(oldScopeKey, String.valueOf(oldJob.id())),
+                                new com.ajt.backend.domain.document.api.ReprocessJobResponse(newScopeKey, String.valueOf(newJob.id()))),
+                        toDetail(document, category));
+            } catch (RuntimeException exception) {
+                rollbackFileMutation(fileMutation, exception);
+                throw exception;
+            }
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
 
-        return new DocumentUpdateResponse(
-                String.valueOf(job.id()),
-                job.status().name().toLowerCase(),
-                List.of(),
-                toDetail(document, category)
-        );
+    private void registerFileRollback(DocumentFileMutation fileMutation) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            fileMutation.discardBackup();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCompletion(int status) {
+                if (status == STATUS_COMMITTED) fileMutation.discardBackup();
+                else rollbackFileMutation(fileMutation, null);
+            }
+        });
+    }
+
+    private void rollbackFileMutation(DocumentFileMutation fileMutation, RuntimeException original) {
+        try { fileMutation.rollback(); }
+        catch (IOException exception) {
+            if (original != null) original.addSuppressed(exception);
+            else throw new UncheckedIOException(exception);
+        }
     }
 
     /**
