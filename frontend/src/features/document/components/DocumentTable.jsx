@@ -1,5 +1,6 @@
 import { FileText } from 'lucide-react'
 import { DataTable, Badge, Chip, Button } from '@/components/ui'
+import { QueueCategorySelect, QueueVisibilityDropdown } from './QueueDocumentFields'
 
 // shared/ui/Chip에는 tone(색상 변형)이 없어 상태 표시는 Badge(tone 지원)를 쓴다.
 // Chip은 계획대로 부서 다중 표시에만 사용한다.
@@ -42,9 +43,24 @@ function formatFileSize(bytes) {
   return mb >= 1 ? `${mb.toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`
 }
 
+function getDocumentType(doc) {
+  const extension = doc.originalFileName?.split('.').pop()?.toLowerCase()
+  if (extension === 'csv' || extension === 'xlsx' || extension === 'xls') return '일정'
+  return '문서'
+}
+
 // DocumentListPage(4R)와 SourceDocumentListPage(4-7R)가 공유하는 테이블.
 // renderAction으로 화면별 액션 셀(상세 이동 등)을 주입한다.
-export default function DocumentTable({ documents, loading, onRowClick, emptyState, renderAction, variant = 'status' }) {
+export default function DocumentTable({
+  documents,
+  loading,
+  onRowClick,
+  onDetailClick,
+  emptyState,
+  renderAction,
+  onQueueMetadataChange,
+  variant = 'status',
+}) {
   const fileColumn = {
     key: 'originalFileName',
     header: '파일명',
@@ -95,7 +111,7 @@ export default function DocumentTable({ documents, loading, onRowClick, emptySta
       header: '관리',
       align: 'right',
       render: (doc) => (
-        <Button size="sm" variant="outline" onClick={() => onRowClick?.(doc)}>
+        <Button size="sm" variant="outline" onClick={() => (onDetailClick ?? onRowClick)?.(doc)}>
           상세
         </Button>
       ),
@@ -118,7 +134,7 @@ export default function DocumentTable({ documents, loading, onRowClick, emptySta
         doc.visibilityType === 'all' ? (
           <Badge tone="primary">전체</Badge>
         ) : (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap justify-center gap-1">
             {(doc.departments ?? []).map((dept) => (
               <Chip key={dept.departmentId}>{dept.name}</Chip>
             ))}
@@ -146,7 +162,50 @@ export default function DocumentTable({ documents, loading, onRowClick, emptySta
     },
     ...(renderAction ? [{ key: 'actions', header: '', align: 'right', render: renderAction }] : []),
   ]
-  const columns = variant === 'source' ? sourceColumns : statusColumns
+
+  const queueColumns = [
+    fileColumn,
+    {
+      key: 'type',
+      header: '종류',
+      render: (doc) => (
+        <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
+          {getDocumentType(doc)}
+        </span>
+      ),
+    },
+    {
+      key: 'visibility',
+      header: '공개 부서',
+      render: (doc) => (
+        <div className="flex justify-center">
+          <QueueVisibilityDropdown
+            item={doc}
+            onApplied={(changes) => onQueueMetadataChange?.(doc.documentId, changes)}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'documentCategoryName',
+      header: '카테고리',
+      render: (doc) => <QueueCategorySelect item={doc} />,
+    },
+    {
+      key: 'status',
+      header: '상태',
+      render: (doc) => <Badge tone="success">{STATUS_LABEL[doc.status] ?? '업로드 완료'}</Badge>,
+    },
+    ...(renderAction ? [{ key: 'actions', header: '', align: 'right', render: renderAction }] : []),
+  ]
+
+  const baseColumns =
+    variant === 'source' ? sourceColumns : variant === 'queue' ? queueColumns : statusColumns
+  // 문서 목록은 파일명 열만 왼쪽 정렬하고 나머지 데이터는 중앙 정렬한다.
+  const columns = baseColumns.map((column, index) => ({
+    ...column,
+    align: index === 0 ? 'left' : 'center',
+  }))
 
   return (
     <DataTable
@@ -156,6 +215,7 @@ export default function DocumentTable({ documents, loading, onRowClick, emptySta
       loading={loading}
       onRowClick={onRowClick}
       emptyState={emptyState}
+      headerAlign="center"
     />
   )
 }

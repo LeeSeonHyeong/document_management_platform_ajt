@@ -33,7 +33,7 @@ export default function AiJobProgressPage() {
       header: '상태',
       render: (r) => <Badge tone={DOC_STATUS_TONE[r.status] ?? 'neutral'}>{DOC_STATUS_LABEL[r.status] ?? r.status}</Badge>,
     },
-  ]
+  ].map((column, index) => ({ ...column, align: index === 0 ? 'left' : 'center' }))
 
   if (!job) {
     return (
@@ -65,7 +65,7 @@ export default function AiJobProgressPage() {
         </div>
       </div>
 
-      <DataTable columns={columns} rows={documentResults} rowKey="documentId" />
+      <DataTable columns={columns} rows={documentResults} rowKey="documentId" headerAlign="center" />
 
       <div className="flex justify-end">
         <Button variant="outline" onClick={() => setCancelOpen(true)}>

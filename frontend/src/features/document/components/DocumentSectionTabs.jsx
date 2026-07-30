@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { Settings } from 'lucide-react'
 import { cn } from '@/shared/lib/cn'
 import { useDocuments } from '../queries'
 
@@ -41,6 +42,20 @@ export default function DocumentSectionTabs() {
           )}
         </NavLink>
       ))}
+      <NavLink
+        to="/admin/documents/categories"
+        className={({ isActive }) =>
+          cn(
+            'focus-ring mb-2 ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold transition-colors',
+            isActive
+              ? 'border-primary-300 bg-primary-50 text-primary-600'
+              : 'border-slate-200 bg-white text-slate-500 hover:border-primary-200 hover:text-primary-600',
+          )
+        }
+      >
+        <Settings className="size-3.5" />
+        카테고리 관리
+      </NavLink>
     </div>
   )
 }

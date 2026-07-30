@@ -299,10 +299,10 @@ export const documentHandlers = [
   }),
 
   // ── 원본문서 카테고리 ──────────────────────────────────────────
-  http.get('/api/v1/document-categories', ({ request }) => {
-    const scopeKey = new URL(request.url).searchParams.get('scopeKey')
-    const items = scopeKey ? documentCategories.filter((c) => c.scopeKey === scopeKey) : documentCategories
-    return HttpResponse.json({ items })
+  http.get('/api/v1/document-categories', () => {
+    // 화면 검증용 목에서는 공개 부서 조합과 관계없이 모든 카테고리를 제공한다.
+    // 실제 서비스에서는 백엔드의 scopeKey 정책에 따른 응답을 그대로 사용한다.
+    return HttpResponse.json({ items: documentCategories })
   }),
 
   http.post('/api/v1/document-categories', async ({ request }) => {
