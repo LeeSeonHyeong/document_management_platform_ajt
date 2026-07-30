@@ -1,17 +1,35 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Upload, FileText, CalendarDays } from 'lucide-react'
+import { Upload, FileText, CalendarDays, X } from 'lucide-react'
 import { Button, EmptyState } from '@/components/ui'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentUploadModal from '../components/DocumentUploadModal'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
+import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
+import AiJobStartDialog from '../components/AiJobStartDialog'
+import AiJobProgressDialog from '../components/AiJobProgressDialog'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 export default function DocumentListPage() {
-  const navigate = useNavigate()
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
+  const [progressOpen, setProgressOpen] = useState(false)
+  const [deletingDocument, setDeletingDocument] = useState(null)
+  const [queueMetadata, setQueueMetadata] = useState({})
   const { data, isLoading } = useDocuments({ page: 1, size: 20 })
+  // 현재 문서 목록 API에는 AI 대기 전용 필터가 없으므로 기존 목데이터를 포함한 전체 업로드 문서를 표시한다.
+  const waitingDocuments = (data?.items ?? []).map((document) => ({
+    ...document,
+    ...queueMetadata[document.documentId],
+  }))
+  const completedDocuments = waitingDocuments.filter((document) => document.status === 'completed')
+  const allAssigned =
+    completedDocuments.length > 0 &&
+    completedDocuments.every(
+      (document) =>
+        Boolean(document.documentCategoryId) &&
+        (document.visibilityType === 'all' || (document.departments ?? []).length > 0),
+    )
 
   return (
     <section className="space-y-5">
@@ -42,20 +60,39 @@ export default function DocumentListPage() {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-800">AI 작업 대기</h2>
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
-                {data?.items?.length ?? 0}개
+                {waitingDocuments.length}개
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-400">카테고리와 공개 부서를 지정한 뒤 AI 작업을 시작하세요.</p>
           </div>
-          <Button variant="primary" disabled={!data?.items?.length}>
+          <Button variant="primary" disabled={!allAssigned} onClick={() => setStartOpen(true)}>
             AI 작업 시작
           </Button>
         </div>
 
         <DocumentTable
-          documents={data?.items ?? []}
+          variant="queue"
+          documents={waitingDocuments}
           loading={isLoading}
-          onRowClick={(doc) => navigate(`/admin/documents/source/${doc.documentId}`)}
+          onQueueMetadataChange={(documentId, changes) =>
+            setQueueMetadata((current) => ({
+              ...current,
+              [documentId]: { ...current[documentId], ...changes },
+            }))
+          }
+          renderAction={(doc) => (
+            <button
+              type="button"
+              aria-label={`${doc.originalFileName} 대기 목록에서 삭제`}
+              onClick={(event) => {
+                event.stopPropagation()
+                setDeletingDocument(doc)
+              }}
+              className="focus-ring flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500"
+            >
+              <X className="size-4" />
+            </button>
+          )}
           emptyState={
             <EmptyState
               title="업로드가 끝난 파일이 여기에 쌓입니다."
@@ -68,11 +105,32 @@ export default function DocumentListPage() {
       <DocumentUploadModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onUploaded={(result) => {
-          // 업로드 성공(202) → 방금 생성된 AI 작업(jobId)의 대기 화면(4-2R)으로 이동한다.
+        onUploaded={() => {
           setUploadOpen(false)
-          if (result?.jobId) navigate(`/admin/documents/jobs/${result.jobId}`)
         }}
+      />
+
+      <DocumentDeleteDialog
+        open={Boolean(deletingDocument)}
+        document={deletingDocument}
+        onClose={() => setDeletingDocument(null)}
+        onBackground={() => setDeletingDocument(null)}
+      />
+
+      <AiJobStartDialog
+        open={startOpen}
+        documents={completedDocuments}
+        onClose={() => setStartOpen(false)}
+        onConfirm={() => {
+          setStartOpen(false)
+          setProgressOpen(true)
+        }}
+      />
+
+      <AiJobProgressDialog
+        open={progressOpen}
+        documentCount={completedDocuments.length}
+        onBackground={() => setProgressOpen(false)}
       />
     </section>
   )

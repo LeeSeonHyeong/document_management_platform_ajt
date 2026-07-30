@@ -18,7 +18,9 @@ export default function Modal({
   description,
   size = 'md',
   footer,
+  footerClassName,
   closeOnOverlay = true,
+  showClose = true,
   children,
 }) {
   useEffect(() => {
@@ -48,17 +50,17 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 w-full rounded-2xl bg-white shadow-xl',
+          'relative z-10 w-full overflow-hidden rounded-2xl bg-white shadow-xl',
           SIZES[size],
         )}
       >
-        {(title || onClose) && (
+        {(title || (onClose && showClose)) && (
           <div className="flex items-start justify-between gap-4 px-6 pt-5">
             <div>
               {title && <h2 className="text-lg font-semibold text-slate-800">{title}</h2>}
               {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
             </div>
-            {onClose && (
+            {onClose && showClose && (
               <button
                 type="button"
                 onClick={onClose}
@@ -72,7 +74,7 @@ export default function Modal({
         )}
         <div className="px-6 py-4">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4">
+          <div className={cn('flex items-center justify-end gap-2 border-t border-slate-100 px-6 py-4', footerClassName)}>
             {footer}
           </div>
         )}

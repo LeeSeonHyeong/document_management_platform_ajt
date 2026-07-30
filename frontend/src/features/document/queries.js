@@ -46,7 +46,21 @@ export function useUpdateDocument(documentId) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (payload) => updateDocument(documentId, payload),
-    onSuccess: () => {
+    onSuccess: (updatedDocument) => {
+      // PATCH 응답에는 수정된 문서 정보가 함께 오므로 목록에 즉시 반영한다.
+      // invalidateQueries의 재조회만 기다리면 드롭다운 라벨이 한동안 이전 값으로 남는다.
+      if (updatedDocument?.documentId) {
+        queryClient.setQueriesData({ queryKey: qk.documents.all }, (current) => {
+          if (!current?.items) return current
+          return {
+            ...current,
+            items: current.items.map((item) =>
+              item.documentId === updatedDocument.documentId ? { ...item, ...updatedDocument } : item,
+            ),
+          }
+        })
+        queryClient.setQueryData(qk.documents.detail(updatedDocument.documentId), updatedDocument)
+      }
       queryClient.invalidateQueries({ queryKey: qk.documents.all })
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
@@ -97,8 +111,10 @@ export function useCreateDocumentCategory() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createDocumentCategory,
-    onSuccess: (category) => {
-      queryClient.invalidateQueries({ queryKey: qk.documentCategories.list(category.scopeKey) })
+    onSuccess: () => {
+      // 카테고리 관리 화면은 전체 목록(ALL)을 함께 보여주므로 특정 scopeKey 캐시만
+      // 갱신하면 새 항목이 목록에 나타나지 않는다.
+      queryClient.invalidateQueries({ queryKey: qk.documentCategories.all })
     },
   })
 }

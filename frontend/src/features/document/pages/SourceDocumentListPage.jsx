@@ -1,17 +1,20 @@
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Link } from 'react-router-dom'
-import { ChevronRight, Settings2 } from 'lucide-react'
-import { Pagination, EmptyState } from '@/components/ui'
+import { ChevronDown } from 'lucide-react'
+import { Pagination, EmptyState, SearchBar, Select } from '@/components/ui'
+import { useDepartments } from '@/features/department/useDepartments'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
-import DocumentFilterBar from '../components/DocumentFilterBar'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 
 const PAGE_SIZE = 20
 
 function filtersFromParams(params) {
   const filters = { page: Number(params.get('page') ?? '1'), size: PAGE_SIZE }
-  for (const key of ['scopeKey', 'categoryId', 'status', 'keyword', 'fileType', 'departmentId', 'uploadedFrom', 'uploadedTo']) {
+  // 새 4-7R에서 실제로 노출하는 필터만 API 요청에 포함한다.
+  // 제거된 예전 필터가 URL에 남아 목록을 0건으로 만드는 문제를 방지한다.
+  for (const key of ['categoryId', 'keyword', 'departmentId']) {
     const value = params.get(key)
     if (value) filters[key] = value
   }
@@ -22,13 +25,39 @@ function filtersFromParams(params) {
 export default function SourceDocumentListPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  const [sortOrder, setSortOrder] = useState('latest')
   const filters = filtersFromParams(searchParams)
 
   const { data, isLoading } = useDocuments(filters)
+  const { data: allData } = useDocuments({ page: 1, size: 100 })
+  const { data: departments = [] } = useDepartments()
   const documents = data?.items ?? []
-  const categoryCounts = documents.reduce((counts, document) => {
-    const name = document.documentCategoryName ?? '미분류'
-    counts.set(name, (counts.get(name) ?? 0) + 1)
+  const sortedDocuments = [...documents].sort((a, b) => {
+    const left = new Date(a.uploadedAt ?? 0).getTime()
+    const right = new Date(b.uploadedAt ?? 0).getTime()
+    return sortOrder === 'latest' ? right - left : left - right
+  })
+  const allDocuments = allData?.items ?? []
+  const visibleDepartments = departments.slice(0, 5)
+  const selectedDepartment = departments.find(
+    (department) => String(department.departmentId) === String(filters.departmentId),
+  )
+  const departmentBaseDocuments = filters.departmentId
+    ? allDocuments.filter((document) =>
+        (document.departments ?? []).some(
+          (department) => String(department.departmentId) === String(filters.departmentId),
+        ),
+      )
+    : allDocuments
+  const categoryCounts = departmentBaseDocuments.reduce((counts, document) => {
+    const key = document.documentCategoryId ?? 'uncategorized'
+    const current = counts.get(key) ?? {
+      id: document.documentCategoryId,
+      name: document.documentCategoryName ?? '미분류',
+      count: 0,
+    }
+    current.count += 1
+    counts.set(key, current)
     return counts
   }, new Map())
 
@@ -52,37 +81,47 @@ export default function SourceDocumentListPage() {
       <DocumentSectionTabs />
 
       <div className="flex min-h-[620px] items-stretch gap-4">
-        <aside className="flex w-52 shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-3">
-          <div className="flex items-center justify-between px-2 py-2">
-            <h2 className="font-bold text-slate-800">카테고리</h2>
-            <span className="text-xs font-semibold text-slate-400">{categoryCounts.size}</span>
+        <aside className="flex w-64 shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-4">
+          <div>
+            <div className="flex items-center justify-between px-2 py-1">
+              <h2 className="font-bold text-slate-800">부서</h2>
+              <span className="text-xs font-semibold text-slate-400">{visibleDepartments.length}</span>
+            </div>
+
+            <DepartmentDropdown
+              selectedDepartment={selectedDepartment}
+              selectedDepartmentId={filters.departmentId}
+              departments={visibleDepartments}
+              documents={allDocuments}
+              onSelect={(departmentId) =>
+                updateFilters({ departmentId: departmentId || undefined, categoryId: undefined })
+              }
+            />
           </div>
-          <button
-            type="button"
-            onClick={() => updateFilters({ categoryId: undefined })}
-            className="focus-ring flex items-center gap-2 rounded-lg bg-primary-50 px-3 py-2 text-sm font-semibold text-primary-600"
-          >
-            <span className="size-1.5 rounded-full bg-primary-500" />
-            전체 문서
-            <span className="ml-auto">{data?.totalItems ?? data?.totalElements ?? documents.length}</span>
-          </button>
-          <div className="mt-1 space-y-0.5">
-            {[...categoryCounts.entries()].map(([name, count]) => (
-              <div key={name} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-500">
-                <span className="size-1.5 rounded-full bg-slate-300" />
-                <span className="truncate">{name}</span>
-                <span className="ml-auto text-xs">{count}</span>
-              </div>
+
+          <div className="my-4 border-t border-slate-200" />
+
+          <div className="flex items-center justify-between px-2 py-1">
+            <h2 className="font-bold text-slate-800">카테고리</h2>
+            <span className="text-xs font-semibold text-slate-400">{categoryCounts.size + 1}</span>
+          </div>
+          <div className="mt-2 space-y-0.5">
+            <FilterItem
+              label="전체 문서"
+              count={departmentBaseDocuments.length}
+              active={!filters.categoryId}
+              onClick={() => updateFilters({ categoryId: undefined })}
+            />
+            {[...categoryCounts.values()].map((category) => (
+              <FilterItem
+                key={category.id ?? category.name}
+                label={category.name}
+                count={category.count}
+                active={String(filters.categoryId) === String(category.id)}
+                onClick={() => updateFilters({ categoryId: category.id })}
+              />
             ))}
           </div>
-          <Link
-            to="/admin/documents/categories"
-            className="focus-ring mt-auto flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100"
-          >
-            <Settings2 className="size-4" />
-            카테고리 관리
-            <ChevronRight className="size-3" />
-          </Link>
         </aside>
 
         <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -100,13 +139,30 @@ export default function SourceDocumentListPage() {
                 </p>
               </div>
             </div>
-            <DocumentFilterBar filters={filters} onChange={updateFilters} />
+            <div className="my-4 flex items-center gap-3">
+              <SearchBar
+                placeholder="파일명으로 검색"
+                defaultValue={filters.keyword ?? ''}
+                onSearch={(keyword) => updateFilters({ keyword: keyword || undefined })}
+                className="min-w-0 flex-1"
+              />
+              <Select
+                aria-label="정렬 순서"
+                value={sortOrder}
+                onChange={(event) => setSortOrder(event.target.value)}
+                options={[
+                  { value: 'latest', label: '최신순' },
+                  { value: 'oldest', label: '오래된순' },
+                ]}
+                className="w-28"
+              />
+            </div>
           </div>
 
           <DocumentTable
-            documents={documents}
+            documents={sortedDocuments}
             loading={isLoading}
-            onRowClick={(doc) => navigate(`/admin/documents/source/${doc.documentId}`)}
+            onDetailClick={(doc) => navigate(`/admin/documents/source/${doc.documentId}`)}
             emptyState={<EmptyState title="검색 결과가 없습니다" description="필터 조건을 변경해보세요." />}
             variant="source"
           />
@@ -120,5 +176,110 @@ export default function SourceDocumentListPage() {
         </div>
       </div>
     </section>
+  )
+}
+
+function DepartmentDropdown({ selectedDepartment, selectedDepartmentId, departments, documents, onSelect }) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef(null)
+  const menuRef = useRef(null)
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 })
+
+  useEffect(() => {
+    if (!open) return
+
+    function updatePosition() {
+      const rect = buttonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setPosition({ top: rect.bottom + 6, left: rect.left, width: rect.width })
+    }
+
+    function closeOnOutside(event) {
+      if (!buttonRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false)
+    }
+
+    updatePosition()
+    window.addEventListener('mousedown', closeOnOutside)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('mousedown', closeOnOutside)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`focus-ring mt-2 flex w-full items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold ${
+          selectedDepartmentId
+            ? 'border-primary-300 bg-primary-50 text-primary-600'
+            : 'border-slate-200 bg-white text-slate-500'
+        }`}
+      >
+        <span className={`size-2 rounded-full ${selectedDepartmentId ? 'bg-primary-500' : 'bg-slate-300'}`} />
+        <span className="truncate">{selectedDepartment?.name ?? '전체 부서'}</span>
+        <ChevronDown className={`ml-auto size-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{ position: 'fixed', top: position.top, left: position.left, width: position.width }}
+            className="z-[80] space-y-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+          >
+            <FilterItem
+              label="전체 부서"
+              count={documents.length}
+              active={!selectedDepartmentId}
+              onClick={() => {
+                onSelect('')
+                setOpen(false)
+              }}
+            />
+            {departments.map((department) => {
+              const count = documents.filter((document) =>
+                (document.departments ?? []).some(
+                  (item) => String(item.departmentId) === String(department.departmentId),
+                ),
+              ).length
+              return (
+                <FilterItem
+                  key={department.departmentId}
+                  label={department.name}
+                  count={count}
+                  active={String(selectedDepartmentId) === String(department.departmentId)}
+                  onClick={() => {
+                    onSelect(department.departmentId)
+                    setOpen(false)
+                  }}
+                />
+              )
+            })}
+          </div>,
+          document.body,
+        )}
+    </>
+  )
+}
+
+function FilterItem({ label, count, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`focus-ring flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm ${
+        active ? 'bg-primary-50 font-semibold text-primary-600' : 'text-slate-500 hover:bg-slate-50'
+      }`}
+    >
+      <span className={`size-2 shrink-0 rounded-full ${active ? 'bg-primary-500' : 'bg-slate-300'}`} />
+      <span className="truncate">{label}</span>
+      <span className="ml-auto text-xs">{count}</span>
+    </button>
   )
 }
