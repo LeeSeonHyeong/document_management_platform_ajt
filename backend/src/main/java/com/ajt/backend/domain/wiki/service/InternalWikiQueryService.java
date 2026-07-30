@@ -89,6 +89,33 @@ public class InternalWikiQueryService {
                 backlinks);
     }
 
+    /**
+     * 범위 전체의 참조 그래프를 한 번에 돌려줍니다.
+     *
+     * <p>에이전트가 병합·삭제로 남의 링크를 깨뜨리지 않으려면 범위 전체의 간선을 알아야
+     * 합니다. Wiki 1건씩 조회하면 장수만큼 호출이 나가므로 FastAPI 는 이 API 를 1회
+     * 호출합니다.
+     *
+     * <p>역링크는 싣지 않습니다. 전체 간선이 있으면 소비자가 뒤집어 구할 수 있고, 여기서
+     * 계산하면 Wiki 마다 전체를 훑는 O(n²) 이 됩니다.
+     *
+     * <p>{@code wiki_refs} 를 원본 그대로 싣습니다. 존재하지 않는 Wiki 를 가리키는 ID 를
+     * 걸러내지 않습니다 — 삭제 정리가 트랜잭션 안에서 돌아 그런 값이 생길 실제 경로가 없고,
+     * 필터는 데이터가 이미 깨져 있다는 사실을 숨깁니다.
+     */
+    @Transactional(readOnly = true)
+    public WikiSpaceRelations spaceRelations(String scopeKey) {
+        WikiScope scope = requireScope(scopeKey);
+        return new WikiSpaceRelations(
+                scope.scopeVersion(),
+                wikiRepository.findAllByScopeKey(scopeKey).stream()
+                        .map(wiki -> new WikiRelationItem(
+                                String.valueOf(wiki.id()),
+                                wiki.wikiRefs().stream().map(String::valueOf).toList(),
+                                wiki.documentRefs().stream().map(String::valueOf).toList()))
+                        .toList());
+    }
+
     @Transactional(readOnly = true)
     public WikiIndex index(String scopeKey) {
         WikiScope scope = requireScope(scopeKey);
@@ -201,6 +228,13 @@ public class InternalWikiQueryService {
             List<String> documentRefs,
             List<String> backlinks
     ) {
+    }
+
+    public record WikiSpaceRelations(long scopeVersion, List<WikiRelationItem> items) {
+    }
+
+    public record WikiRelationItem(String wikiId, List<String> wikiRefs,
+                                   List<String> documentRefs) {
     }
 
     public record WikiIndex(long scopeVersion, String scopeKey, String indexMarkdown) {

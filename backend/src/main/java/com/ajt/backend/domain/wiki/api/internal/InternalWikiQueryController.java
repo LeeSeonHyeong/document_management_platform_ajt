@@ -45,6 +45,9 @@ public class InternalWikiQueryController {
     public InternalWikiQueryService.WikiIndex index(@PathVariable String scopeKey, @RequestHeader(value = "X-Wiki-Capability", required = false) String capability) { authorize(capability, scopeKey); return queryService.index(scopeKey); }
     @GetMapping("/internal/v1/wiki-spaces/{scopeKey}/categories")
     public InternalWikiQueryService.WikiCategories categories(@PathVariable String scopeKey, @RequestHeader(value = "X-Wiki-Capability", required = false) String capability) { authorize(capability, scopeKey); return queryService.categories(scopeKey); }
+    @GetMapping("/internal/v1/wiki-spaces/{scopeKey}/relations")
+    public InternalWikiQueryService.WikiSpaceRelations spaceRelations(@PathVariable String scopeKey,
+            @RequestHeader(value = "X-Wiki-Capability", required = false) String capability) { authorize(capability, scopeKey); return queryService.spaceRelations(scopeKey); }
     @GetMapping("/internal/v1/documents/{documentId}/parsed")
     public InternalWikiQueryService.ParsedDocument parsed(@PathVariable long documentId, @RequestParam String scopeKey,
             @RequestHeader(value = "X-Wiki-Capability", required = false) String capability) { authorize(capability, scopeKey); return queryService.parsedDocument(scopeKey, documentId); }

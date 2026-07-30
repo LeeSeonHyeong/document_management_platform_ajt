@@ -88,7 +88,7 @@ class InternalWikiQuerySecurityTest {
     }
 
     @Test
-    @DisplayName("7개 조회 endpoint 모두 capability가 없으면 데이터를 읽기 전에 404로 숨긴다")
+    @DisplayName("나머지 조회 endpoint는 capability가 없으면 데이터를 읽기 전에 404로 숨긴다")
     void hidesMissingCapabilityForEveryQueryEndpoint() throws Exception {
         List<MockHttpServletRequestBuilder> requests = List.of(
                 get("/internal/v1/wiki-pages").param("scopeKey", "ALL"),
@@ -96,6 +96,7 @@ class InternalWikiQuerySecurityTest {
                 get("/internal/v1/wikis/101/relations").param("scopeKey", "ALL"),
                 get("/internal/v1/wiki-spaces/ALL/index"),
                 get("/internal/v1/wiki-spaces/ALL/categories"),
+                get("/internal/v1/wiki-spaces/ALL/relations"),
                 get("/internal/v1/documents/15/parsed").param("scopeKey", "ALL")
         );
 
@@ -173,5 +174,13 @@ class InternalWikiQuerySecurityTest {
         mockMvc.perform(get("/internal/v1/documents/{documentId}/parsed", document.id())
                         .header("X-Internal-API-Key", "local-dev-key").header("X-Wiki-Capability", capability).param("scopeKey", "ALL"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.parsedMarkdown").value("# 취업 규칙"));
+    }
+
+    @Test
+    @DisplayName("범위 관계 조회도 내부 API 키가 없으면 401로 거절한다")
+    void rejectsSpaceRelationsWithoutInternalApiKey() throws Exception {
+        mockMvc.perform(get("/internal/v1/wiki-spaces/ALL/relations"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 }
