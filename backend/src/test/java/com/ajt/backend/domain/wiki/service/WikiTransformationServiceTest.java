@@ -37,9 +37,22 @@ class WikiTransformationServiceTest {
             aiClient,
             wikiRepository,
             wikiCategoryRepository,
-            wikiFileStorage,
-            applier
+            wikiFileStorage
     );
+
+    @Test
+    @DisplayName("변환 요청은 AI 응답만 반환하고 Wiki 반영을 수행하지 않는다")
+    void requestsTransformationWithoutApplyingIt() throws Exception {
+        WikiTransformationResponse response = emptyResponse();
+        given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn(CURRENT_INDEX);
+        given(wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(SCOPE_KEY)).willReturn(List.of());
+        given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(response);
+
+        assertThat(service.requestForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of()))
+                .isSameAs(response);
+
+        org.mockito.Mockito.verifyNoInteractions(applier);
+    }
 
     @Test
     @DisplayName("선택된 Wiki를 같은 공간에서 재검증해 본문과 요약까지 채워 보낸다")
@@ -53,9 +66,7 @@ class WikiTransformationServiceTest {
         given(wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(SCOPE_KEY))
                 .willReturn(List.of(category(10L, "인사·복무")));
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
-        given(applier.apply(any(), anyLong(), any())).willReturn(List.of(101L));
-
-        WikiTransformationService.WikiTransformationResult result = service.transformForAddedDocument(
+        WikiTransformationResponse result = service.requestForAddedDocument(
                 42L,
                 15L,
                 SCOPE_KEY,
@@ -63,7 +74,6 @@ class WikiTransformationServiceTest {
                 List.of(101L, 108L)
         );
 
-        assertThat(result.affectedWikiIds()).containsExactly(101L);
         assertThat(result.summary()).isEqualTo("요약");
         ArgumentCaptor<WikiTransformationRequest> captor =
                 ArgumentCaptor.forClass(WikiTransformationRequest.class);
@@ -102,9 +112,7 @@ class WikiTransformationServiceTest {
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/108.md")).willReturn("# 근태 관리");
         given(wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(SCOPE_KEY)).willReturn(List.of());
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
-        given(applier.apply(any(), anyLong(), any())).willReturn(List.of());
-
-        service.transformForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of(108L));
+        service.requestForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of(108L));
 
         ArgumentCaptor<WikiTransformationRequest> captor =
                 ArgumentCaptor.forClass(WikiTransformationRequest.class);
@@ -122,9 +130,7 @@ class WikiTransformationServiceTest {
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("");
         given(wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(SCOPE_KEY)).willReturn(List.of());
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
-        given(applier.apply(any(), anyLong(), any())).willReturn(List.of());
-
-        service.transformForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of(101L));
+        service.requestForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of(101L));
 
         ArgumentCaptor<WikiTransformationRequest> captor =
                 ArgumentCaptor.forClass(WikiTransformationRequest.class);
@@ -138,12 +144,7 @@ class WikiTransformationServiceTest {
         given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn("# 목차");
         given(wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(SCOPE_KEY)).willReturn(List.of());
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
-        given(applier.apply(any(), anyLong(), any())).willReturn(List.of(201L));
-
-        WikiTransformationService.WikiTransformationResult result =
-                service.transformForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of());
-
-        assertThat(result.affectedWikiIds()).containsExactly(201L);
+        service.requestForAddedDocument(42L, 15L, SCOPE_KEY, "# 취업 규칙", List.of());
         org.mockito.Mockito.verify(wikiRepository, org.mockito.Mockito.never())
                 .findAllByScopeKeyAndIdIn(any(), any());
     }
