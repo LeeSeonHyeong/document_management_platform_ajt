@@ -4,14 +4,16 @@
 
 **Goal:** 에이전트가 위키 본문을 요청 본문으로 받는 대신 Spring 창구에서 조회하도록 하는 어댑터를 만들고, 창구가 없는 상태에서 가짜 게이트웨이로 검증한다.
 
-**Architecture:** `vaultfs/base.py` 포트는 손대지 않는다. `spring.py`(push)와 나란히 `federated.py`(pull)를 세 번째 구현체로 추가하고, HTTP 호출은 `query_client.py`로 분리한다. 라이브 층은 카탈로그(메타데이터)만 미리 채우고 본문은 첫 접근에 당긴다. 검색은 창구(라이브)와 내부 색인(작업층) 두 곳에서 모아 합친다. `experiments/query_gateway.py`가 창구 7개를 흉내 내어 붙여보기를 가능하게 한다.
+**Architecture:** `vaultfs/base.py` 포트는 손대지 않는다. `spring.py`(push)와 나란히 `federated.py`(pull)를 세 번째 구현체로 추가하고, HTTP 호출은 `query_client.py`로 분리한다. 라이브 층은 카탈로그(메타데이터)만 미리 채우고 본문은 첫 접근에 당긴다. 검색은 창구(라이브)와 내부 색인(작업층) 두 곳에서 모아 합친다. 세션은 요청에 `wikiCapability`가 왔는지로 두 경로를 가르므로 **과도기 push 가 그대로 돈다.** `experiments/query_gateway.py`가 창구 7개를 흉내 내어, 백엔드 구현을 기다리지 않고 붙여볼 수 있게 한다.
 
 **Tech Stack:** Python 3.12+, httpx(이미 의존성), aiosqlite, pytest + pytest-asyncio(`asyncio_mode=auto`), uv.
 
 ## Global Constraints
 
 - 티켓 `S15P11B106-150`, 브랜치 `feature/S15P11B106-150-wiki-query-federation-contract` (이미 생성됨).
-- 계약은 **v1.5.0으로 반영 완료**. 창구 7개·`X-Wiki-Capability`·`scope_changed`가 이미 계약과 요구사항(v2.11)에 있다. 계약과 다르게 구현하지 않는다.
+- 계약은 **v1.6.0으로 반영 완료**. 창구 7개·`X-Wiki-Capability`·`scope_changed`(요구사항 v2.11)·`wikiCapability`·`scopeVersion`·`selectedWikis[].wikiPath`·`404` `code` 4종이 모두 계약에 있다. 계약과 다르게 구현하지 않는다.
+- **`wikiCapability` 는 로그·예외 메시지·telemetry 에 남기지 않는다.** 계약이 마스킹을 요구한다.
+- **`404` 는 `code` 로 갈라 처리한다.** `WIKI_CAPABILITY_EXPIRED` 는 중단(`scope_changed`), 나머지는 대상 없음이다. 상태만 보고 뭉개면 안전하게 멈출 수 없다.
 - **수정 범위는 `ai/` 뿐이다.** `../docs/`·`backend/`·루트 파일은 이 계획에서 건드리지 않는다.
 - stage는 `ai/` 하위 경로만 명시한다. `git add -A`·`git add .` 금지. 커밋 전 `git status`로 확인한다.
 - **push 경로를 깨지 않는다.** `SpringVaultFS`와 `wiki-transformations`의 `selectedWikis` 경로는 그대로 동작해야 한다. 창구 모드는 선택 사항이다.
@@ -27,14 +29,17 @@
 | 파일 | 책임 |
 | --- | --- |
 | `src/wiki_api/errors.py` (수정) | `FailureStage.SCOPE_CHANGED` 추가 |
-| `src/wiki_mcp/vaultfs/query_client.py` (신규) | 창구 7개 HTTP 호출. 허가 헤더·`scopeVersion` 감시·본문 캐시. **SQL을 모른다** |
-| `src/wiki_mcp/vaultfs/federated.py` (신규) | `SpringVaultFS` 상속. 카탈로그 하이드레이션·본문 지연 적재·검색 두 섹션 병합. **HTTP를 모른다** |
+| `src/wiki_mcp/vaultfs/query_client.py` (신규) | 창구 7개 HTTP 호출. 허가 헤더·`scopeVersion` 감시·`404` `code` 분기·본문 캐시·호출 수 상한. **SQL을 모른다** |
+| `src/wiki_mcp/vaultfs/federated.py` (신규) | `SpringVaultFS` 상속. 카탈로그 하이드레이션·본문 지연 적재·검색 두 섹션 병합·원격 관계. **HTTP를 모른다** |
 | `src/wiki_mcp/vaultfs/__init__.py` (수정) | 새 클래스 export |
 | `src/wiki_mcp/tools/search.py` (수정) | 라이브/작업층 두 섹션 렌더링 |
+| `src/wiki_api/schemas.py` (수정) | `wikiCapability`·`scopeVersion`·`selectedWikis[].wikiPath` 수용 |
+| `src/wiki_api/session.py` (수정) | `wikiCapability` 가 오면 `FederatedVaultFS`, 없으면 지금처럼 `SpringVaultFS` |
 | `experiments/query_gateway.py` (신규) | 창구 7개를 흉내 내는 HTTP 서버. 폐기 가능 |
 | `tests/mcp/test_query_client.py` (신규) | 클라이언트 단위 — `MockTransport`, 네트워크 없음 |
 | `tests/mcp/test_federated_vaultfs.py` (신규) | 어댑터 단위 |
 | `tests/mcp/test_federated_gateway.py` (신규) | 9.2 검증 6항목 |
+| `tests/api/test_federated_session.py` (신규) | 세션 분기 — 두 경로가 모두 도는지 |
 
 경계 이유: HTTP와 SQL을 한 파일에 두면 둘 중 하나만 테스트할 수 없다. `query_client.py`는 `MockTransport`로 서버 없이, `federated.py`는 가짜 클라이언트로 네트워크 없이 검증한다.
 
@@ -155,17 +160,19 @@ git commit -m "docs(ai): agent_start 가 요구사항 목록에 없다는 것을
 - Produces:
   - `class ScopeChangedError(VaultError)` — `.expected: int`, `.actual: int`
   - `class QueryNotFound(VaultError)`
+  - `class QueryBudgetExceeded(VaultError)`
+  - `MAX_QUERY_CALLS: int` (Task 8 에서 실측값으로 고친다. 초기값 `200`)
   - `class WikiQueryClient` with
     `__init__(base_url: str, *, api_key: str, capability: str, scope_key: str, scope_version: int, request_id: str | None = None, transport=None)`,
     `async search(query: str, limit: int = 10) -> list[dict]`,
-    `async list_pages() -> list[dict]`,
+    `async list_pages() -> list[dict]` (커서를 끝까지 따라가 전체를 모은다),
     `async page_content(wiki_id: str) -> dict`,
     `async relations(wiki_id: str) -> dict`,
     `async index_markdown() -> str`,
     `async categories() -> list[dict]`,
     `async parsed_document(document_id: str) -> dict`,
     `async aclose() -> None`,
-    `body_fetches: int` (테스트가 캐시 적중을 세는 계수기)
+    `body_fetches: int`·`calls: int` (테스트가 캐시 적중과 호출 수를 세는 계수기)
 
 - [ ] **Step 1: 실패하는 테스트를 쓴다**
 
@@ -177,8 +184,8 @@ git commit -m "docs(ai): agent_start 가 요구사항 목록에 없다는 것을
 import httpx
 import pytest
 
-from wiki_mcp.vaultfs.query_client import (QueryNotFound, ScopeChangedError,
-                                           WikiQueryClient)
+from wiki_mcp.vaultfs.query_client import (QueryBudgetExceeded, QueryNotFound,
+                                           ScopeChangedError, WikiQueryClient)
 
 BASE = "http://backend.test"
 
@@ -230,7 +237,7 @@ async def test_scope_version_mismatch_raises():
     assert caught.value.actual == 48
 
 
-async def test_404_raises_query_not_found():
+async def test_404_not_found_raises_query_not_found():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"code": "WIKI_NOT_FOUND",
                                          "message": "요청한 자료를 찾을 수 없습니다."})
@@ -239,6 +246,64 @@ async def test_404_raises_query_not_found():
     with pytest.raises(QueryNotFound):
         await client.page_content("999")
     await client.aclose()
+
+
+async def test_404_capability_expired_raises_scope_changed():
+    """같은 404 인데 code 가 다르면 처리가 다르다.
+
+    허가가 죽은 것은 "그 페이지가 없다" 와 전혀 다른 상황이다. 상태만 보고
+    뭉개면 안전하게 멈출 수 없다 (계약 1.6.0).
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"code": "WIKI_CAPABILITY_EXPIRED",
+                                         "message": "요청한 자료를 찾을 수 없습니다."})
+
+    client = _client(handler)
+    with pytest.raises(ScopeChangedError):
+        await client.list_pages()
+    await client.aclose()
+
+
+async def test_list_pages_follows_cursor_to_the_end():
+    """목록은 커서 페이지네이션이다. nextCursor 가 null 이 될 때까지 모은다."""
+    seen_cursors = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        cursor = request.url.params.get("cursor")
+        seen_cursors.append(cursor)
+        if not cursor:
+            return httpx.Response(200, json={
+                "scopeVersion": 47, "nextCursor": "c2",
+                "items": [{"wikiId": "101"}]})
+        return httpx.Response(200, json={
+            "scopeVersion": 47, "nextCursor": None,
+            "items": [{"wikiId": "108"}]})
+
+    client = _client(handler)
+    pages = await client.list_pages()
+    await client.aclose()
+
+    assert [page["wikiId"] for page in pages] == ["101", "108"]
+    assert seen_cursors == [None, "c2"]
+
+
+async def test_call_budget_is_enforced(monkeypatch):
+    """상한을 선언만 하고 세지 않으면 아무 효과가 없다 (설계 9.5)."""
+    from wiki_mcp.vaultfs import query_client as module
+
+    monkeypatch.setattr(module, "MAX_QUERY_CALLS", 2)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"scopeVersion": 47, "items": []})
+
+    client = _client(handler)
+    await client.search("연차")
+    await client.search("이월")
+    with pytest.raises(QueryBudgetExceeded):
+        await client.search("승인")
+    await client.aclose()
+
+    assert client.calls == 2
 
 
 async def test_page_content_is_cached_by_hash():
@@ -317,11 +382,24 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'wiki_mcp.vaultfs.query
   * 응답의 `scopeVersion` 이 발급값과 다르면 그 자리에서 `ScopeChangedError` 다.
     반영 직전 백엔드 확인(DR-030)이 안전장치고 이것은 헛일을 줄이는 장치다.
 
-**본문은 `contentHash` 로 캐시한다.** 에이전트는 같은 페이지를 검색·읽기·수정에서
-여러 번 본다. 캐시가 없으면 같은 본문을 반복해 받는다 (설계 9.4).
+**본문은 `wikiId` 로 캐시한다.** 요청 하나 안에서 `scopeVersion` 이 고정이므로 같은
+`wikiId` 는 같은 본문이다. 버전이 바뀌면 그 자리에서 중단하니 캐시를 무효화할 일이
+없다. 목록의 `contentHash` 는 백엔드가 준 값을 그대로 실어 보낼 뿐 캐시 키로 쓰지
+않는다. 에이전트는 같은 페이지를 검색·읽기·수정에서 여러 번 보므로 캐시가 없으면
+같은 본문을 반복해 받는다 (설계 9.4).
 
-`404` 는 두 가지를 한 값으로 덮는다 — 허가 범위 밖과 실제로 없는 것. 존재 여부를
-노출하지 않기 위한 계약이다 (NFR-SEC-003 · FR-ACL-006). 그래서 구분하지 않는다.
+**`404` 는 `code` 로 갈라 처리한다.** HTTP 상태를 나누면 존재가 노출되므로 계약이
+전부 `404` 로 통일했지만, 오류 본문의 `code` 는 허가를 통과한 호출자만 본다
+(계약 1.6.0 · 설계 2.3).
+
+```
+WIKI_CAPABILITY_EXPIRED   허가가 죽었다      → ScopeChangedError (중단)
+그 밖 (…_NOT_FOUND)       대상이 없다        → QueryNotFound
+```
+
+**호출 수를 센다.** 상한을 선언만 하고 세지 않으면 아무 효과가 없다. 목적은 시간이
+아니라 D9(`10-onboarding`: 724초에 툴 77회, 출력 589토큰)처럼 같은 것을 반복 조회하며
+맴도는 것을 끊는 것이다 (설계 9.5).
 """
 
 from __future__ import annotations
@@ -330,19 +408,27 @@ import httpx
 
 from .base import VaultError
 
+# Task 8 에서 실측값으로 고친다. 그때까지의 안전판이다.
+MAX_QUERY_CALLS = 200
+
 
 class ScopeChangedError(VaultError):
     """작업 중 같은 범위의 위키가 바뀌었다. `failureStage = scope_changed` 로 나간다."""
 
-    def __init__(self, expected: int, actual: int):
-        super().__init__(
-            f"작업 중 이 범위의 Wiki가 바뀌었습니다 — 시작 버전 {expected}, 현재 {actual}")
+    def __init__(self, expected: int, actual: int | None = None,
+                 reason: str | None = None):
+        detail = reason or f"시작 버전 {expected}, 현재 {actual}"
+        super().__init__(f"작업 중 이 범위의 Wiki가 바뀌었습니다 — {detail}")
         self.expected = expected
         self.actual = actual
 
 
 class QueryNotFound(VaultError):
-    """허가 범위 밖이거나 없는 대상. 두 경우를 구분하지 않는다."""
+    """허가 범위 밖이거나 없는 대상. 이 둘은 계약이 일부러 구분하지 않는다."""
+
+
+class QueryBudgetExceeded(VaultError):
+    """조회 횟수 상한 초과. `failureStage = agent_error` 로 나간다."""
 
 
 class WikiQueryClient:
@@ -353,8 +439,9 @@ class WikiQueryClient:
                  request_id: str | None = None, transport=None):
         self.scope_key = scope_key
         self.scope_version = scope_version
-        # 테스트가 캐시 적중을 세는 계수기. 프로덕션에서도 telemetry 에 쓸 수 있다.
+        # 테스트와 telemetry 가 보는 계수기.
         self.body_fetches = 0
+        self.calls = 0
         self._bodies: dict[str, dict] = {}
         headers = {
             "X-Internal-API-Key": api_key,
@@ -372,19 +459,34 @@ class WikiQueryClient:
     # ----- 공통 -------------------------------------------------------------
 
     async def _get(self, path: str, params: dict | None = None) -> dict:
-        query = dict(params or {})
-        response = await self._http.get(path, params=query)
+        if self.calls >= MAX_QUERY_CALLS:
+            raise QueryBudgetExceeded(
+                f"조회 횟수 상한 {MAX_QUERY_CALLS}회를 넘었습니다")
+        self.calls += 1
+        response = await self._http.get(path, params=dict(params or {}))
         if response.status_code == 404:
+            code = self._error_code(response)
+            if code == "WIKI_CAPABILITY_EXPIRED":
+                raise ScopeChangedError(self.scope_version,
+                                        reason="열람 허가가 만료되었습니다")
             raise QueryNotFound(f"요청한 자료를 찾을 수 없습니다 — {path}")
         if response.status_code >= 400:
-            raise VaultError(
-                f"창구 오류 {response.status_code} — {path}: {response.text[:200]}")
+            # 본문을 그대로 싣지 않는다 — capability 가 되돌아올 여지를 남기지 않는다.
+            raise VaultError(f"창구 오류 {response.status_code} — {path}")
         body = response.json()
-        # 파싱본 창구만 scopeVersion 이 없다. 문서 파싱 결과는 위키 스냅샷과 무관하다.
+        # 파싱본 창구만 scopeVersion 이 없다 (설계 2.4·3.7). 문서 파싱 결과는 위키
+        # 스냅샷과 무관하므로 위키 버전으로 판정하면 무관한 이유로 중단된다.
         actual = body.get("scopeVersion")
         if actual is not None and actual != self.scope_version:
             raise ScopeChangedError(self.scope_version, actual)
         return body
+
+    @staticmethod
+    def _error_code(response: httpx.Response) -> str | None:
+        try:
+            return response.json().get("code")
+        except ValueError:
+            return None
 
     def _scoped(self, extra: dict | None = None) -> dict:
         params = {"scopeKey": self.scope_key}
@@ -399,8 +501,22 @@ class WikiQueryClient:
         return body.get("items", [])
 
     async def list_pages(self) -> list[dict]:
-        body = await self._get("/internal/v1/wiki-pages", self._scoped())
-        return body.get("items", [])
+        """커서를 끝까지 따라가 카탈로그 전체를 모은다 (계약 1.6.0).
+
+        `scopeVersion` 이 페이지 사이에 바뀌면 `_get` 이 중단시킨다 — 반쯤 낡은
+        카탈로그로 작업하면 안 된다 (설계 3.2).
+        """
+        items: list[dict] = []
+        cursor: str | None = None
+        while True:
+            params = self._scoped()
+            if cursor:
+                params["cursor"] = cursor
+            body = await self._get("/internal/v1/wiki-pages", params)
+            items.extend(body.get("items", []))
+            cursor = body.get("nextCursor")
+            if not cursor:
+                return items
 
     async def page_content(self, wiki_id: str) -> dict:
         cached = self._bodies.get(wiki_id)
@@ -652,7 +768,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .local import PAGES_PREFIX, LocalVaultFS
-from .query_client import QueryNotFound, WikiQueryClient
+from .query_client import QueryNotFound, ScopeChangedError, WikiQueryClient
 from .spring import SpringVaultFS, address_from_wiki_path
 
 INDEX_ADDRESS = "index.md"
@@ -671,6 +787,8 @@ class FederatedVaultFS(SpringVaultFS):
         # wikiId ↔ address. 주소로 본문을 당기려면 역방향이 필요하다.
         self._wiki_id_by_address: dict[str, str] = {}
         self._hydrated_bodies: set[str] = set()
+        # 하이드레이션이 채운다. 카테고리 툴이 읽는다.
+        self.categories: list[dict] = []
 
     @classmethod
     async def open(cls, root: Path | str, scope_key: str, job_id: str | None, *,
@@ -682,6 +800,9 @@ class FederatedVaultFS(SpringVaultFS):
         return scope_id
 
     async def _hydrate_catalog(self, scope_id: str) -> None:
+        # 카테고리 맵. FR-WIKI-014 의 생성·병합·삭제 판단 근거다 (설계 9.6). 목록의
+        # categoryName 만으로는 "빈 카테고리" 와 "사용량" 을 알 수 없다.
+        self.categories = await self._client.categories()
         for page in await self._client.list_pages():
             wiki_path = page.get("wikiPath")
             wiki_id = page.get("wikiId")
@@ -707,11 +828,14 @@ class FederatedVaultFS(SpringVaultFS):
             return
         try:
             body = await self._client.page_content(wiki_id)
-        except QueryNotFound:
-            # 목록에 있었는데 본문이 없다. 그 사이 지워진 것이므로 빈 본문으로 둔다 —
-            # scopeVersion 확인이 이 상황을 이미 걸러야 하지만 경합이 남는다.
-            self._hydrated_bodies.add(address)
-            return
+        except QueryNotFound as exc:
+            # 목록에 있던 페이지의 본문이 없다 — 그 사이 지워졌다. **빈 본문으로
+            # 계속 진행하지 않는다** (설계 2.6). 에이전트가 빈 페이지를 보고 "내용이
+            # 없다" 고 판단해 덮어쓸 수 있다. 버전 비교만으로는 목록과 본문 조회
+            # 사이의 경합을 못 잡으므로 여기서 닫는다.
+            raise ScopeChangedError(
+                self._client.scope_version,
+                reason=f"목록에 있던 Wiki {wiki_id} 의 본문이 사라졌습니다") from exc
         await self._insert_live(
             scope_id, address, body.get("contentMarkdown") or "",
             wiki_id=wiki_id, title=body.get("title"))
@@ -723,6 +847,39 @@ class FederatedVaultFS(SpringVaultFS):
     async def get(self, scope_id: str, address: str) -> dict | None:
         await self._ensure_body(scope_id, address)
         return await super().get(scope_id, address)
+
+    async def get_backlinks(self, scope_id: str, address: str) -> list[dict]:
+        """내부 그래프 + 원격 관계 창구를 합친다.
+
+        **지연 적재의 사각지대를 메우는 곳이다** (설계 9.6). 내부 그래프는 본문을
+        당긴 페이지만 안다. 제거·병합은 범위 전체의 역링크를 알아야 하는데, 안 읽은
+        페이지의 링크를 놓치면 남의 링크를 조용히 끊는다.
+
+        원격 응답은 `wikiId` 로 오므로 카탈로그의 역방향 표로 주소를 되돌린다.
+        카탈로그에 없는 `wikiId` 는 건너뛴다 — 다른 범위이거나 이번 요청이 모르는
+        페이지다.
+        """
+        rows = await super().get_backlinks(scope_id, address)
+        wiki_id = self._wiki_id_by_address.get(address)
+        if wiki_id is None:
+            return rows
+
+        known = {row["address"] for row in rows}
+        address_by_wiki_id = {wid: addr
+                              for addr, wid in self._wiki_id_by_address.items()}
+        try:
+            remote = await self._client.relations(wiki_id)
+        except QueryNotFound:
+            # 그 사이 지워졌다. 내부 그래프만으로 답한다 — 제거 대상 자체가
+            # 사라진 것이므로 여기서 중단할 이유는 없다.
+            return rows
+
+        for backlink_id in remote.get("backlinks", []):
+            remote_address = address_by_wiki_id.get(backlink_id)
+            if remote_address is None or remote_address in known:
+                continue
+            rows.append({"address": remote_address, "origin": "live"})
+        return rows
 
     async def search_chunks(self, scope_id: str, query: str, limit: int,
                             kind_filter: str | None = None) -> list[dict]:
@@ -1445,7 +1602,203 @@ git commit -m "test(ai): 창구 어댑터 검증 6항목과 wikiPath 판정"
 
 ---
 
-### Task 7: 상한 실측과 기록
+### Task 7: 세션이 두 경로를 가른다
+
+계약 1.6.0 이 `wikiCapability`·`scopeVersion` 을 요청에 넣었으므로 이제 붙일 수 있다. **선택 필드이므로 없으면 지금 경로가 그대로 돈다.**
+
+**Files:**
+- Modify: `src/wiki_api/schemas.py` (`TransformRequest`·`EditRequest`·`SelectedWiki`)
+- Modify: `src/wiki_api/session.py:127,145,158`
+- Test: `tests/api/test_federated_session.py`
+
+**Interfaces:**
+- Consumes: `WikiQueryClient` (Task 2), `FederatedVaultFS` (Task 3)
+- Produces: `WikiSession(..., wiki_capability: str | None = None, scope_version: int | None = None, backend_base_url: str | None = None)` — 셋이 다 있으면 창구 경로
+
+- [ ] **Step 1: 실패하는 테스트를 쓴다**
+
+`tests/api/test_federated_session.py` 를 새로 만든다.
+
+```python
+"""세션이 요청에 따라 push 경로와 창구 경로를 가르는지 본다."""
+
+import pytest
+
+from wiki_api.schemas import SelectedWiki, TransformRequest
+
+
+def test_selected_wiki_accepts_wiki_path():
+    """계약 1.6.0 이 기존 Wiki 에 wikiPath 를 필수로 했다."""
+    wiki = SelectedWiki(wikiId="101", title="휴가 규정",
+                        wikiPath="wiki/D1-D2/pages/a3f2c1d4.md",
+                        contentMarkdown="# 휴가 규정\n")
+
+    assert wiki.wikiPath == "wiki/D1-D2/pages/a3f2c1d4.md"
+
+
+def test_transform_request_accepts_capability_and_version():
+    request = TransformRequest(jobId="42", documentId="15", scopeKey="D1-D2",
+                               wikiCapability="cap-1", scopeVersion=47)
+
+    assert request.wikiCapability == "cap-1"
+    assert request.scopeVersion == 47
+
+
+def test_transform_request_without_capability_is_still_valid():
+    """선택 필드다. 백엔드가 창구를 배포하기 전에도 계약이 깨지지 않는다."""
+    request = TransformRequest(jobId="42", documentId="15", scopeKey="D1-D2")
+
+    assert request.wikiCapability is None
+    assert request.scopeVersion is None
+
+
+async def test_session_uses_spring_vaultfs_without_capability():
+    from wiki_api.session import WikiSession
+    from wiki_mcp.vaultfs import SpringVaultFS
+
+    async with WikiSession(scope_key="D1-D2", job_id="job-1",
+                           error_code="WIKI_TRANSFORMATION_FAILED",
+                           pages=[], index_markdown="# 목차\n") as session:
+        assert isinstance(session.fs, SpringVaultFS)
+        assert not type(session.fs).__name__.startswith("Federated")
+
+
+async def test_session_uses_federated_vaultfs_with_capability(monkeypatch):
+    """capability·scopeVersion·주소가 다 있으면 창구 경로를 쓴다."""
+    import httpx
+
+    from wiki_api.session import WikiSession
+    from wiki_mcp.vaultfs import FederatedVaultFS
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/index"):
+            return httpx.Response(200, json={"scopeVersion": 47,
+                                             "scopeKey": "D1-D2",
+                                             "indexMarkdown": "# 목차\n"})
+        if path.endswith("/categories"):
+            return httpx.Response(200, json={"scopeVersion": 47, "items": []})
+        return httpx.Response(200, json={"scopeVersion": 47,
+                                         "nextCursor": None, "items": []})
+
+    monkeypatch.setenv("BACKEND_BASE_URL", "http://backend.test")
+
+    async with WikiSession(scope_key="D1-D2", job_id="job-1",
+                           error_code="WIKI_TRANSFORMATION_FAILED",
+                           wiki_capability="cap-1", scope_version=47,
+                           backend_base_url="http://backend.test",
+                           query_transport=httpx.MockTransport(handler)) as session:
+        assert isinstance(session.fs, FederatedVaultFS)
+```
+
+- [ ] **Step 2: 테스트가 실패하는 것을 확인한다**
+
+```bash
+cd ai && uv run pytest tests/api/test_federated_session.py -v
+```
+
+Expected: FAIL — `SelectedWiki` 에 `wikiPath` 가 없고 `TransformRequest` 에 `wikiCapability` 가 없다
+
+- [ ] **Step 3: 스키마에 계약 1.6.0 필드를 더한다**
+
+`src/wiki_api/schemas.py` 의 `SelectedWiki` 에 추가한다.
+
+```python
+    # 계약 1.6.0. 기존 Wiki 에 필수다 — 본문의 내부 링크가 파일명(pageKey) 기준이라
+    # 이것 없이 pages/{wikiId}.md 로 적재하면 링크가 어느 페이지도 가리키지 못한다.
+    # Optional 로 두는 이유는 하위호환뿐이다: 이 값이 없으면 링크 관계가 빈다.
+    wikiPath: str | None = None
+```
+
+`TransformRequest` 와 `EditRequest`(관리자 수정 요청 모델. 실제 이름은 파일에서 확인한다) 양쪽에 추가한다.
+
+```python
+    # 계약 1.6.0. 둘 다 선택 필드다 — 없으면 selectedWikis 로 도는 과도기 경로다.
+    # wikiCapability 는 로그·예외·telemetry 에 남기지 않는다.
+    wikiCapability: str | None = None
+    scopeVersion: int | None = None
+```
+
+- [ ] **Step 4: 세션이 경로를 가르게 한다**
+
+`src/wiki_api/session.py` 의 `__init__` 시그니처에 셋을 더하고, `__aenter__` 의 하이드레이션 분기를 이렇게 만든다. 기존 `SpringVaultFS.open(...)` 호출은 `else` 로 그대로 남긴다.
+
+```python
+            if self._federated():
+                self._query_client = WikiQueryClient(
+                    self.backend_base_url, api_key=_internal_api_key(),
+                    capability=self.wiki_capability, scope_key=self.scope_key,
+                    scope_version=self.scope_version,
+                    request_id=self.request_id,
+                    transport=self.query_transport)
+                self.scope_id = await FederatedVaultFS.open(
+                    self._root, self.scope_key, self.job_id,
+                    client=self._query_client)
+                self.fs = FederatedVaultFS(self.scope_key, self.job_id,
+                                           self._query_client)
+            else:
+                self.scope_id = await SpringVaultFS.open(
+                    self._root, self.scope_key, self.job_id,
+                    pages=self.pages, index_markdown=self.index_markdown)
+                self.fs = SpringVaultFS(self.scope_key, self.job_id)
+```
+
+판정 헬퍼와 정리를 더한다.
+
+```python
+    def _federated(self) -> bool:
+        """셋이 다 있어야 창구 경로다. 하나라도 없으면 과도기 push 로 돈다."""
+        return bool(self.wiki_capability and self.scope_version is not None
+                    and self.backend_base_url)
+```
+
+`_teardown` 에 클라이언트 닫기를 더한다 — 안 닫으면 커넥션이 남는다.
+
+```python
+        if self._query_client is not None:
+            await self._query_client.aclose()
+            self._query_client = None
+```
+
+`ScopeChangedError`·`QueryBudgetExceeded` 를 계약 응답으로 옮기는 매핑도 더한다.
+
+```python
+        except ScopeChangedError as exc:
+            raise InternalError(self.error_code, str(exc),
+                                FailureStage.SCOPE_CHANGED) from exc
+        except QueryBudgetExceeded as exc:
+            raise InternalError(self.error_code, str(exc),
+                                FailureStage.AGENT_ERROR) from exc
+```
+
+`except InternalError: raise` 다음, 기존 `except Exception` 앞에 둔다 — 순서가 바뀌면 일반 예외 처리가 먼저 잡아 `context_load` 로 나간다.
+
+- [ ] **Step 5: 라우터가 값을 넘기게 한다**
+
+`src/wiki_api/routers/wiki.py` 에서 `WikiSession(...)` 을 만드는 곳에 셋을 넘긴다. `backend_base_url` 은 `serve.py` 의 CLI 인자나 환경변수에서 온다 — 실제 배선 위치는 그 파일을 보고 맞춘다.
+
+- [ ] **Step 6: 테스트와 전체를 확인한다**
+
+```bash
+cd ai && uv run pytest tests/api/test_federated_session.py -v
+cd ai && uv run pytest -m "not ocr" -q
+```
+
+Expected: 전부 통과. **push 경로 테스트가 하나도 깨지지 않아야 한다** — `tests/api/test_api_wiki.py` 를 특히 본다.
+
+- [ ] **Step 7: 커밋한다**
+
+```bash
+cd /home/ssafy/workspace/S15P11B106
+git add ai/src/wiki_api/schemas.py ai/src/wiki_api/session.py \
+        ai/src/wiki_api/routers/wiki.py ai/tests/api/test_federated_session.py
+git status --short
+git commit -m "feat(ai): wikiCapability 가 오면 창구 경로로 가른다"
+```
+
+---
+
+### Task 8: 상한 실측과 기록
 
 설계 9.3(작업층 검색 결과 상한)과 9.5(조회 횟수 상한)의 숫자를 정한다. **지금까지는 숫자가 없다.**
 
@@ -1511,6 +1864,11 @@ async def measure(corpus: Path, scope_key: str) -> dict:
             rows_per_query.append(len(rows))
             chars_per_query.append(
                 sum(len(row.get("content") or "") for row in rows))
+        # 에이전트가 실제로 하는 일에 가깝게: 검색한 뒤 상위 결과를 읽는다.
+        # 그래야 창구 호출 수가 현실적인 값이 된다.
+        for query in QUERIES:
+            for row in (await fs.search_chunks(scope_id, query, limit=5))[:3]:
+                await fs.get(scope_id, row["address"])
         result = {
             "pages": len(app.state.gateway.pages),
             "queries": len(QUERIES),
@@ -1519,6 +1877,7 @@ async def measure(corpus: Path, scope_key: str) -> dict:
             "chars_max": max(chars_per_query),
             "chars_mean": sum(chars_per_query) / len(chars_per_query),
             "body_fetches": client.body_fetches,
+            "query_calls": client.calls,
         }
         await client.aclose()
         await LocalVaultFS.close()
@@ -1566,9 +1925,18 @@ cd ai && mkdir -p /tmp/ajt-corpus/wiki/ALL && \
 # 검색 응답이 그대로 다음 턴 입력이 되어 출력을 늘린다.
 MAX_WORK_SEARCH_ROWS = <측정값>
 
+```
+
+`MAX_QUERY_CALLS` 는 `query_client.py` 에 있다 (Task 2 에서 초기값 `200` 으로 넣고 `_get` 이 세고 있다). 실측값으로 고친다.
+
+```python
 # 조회 횟수 상한. 시간 때문이 아니다 — 창구 호출은 수백 밀리초라 예산에 영향이 없다.
 # 목적은 D9(`10-onboarding`: 724초에 툴 77회, 출력 589토큰)처럼 같은 것을 반복 조회하며
 # 맴도는 것을 끊고, 조회 결과가 문맥에 쌓여 출력을 늘리는 것을 막는 것이다.
+#
+# 근거: 위키 <측정값>장 · 질의 5개 시나리오에서 창구 호출이 <측정값>회였다
+# (`experiments/measure_federated.py`). 그 값의 3배를 상한으로 둔다 — 정상 작업을
+# 막지 않으면서 맴도는 것은 잡는 폭이다.
 MAX_QUERY_CALLS = <측정값>
 ```
 
@@ -1630,6 +1998,7 @@ Expected: 전부 통과
 | 검색 응답 행 수 (최대 / 평균) | <측정값> / <측정값> |
 | 검색 응답 문자 수 (최대 / 평균) | <측정값> / <측정값> |
 | 본문 적재 횟수 | <측정값> |
+| 창구 호출 수 | <측정값> |
 
 이 값으로 `MAX_WORK_SEARCH_ROWS = <측정값>`, `MAX_QUERY_CALLS = <측정값>` 을 정했다
 (`vaultfs/federated.py`). 근거는 §7.1 과 D8 의 충돌이다 — 자르지 않으면 검색 응답이
@@ -1653,18 +2022,24 @@ git commit -m "feat(ai): 창구 검색 응답 상한을 실측으로 정하고 I
 - [ ] `uv run pytest -m "not ocr"` 전부 통과. 기존 506건이 하나도 깨지지 않았다
 - [ ] `FailureStage.SCOPE_CHANGED` 가 있고 요구사항 v2.11 의 여섯 단계를 모두 덮는다
 - [ ] 9.2 검증 6항목이 전부 통과한다
-- [ ] 4절 `wikiPath` 판정이 실측 결과로 기록됐다 (필수 또는 권장 유지, 근거 포함)
-- [ ] `MAX_WORK_SEARCH_ROWS`·`MAX_QUERY_CALLS` 가 `INDEX.md` 의 실측값과 같다
-- [ ] push 경로(`SpringVaultFS`)가 그대로 동작한다 — `tests/mcp/test_spring_vaultfs.py` 통과
-- [ ] `ai/` 밖 변경이 없다: `git diff --name-only develop..HEAD | grep -v '^ai/'` 가 비어 있다
+- [ ] 4절 `wikiPath` 판정이 실측 결과로 기록됐다
+- [ ] `MAX_WORK_SEARCH_ROWS`·`MAX_QUERY_CALLS` 가 `INDEX.md` 의 실측값과 같고, **둘 다 실제로 걸린다** (선언만 하지 않는다)
+- [ ] `404` 가 `code` 로 갈라진다 — `WIKI_CAPABILITY_EXPIRED` 는 중단, 나머지는 대상 없음
+- [ ] 창구 7개가 모두 쓰인다 — 카테고리는 하이드레이션, 관계는 `get_backlinks`, 파싱본은 `lint`
+- [ ] `wikiCapability` 가 없는 요청이 지금처럼 `SpringVaultFS` 로 돈다
+- [ ] `wikiCapability` 가 로그·예외 메시지·telemetry 에 남지 않는다
+- [ ] push 경로가 그대로 동작한다 — `tests/mcp/test_spring_vaultfs.py`·`tests/api/test_api_wiki.py` 통과
+- [ ] `ai/` 밖 변경이 없다: `git diff --name-only develop..HEAD | grep -v '^ai/'` 가 이 계획의 커밋에서 비어 있다
 
 ## 범위 밖
 
 | 항목 | 이유 |
 | --- | --- |
-| `session.py` 를 창구 모드로 전환 | 백엔드 창구가 실제로 생긴 뒤. 지금 바꾸면 프로덕션이 없는 주소를 부른다 |
+| 창구 구현 자체 | 백엔드 |
+| **push 경로의 `wikiPath` 배선** | 계약 1.6.0 이 필드를 넣었지만, 기존 위키 링크가 실제로 복원되는지는 별 티켓이다. 4.2 의 확인된 결함 |
 | `wiki-context-selections` 축소·제거 | 창구 배포 후 (FR-WIKI-002) |
-| 계약·요구사항 추가 개정 | v1.5.0·v2.11 로 이미 반영됐다. 부족한 것이 나오면 고치지 말고 기록한다 |
+| 계약·요구사항 추가 개정 | v1.6.0·v2.11 로 이미 반영됐다. 부족한 것이 나오면 고치지 말고 기록한다 |
 | `agent_start` 정리 | 요구사항 목록에 없는 값이다. 협의 필요 — Task 1 Step 6 에서 기록만 한다 |
-| 관계 창구를 툴에 연결 | `get_backlinks` 는 내부 색인으로 이미 돈다. 창구 `relations` 를 쓰는 것은 별건 |
+| 파싱본 창구를 `lint` 에 배선 | `find_source` 가 이미 내부 색인으로 돈다. 창구로 바꾸는 것은 원본문서가 요청 본문에 오지 않게 된 뒤 |
 | 10분 목표 달성 자체 | 출력 토큰 최적화는 별건 (D8) |
+| 실기동 HTTP·Spring 실제 연동 | 이 계획은 인프로세스 테스트까지다. "동작 확인" 의 근거를 구분해 말한다 |
