@@ -1,5 +1,6 @@
 package com.ajt.backend.domain.wiki.storage;
 
+import com.ajt.backend.domain.wiki.model.Wiki;
 import java.io.IOException;
 
 /**
@@ -8,10 +9,16 @@ import java.io.IOException;
  */
 public interface WikiFileStorage {
 
+    /** 검증된 Wiki 상대 경로에 본문을 저장합니다. */
+    void storeWikiMarkdown(String wikiPath, String contentMarkdown) throws IOException;
+
     /**
-     * Wiki 본문을 저장하고 저장 경로를 반환합니다.
+     * @deprecated 반영기가 AI 발급 경로를 직접 전달하도록 전환 중인 호환 메서드입니다.
      */
-    String storeWikiMarkdown(String scopeKey, long wikiId, String contentMarkdown) throws IOException;
+    @Deprecated
+    default void storeWikiMarkdown(String scopeKey, long wikiId, String contentMarkdown) throws IOException {
+        storeWikiMarkdown(Wiki.storagePathOf(scopeKey, wikiId), contentMarkdown);
+    }
 
     /**
      * Wiki 본문을 읽습니다. 파일이 없으면 빈 문자열을 반환합니다.
