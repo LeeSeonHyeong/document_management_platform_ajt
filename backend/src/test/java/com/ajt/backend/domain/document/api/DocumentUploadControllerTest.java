@@ -29,6 +29,7 @@ import java.util.List;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -207,6 +208,35 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.code").value("INVALID_DOCUMENT_STATUS"))
                 .andExpect(jsonPath("$.message").value("문서 처리 상태를 확인해주세요."))
                 .andExpect(jsonPath("$.path").value("/api/v1/documents/15/retry"));
+    }
+
+    @Test
+    @DisplayName("파일 교체 성공 시 202와 재처리 AI 작업 정보를 반환한다")
+    void replacesDocumentFile() throws Exception {
+        given(documentManagementService.replaceFile(eq(15L), any()))
+                .willReturn(new DocumentFileReplaceResponse("42", "15", "waiting"));
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/v1/documents/{documentId}/file", 15L)
+                        .file(new MockMultipartFile("file", "new.md", "text/markdown", "# 새 문서".getBytes())))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.documentId").value("15"))
+                .andExpect(jsonPath("$.status").value("waiting"));
+
+        verify(documentManagementService).replaceFile(eq(15L), any());
+    }
+
+    @Test
+    @DisplayName("파일 교체 대상이 처리 중이면 409 오류를 반환한다")
+    void returnsConflictWhenReplaceTargetInProgress() throws Exception {
+        given(documentManagementService.replaceFile(eq(15L), any()))
+                .willThrow(new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS));
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/api/v1/documents/{documentId}/file", 15L)
+                        .file(new MockMultipartFile("file", "new.md", "text/markdown", "# 새 문서".getBytes())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_DOCUMENT_STATUS"))
+                .andExpect(jsonPath("$.path").value("/api/v1/documents/15/file"));
     }
 
     @Test
