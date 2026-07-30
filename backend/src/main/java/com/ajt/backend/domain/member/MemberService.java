@@ -107,20 +107,16 @@ public class MemberService {
         Role role = parseRoleOrNull(request.role());
         AccountStatus accountStatus = parseAccountStatusOrNull(request.accountStatus());
 
-        // 수정(S15P11B106-58): 부서장으로 지정된 회원이 이번 수정으로 부서장 자격(ADMIN·ACTIVE)을 잃으면
-        //   해당 부서의 부서장 지정을 자동으로 해제한다. 이 동작은 요구사항정의서 v2.12에서 FR-USR-008에
-        //   명시했다("부서 관리자가 사용자 관리에서 사원으로 강등되거나 비활성화되어 지정 자격을 잃으면
-        //   해당 부서장 지정은 자동으로 해제된다").
-        //   부서장 지정은 DepartmentService.findAssignableManager에서 ADMIN·APPROVED·ACTIVE만 허용하는데,
-        //   사용자 수정에서 사원으로 강등하거나 비활성화하면 그 지정이 그대로 남아 "사원/비활성인 부서장"이라는
-        //   무효 상태가 된다(FR-USR-008 위반). 부서장 공석은 허용되는 상태이므로(FR-USR-008), 관리자가 부서
-        //   관리 화면을 따로 거치지 않아도 되도록 여기서 부서장 자리를 비운다.
-        //   ※ 부서 이동은 해제하지 않는다: 지정 로직도 부서장이 담당 부서에 소속될 것을 요구하지 않으므로
-        //     (findAssignableManager가 소속 부서를 검사하지 않음) 부서 이동은 지정 자격을 깨지 않는다.
-        clearDepartmentManagerIfIneligible(member, role, accountStatus);
+        // 수정(S15P11B106-69): 부서장 자동 해제 판단은 Member.updateByAdmin이 수행한다(FR-USR-008 v2.12).
+        //   서비스는 이 회원이 부서장으로 지정된 부서(있으면)를 조회해 넘겨주는 역할만 한다.
+        //   엔티티가 저장소에 접근하지 않으므로 담당 부서 조회는 서비스 책임이다. manager_id는 UNIQUE라
+        //   대상 부서는 최대 1건이며, 부서장이 아니면 null을 넘긴다.
+        //   ※ 부서 이동은 해제 대상이 아니다: 지정 로직(findAssignableManager)이 담당 부서 소속을 검사하지
+        //     않으므로 부서 이동은 지정 자격을 깨지 않는다(자격 판정에 소속 부서가 없음).
+        Department managedDepartment = departmentRepository.findByManager_Id(member.getId()).orElse(null);
 
         try {
-            member.updateByAdmin(department, request.name(), role, accountStatus);
+            member.updateByAdmin(department, request.name(), role, accountStatus, managedDepartment);
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, exception.getMessage());
         }
@@ -199,21 +195,6 @@ public class MemberService {
         if (loginMember == null || !loginMember.isAdmin()) {
             throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED);
         }
-    }
-
-    // 수정(S15P11B106-58): 이번 수정 결과 회원이 부서장 자격(ADMIN·ACTIVE)을 잃고, 실제로 어느 부서의
-    //   부서장으로 지정돼 있다면 그 부서의 부서장 지정을 해제한다(공석). 전달되지 않은 역할·계정 상태는
-    //   기존 값을 그대로 본다. manager_id는 UNIQUE라 대상 부서는 최대 1건이다.
-    private void clearDepartmentManagerIfIneligible(Member member, Role newRole, AccountStatus newAccountStatus) {
-        Role effectiveRole = newRole != null ? newRole : member.getRole();
-        AccountStatus effectiveAccountStatus =
-                newAccountStatus != null ? newAccountStatus : member.getAccountStatus();
-        boolean staysEligible = effectiveRole == Role.ADMIN && effectiveAccountStatus == AccountStatus.ACTIVE;
-        if (staysEligible) {
-            return;
-        }
-        departmentRepository.findByManager_Id(member.getId())
-                .ifPresent(Department::clearManager);
     }
 
     // 수정: PATCH 필드가 전달됐는데(present) 값이 null이면, 비울 수 없는 필수 필드이므로 400으로 거절한다(§4.2).
