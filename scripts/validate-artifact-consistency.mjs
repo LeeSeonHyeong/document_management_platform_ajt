@@ -310,17 +310,23 @@ expect(
   "삭제된 일정 첨부파일 API가 남아 있음",
 );
 expect(publicRequests.length === 56, `공개 API 수가 56개가 아님: ${publicRequests.length}`);
-expect(internalRequests.length === 7, `내부 API 수가 7개가 아님: ${internalRequests.length}`);
+// 기존 7개 + Wiki 조회 창구 7개. 창구는 FastAPI 가 Spring Boot 를 호출하는 반대 방향이라
+// 같은 내부 컬렉션에 있지만 baseVariable 이 backendBaseUrl 이다.
+expect(internalRequests.length === 14, `내부 API 수가 14개가 아님: ${internalRequests.length}`);
 
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
+// Wiki 조회 창구 7개 신설로 minor 상향 (docs/api/README.md 절차 4번). 1.4.0 을 건너뛴
+// 이유는 README 가 1.4.0, 컬렉션이 1.3.1 로 갈라져 있었기 때문이다 — 어느 쪽 번호도
+// 재사용하지 않고 둘을 1.5.0 으로 합친다.
+const expectedContractVersion = "1.5.0";
 expect(
-  collectionVariable(publicCollection, "contractVersion") === "1.3.1",
-  "공개 API 계약 버전이 1.3.1이 아님",
+  collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
+  `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
 );
 expect(
-  collectionVariable(internalCollection, "contractVersion") === "1.3.1",
-  "내부 API 계약 버전이 1.3.1이 아님",
+  collectionVariable(internalCollection, "contractVersion") === expectedContractVersion,
+  `내부 API 계약 버전이 ${expectedContractVersion}이 아님`,
 );
 
 const p0PublicEndpoints = [

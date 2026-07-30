@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT FastAPI Internal API",
-    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.3.1이며 Frontend는 직접 호출하지 않습니다.",
+    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.5.0이며 Frontend는 직접 호출하지 않습니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,7 +32,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.3.1",
+      "value": "1.5.0",
       "type": "string"
     },
     {
@@ -1129,6 +1129,1043 @@
               ],
               "cookie": [],
               "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_ANSWER_GENERATION_REQUEST\",\n  \"message\": \"답변 생성 요청 문맥이 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/answers\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Wiki 조회 창구",
+      "description": "FastAPI가 Spring Boot에 호출하는 Wiki 조회 창구. 방향이 다른 폴더와 반대다 — FastAPI가 호출자이고 Spring Boot가 응답한다. FR-WIKI-002가 요구하는 \"백엔드가 검색·본문·관계 조회 수단을 제공하고 에이전트가 필요한 Wiki를 선택해 조회한다\"의 창구다.",
+      "item": [
+        {
+          "name": "Wiki 본문 검색",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wiki-search?scopeKey=D1-D2&query=%EC%97%B0%EC%B0%A8%20%EC%9D%B4%EC%9B%94&limit=10",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-search"
+              ],
+              "query": [
+                {
+                  "key": "scopeKey",
+                  "value": "D1-D2",
+                  "description": "조회 범위"
+                },
+                {
+                  "key": "query",
+                  "value": "연차 이월",
+                  "description": "검색어"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "결과 개수"
+                }
+              ],
+              "variable": []
+            },
+            "description": "범위 안의 Wiki 본문을 전문 검색합니다.\n에이전트가 고칠 Wiki를 찾을 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 조회 범위. 허가에 묶인 값과 다르면 404\n- `query`: 검색어\n- `limit`: 결과 개수\n\n### Request Body\n없음\n\n### 정책\n- `wiki_search_chunk` 파생 색인을 사용합니다(DR-029).\n- 반영이 완료된 Wiki만 검색합니다. 작업 공간의 검증 전 내용은 색인하지 않습니다(DR-006).\n- 에이전트 질의는 `boolean phrase`로 처리합니다. 모든 어절 AND(`+req`)는 자연어 질의를 전멸시켜 사용하지 않습니다.\n- 허가 범위 밖은 존재를 노출하지 않도록 404로 거부합니다(NFR-SEC-003 · FR-ACL-006).\n\n### Response\n- `scopeVersion`: 응답 시점의 범위 버전(DR-030)\n- `items[].wikiId`, `title`, `breadcrumb`: 위치를 보여주는 헤더 경로\n- `items[].snippet`: 일치 구간\n- `items[].chunkIndex`, `contentHash`\n\n### Error\n- `400 Bad Request`: 검색어 또는 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-search?scopeKey=D1-D2&query=%EC%97%B0%EC%B0%A8%20%EC%9D%B4%EC%9B%94&limit=10",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-search"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    },
+                    {
+                      "key": "query",
+                      "value": "연차 이월",
+                      "description": "검색어"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10",
+                      "description": "결과 개수"
+                    }
+                  ],
+                  "variable": []
+                },
+                "description": "범위 안의 Wiki 본문을 전문 검색합니다.\n에이전트가 고칠 Wiki를 찾을 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 조회 범위. 허가에 묶인 값과 다르면 404\n- `query`: 검색어\n- `limit`: 결과 개수\n\n### Request Body\n없음\n\n### 정책\n- `wiki_search_chunk` 파생 색인을 사용합니다(DR-029).\n- 반영이 완료된 Wiki만 검색합니다. 작업 공간의 검증 전 내용은 색인하지 않습니다(DR-006).\n- 에이전트 질의는 `boolean phrase`로 처리합니다. 모든 어절 AND(`+req`)는 자연어 질의를 전멸시켜 사용하지 않습니다.\n- 허가 범위 밖은 존재를 노출하지 않도록 404로 거부합니다(NFR-SEC-003 · FR-ACL-006).\n\n### Response\n- `scopeVersion`: 응답 시점의 범위 버전(DR-030)\n- `items[].wikiId`, `title`, `breadcrumb`: 위치를 보여주는 헤더 경로\n- `items[].snippet`: 일치 구간\n- `items[].chunkIndex`, `contentHash`\n\n### Error\n- `400 Bad Request`: 검색어 또는 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"items\": [\n    {\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\",\n      \"breadcrumb\": \"휴가 규정 > 연차 > 이월\",\n      \"snippet\": \"연차는 다음 해 3월까지 이월할 수 있다...\",\n      \"chunkIndex\": 3,\n      \"contentHash\": \"9f2a1c8e4b7d0a35f6c9e2b8d1a4f7c0e3b6d9a2c5f8e1b4d7a0c3f6e9b2d5a8\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-search?scopeKey=D1-D2&query=%EC%97%B0%EC%B0%A8%20%EC%9D%B4%EC%9B%94&limit=10",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-search"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    },
+                    {
+                      "key": "query",
+                      "value": "연차 이월",
+                      "description": "검색어"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10",
+                      "description": "결과 개수"
+                    }
+                  ],
+                  "variable": []
+                },
+                "description": "범위 안의 Wiki 본문을 전문 검색합니다.\n에이전트가 고칠 Wiki를 찾을 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 조회 범위. 허가에 묶인 값과 다르면 404\n- `query`: 검색어\n- `limit`: 결과 개수\n\n### Request Body\n없음\n\n### 정책\n- `wiki_search_chunk` 파생 색인을 사용합니다(DR-029).\n- 반영이 완료된 Wiki만 검색합니다. 작업 공간의 검증 전 내용은 색인하지 않습니다(DR-006).\n- 에이전트 질의는 `boolean phrase`로 처리합니다. 모든 어절 AND(`+req`)는 자연어 질의를 전멸시켜 사용하지 않습니다.\n- 허가 범위 밖은 존재를 노출하지 않도록 404로 거부합니다(NFR-SEC-003 · FR-ACL-006).\n\n### Response\n- `scopeVersion`: 응답 시점의 범위 버전(DR-030)\n- `items[].wikiId`, `title`, `breadcrumb`: 위치를 보여주는 헤더 경로\n- `items[].snippet`: 일치 구간\n- `items[].chunkIndex`, `contentHash`\n\n### Error\n- `400 Bad Request`: 검색어 또는 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_SCOPE_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wiki-search\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 목록",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wiki-pages?scopeKey=D1-D2",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-pages"
+              ],
+              "query": [
+                {
+                  "key": "scopeKey",
+                  "value": "D1-D2",
+                  "description": "조회 범위"
+                }
+              ],
+              "variable": []
+            },
+            "description": "범위 안의 Wiki 카탈로그를 조회합니다.\n에이전트가 어떤 Wiki가 있는지 파악할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- 본문을 싣지 않습니다. 본문은 단건 조회로 가져갑니다.\n- `summary`는 `wiki.summary`에서 채웁니다.\n- `wikiPath`는 FastAPI가 Wiki ID를 자기 페이지 주소로 되돌릴 때 씁니다(DR-016).\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`, `title`, `summary`\n- `items[].wikiCategoryId`, `categoryName`\n- `items[].wikiPath`, `contentHash`, `updatedAt`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-pages?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-pages"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": []
+                },
+                "description": "범위 안의 Wiki 카탈로그를 조회합니다.\n에이전트가 어떤 Wiki가 있는지 파악할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- 본문을 싣지 않습니다. 본문은 단건 조회로 가져갑니다.\n- `summary`는 `wiki.summary`에서 채웁니다.\n- `wikiPath`는 FastAPI가 Wiki ID를 자기 페이지 주소로 되돌릴 때 씁니다(DR-016).\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`, `title`, `summary`\n- `items[].wikiCategoryId`, `categoryName`\n- `items[].wikiPath`, `contentHash`, `updatedAt`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"items\": [\n    {\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiCategoryId\": \"9\",\n      \"categoryName\": \"휴가 및 근태\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentHash\": \"9f2a1c8e4b7d0a35f6c9e2b8d1a4f7c0e3b6d9a2c5f8e1b4d7a0c3f6e9b2d5a8\",\n      \"updatedAt\": \"2026-07-27T09:00:00Z\"\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-pages?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-pages"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": []
+                },
+                "description": "범위 안의 Wiki 카탈로그를 조회합니다.\n에이전트가 어떤 Wiki가 있는지 파악할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- 본문을 싣지 않습니다. 본문은 단건 조회로 가져갑니다.\n- `summary`는 `wiki.summary`에서 채웁니다.\n- `wikiPath`는 FastAPI가 Wiki ID를 자기 페이지 주소로 되돌릴 때 씁니다(DR-016).\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`, `title`, `summary`\n- `items[].wikiCategoryId`, `categoryName`\n- `items[].wikiPath`, `contentHash`, `updatedAt`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_SCOPE_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wiki-pages\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 본문",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wikis/:wikiId/content?scopeKey=D1-D2",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wikis",
+                ":wikiId",
+                "content"
+              ],
+              "query": [
+                {
+                  "key": "scopeKey",
+                  "value": "D1-D2",
+                  "description": "조회 범위"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "wikiId",
+                  "value": "{{wikiId}}",
+                  "description": "wikiId 경로 변수"
+                }
+              ]
+            },
+            "description": "Wiki 1건의 Markdown 원문을 조회합니다.\n에이전트가 고칠 Wiki를 읽을 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- 프론트매터를 포함한 원문을 그대로 돌려줍니다.\n- Spring Boot가 `wiki.wiki_path`로 파일을 읽어 싣습니다. FastAPI는 서비스 파일에 직접 접근하지 않습니다.\n- `contentHash`가 이미 받은 값과 같으면 FastAPI는 다시 요청하지 않습니다.\n\n### Response\n- `scopeVersion`\n- `wikiId`, `title`, `wikiPath`\n- `contentMarkdown`: 프론트매터 포함 원문\n- `contentHash`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wikis/:wikiId/content?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wikis",
+                    ":wikiId",
+                    "content"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "wikiId",
+                      "value": "{{wikiId}}",
+                      "description": "wikiId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "Wiki 1건의 Markdown 원문을 조회합니다.\n에이전트가 고칠 Wiki를 읽을 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- 프론트매터를 포함한 원문을 그대로 돌려줍니다.\n- Spring Boot가 `wiki.wiki_path`로 파일을 읽어 싣습니다. FastAPI는 서비스 파일에 직접 접근하지 않습니다.\n- `contentHash`가 이미 받은 값과 같으면 FastAPI는 다시 요청하지 않습니다.\n\n### Response\n- `scopeVersion`\n- `wikiId`, `title`, `wikiPath`\n- `contentMarkdown`: 프론트매터 포함 원문\n- `contentHash`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"wikiId\": \"101\",\n  \"title\": \"휴가 규정\",\n  \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n  \"contentMarkdown\": \"---\\ntitle: 휴가 규정\\ndescription: 연차와 반차 사용 기준\\n---\\n\\n## 연차\\n본문...\",\n  \"contentHash\": \"9f2a1c8e4b7d0a35f6c9e2b8d1a4f7c0e3b6d9a2c5f8e1b4d7a0c3f6e9b2d5a8\"\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wikis/:wikiId/content?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wikis",
+                    ":wikiId",
+                    "content"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "wikiId",
+                      "value": "{{wikiId}}",
+                      "description": "wikiId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "Wiki 1건의 Markdown 원문을 조회합니다.\n에이전트가 고칠 Wiki를 읽을 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- 프론트매터를 포함한 원문을 그대로 돌려줍니다.\n- Spring Boot가 `wiki.wiki_path`로 파일을 읽어 싣습니다. FastAPI는 서비스 파일에 직접 접근하지 않습니다.\n- `contentHash`가 이미 받은 값과 같으면 FastAPI는 다시 요청하지 않습니다.\n\n### Response\n- `scopeVersion`\n- `wikiId`, `title`, `wikiPath`\n- `contentMarkdown`: 프론트매터 포함 원문\n- `contentHash`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wikis/:wikiId/content\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 관계",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wikis/:wikiId/relations?scopeKey=D1-D2",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wikis",
+                ":wikiId",
+                "relations"
+              ],
+              "query": [
+                {
+                  "key": "scopeKey",
+                  "value": "D1-D2",
+                  "description": "조회 범위"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "wikiId",
+                  "value": "{{wikiId}}",
+                  "description": "wikiId 경로 변수"
+                }
+              ]
+            },
+            "description": "Wiki 1건의 인용·링크 관계를 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않도록 확인할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- `backlinks`는 저장되지 않은 역방향이므로 Spring Boot가 계산합니다.\n\n### Response\n- `scopeVersion`\n- `wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `documentRefs`: 근거 원본문서 ID\n- `backlinks`: 이 Wiki를 참조하는 Wiki ID\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wikis/:wikiId/relations?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wikis",
+                    ":wikiId",
+                    "relations"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "wikiId",
+                      "value": "{{wikiId}}",
+                      "description": "wikiId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "Wiki 1건의 인용·링크 관계를 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않도록 확인할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- `backlinks`는 저장되지 않은 역방향이므로 Spring Boot가 계산합니다.\n\n### Response\n- `scopeVersion`\n- `wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `documentRefs`: 근거 원본문서 ID\n- `backlinks`: 이 Wiki를 참조하는 Wiki ID\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"wikiId\": \"101\",\n  \"wikiRefs\": [\n    \"102\",\n    \"115\"\n  ],\n  \"documentRefs\": [\n    \"15\"\n  ],\n  \"backlinks\": [\n    \"108\"\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wikis/:wikiId/relations?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wikis",
+                    ":wikiId",
+                    "relations"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "wikiId",
+                      "value": "{{wikiId}}",
+                      "description": "wikiId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "Wiki 1건의 인용·링크 관계를 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않도록 확인할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- `backlinks`는 저장되지 않은 역방향이므로 Spring Boot가 계산합니다.\n\n### Response\n- `scopeVersion`\n- `wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `documentRefs`: 근거 원본문서 ID\n- `backlinks`: 이 Wiki를 참조하는 Wiki ID\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wikis/:wikiId/relations\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 목차",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/index",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-spaces",
+                ":scopeKey",
+                "index"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "scopeKey",
+                  "value": "{{scopeKey}}",
+                  "description": "scopeKey 경로 변수"
+                }
+              ]
+            },
+            "description": "범위의 현재 목차 Markdown을 조회합니다.\n에이전트가 목차 구조를 파악하고 갱신안을 만들 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- `scopeVersion`\n- `scopeKey`\n- `indexMarkdown`: 현재 목차 원문\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/index",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "index"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위의 현재 목차 Markdown을 조회합니다.\n에이전트가 목차 구조를 파악하고 갱신안을 만들 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- `scopeVersion`\n- `scopeKey`\n- `indexMarkdown`: 현재 목차 원문\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"scopeKey\": \"D1-D2\",\n  \"indexMarkdown\": \"# 목차\\n\\n## 휴가 및 근태\\n- [휴가 규정](pages/a3f2c1d4.md) — 연차와 반차 사용 기준\\n\"\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/index",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "index"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위의 현재 목차 Markdown을 조회합니다.\n에이전트가 목차 구조를 파악하고 갱신안을 만들 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- `scopeVersion`\n- `scopeKey`\n- `indexMarkdown`: 현재 목차 원문\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_SCOPE_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wiki-spaces/:scopeKey/index\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 카테고리",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/categories",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-spaces",
+                ":scopeKey",
+                "categories"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "scopeKey",
+                  "value": "{{scopeKey}}",
+                  "description": "scopeKey 경로 변수"
+                }
+              ]
+            },
+            "description": "범위의 카테고리 목록과 사용량을 조회합니다.\n에이전트가 카테고리를 생성·병합·삭제할지 판단할 때 호출합니다(FR-WIKI-014).\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wikiCount`는 병합 판단에 사용합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiCategoryId`, `name`, `wikiCount`\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/categories",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "categories"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위의 카테고리 목록과 사용량을 조회합니다.\n에이전트가 카테고리를 생성·병합·삭제할지 판단할 때 호출합니다(FR-WIKI-014).\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wikiCount`는 병합 판단에 사용합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiCategoryId`, `name`, `wikiCount`\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"items\": [\n    {\n      \"wikiCategoryId\": \"9\",\n      \"name\": \"휴가 및 근태\",\n      \"wikiCount\": 12\n    },\n    {\n      \"wikiCategoryId\": \"10\",\n      \"name\": \"보안\",\n      \"wikiCount\": 4\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/categories",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "categories"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위의 카테고리 목록과 사용량을 조회합니다.\n에이전트가 카테고리를 생성·병합·삭제할지 판단할 때 호출합니다(FR-WIKI-014).\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wikiCount`는 병합 판단에 사용합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiCategoryId`, `name`, `wikiCount`\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_SCOPE_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wiki-spaces/:scopeKey/categories\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "원본문서 파싱본",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/documents/:documentId/parsed?scopeKey=D1-D2",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "documents",
+                ":documentId",
+                "parsed"
+              ],
+              "query": [
+                {
+                  "key": "scopeKey",
+                  "value": "D1-D2",
+                  "description": "조회 범위"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "documentId",
+                  "value": "{{documentId}}",
+                  "description": "documentId 경로 변수"
+                }
+              ]
+            },
+            "description": "원본문서의 파싱 Markdown을 조회합니다.\n각주의 인용을 원문과 대조할 때 호출합니다(FR-WIKI-001 · NFR-AI-002).\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `documentId`: 조회할 원본문서 ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- `documentId`\n- `originalFileName`\n- `parsedMarkdown`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 문서 없음"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/documents/:documentId/parsed?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "documents",
+                    ":documentId",
+                    "parsed"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "documentId",
+                      "value": "{{documentId}}",
+                      "description": "documentId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "원본문서의 파싱 Markdown을 조회합니다.\n각주의 인용을 원문과 대조할 때 호출합니다(FR-WIKI-001 · NFR-AI-002).\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `documentId`: 조회할 원본문서 ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- `documentId`\n- `originalFileName`\n- `parsedMarkdown`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 문서 없음"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"documentId\": \"15\",\n  \"originalFileName\": \"취업규칙.pdf\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\"\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/documents/:documentId/parsed?scopeKey=D1-D2",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "documents",
+                    ":documentId",
+                    "parsed"
+                  ],
+                  "query": [
+                    {
+                      "key": "scopeKey",
+                      "value": "D1-D2",
+                      "description": "조회 범위"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "documentId",
+                      "value": "{{documentId}}",
+                      "description": "documentId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "원본문서의 파싱 Markdown을 조회합니다.\n각주의 인용을 원문과 대조할 때 호출합니다(FR-WIKI-001 · NFR-AI-002).\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `documentId`: 조회할 원본문서 ID\n\n### Query Params\n- `scopeKey`: 조회 범위\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- `documentId`\n- `originalFileName`\n- `parsedMarkdown`\n\n### Error\n- `400 Bad Request`: 파라미터 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: 허가 범위 밖 · 허가 만료 · 문서 없음"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"DOCUMENT_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/documents/:documentId/parsed\",\n  \"fieldErrors\": []\n}"
             }
           ]
         }

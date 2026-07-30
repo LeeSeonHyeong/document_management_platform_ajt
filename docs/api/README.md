@@ -2,10 +2,14 @@
 
 ## 계약 버전
 
-- 현재 버전: `1.4.0`
-- 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.8
+- 현재 버전: `1.5.0`
+- 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.11
 - 공개 API: 56개
 - Spring Boot → FastAPI 내부 API: 7개
+- FastAPI → Spring Boot Wiki 조회 창구: 7개
+
+> 두 방향 모두 `AJT-FastAPI-Internal-API` 컬렉션에 있다. 조회 창구는 FastAPI가 호출자이고
+> Spring Boot가 응답한다 — `baseVariable`이 `backendBaseUrl`인 요청이 그것이다.
 
 URL, HTTP 메서드, 필드명, 필드 타입, 상태 코드와 P0 Saved Example은 프론트엔드·Spring Boot·FastAPI가 함께 사용하는 개발 계약이다. 변경이 필요하면 소비 담당자와 먼저 합의하고 `contractVersion`을 올린 뒤 컬렉션을 다시 배포한다.
 

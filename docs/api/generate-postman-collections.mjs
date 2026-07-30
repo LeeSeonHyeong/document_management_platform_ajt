@@ -22,6 +22,16 @@ const internalApiKeyAuth = {
   ],
 };
 
+// Wiki 조회 창구 전용. 내부 API 키와 별개다 — 키는 호출자의 신원이고 이 값은 그 요청이
+// 볼 수 있는 범위다. Spring Boot 가 변환·수정 요청 시작에 발급하고 요청 1개·scopeKey
+// 1개·scopeVersion 1개에 묶는다. requestId 는 로그에 남는 correlation ID 이므로 인가에
+// 쓰지 않는다.
+const wikiCapabilityHeader = {
+  key: "X-Wiki-Capability",
+  value: "{{wikiCapability}}",
+  description: "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다",
+};
+
 function docs({
   summary,
   usage,
@@ -2005,6 +2015,196 @@ const internalFolders = [
       }),
     }),
   ]),
+  folder(
+    "Wiki 조회 창구",
+    "FastAPI가 Spring Boot에 호출하는 Wiki 조회 창구. 방향이 다른 폴더와 반대다 — FastAPI가 호출자이고 Spring Boot가 응답한다. FR-WIKI-002가 요구하는 \"백엔드가 검색·본문·관계 조회 수단을 제공하고 에이전트가 필요한 Wiki를 선택해 조회한다\"의 창구다.",
+    [
+      request({
+        name: "Wiki 본문 검색",
+        method: "GET",
+        path: "/internal/v1/wiki-search",
+        query: [
+          { key: "scopeKey", value: "D1-D2", description: "조회 범위" },
+          { key: "query", value: "연차 이월", description: "검색어" },
+          { key: "limit", value: "10", description: "결과 개수" },
+        ],
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "범위 안의 Wiki 본문을 전문 검색합니다.",
+          usage: "에이전트가 고칠 Wiki를 찾을 때 호출합니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          queryParams: [
+            "`scopeKey`: 조회 범위. 허가에 묶인 값과 다르면 404",
+            "`query`: 검색어",
+            "`limit`: 결과 개수",
+          ],
+          policy: [
+            "`wiki_search_chunk` 파생 색인을 사용합니다(DR-029).",
+            "반영이 완료된 Wiki만 검색합니다. 작업 공간의 검증 전 내용은 색인하지 않습니다(DR-006).",
+            "에이전트 질의는 `boolean phrase`로 처리합니다. 모든 어절 AND(`+req`)는 자연어 질의를 전멸시켜 사용하지 않습니다.",
+            "허가 범위 밖은 존재를 노출하지 않도록 404로 거부합니다(NFR-SEC-003 · FR-ACL-006).",
+          ],
+          response: [
+            "`scopeVersion`: 응답 시점의 범위 버전(DR-030)",
+            "`items[].wikiId`, `title`, `breadcrumb`: 위치를 보여주는 헤더 경로",
+            "`items[].snippet`: 일치 구간",
+            "`items[].chunkIndex`, `contentHash`",
+          ],
+          errors: [
+            "`400 Bad Request`: 검색어 또는 파라미터 오류",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 목록",
+        method: "GET",
+        path: "/internal/v1/wiki-pages",
+        query: [{ key: "scopeKey", value: "D1-D2", description: "조회 범위" }],
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "범위 안의 Wiki 카탈로그를 조회합니다.",
+          usage: "에이전트가 어떤 Wiki가 있는지 파악할 때 호출합니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          queryParams: ["`scopeKey`: 조회 범위"],
+          policy: [
+            "본문을 싣지 않습니다. 본문은 단건 조회로 가져갑니다.",
+            "`summary`는 `wiki.summary`에서 채웁니다.",
+            "`wikiPath`는 FastAPI가 Wiki ID를 자기 페이지 주소로 되돌릴 때 씁니다(DR-016).",
+          ],
+          response: [
+            "`scopeVersion`",
+            "`items[].wikiId`, `title`, `summary`",
+            "`items[].wikiCategoryId`, `categoryName`",
+            "`items[].wikiPath`, `contentHash`, `updatedAt`",
+          ],
+          errors: [
+            "`400 Bad Request`: 파라미터 오류",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 본문",
+        method: "GET",
+        path: "/internal/v1/wikis/:wikiId/content",
+        query: [{ key: "scopeKey", value: "D1-D2", description: "조회 범위" }],
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "Wiki 1건의 Markdown 원문을 조회합니다.",
+          usage: "에이전트가 고칠 Wiki를 읽을 때 호출합니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`wikiId`: 조회할 Wiki ID"],
+          queryParams: ["`scopeKey`: 조회 범위"],
+          policy: [
+            "프론트매터를 포함한 원문을 그대로 돌려줍니다.",
+            "Spring Boot가 `wiki.wiki_path`로 파일을 읽어 싣습니다. FastAPI는 서비스 파일에 직접 접근하지 않습니다.",
+            "`contentHash`가 이미 받은 값과 같으면 FastAPI는 다시 요청하지 않습니다.",
+          ],
+          response: [
+            "`scopeVersion`",
+            "`wikiId`, `title`, `wikiPath`",
+            "`contentMarkdown`: 프론트매터 포함 원문",
+            "`contentHash`",
+          ],
+          errors: [
+            "`400 Bad Request`: 파라미터 오류",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 관계",
+        method: "GET",
+        path: "/internal/v1/wikis/:wikiId/relations",
+        query: [{ key: "scopeKey", value: "D1-D2", description: "조회 범위" }],
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "Wiki 1건의 인용·링크 관계를 조회합니다.",
+          usage: "에이전트가 병합·제거로 남의 링크를 깨뜨리지 않도록 확인할 때 호출합니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`wikiId`: 조회할 Wiki ID"],
+          queryParams: ["`scopeKey`: 조회 범위"],
+          policy: [
+            "`wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).",
+            "`backlinks`는 저장되지 않은 역방향이므로 Spring Boot가 계산합니다.",
+          ],
+          response: [
+            "`scopeVersion`",
+            "`wikiRefs`: 이 Wiki가 참조하는 Wiki ID",
+            "`documentRefs`: 근거 원본문서 ID",
+            "`backlinks`: 이 Wiki를 참조하는 Wiki ID",
+          ],
+          errors: [
+            "`400 Bad Request`: 파라미터 오류",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · Wiki 없음",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 목차",
+        method: "GET",
+        path: "/internal/v1/wiki-spaces/:scopeKey/index",
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "범위의 현재 목차 Markdown을 조회합니다.",
+          usage: "에이전트가 목차 구조를 파악하고 갱신안을 만들 때 호출합니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`scopeKey`: 조회 범위"],
+          response: ["`scopeVersion`", "`scopeKey`", "`indexMarkdown`: 현재 목차 원문"],
+          errors: [
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 카테고리",
+        method: "GET",
+        path: "/internal/v1/wiki-spaces/:scopeKey/categories",
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "범위의 카테고리 목록과 사용량을 조회합니다.",
+          usage: "에이전트가 카테고리를 생성·병합·삭제할지 판단할 때 호출합니다(FR-WIKI-014).",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`scopeKey`: 조회 범위"],
+          policy: ["`wikiCount`는 병합 판단에 사용합니다."],
+          response: [
+            "`scopeVersion`",
+            "`items[].wikiCategoryId`, `name`, `wikiCount`",
+          ],
+          errors: [
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · 범위 없음",
+          ],
+        }),
+      }),
+      request({
+        name: "원본문서 파싱본",
+        method: "GET",
+        path: "/internal/v1/documents/:documentId/parsed",
+        query: [{ key: "scopeKey", value: "D1-D2", description: "조회 범위" }],
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "원본문서의 파싱 Markdown을 조회합니다.",
+          usage: "각주의 인용을 원문과 대조할 때 호출합니다(FR-WIKI-001 · NFR-AI-002).",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`documentId`: 조회할 원본문서 ID"],
+          queryParams: ["`scopeKey`: 조회 범위"],
+          response: ["`documentId`", "`originalFileName`", "`parsedMarkdown`"],
+          errors: [
+            "`400 Bad Request`: 파라미터 오류",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: 허가 범위 밖 · 허가 만료 · 문서 없음",
+          ],
+        }),
+      }),
+    ],
+  ),
 ];
 
 const publicCollection = {
@@ -2068,6 +2268,15 @@ const environment = {
     },
     {
       key: "csrfToken",
+      value: "",
+      type: "secret",
+      enabled: true,
+    },
+    {
+      // Wiki 조회 창구의 요청 단위 열람 허가. Spring Boot가 변환·수정 요청 시작에
+      // 발급하므로 사람이 채우는 값이 아니다. Postman 에서 창구를 직접 호출해 볼 때만
+      // 넣는다. 로그에 남기지 않는다.
+      key: "wikiCapability",
       value: "",
       type: "secret",
       enabled: true,

@@ -288,20 +288,36 @@ scope_changed  ← 신규 제안: 작업 중 같은 범위의 위키가 바뀜
 
 프론트엔드 영향은 없다. 내부 API 만 다룬다.
 
-### 8.1 계약 말고도 개정이 필요한 공통 문서
+### 8.1 함께 반영한 공통 문서
 
-**이 문서는 공통 문서를 수정하지 않는다.** 합의 뒤 각 담당자가 반영한다. 무엇을 고쳐야 하는지만 적는다.
+이 티켓에서 사용자 지시로 함께 반영했다. **계약이 서 있어야 백엔드가 착수할 수 있기 때문이다.**
 
-| 문서 | 개정 내용 | 왜 필요한가 |
+| 문서 | 개정 | 상태 |
 | --- | --- | --- |
-| `../docs/requirements/요구사항정의서.md` — **NFR-AI-003** | 실패 단계에 `scope_changed` 추가 | 지금 조항이 *"`context_load`, `agent_timeout`, `agent_error`, `lint_failed`, `assemble` **중 하나로** 저장한다"* 로 목록을 닫아뒀다. 계약만 바꾸면 요구사항과 어긋난다 |
-| `../docs/api/AJT-FastAPI-Internal-API.postman_collection.json` | 창구 7개 · `X-Wiki-Capability` 신설, `failureStage` 값 추가 | 계약이 정본이므로 구현 전에 서 있어야 한다 |
-| `../docs/api/README.md` | `contractVersion` 상향 | 엔드포인트 신설은 하위 호환이 아니므로 minor 이상 (절차 4번) |
-| `../docs/conventions/rest-api-convention.md` | 확인만 | 내부 창구가 `404` 로 존재를 숨기는 것이 기존 규약과 충돌하지 않는지 |
+| `../docs/requirements/요구사항정의서.md` v2.10 → **v2.11** | `NFR-AI-003` 실패 단계에 `scope_changed` 추가 | 완료 |
+| `../docs/api/generate-postman-collections.mjs` | 「Wiki 조회 창구」 폴더 · 요청 7개 · `X-Wiki-Capability` · `wikiCapability` 환경변수 | 완료 |
+| `../docs/api/postman-contract-examples.mjs` | 창구 7개 Saved Example, `contractVersion` 1.3.1 → **1.5.0** | 완료 |
+| `../docs/api/README.md` | 버전 1.5.0, 기준 요구사항 v2.11, 창구 7개 명시 | 완료 |
+| `../scripts/validate-artifact-consistency.mjs` | 내부 API 7 → 14, 기대 버전 1.5.0 | 완료 |
+| `../docs/conventions/rest-api-convention.md` | **변경 없음** — `:365-373` 이 이미 "권한 없는 자료와 존재하지 않는 자료는 동일한 오류 코드" 를 정해뒀다 | 확인 완료 |
 
-ERD 개정은 **필요 없다.** `wiki_scope.scope_version`·`wiki.summary`·`wiki.content_hash`·`wiki_search_chunk` 가 S15P11B106-139 에서 이미 들어갔다.
+**JSON 컬렉션을 직접 고치지 않았다.** README 절차가 *"생성된 JSON을 직접 수정한 뒤 생성기를 실행하면 변경 내용이 사라진다"* 로 정했으므로 생성기와 예시 모듈만 고치고 재생성했다.
 
-**순서가 있다.** NFR-AI-003 개정이 계약 개정보다 먼저다 — 요구사항이 목록을 닫아둔 상태에서 계약에 값을 더하면 그 순간 두 문서가 모순된다.
+순서는 요구사항 개정을 먼저 했다 — 요구사항이 목록을 닫아둔 상태에서 계약에 값을 더하면 그 순간 두 문서가 모순된다.
+
+ERD 개정은 **필요 없었다.** `wiki_scope.scope_version`·`wiki.summary`·`wiki.content_hash`·`wiki_search_chunk` 가 S15P11B106-139 에서 이미 들어갔다.
+
+**계약 버전을 1.4.0 이 아니라 1.5.0 으로 올린 이유.** 반영 전 `README` 는 `1.4.0`, 컬렉션은 `1.3.1` 로 갈라져 있었다 — `abbe101` 이 README 만 올리고 생성기를 안 올렸고, 한 시간 뒤 `fbb5492` 가 생성기를 `1.3.1` 로 올려 어긋났다. 내용은 양쪽에 다 있고 숫자만 안 맞았다. 어느 쪽 번호도 재사용하지 않고 둘을 `1.5.0` 으로 합쳤다.
+
+### 8.2 검증
+
+```
+node docs/api/generate-postman-collections.mjs     internalRequests 14
+node docs/api/validate-postman-collections.mjs     errors []
+node scripts/validate-artifact-consistency.mjs     17 tables, 56 public, 14 internal — passed
+```
+
+이 저장소에 `node` 가 없어 VS Code 번들 `node v24.18.0` 으로 돌렸다.
 
 ## 9. AI 쪽 작업
 
