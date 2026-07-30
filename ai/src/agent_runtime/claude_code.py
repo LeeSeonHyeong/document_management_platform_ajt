@@ -102,6 +102,11 @@ class ClaudeCodeRuntime:
 
     name = "claude-code"
 
+    # 이 런타임은 MCP 서버를 **별도 프로세스**로 띄운다 (`_mcp_config`). 창구 모드에서
+    # 그것이 왜 문제인지와 기본값이 왜 `True` 인지는 `base.py::spawns_mcp_server` 에 있다.
+    # 명시하지 않아도 기본이 `True` 지만, 이 사실이 이 클래스의 성질이므로 적어 둔다.
+    spawns_mcp_server = True
+
     def __init__(self, model: str = "sonnet", effort: str | None = None,
                  query_log: str | Path | None = None):
         """`effort` 는 지정하지 않으면 **전달하지 않는다** — CLI 기본값이 그대로 쓰인다.

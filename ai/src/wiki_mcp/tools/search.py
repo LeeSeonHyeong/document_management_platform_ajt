@@ -99,6 +99,26 @@ class SearchHandler:
             return f"`{query}`에 해당하는 것이 {self.scope_key} 범위에 없다."
 
         lines = [f"**{len(matches)}건** — `{query}`:\n"]
+        # `origin` 이 없으면 과도기 push 경로다 — 지금까지처럼 한 덩어리로 보여준다.
+        # 창구 경로에서만 나눈다 (설계 §7.1). 섞으면 에이전트가 자기 초안과 라이브를
+        # 구분하지 못해 남의 페이지를 자기 것으로 착각한다.
+        if not any("origin" in m for m in matches):
+            lines.extend(self._match_lines(matches, query))
+            return "\n".join(lines)
+
+        work = [m for m in matches if m.get("origin") == "work"]
+        live = [m for m in matches if m.get("origin") != "work"]
+        if work:
+            lines.append(f"**작업 중 ({len(work)}건)** — 이번 작업에서 쓴 것이다.\n")
+            lines.extend(self._match_lines(work, query))
+        if live:
+            lines.append(f"**반영된 위키 ({len(live)}건)** — 이미 서비스 중이다.\n")
+            lines.extend(self._match_lines(live, query))
+        return "\n".join(lines)
+
+    def _match_lines(self, matches: list[dict], query: str) -> list[str]:
+        """건별 렌더링. `search` 에 있던 루프를 그대로 옮긴 것이다 — 형식 변경 없음."""
+        lines = []
         for m in matches:
             page = f" ({m['page']}쪽)" if m.get("page") else ""
             crumb = f"\n  {m['header_breadcrumb']}" if m.get("header_breadcrumb") else ""
@@ -107,7 +127,7 @@ class SearchHandler:
                 f"**{m['address']}**{page} — {label(m)} [보기]({link}){crumb}\n"
                 f"```\n{_snippet(m.get('content', ''), query)}\n```\n"
             )
-        return "\n".join(lines)
+        return lines
 
     async def references(self, path: str, query: str) -> str:
         if query == "uncited":

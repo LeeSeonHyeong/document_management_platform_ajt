@@ -32,6 +32,10 @@ class FailureStage(str, Enum):
     AGENT_ERROR = "agent_error"
     LINT_FAILED = "lint_failed"
     ASSEMBLE = "assemble"
+    # 변환 중 같은 scope_key 의 Wiki 가 바뀌어 반영할 수 없게 됐다 (DR-030).
+    # 요구사항 v2.11 · 계약 v1.5.0 에서 신설했다. AI 가 제안해 정한 이름이므로
+    # 백엔드가 다른 이름을 원하면 바꾼다 (설계 문서 7절).
+    SCOPE_CHANGED = "scope_changed"
 
 
 class InternalError(Exception):

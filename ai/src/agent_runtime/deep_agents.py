@@ -114,6 +114,10 @@ class DeepAgentsRuntime:
 
     name = "deepagents"
 
+    # `_server_config` 가 MCP 서버를 별도 프로세스로 띄운다 — 창구 모드에서 쓸 수 없는
+    # 이유와 기본값은 `base.py::spawns_mcp_server` 에 있다.
+    spawns_mcp_server = True
+
     def __init__(self, model: str = "anthropic:claude-opus-4-6"):
         self.model = model
 

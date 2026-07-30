@@ -85,6 +85,9 @@ class Runtime(Protocol):
     """An agent runtime wired to one MCP server."""
 
     name: str
+    # MCP 서버를 별도 프로세스로 띄우는가. **선언하지 않으면 띄우는 것으로 본다** —
+    # 판정은 `spawns_mcp_server()` 이고 그 함수 docstring 이 이유를 적는다.
+    spawns_mcp_server: bool
 
     def run(self, instruction: str, *, root: Path, scope_key: str,
             job_id: str, timeout: int | None = None) -> RunResult: ...
@@ -110,6 +113,22 @@ class Runtime(Protocol):
     # 수단이다. 호출자 쪽 `asyncio.wait_for` 는 호출자를 풀어주기만 한다.
     #
     # **재시도를 켜지 않는다.** 실패 1건이 조용히 2~3배 청구된다.
+
+
+def spawns_mcp_server(runtime) -> bool:
+    """이 런타임이 MCP 서버를 **별도 프로세스**로 띄우는가.
+
+    **기본이 `True` 다 — 표시를 잊은 런타임은 안전한 쪽(거절)으로 떨어진다.** 뒤집으면
+    조용히 통과하고, 그 조합의 결과는 데이터 손실 방향이다: 창구 모드에서 별도 프로세스의
+    `fs_factory`(`wiki_mcp/local_server.py`)는 `LocalVaultFS` 라 본문이 빈 페이지를
+    에이전트에게 보이고, 에이전트는 "내용이 없다" 고 판단해 라이브를 덮는다.
+    범위 변경 중단 신호도 프로세스 밖으로 나올 길이 없다.
+
+    그래서 in-process 런타임(테스트의 `arun` 계열)이 `spawns_mcp_server = False` 를
+    **명시적으로** 끈다. 판정하는 곳은 `wiki_api/session.py`
+    `_assert_runtime_can_use_the_gateway` 한 곳이다.
+    """
+    return bool(getattr(runtime, "spawns_mcp_server", True))
 
 
 def ingest_instruction(document_address: str, scope_key: str) -> str:

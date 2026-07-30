@@ -262,9 +262,9 @@ GET /internal/v1/documents/15/parsed?scopeKey=D1-D2
 
 **이 창구만 `scopeVersion` 이 없다.** 2.4 의 예외다 — 원본문서 파싱 결과는 위키가 몇 번 바뀌든 그대로이므로, 위키 버전을 실으면 무관한 이유로 작업이 중단된다.
 
-## 4. `wikiPath` — 필수다. 그리고 지금 push 경로가 이미 깨져 있다
+## 4. `wikiPath` — 목록 창구에서 필수다. 그리고 지금 push 경로가 이미 깨져 있다
 
-**앞 판본은 "권장"이라고 적었다. 정정한다 — 필수다.** 그리고 이 필드의 부재는 창구의 문제가 아니라 **현재 돌고 있는 코드의 결함**이다.
+**앞 판본은 "권장"이라고 적었다. 정정한다 — 목록 창구(3.2)와 `selectedWikis` 에서는 필수다.** 본문 창구(3.3)는 권장이다 (실측 판정은 4.4). 그리고 이 필드의 부재는 창구의 문제가 아니라 **현재 돌고 있는 코드의 결함**이다.
 
 ### 4.1 왜 필수인가
 
@@ -329,10 +329,41 @@ if (!target.endsWith(".md") || target.contains("..")
 ### 4.3 조치
 
 ```
-창구 응답 (3.2 · 3.3)          wikiPath 필수
+창구 목록 (3.2)                wikiPath 필수 — 4.4 가 실측으로 확인했다
+창구 본문 (3.3)                wikiPath 권장 — 어댑터는 카탈로그 주소를 쓴다 (4.4)
 selectedWikis (과도기 push)    기존 위키에 wikiPath 필수 추가 → 계약 1.6.0
 신규 위키                       AI 가 발급한 경로를 응답에 실어 보낸다 (계약 v1.3.1 부터 있음)
 ```
+
+### 4.4 판정 (2026-07-30, 실측)
+
+가짜 창구(`experiments/query_gateway.py`)에 어댑터를 붙여 확인했다. 게이트웨이는 `wikiId` 를
+파일명 순서로 1부터 붙이므로 `pageKey` 와 `wikiId` 가 다르다 — 실제 백엔드의 DB 시퀀스와 같은
+불일치다.
+
+```
+tests/mcp/test_federated_gateway.py::test_check2_wiki_links_resolve      PASSED
+tests/mcp/test_federated_gateway.py::test_check1_existing_page_is_addressable  PASSED
+```
+
+`wikiPath` 를 주면 `pages/b7e1f2a9.md` 본문의 `](pages/a3f2c1d4.md)` 링크가 실제 페이지를
+가리키고 역링크가 복원된다.
+
+**대조 실험으로 필요성을 확인했다.** `federated.py:141-142` 을 `pages/{wikiId}.md` 로 고정하고
+같은 테스트를 돌리면 세 개가 깨진다.
+
+```
+test_check1_existing_page_is_addressable   FAILED  (get() 이 None — pages/1.md 로 적재됨)
+test_check2_wiki_links_resolve             FAILED  (backlinks 에 pages/b7e1f2a9.md 없음)
+test_check6_body_fetched_once              FAILED  (assert 0 == 1 — 주소가 카탈로그에 없어 본문을 안 당긴다)
+```
+
+**따라서 목록 창구(3.2)의 `wikiPath` 는 필수로 올린다** — 빼면 라이브 페이지가 아예 주소로
+잡히지 않아 링크·역링크·본문 지연 적재가 함께 죽는다. 본문 창구(3.3)의 `wikiPath` 는 어댑터가
+쓰지 않는다(주소는 카탈로그에서 온다). 교차 검증용이므로 **권장으로 유지한다.**
+
+한계: 이 판정의 근거는 가짜 창구다. 백엔드가 `wiki.wiki_path` 를 실제로 그 모양으로 실을 수
+있는지는 백엔드 검토에서 확인해야 한다.
 
 백엔드 비용은 이미 저장된 컬럼(DR-016)을 응답과 요청에 넣는 것뿐이다.
 
@@ -486,14 +517,48 @@ node scripts/validate-artifact-consistency.mjs     17 tables, 56 public, 14 inte
 
 ### 9.2 검증 항목
 
-| 확인 | 실패하면 |
-| --- | --- |
-| 기존 페이지를 고치는가 | 이름표가 안 맞는다 |
-| 라이브 본문의 위키 링크가 해석되는가 | 4절 판정 — `wikiPath` 를 필수로 올린다 |
-| 검색에 라이브와 작업층이 모두 나오는가 | 방금 쓴 페이지를 에이전트가 못 찾는다 |
-| 버전을 바꿔 두면 `scope_changed` 로 멈추는가 | 헛일을 계속한다 |
-| 허가 범위 밖이 `404` 인가 | 권한 우회 구멍 |
-| 같은 본문을 두 번 받지 않는가 | `contentHash` 규칙이 헛돈다 |
+여섯 항목 모두 `tests/mcp/test_federated_gateway.py` 에 있다. 2026-07-30 실행 결과 **6/6 통과**다
+(어댑터 수정 없음). 각 항목이 실제로 무언가를 붙잡는지는 뮤턴트로 확인했다 — 무엇이 하중을
+받고 무엇이 안 받는지는 **9.2.1 이 정본이다.** `wikiPath` 판정은 4.4.
+
+| 확인 | 테스트 | 결과 | 실패하면 |
+| --- | --- | --- | --- |
+| 기존 페이지를 고치는가 | `test_check1_existing_page_is_addressable` | 통과 | 이름표가 안 맞는다 |
+| 라이브 본문의 위키 링크가 해석되는가 | `test_check2_wiki_links_resolve` | 통과 | 4절 판정 — 목록 창구의 `wikiPath` 를 필수로 올렸다 (4.4) |
+| 검색에 라이브와 작업층이 모두 나오는가 | `test_check3_search_has_both_layers` | 통과 | 방금 쓴 페이지를 에이전트가 못 찾는다 |
+| 버전을 바꿔 두면 `scope_changed` 로 멈추는가 | `test_check4_version_bump_stops_work` | 통과 | 헛일을 계속한다 |
+| 허가 범위 밖이 `404` 인가 | `test_check5_other_scope_is_not_found` | 통과 | 권한 우회 구멍 |
+| 같은 본문을 두 번 받지 않는가 | `test_check6_body_fetched_once` | 통과 | `contentHash` 규칙이 헛돈다 |
+
+### 9.2.1 이 여섯 개가 덮지 못하는 것
+
+> **줄번호는 밀린다.** 이 절 아래 표의 줄 참조는 뒤따르는 작업이 같은 파일 위쪽을 고치면서
+> 실제로 여러 번 밀려 낡았다 (2026-07-30 정정). 줄번호를 먼저 믿지 말고 함수·테스트
+> **이름**으로 찾아 현재 줄을 확인한 뒤 인용한다.
+
+**통과했다는 것과 그 코드가 하중을 받는다는 것은 다르다.** 아래는 뮤턴트 실측(6항목 + 리뷰어
+7항목)으로 확인한 사각지대다. 전부 결함이 아니라 **커버리지 지도**다 — 다음 작업이 여기를
+건드리면 이 여섯 개는 아무 말도 하지 않는다.
+
+| 사각지대 | 실측 근거 | 그 경로의 커버리지는 어디에 |
+| --- | --- | --- |
+| 허가 만료(`WIKI_CAPABILITY_EXPIRED`) 분기 | 가짜 창구가 `404` 본문 `code` 를 항상 `WIKI_NOT_FOUND` 로 고정한다 | `tests/mcp/test_query_client.py:77` (`MockTransport`) |
+| `check6` 이 클라이언트의 `wikiId` 본문 캐시를 검증하지 않는다. 하중을 받는 것은 **어댑터의 `hydrated_bodies` 조기 반환**(`federated.py:184`)이다 | `query_client.py:221,226` 캐시를 통째로 지워도 6 passed. `hydrated_bodies` 를 지우면 3 failed (무한 재귀) | `tests/mcp/test_query_client.py:176` (`len(calls) == 1`) |
+| `check2` 가 원격 `relations` 경로를 타지 않는다. 하중을 받는 것은 **내부 참조 그래프**(`_sync_page_references`)다. `reference_type="links_to"` 행이 소비자까지 가는 것은 통합 수준에서 미확인 | `federated.py:250` 의 원격 역링크 루프를 `for … in []` 로 죽여도 6 passed — 코퍼스가 2장이라 원격 역링크가 내부 그래프와 중복돼 `known`(`:242`)에서 걸러진다 | `tests/mcp/test_federated_vaultfs.py:211` |
+| 본문 창구의 `404` → `ScopeChangedError` (설계 2.6 의 fail-closed) | 게이트웨이는 목록과 본문이 항상 일치해 경합이 안 생긴다 | `test_federated_vaultfs.py:153` `test_missing_body_closes_the_job` |
+| `QueryBudgetExceeded` 가 통합 경로에서 발동한 적이 없다 | 코퍼스 2장으로는 예산에 닿지 않는다 | **Task 8 이 링크 코퍼스로 발동을 실측했다** — 고정 105 에서 100장이 초과. 상한이 카탈로그 연동으로 바뀌었다 (`experiments/INDEX.md`) |
+| `parsed_document` 창구가 어댑터 통합 경로에 아예 나타나지 않는다 | 게이트웨이 코퍼스에 원본문서가 없어 항상 `404` | `test_query_client.py:180` |
+| 카테고리 하이드레이션 유실 방지(`_ensure_body` 가 `category` 를 다시 넘기는 것, `federated.py:168`)의 회귀 | 여섯 항목 중 카테고리를 보는 단정이 없다 | `test_federated_vaultfs.py:194` |
+| 커서 페이지네이션 루프가 두 바퀴를 돈 적이 없다 | 게이트웨이가 항상 `nextCursor: null` 이다 | `test_query_client.py:86` |
+| `_allocate` 의 층별 몫 계산(`limit` 초과 분기)의 **몫 숫자**가 통합 경로에서 검증되지 않는다 | 분기 도달 자체는 Task 8 이 100장에서 관측했다(15회 중 5회, `--drafts 40` 에서 6회) | `test_federated_vaultfs.py:252` (단위). 몫 숫자는 여전히 단위 테스트만 |
+| `check4` 의 버전 대조가 `get()`·`get_backlinks()` 경로에서도 같은 시점에 걸리는지 | `check4` 는 `search_chunks` 만 본다. `query_client._get` 이 공통 경로라 구조적으로는 같다 | 미확인 |
+
+`check5` 는 "범위 밖"과 "없음"을 구분하지 않는 계약대로 `QueryNotFound` 하나만 확인한다 —
+구분을 확인하지 않는 것이 계약에 맞는 동작이다.
+
+**가장 큰 한계는 게이트웨이가 가짜라는 것이다.** `experiments/query_gateway.py` 가 스스로
+적어 둔 대로, 이 여섯 개는 *우리 주문서에 앞뒤가 안 맞는 게 없다* 를 보이고
+*백엔드가 실제로 이렇게 만들 수 있다* 는 보이지 못한다.
 
 검색은 **두 섹션으로 나눠** 에이전트에게 보여준다 (상위 설계 §7.1). 라이브(창구)와 작업층(AI 내부)을 섞으면 에이전트가 "내가 방금 쓴 것"과 "원래 있던 것"을 구분하지 못한다.
 
@@ -574,8 +639,10 @@ FTS 검색               2.4ms
 - 6.4 재진입 — 백엔드 결정 대기. S15P11B106-73 선행
 - 6.5 장애 처리 — 백엔드 결정 대기
 - 7절 `scope_changed` — 백엔드 확인 대기
-- 9.3 작업층 검색 상한 숫자 — 실측 대기
-- 9.5 조회 횟수 상한 숫자 — 실측 대기 (AI 쪽 결정, 백엔드 요청 아님)
+- ~~9.3 작업층 검색 상한 숫자~~ — 실측 완료. `MAX_WORK_SEARCH_ROWS = 20`. 다만 `tools/helpers.MAX_SEARCH = 20` 이 상위에서 자르므로 **툴 경로에서는 걸릴 수 없는 2차 방어선**이다 (`experiments/INDEX.md`)
+- ~~9.5 조회 횟수 상한 숫자~~ — 실측 완료. 고정값이 아니라 **카탈로그 크기에 연동**한다: `QUERY_CALL_BUDGET_BASE 105 + QUERY_CALLS_PER_PAGE 2 × 위키 장수`. 고정 105 는 링크가 이어진 위키에서 정상 `read` 한 번을 죽였다
+- **지연 적재 fan-out 이 근본 결함으로 남았다.** `read` 한 번이 `_sync_page_references` → `build_edges` → 링크마다 `fs.get` 으로 연결 성분 전체를 당긴다. 실측: 사슬 링크 100장에서 창구 호출 100회, 150장에서 150회. 예산 상향은 **증상만** 막았고, 실제 백엔드에서는 그것이 네트워크 왕복 100회라 **10분 목표에 직접 위협**이다. 후속 티켓 후보
+- **본문 지연 적재가 작업층 검색 결과를 밀어낸다.** 부모 `LocalVaultFS.search_chunks` 의 SQL 이 층을 모르고 `LIMIT` 을 걸어서, 라이브 본문이 채워진 뒤 작업층 행이 순위에서 밀린다. 출처가 다른 두 관측을 가른다 — 이 하네스(`measure_federated.py --phases d`)에서는 **5행 → 3행**, 별도 합성 코퍼스(리뷰어 관측)에서는 **5행 → 0행**이며 이 하네스로는 0행이 재현되지 않는다 (`experiments/INDEX.md`, `federated.py` docstring). 고치려면 포트 표면에 층 인자가 필요해 후속 티켓 후보
 - `FailureStage.AGENT_START` 가 코드에만 있다 (`errors.py:30`). NFR-AI-003 의 목록에 없어 Spring 이 받으면 정의되지 않은 값이다. 요구사항에 넣을지 코드에서 뺄지 협의 필요 — 이 티켓에서 임의로 정하지 않는다
 
 ## 12. 이 문서가 정정한 것
@@ -588,7 +655,7 @@ Codex 검토(2026-07-30)가 잡은 것이다. 무엇을 왜 바꿨는지 남긴�
 | 2 | capability 를 `scopeVersion` 에 묶으면서 버전 불일치 감지를 요구했다 — 같이 성립하지 않는다 | 2.2 에서 묶기를 빼고, 읽기는 항상 현재 버전을 돌려준다 |
 | 3 | `404` 가 만료·범위 밖·없음을 한 값으로 덮어 AI 가 구분할 수 없었다 | 2.3 에 `code` 4종. HTTP 상태는 그대로 `404` |
 | 4 | 카탈로그에 있던 페이지의 `404` 를 빈 본문으로 넘겼다 (fail-open) | 2.6 에서 중단으로 바꿨다 |
-| 5 | `wikiPath` 를 "권장"으로 두고 판정을 검증으로 미뤘다 | 4절 — 필수다. 그리고 **push 경로가 이미 깨져 있다**는 것을 확인했다 |
+| 5 | `wikiPath` 를 "권장"으로 두고 판정을 검증으로 미뤘다 | 4절 — **목록 창구(3.2)에서 필수**, 본문 창구(3.3)는 권장 (4.4 실측). 그리고 **push 경로가 이미 깨져 있다**는 것을 확인했다 |
 | 6 | 페이지네이션·상한·검색 모드를 백엔드 결정으로 남기면서 "질문 없이 착수할 수준"이라고 적었다 | 3.1·3.2 에서 계약으로 확정 |
 | 7 | "모든 창구 응답에 `scopeVersion`" 이라 적고 파싱본 예시에는 넣지 않았다 | 2.4·3.7 에서 예외를 명시 |
 | 8 | 관계·카테고리·파싱본 창구를 정의만 하고 쓰는 곳을 적지 않았다 | 9.6 신설 |
