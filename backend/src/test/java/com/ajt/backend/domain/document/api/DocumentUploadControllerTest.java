@@ -116,29 +116,39 @@ class DocumentUploadControllerTest {
         given(documentManagementService.getDocument(15L)).willReturn(new DocumentDetailResponse(
                 "15",
                 "rule.md",
+                "text/markdown",
+                2048L,
+                "7",
+                "취업규칙",
                 "ALL",
-                new DocumentDetailResponse.CategoryResponse("7", "취업규칙"),
+                "all",
+                List.of(),
                 "failed",
                 "파싱 실패",
-                "/api/v1/documents/15/file",
-                List.of(),
+                new DocumentUploaderResponse("10", "김관리"),
                 Instant.parse("2026-07-28T05:00:00Z"),
-                Instant.parse("2026-07-28T05:01:00Z")
+                "/api/v1/documents/15/file",
+                List.of()
         ));
 
         mockMvc.perform(get("/api/v1/documents/{documentId}", 15L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documentId").value("15"))
                 .andExpect(jsonPath("$.originalFileName").value("rule.md"))
+                .andExpect(jsonPath("$.mimeType").value("text/markdown"))
+                .andExpect(jsonPath("$.fileSize").value(2048))
+                .andExpect(jsonPath("$.documentCategoryId").value("7"))
+                .andExpect(jsonPath("$.documentCategoryName").value("취업규칙"))
                 .andExpect(jsonPath("$.scopeKey").value("ALL"))
-                .andExpect(jsonPath("$.category.documentCategoryId").value("7"))
-                .andExpect(jsonPath("$.category.name").value("취업규칙"))
+                .andExpect(jsonPath("$.visibilityType").value("all"))
+                .andExpect(jsonPath("$.departments", empty()))
                 .andExpect(jsonPath("$.status").value("failed"))
                 .andExpect(jsonPath("$.failureReason").value("파싱 실패"))
+                .andExpect(jsonPath("$.uploadedBy.userId").value("10"))
+                .andExpect(jsonPath("$.uploadedBy.name").value("김관리"))
+                .andExpect(jsonPath("$.uploadedAt").value("2026-07-28T05:00:00Z"))
                 .andExpect(jsonPath("$.downloadUrl").value("/api/v1/documents/15/file"))
-                .andExpect(jsonPath("$.relatedWikis", empty()))
-                .andExpect(jsonPath("$.createdAt").value("2026-07-28T05:00:00Z"))
-                .andExpect(jsonPath("$.updatedAt").value("2026-07-28T05:01:00Z"));
+                .andExpect(jsonPath("$.relatedWikis", empty()));
     }
 
     @Test
@@ -150,10 +160,16 @@ class DocumentUploadControllerTest {
                         List.of(new DocumentSummaryResponse(
                                 "15",
                                 "rule.md",
+                                "text/markdown",
+                                2048L,
+                                "7",
+                                "취업규칙",
                                 "ALL",
-                                new DocumentSummaryResponse.CategoryResponse("7", "취업규칙"),
+                                "all",
+                                List.of(),
                                 "uploaded",
-                                "10",
+                                null,
+                                new DocumentUploaderResponse("10", "김관리"),
                                 Instant.parse("2026-07-28T05:00:00Z")
                         )),
                         1,
@@ -169,7 +185,8 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.items[0].documentId").value("15"))
                 .andExpect(jsonPath("$.items[0].originalFileName").value("rule.md"))
                 .andExpect(jsonPath("$.items[0].scopeKey").value("ALL"))
-                .andExpect(jsonPath("$.items[0].category.name").value("취업규칙"))
+                .andExpect(jsonPath("$.items[0].documentCategoryName").value("취업규칙"))
+                .andExpect(jsonPath("$.items[0].uploadedBy.name").value("김관리"))
                 .andExpect(jsonPath("$.items[0].status").value("uploaded"))
                 .andExpect(jsonPath("$.page").value(1))
                 .andExpect(jsonPath("$.size").value(20))
@@ -275,14 +292,19 @@ class DocumentUploadControllerTest {
                 ), new DocumentDetailResponse(
                         "15",
                         "rule.md",
+                        "text/markdown",
+                        2048L,
+                        "4",
+                        "사규",
                         "D1-D3",
-                        new DocumentDetailResponse.CategoryResponse("4", "사규"),
+                        "department",
+                        List.of(),
                         "uploaded",
                         null,
-                        "/api/v1/documents/15/file",
-                        List.of(),
+                        new DocumentUploaderResponse("10", "김관리"),
                         Instant.parse("2026-07-28T05:00:00Z"),
-                        Instant.parse("2026-07-28T05:10:00Z")
+                        "/api/v1/documents/15/file",
+                        List.of()
                 )));
 
         mockMvc.perform(patch("/api/v1/documents/{documentId}", 15L)
@@ -297,7 +319,7 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.reprocessJobs[1].jobId").value("42"))
                 .andExpect(jsonPath("$.document.documentId").value("15"))
                 .andExpect(jsonPath("$.document.scopeKey").value("D1-D3"))
-                .andExpect(jsonPath("$.document.category.name").value("사규"));
+                .andExpect(jsonPath("$.document.documentCategoryName").value("사규"));
     }
 
     @Test

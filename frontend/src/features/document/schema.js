@@ -63,8 +63,11 @@
 
 /**
  * 확정 — GET /document-categories 200
+ * 응답 원본 ID 필드는 계약상 `categoryId`. api.js가 `documentCategoryId` 별칭으로 정규화해 내려주므로
+ * 컴포넌트는 둘 다 볼 수 있다(문서 객체와 동일하게 `documentCategoryId` 사용).
  * @typedef {object} DocumentCategory
- * @property {string} documentCategoryId
+ * @property {string} categoryId - 계약 원본 필드
+ * @property {string} documentCategoryId - api.js 정규화 별칭(= categoryId)
  * @property {string} scopeKey
  * @property {string} name
  * @property {string} description

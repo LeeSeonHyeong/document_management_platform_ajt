@@ -2102,7 +2102,7 @@
               ],
               "variable": []
             },
-            "description": "사용자가 접근 가능한 Wiki 원본문서 목록을 조회합니다.\n문서 목록과 관리자 문서 처리 현황 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `scopeKey`: Wiki 공간 필터\n- `categoryId`: 문서 카테고리 필터\n- `status`: 문서 처리 상태 필터\n- `keyword`: 파일명 또는 문서 검색어\n- `fileType`: txt, md, pdf 또는 docx\n- `departmentId`: 해당 부서를 포함하는 scopeKey 필터\n- `uploadedFrom`, `uploadedTo`: 업로드 기간\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 문서는 목록에 포함하지 않습니다.\n\n### Response\n- `items`: 문서 ID, 파일명, scopeKey, 카테고리, 상태, 업로드자와 시각\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+            "description": "사용자가 접근 가능한 Wiki 원본문서 목록을 조회합니다.\n문서 목록과 관리자 문서 처리 현황 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `scopeKey`: Wiki 공간 필터\n- `categoryId`: 문서 카테고리 필터\n- `status`: 문서 처리 상태 필터\n- `keyword`: 파일명 또는 문서 검색어\n- `fileType`: txt, md, pdf 또는 docx\n- `departmentId`: 해당 부서를 포함하는 scopeKey 필터\n- `uploadedFrom`, `uploadedTo`: 업로드 기간\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 문서는 목록에 포함하지 않습니다.\n\n### Response\n- `items`: 문서 ID, 파일명, MIME 타입(mimeType), 파일 크기(fileSize), 카테고리(documentCategoryId·documentCategoryName), scopeKey, 공개 유형(visibilityType: all/department), 공개 부서 목록(departments[].departmentId·name), 상태, 업로드자(uploadedBy.userId·name)와 업로드 시각(uploadedAt)\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
           },
           "response": []
         },
@@ -2131,7 +2131,7 @@
                 }
               ]
             },
-            "description": "Wiki 원본문서의 상세 정보와 연결 Wiki를 조회합니다.\n원본문서 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `documentId`: 조회할 문서 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- 문서 메타데이터, 카테고리, 공개 범위와 처리 상태\n- `relatedWikis`: 반영 완료된 연결 Wiki 목록\n- `downloadUrl`: 권한 검증이 적용된 다운로드 URL\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 문서가 없거나 접근 권한이 없음"
+            "description": "Wiki 원본문서의 상세 정보와 연결 Wiki를 조회합니다.\n원본문서 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `documentId`: 조회할 문서 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- 문서 메타데이터(mimeType·fileSize·uploadedBy·uploadedAt), 카테고리(documentCategoryId·documentCategoryName), 공개 범위(visibilityType·departments)와 처리 상태\n- `relatedWikis`: 반영 완료된 연결 Wiki 목록\n- `downloadUrl`: 권한 검증이 적용된 다운로드 URL\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 문서가 없거나 접근 권한이 없음"
           },
           "response": []
         },
