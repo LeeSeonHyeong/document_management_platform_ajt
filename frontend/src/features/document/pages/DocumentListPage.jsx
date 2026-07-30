@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Upload, FileText, CalendarDays, X } from 'lucide-react'
-import { Button, EmptyState } from '@/components/ui'
+import { Upload, FileText, CalendarDays, X, AlertTriangle, Check } from 'lucide-react'
+import { Button, EmptyState, useToast } from '@/components/ui'
 import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentUploadModal from '../components/DocumentUploadModal'
@@ -10,10 +10,20 @@ import AiJobStartDialog from '../components/AiJobStartDialog'
 import AiJobProgressDialog from '../components/AiJobProgressDialog'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
+// 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
+function isAssigned(document) {
+  return (
+    Boolean(document.documentCategoryId) &&
+    (document.visibilityType === 'all' || (document.departments ?? []).length > 0)
+  )
+}
+
 export default function DocumentListPage() {
+  const toast = useToast()
   const [uploadOpen, setUploadOpen] = useState(false)
   const [startOpen, setStartOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
+  const [activeJobId, setActiveJobId] = useState(null)
   const [deletingDocument, setDeletingDocument] = useState(null)
   const [queueMetadata, setQueueMetadata] = useState({})
   const { data, isLoading } = useDocuments({ page: 1, size: 20 })
@@ -23,13 +33,8 @@ export default function DocumentListPage() {
     ...queueMetadata[document.documentId],
   }))
   const completedDocuments = waitingDocuments.filter((document) => document.status === 'completed')
-  const allAssigned =
-    completedDocuments.length > 0 &&
-    completedDocuments.every(
-      (document) =>
-        Boolean(document.documentCategoryId) &&
-        (document.visibilityType === 'all' || (document.departments ?? []).length > 0),
-    )
+  const allAssigned = completedDocuments.length > 0 && completedDocuments.every(isAssigned)
+  const unassignedCount = waitingDocuments.filter((document) => !isAssigned(document)).length
 
   return (
     <section className="space-y-5">
@@ -63,7 +68,11 @@ export default function DocumentListPage() {
                 {waitingDocuments.length}개
               </span>
             </div>
-            <p className="mt-1 text-xs text-slate-400">카테고리와 공개 부서를 지정한 뒤 AI 작업을 시작하세요.</p>
+            <p className="mt-1 text-xs text-slate-400">
+              {waitingDocuments.length && !unassignedCount
+                ? '지정이 끝난 파일부터 AI 작업을 시작할 수 있습니다.'
+                : '카테고리와 공개 부서를 지정한 뒤 AI 작업을 시작하세요.'}
+            </p>
           </div>
           <Button variant="primary" disabled={!allAssigned} onClick={() => setStartOpen(true)}>
             AI 작업 시작
@@ -100,13 +109,35 @@ export default function DocumentListPage() {
             />
           }
         />
+
+        {/* Figma 4-2R·4-3R — 지정 현황 안내. 미지정이 남아 있으면 경고, 모두 끝나면 완료로 바뀐다. */}
+        {waitingDocuments.length > 0 && (
+          <div
+            className={`flex items-start gap-2 border-t px-5 py-3 text-xs leading-5 ${
+              unassignedCount
+                ? 'border-amber-100 bg-amber-50 text-amber-700'
+                : 'border-emerald-100 bg-emerald-50 text-emerald-700'
+            }`}
+          >
+            <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-white/80">
+              {unassignedCount ? <AlertTriangle className="size-3" /> : <Check className="size-3" strokeWidth={3} />}
+            </span>
+            <p>
+              {unassignedCount
+                ? `${unassignedCount}개 파일에 카테고리·공개 부서가 지정되지 않았습니다. 모두 지정해야 AI 작업을 시작할 수 있습니다.`
+                : `${waitingDocuments.length}개 파일 모두 카테고리와 공개 부서가 지정되었습니다. AI 작업을 시작하세요.`}
+            </p>
+          </div>
+        )}
       </div>
 
+      {/* 업로드 응답(202)의 jobId가 곧 AI 작업 ID다. 진행 상황 폴링에 그대로 사용한다. */}
       <DocumentUploadModal
         open={uploadOpen}
         onClose={() => setUploadOpen(false)}
-        onUploaded={() => {
+        onUploaded={(result) => {
           setUploadOpen(false)
+          if (result?.jobId) setActiveJobId(result.jobId)
         }}
       />
 
@@ -123,12 +154,18 @@ export default function DocumentListPage() {
         onClose={() => setStartOpen(false)}
         onConfirm={() => {
           setStartOpen(false)
-          setProgressOpen(true)
+          // 작업은 업로드 시 생성되므로, 이번 세션에 업로드한 작업이 없으면 폴링할 대상이 없다.
+          // 진행 상황을 확인할 수 없는 빈 팝업을 띄우는 대신 안내만 한다.
+          if (activeJobId) setProgressOpen(true)
+          else toast.info('AI 작업은 업로드와 함께 시작됩니다. 진행 상황은 업로드 직후에 확인할 수 있습니다.')
         }}
       />
 
+      {/* TODO(API): 별도 "AI 작업 시작" 엔드포인트가 계약에 없다. 작업은 업로드(POST /documents) 시
+          만들어지므로 여기서는 가장 최근 업로드 작업의 진행 상황을 보여준다. */}
       <AiJobProgressDialog
         open={progressOpen}
+        jobId={activeJobId}
         documentCount={completedDocuments.length}
         onBackground={() => setProgressOpen(false)}
       />
