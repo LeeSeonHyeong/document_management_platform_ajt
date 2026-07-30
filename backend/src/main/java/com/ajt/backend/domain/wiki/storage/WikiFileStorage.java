@@ -8,10 +8,8 @@ import java.io.IOException;
  */
 public interface WikiFileStorage {
 
-    /**
-     * Wiki 본문을 저장하고 저장 경로를 반환합니다.
-     */
-    String storeWikiMarkdown(String scopeKey, long wikiId, String contentMarkdown) throws IOException;
+    /** 검증된 Wiki 상대 경로에 본문을 저장합니다. */
+    void storeWikiMarkdown(String wikiPath, String contentMarkdown) throws IOException;
 
     /**
      * Wiki 본문을 읽습니다. 파일이 없으면 빈 문자열을 반환합니다.

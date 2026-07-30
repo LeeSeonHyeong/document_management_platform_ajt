@@ -46,17 +46,20 @@ public class WikiTransformationApplier {
     private final WikiCategoryRepository wikiCategoryRepository;
     private final WikiFileStorage wikiFileStorage;
     private final WikiSearchIndexer wikiSearchIndexer;
+    private final WikiMarkdownLinkValidator wikiMarkdownLinkValidator;
 
     public WikiTransformationApplier(
             WikiRepository wikiRepository,
             WikiCategoryRepository wikiCategoryRepository,
             WikiFileStorage wikiFileStorage,
-            WikiSearchIndexer wikiSearchIndexer
+            WikiSearchIndexer wikiSearchIndexer,
+            WikiMarkdownLinkValidator wikiMarkdownLinkValidator
     ) {
         this.wikiRepository = wikiRepository;
         this.wikiCategoryRepository = wikiCategoryRepository;
         this.wikiFileStorage = wikiFileStorage;
         this.wikiSearchIndexer = wikiSearchIndexer;
+        this.wikiMarkdownLinkValidator = wikiMarkdownLinkValidator;
     }
 
     /**
@@ -100,11 +103,13 @@ public class WikiTransformationApplier {
     ) {
         WikiIndex previousIndex = WikiIndex.parse(readIndex(scopeKey));
         Map<String, Long> categoryIdsByRef = applyCategoryChanges(scopeKey, categoryChanges);
+        Set<String> allowedWikiAddresses = allowedWikiAddresses(scopeKey, nullSafe(wikiChanges));
         WikiChangeResult wikiResult = applyWikiChanges(
                 scopeKey,
                 originDocumentId,
                 nullSafe(wikiChanges),
-                categoryIdsByRef
+                categoryIdsByRef,
+                allowedWikiAddresses
         );
         applyRelationChanges(scopeKey, nullSafe(relationChanges), wikiResult.wikiIdsByRef());
         writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex);
@@ -145,7 +150,8 @@ public class WikiTransformationApplier {
             String scopeKey,
             Long originDocumentId,
             List<WikiChange> changes,
-            Map<String, Long> categoryIdsByRef
+            Map<String, Long> categoryIdsByRef,
+            Set<String> allowedWikiAddresses
     ) {
         Map<String, Long> wikiIdsByRef = new LinkedHashMap<>();
         Set<Long> affectedWikiIds = new LinkedHashSet<>();
@@ -156,14 +162,11 @@ public class WikiTransformationApplier {
                 case ACTION_CREATE -> {
                     long categoryId = resolveCategoryId(scopeKey, change.wikiCategoryRef(), categoryIdsByRef);
                     Wiki created = wikiRepository.saveAndFlush(Wiki.create(scopeKey, categoryId, change.title()));
-                    if (isPresent(change.wikiPath())) {
-                        created.assignStoragePath(change.wikiPath());
-                    } else {
-                        created.assignStoragePath();
-                    }
+                    created.assignStoragePath(requireCreateWikiPath(change));
                     created.addDocumentRefs(evidenceDocumentIds(originDocumentId, change.evidence()));
                     String contentMarkdown = requireContent(change);
-                    storeContent(scopeKey, created.id(), contentMarkdown);
+                    validateWikiLinks(contentMarkdown, allowedWikiAddresses);
+                    storeContent(created.wikiPath(), contentMarkdown);
                     wikiSearchIndexer.replace(created, contentMarkdown);
                     wikiRepository.save(created);
                     if (change.tempWikiId() != null && !change.tempWikiId().isBlank()) {
@@ -180,7 +183,8 @@ public class WikiTransformationApplier {
                         wiki.changeCategory(resolveCategoryId(scopeKey, change.wikiCategoryRef(), categoryIdsByRef));
                     }
                     if (isPresent(change.contentMarkdown())) {
-                        storeContent(scopeKey, wiki.id(), change.contentMarkdown());
+                        validateWikiLinks(change.contentMarkdown(), allowedWikiAddresses);
+                        storeContent(wiki.wikiPath(), change.contentMarkdown());
                         wikiSearchIndexer.replace(wiki, change.contentMarkdown());
                     }
                     wiki.addDocumentRefs(evidenceDocumentIds(originDocumentId, change.evidence()));
@@ -369,9 +373,45 @@ public class WikiTransformationApplier {
         return change.contentMarkdown();
     }
 
-    private void storeContent(String scopeKey, long wikiId, String contentMarkdown) {
+    private String requireCreateWikiPath(WikiChange change) {
+        if (!isPresent(change.wikiPath())) {
+            throw new IllegalArgumentException("새로 만드는 Wiki의 wikiPath는 필수입니다: " + change.title());
+        }
+        return change.wikiPath();
+    }
+
+    private Set<String> allowedWikiAddresses(String scopeKey, List<WikiChange> changes) {
+        Set<String> addresses = wikiRepository.findAllByScopeKey(scopeKey).stream()
+                .map(Wiki::wikiPath)
+                .map(path -> wikiAddress(scopeKey, path))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        for (WikiChange change : changes) {
+            if (!ACTION_CREATE.equals(action(change.action()))) {
+                continue;
+            }
+            String address = wikiAddress(scopeKey, requireCreateWikiPath(change));
+            if (!addresses.add(address)) {
+                throw new IllegalArgumentException("같은 Wiki 공간에 이미 존재하는 wikiPath입니다: " + address);
+            }
+        }
+        return addresses;
+    }
+
+    private String wikiAddress(String scopeKey, String wikiPath) {
+        String prefix = "wiki/" + scopeKey + "/";
+        if (!wikiPath.startsWith(prefix)) {
+            throw new IllegalArgumentException("wikiPath는 해당 scope의 Wiki 경로여야 합니다: " + wikiPath);
+        }
+        return wikiPath.substring(prefix.length());
+    }
+
+    private void validateWikiLinks(String contentMarkdown, Set<String> allowedWikiAddresses) {
+        wikiMarkdownLinkValidator.validate(contentMarkdown, allowedWikiAddresses);
+    }
+
+    private void storeContent(String wikiPath, String contentMarkdown) {
         try {
-            wikiFileStorage.storeWikiMarkdown(scopeKey, wikiId, contentMarkdown);
+            wikiFileStorage.storeWikiMarkdown(wikiPath, contentMarkdown);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }

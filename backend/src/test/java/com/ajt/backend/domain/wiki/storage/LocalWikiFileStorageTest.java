@@ -17,13 +17,13 @@ class LocalWikiFileStorageTest {
     Path storageRoot;
 
     @Test
-    @DisplayName("Wiki 본문을 공간별 pages 경로에 저장하고 다시 읽는다")
-    void storesAndReadsWikiMarkdown() throws IOException {
+    @DisplayName("AI가 발급한 Wiki 경로에 본문을 저장하고 다시 읽는다")
+    void storesAndReadsWikiMarkdownAtAgentIssuedPath() throws IOException {
         LocalWikiFileStorage storage = new LocalWikiFileStorage(storageRoot);
+        String storedPath = "wiki/ALL/pages/leave-policy-a3f2.md";
 
-        String storedPath = storage.storeWikiMarkdown("ALL", 101L, "# 휴가 규정");
+        storage.storeWikiMarkdown(storedPath, "# 휴가 규정");
 
-        assertThat(storedPath).isEqualTo("wiki/ALL/pages/101.md");
         assertThat(Files.readString(storageRoot.resolve(storedPath), StandardCharsets.UTF_8))
                 .isEqualTo("# 휴가 규정");
         assertThat(storage.readWikiMarkdown(storedPath)).isEqualTo("# 휴가 규정");
@@ -41,7 +41,8 @@ class LocalWikiFileStorageTest {
     @DisplayName("본문 파일을 삭제한다")
     void deletesWikiMarkdown() throws IOException {
         LocalWikiFileStorage storage = new LocalWikiFileStorage(storageRoot);
-        String storedPath = storage.storeWikiMarkdown("ALL", 101L, "# 휴가 규정");
+        String storedPath = "wiki/ALL/pages/leave-policy-a3f2.md";
+        storage.storeWikiMarkdown(storedPath, "# 휴가 규정");
 
         storage.deleteWikiMarkdown(storedPath);
 

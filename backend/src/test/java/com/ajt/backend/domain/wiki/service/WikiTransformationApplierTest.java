@@ -73,7 +73,13 @@ class WikiTransformationApplierTest {
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
     private final WikiSearchIndexer wikiSearchIndexer = mock(WikiSearchIndexer.class);
     private final WikiTransformationApplier applier =
-            new WikiTransformationApplier(wikiRepository, wikiCategoryRepository, wikiFileStorage, wikiSearchIndexer);
+            new WikiTransformationApplier(
+                    wikiRepository,
+                    wikiCategoryRepository,
+                    wikiFileStorage,
+                    wikiSearchIndexer,
+                    new WikiMarkdownLinkValidator()
+            );
 
     private final List<Wiki> savedWikis = new ArrayList<>();
     private final List<WikiCategory> savedCategories = new ArrayList<>();
@@ -95,7 +101,9 @@ class WikiTransformationApplierTest {
             savedCategories.add(category);
             return category;
         });
-        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willAnswer(invocation -> List.copyOf(savedWikis));
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willAnswer(invocation -> savedWikis.stream()
+                .filter(wiki -> wiki.belongsToScope(SCOPE_KEY))
+                .toList());
         given(wikiRepository.findById(anyLong())).willAnswer(invocation -> {
             long id = invocation.getArgument(0);
             return savedWikis.stream().filter(wiki -> id == wiki.id()).findFirst();
@@ -143,7 +151,9 @@ class WikiTransformationApplierTest {
         assertThat(created.wikiCategoryId()).isEqualTo(10L);
         assertThat(created.wikiPath()).isEqualTo("wiki/ALL/pages/leave-policy.md");
         assertThat(created.documentRefs()).containsExactly(15L);
-        then(wikiFileStorage).should().storeWikiMarkdown(SCOPE_KEY, 101L, "# 휴가 규정\n연차는 15일");
+        then(wikiFileStorage).should().storeWikiMarkdown(
+                "wiki/ALL/pages/leave-policy.md", "# 휴가 규정\n연차는 15일"
+        );
         then(wikiFileStorage).should().storeIndex(
                 SCOPE_KEY,
                 "# 목차\n\n- [휴가 규정](pages/101.md) — 연차와 반차 사용 기준"
@@ -161,6 +171,7 @@ class WikiTransformationApplierTest {
                         null,
                         "wiki-temp-1",
                         "category-temp-1",
+                        "wiki/ALL/pages/employment-rules.md",
                         "취업 규칙",
                         "# 취업 규칙",
                         List.of(new Evidence("18", "1", "1장", "인용"), new Evidence("15", "2", "2장", "인용"))
@@ -205,7 +216,9 @@ class WikiTransformationApplierTest {
         assertThat(existing.wikiRefs()).containsExactly(108L);
         assertThat(existing.documentRefs()).containsExactly(15L);
         assertThat(related.wikiRefs()).isEmpty();
-        then(wikiFileStorage).should().storeWikiMarkdown(SCOPE_KEY, 101L, "# 휴가 규정 개정");
+        then(wikiFileStorage).should().storeWikiMarkdown(
+                existing.wikiPath(), "# 휴가 규정 개정"
+        );
         then(wikiFileStorage).should().storeIndex(
                 SCOPE_KEY,
                 "# 목차\n\n- [휴가 규정 개정](pages/101.md) — 개정된 휴가 기준\n- [근태 관리](pages/108.md)"
@@ -266,7 +279,10 @@ class WikiTransformationApplierTest {
         WikiTransformationResponse response = new WikiTransformationResponse(
                 "요약",
                 List.of(),
-                List.of(new WikiChange("create", null, "wiki-temp-1", null, "휴가 규정", "# 휴가 규정", List.of())),
+                List.of(new WikiChange(
+                        "create", null, "wiki-temp-1", null,
+                        "wiki/ALL/pages/leave-policy.md", "휴가 규정", "# 휴가 규정", List.of()
+                )),
                 List.of(),
                 List.of()
         );
@@ -283,7 +299,10 @@ class WikiTransformationApplierTest {
         WikiTransformationResponse response = new WikiTransformationResponse(
                 "요약",
                 List.of(),
-                List.of(new WikiChange("create", null, "wiki-temp-1", null, "휴가 규정", "# 휴가 규정", List.of())),
+                List.of(new WikiChange(
+                        "create", null, "wiki-temp-1", null,
+                        "wiki/ALL/pages/leave-policy.md", "휴가 규정", "# 휴가 규정", List.of()
+                )),
                 List.of(),
                 List.of()
         );
@@ -291,6 +310,44 @@ class WikiTransformationApplierTest {
         assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wikiCategoryRef는 필수");
+    }
+
+    @Test
+    @DisplayName("새 Wiki의 wikiPath가 없으면 반영하지 않는다")
+    void rejectsCreateWithoutWikiPath() throws Exception {
+        existingCategory(10L, "인사");
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(),
+                List.of(new WikiChange("create", null, "wiki-temp-1", "10", "휴가 규정", "# 휴가 규정", List.of())),
+                List.of(),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("wikiPath");
+    }
+
+    @Test
+    @DisplayName("같은 응답에서 만들지 않은 Wiki 페이지 링크는 반영하지 않는다")
+    void rejectsUnknownWikiPageLink() throws Exception {
+        existingCategory(10L, "인사");
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(),
+                List.of(new WikiChange(
+                        "create", null, "wiki-temp-1", "10",
+                        "wiki/ALL/pages/leave-policy.md", "휴가 규정",
+                        "[없는 문서](pages/missing.md)", List.of()
+                )),
+                List.of(),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Wiki 페이지 링크");
     }
 
     @Test
@@ -354,7 +411,10 @@ class WikiTransformationApplierTest {
         WikiTransformationResponse response = new WikiTransformationResponse(
                 "요약",
                 List.of(),
-                List.of(new WikiChange("create", null, "wiki-temp-1", "10", "휴가 규정", " ", List.of())),
+                List.of(new WikiChange(
+                        "create", null, "wiki-temp-1", "10",
+                        "wiki/ALL/pages/leave-policy.md", "휴가 규정", " ", List.of()
+                )),
                 List.of(),
                 List.of()
         );

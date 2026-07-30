@@ -1,6 +1,5 @@
 package com.ajt.backend.domain.wiki.storage;
 
-import com.ajt.backend.domain.wiki.model.Wiki;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,10 +20,8 @@ public class LocalWikiFileStorage implements WikiFileStorage {
     }
 
     @Override
-    public String storeWikiMarkdown(String scopeKey, long wikiId, String contentMarkdown) throws IOException {
-        String storedPath = Wiki.storagePathOf(scopeKey, wikiId);
-        writeString(storedPath, contentMarkdown);
-        return storedPath;
+    public void storeWikiMarkdown(String wikiPath, String contentMarkdown) throws IOException {
+        writeString(wikiPath, contentMarkdown);
     }
 
     @Override
