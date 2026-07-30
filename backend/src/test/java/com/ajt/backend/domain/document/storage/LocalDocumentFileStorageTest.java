@@ -66,4 +66,24 @@ class LocalDocumentFileStorageTest {
         assertThat(resource.exists()).isTrue();
         assertThat(resource.getContentAsString(java.nio.charset.StandardCharsets.UTF_8)).isEqualTo("# original");
     }
+
+    @Test
+    @DisplayName("원본과 파싱 파일을 새 scope로 옮긴 뒤 롤백하면 이전 경로를 복구한다")
+    void movesFilesToScopeAndRestoresThemOnRollback() throws Exception {
+        LocalDocumentFileStorage storage = new LocalDocumentFileStorage(storageRoot);
+        String originalPath = storage.storeOriginal("ALL", 15L, new MockMultipartFile(
+                "files", "취업규칙.pdf", "application/pdf", "original".getBytes()
+        ));
+        String parsedPath = storage.storeParsedMarkdown("ALL", 15L, "# parsed");
+
+        DocumentFileMutation mutation = storage.moveToScope(originalPath, parsedPath, "D1-D3", 15L);
+
+        assertThat(mutation.originalPath()).isEqualTo("wiki/D1-D3/sources/15/original.pdf");
+        assertThat(mutation.parsedPath()).isEqualTo("wiki/D1-D3/sources/15/parsed.md");
+        assertThat(Files.exists(storageRoot.resolve(originalPath))).isFalse();
+        mutation.rollback();
+
+        assertThat(Files.readString(storageRoot.resolve(originalPath))).isEqualTo("original");
+        assertThat(Files.readString(storageRoot.resolve(parsedPath))).isEqualTo("# parsed");
+    }
 }

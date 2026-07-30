@@ -8,6 +8,8 @@ import Pagination from '@/components/ui/Pagination'
 import SearchBar from '@/components/ui/SearchBar'
 import { INQUIRY_PRIORITY, INQUIRY_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
+import { useAuth } from '@/hooks/useAuth'
+import { fetchDepartments } from '@/api/departments'
 import { fetchInquiries } from '../api'
 
 const PRIORITY_META = {
@@ -61,21 +63,45 @@ function relativeTime(value) {
 
 export default function InquiryManagementPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
   const [keyword, setKeyword] = useState('')
   const [sort, setSort] = useState('priority,desc')
+  const [departmentId, setDepartmentId] = useState('')
   const params = { page, size: 20, keyword: keyword || undefined, sort }
   const query = useQuery({
     queryKey: qk.inquiries.list(params),
     queryFn: () => fetchInquiries(params),
   })
 
+  // 요구사항 FR-USR-006: 전체 관리자와 부서 관리자는 같은 ADMIN 역할이며 별도 플래그가 없다.
+  // 따라서 "내가 어느 부서의 관리자로 지정됐는지"로 두 범위를 구분한다(Figma 3R vs 3-1R).
+  const departmentsQuery = useQuery({
+    queryKey: qk.departments.list,
+    queryFn: fetchDepartments,
+  })
+  const departments = departmentsQuery.data ?? []
+  // manager가 null인 부서와 userId가 없는 사용자가 String(undefined)로 서로 매칭되지 않도록 가드한다.
+  const managedDepartment =
+    (user?.userId &&
+      departments.find(
+        (department) => department.manager && String(department.manager.userId) === String(user.userId),
+      )) ||
+    null
+  const isDepartmentAdmin = Boolean(managedDepartment)
+
   const inquiries = query.data?.items ?? []
   const pendingCount = inquiries.filter((item) => item.status === INQUIRY_STATUS.PENDING).length
   const doneCount = inquiries.filter((item) => item.status === INQUIRY_STATUS.DONE).length
   const totalCount = query.data?.totalCount ?? inquiries.length
   const completionRate = totalCount ? Math.round((doneCount / totalCount) * 100) : 0
+
+  // 전체 관리자만 쓰는 부서별 필터. 문의 목록 API에 부서 파라미터가 없어 현재 페이지에서 걸러낸다.
+  // 계약에 담당자 부서(assignee.department)만 있으므로 담당자 부서를 기준으로 한다.
+  const visibleInquiries = departmentId
+    ? inquiries.filter((item) => String(item.assignee?.department?.departmentId) === departmentId)
+    : inquiries
 
   const columns = [
     {
@@ -86,6 +112,7 @@ export default function InquiryManagementPage() {
           <PriorityBadge priority={inquiry.priority} />
           <div>
             <p className="font-semibold text-slate-800">{inquiry.title}</p>
+            {/* TODO(API): 문의 목록 계약의 author에는 department가 없어 요청자 부서는 '-'로 표시된다. */}
             <p className="mt-0.5 text-xs text-slate-400">{inquiry.author?.name} · {inquiry.author?.department?.name ?? '-'}</p>
           </div>
         </div>
@@ -106,7 +133,13 @@ export default function InquiryManagementPage() {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 md:grid-cols-3">
-        <StatCard label="전체 문의" value={totalCount} tone="primary" badge="주간" caption="이번 주 내 담당" />
+        <StatCard
+          label="전체 문의"
+          value={totalCount}
+          tone="primary"
+          badge="주간"
+          caption={isDepartmentAdmin ? '이번 주 내 담당' : '이번 주 접수 기준'}
+        />
         <StatCard label="미처리" value={pendingCount} tone="amber" badge="확인 필요" caption="답변 대기 중" />
         <StatCard label="처리 완료" value={doneCount} tone="green" badge={`${completionRate}%`} caption="완료율" />
       </section>
@@ -118,19 +151,40 @@ export default function InquiryManagementPage() {
               <h2 className="text-lg font-bold">대기 중인 문의</h2>
               <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-600">{pendingCount}</span>
             </div>
-            <p className="mt-1 text-sm text-slate-400">내 담당 · 개발팀 범위</p>
+            <p className="mt-1 text-sm text-slate-400">
+              {isDepartmentAdmin ? `내 담당 · ${managedDepartment.name} 범위` : '전체 부서 · 전체 관리자 범위'}
+            </p>
           </div>
-          <span className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-600">● 부서 관리자</span>
+          <span className="rounded-lg border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-600">
+            ● {isDepartmentAdmin ? '부서 관리자' : '전체 관리자'}
+          </span>
         </div>
         <div className="flex items-center gap-3 border-t border-slate-100 px-5 py-3">
           <SearchBar value={searchInput} onChange={setSearchInput} onSearch={(value) => { setKeyword(value); setPage(1) }} placeholder="문의 제목 또는 요청자로 검색" className="flex-1" />
+          {isDepartmentAdmin ? null : (
+            <select
+              value={departmentId}
+              onChange={(event) => {
+                setDepartmentId(event.target.value)
+                setPage(1)
+              }}
+              className="focus-ring h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600"
+            >
+              <option value="">부서별</option>
+              {departments.map((department) => (
+                <option key={department.departmentId} value={String(department.departmentId)}>
+                  {department.name}
+                </option>
+              ))}
+            </select>
+          )}
           <select value={sort} onChange={(event) => setSort(event.target.value)} className="focus-ring h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600">
             <option value="priority,desc">중요도별</option>
             <option value="createdAt,desc">최신순</option>
             <option value="createdAt,asc">오래된순</option>
           </select>
         </div>
-        <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={inquiries} rowKey="inquiryId" loading={query.isLoading} emptyState={<EmptyState title="담당 문의가 없습니다." />} />
+        <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={visibleInquiries} rowKey="inquiryId" loading={query.isLoading} emptyState={<EmptyState title="담당 문의가 없습니다." />} />
         <Pagination page={query.data?.page ?? page} totalPages={query.data?.totalPages ?? 1} onChange={setPage} className="border-t border-slate-100 py-4" />
       </section>
     </div>

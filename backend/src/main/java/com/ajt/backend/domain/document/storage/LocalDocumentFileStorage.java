@@ -19,6 +19,23 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
     }
 
     @Override
+    public DocumentFileMutation moveToScope(String originalPath, String parsedPath, String targetScopeKey, long documentId)
+            throws IOException {
+        String movedOriginal = "wiki/" + targetScopeKey + "/sources/" + documentId + "/original." + extensionOf(originalPath);
+        String movedParsed = parsedPath == null ? null : "wiki/" + targetScopeKey + "/sources/" + documentId + "/parsed.md";
+        move(originalPath, movedOriginal);
+        try {
+            if (movedParsed != null) {
+                move(parsedPath, movedParsed);
+            }
+        } catch (IOException exception) {
+            move(movedOriginal, originalPath);
+            throw exception;
+        }
+        return new ScopeMove(originalPath, parsedPath, movedOriginal, movedParsed);
+    }
+
+    @Override
     public String storeOriginal(String scopeKey, long documentId, MultipartFile file) throws IOException {
         String extension = extensionOf(file.getOriginalFilename());
         String storedPath = "wiki/" + scopeKey + "/sources/" + documentId + "/original." + extension;
@@ -54,6 +71,13 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
         Files.deleteIfExists(resolve(storedPath));
     }
 
+    private void move(String sourcePath, String targetPath) throws IOException {
+        Path source = resolve(sourcePath);
+        Path target = resolve(targetPath);
+        Files.createDirectories(target.getParent());
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+    }
+
     private Path resolve(String storedPath) {
         Path path = storageRoot.resolve(storedPath).normalize();
         if (!path.startsWith(storageRoot)) {
@@ -62,8 +86,34 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
         return path;
     }
 
-    private String extensionOf(String originalFileName) {
-        int extensionStart = originalFileName.lastIndexOf('.');
-        return originalFileName.substring(extensionStart + 1);
+    private String extensionOf(String fileName) {
+        int extensionStart = fileName.lastIndexOf('.');
+        return fileName.substring(extensionStart + 1);
+    }
+
+    private final class ScopeMove implements DocumentFileMutation {
+
+        private final String previousOriginalPath;
+        private final String previousParsedPath;
+        private final String originalPath;
+        private final String parsedPath;
+
+        private ScopeMove(String previousOriginalPath, String previousParsedPath, String originalPath, String parsedPath) {
+            this.previousOriginalPath = previousOriginalPath;
+            this.previousParsedPath = previousParsedPath;
+            this.originalPath = originalPath;
+            this.parsedPath = parsedPath;
+        }
+
+        @Override public String originalPath() { return originalPath; }
+        @Override public String parsedPath() { return parsedPath; }
+
+        @Override
+        public void rollback() throws IOException {
+            if (parsedPath != null) move(parsedPath, previousParsedPath);
+            move(originalPath, previousOriginalPath);
+        }
+
+        @Override public void discardBackup() { }
     }
 }

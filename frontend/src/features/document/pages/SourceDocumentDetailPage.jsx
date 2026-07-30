@@ -92,6 +92,7 @@ export default function SourceDocumentDetailPage() {
             </span>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-bold text-slate-800">{doc.originalFileName}</h1>
+              {/* TODO(API): 문서 페이지 수 필드가 계약에 없어 1페이지로 고정 표시된다. */}
               <p className="mt-0.5 text-xs text-slate-400">
                 {fileExtension(doc.originalFileName)} · {formatBytes(doc.fileSize)} · 1페이지
               </p>
@@ -117,6 +118,7 @@ export default function SourceDocumentDetailPage() {
               파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
             </p>
           </div>
+          {/* TODO(API): 미리보기 본문·페이지 수 필드가 계약에 없어 플레이스홀더와 1 / 1로 둔다. */}
           <span className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">1 / 1</span>
         </div>
 
@@ -209,6 +211,14 @@ export default function SourceDocumentDetailPage() {
         document={doc}
         onClose={() => setDeleteOpen(false)}
         onBackground={() => {
+          setDeleteOpen(false)
+          navigate('/admin/documents/source')
+        }}
+        onViewWiki={(wikiId) => {
+          setDeleteOpen(false)
+          navigate(`/wiki/${wikiId}`)
+        }}
+        onGoToList={() => {
           setDeleteOpen(false)
           navigate('/admin/documents/source')
         }}

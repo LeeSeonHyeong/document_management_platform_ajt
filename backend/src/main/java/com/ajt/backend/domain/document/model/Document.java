@@ -202,6 +202,12 @@ public class Document {
         this.scopeKey = scopeKey;
     }
 
+    public void changeCategoryScopeAndPaths(long documentCategoryId, String scopeKey, String originalPath, String parsedPath) {
+        changeCategoryAndScope(documentCategoryId, scopeKey);
+        this.originalPath = originalPath;
+        this.parsedPath = parsedPath;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();
