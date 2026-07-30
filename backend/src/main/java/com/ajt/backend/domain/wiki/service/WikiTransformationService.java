@@ -13,8 +13,6 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * FastAPI Wiki 변환 API(POST /internal/v1/wiki-transformations) 호출과 결과 반영을 담당합니다.
@@ -29,30 +27,26 @@ public class WikiTransformationService {
     private final WikiRepository wikiRepository;
     private final WikiCategoryRepository wikiCategoryRepository;
     private final WikiFileStorage wikiFileStorage;
-    private final WikiTransformationApplier applier;
 
     public WikiTransformationService(
             AiClient aiClient,
             WikiRepository wikiRepository,
             WikiCategoryRepository wikiCategoryRepository,
-            WikiFileStorage wikiFileStorage,
-            WikiTransformationApplier applier
+            WikiFileStorage wikiFileStorage
     ) {
         this.aiClient = aiClient;
         this.wikiRepository = wikiRepository;
         this.wikiCategoryRepository = wikiCategoryRepository;
         this.wikiFileStorage = wikiFileStorage;
-        this.applier = applier;
     }
 
     /**
-     * 문서 추가에 대한 Wiki 변환을 수행하고 생성·수정된 Wiki ID를 반환합니다.
+     * 문서 추가에 대한 Wiki 변환을 FastAPI에 요청합니다.
      *
-     * <p>별도 트랜잭션으로 실행합니다. 변환 반영이 중간에 실패하면 Wiki 변경만 롤백하고,
-     * 호출한 파싱 작업은 해당 문서를 실패로 기록한 뒤 다음 문서를 계속 처리해야 하기 때문입니다.
+     * <p>AI 호출은 장시간 걸릴 수 있어 트랜잭션 없이 수행합니다. 응답 반영은 호출자가 별도
+     * 트랜잭션 서비스에 맡깁니다.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public WikiTransformationResult transformForAddedDocument(
+    public WikiTransformationResponse requestForAddedDocument(
             long jobId,
             long documentId,
             String scopeKey,
@@ -60,7 +54,7 @@ public class WikiTransformationService {
             List<Long> selectedWikiIds
     ) {
         String currentIndex = currentIndex(scopeKey);
-        WikiTransformationResponse response = aiClient.transformWiki(new WikiTransformationRequest(
+        return aiClient.transformWiki(new WikiTransformationRequest(
                 String.valueOf(jobId),
                 String.valueOf(documentId),
                 scopeKey,
@@ -71,21 +65,6 @@ public class WikiTransformationService {
                 currentCategories(scopeKey),
                 selectedWikis(scopeKey, selectedWikiIds)
         ));
-        return new WikiTransformationResult(
-                applier.apply(scopeKey, documentId, response),
-                response.summary()
-        );
-    }
-
-    /**
-     * 변환 반영 결과입니다. {@code summary}는 AI가 돌려준 문서별 작업 요약으로,
-     * ai_job.document_results에 기록해 작업 상태 조회에 노출합니다.
-     */
-    public record WikiTransformationResult(List<Long> affectedWikiIds, String summary) {
-
-        public WikiTransformationResult {
-            affectedWikiIds = List.copyOf(affectedWikiIds);
-        }
     }
 
     /**
