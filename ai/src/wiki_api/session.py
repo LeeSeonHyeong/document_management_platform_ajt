@@ -15,7 +15,6 @@ v1.1.0 에서 이 파일의 성격이 바뀌었다: **Spring 에 되묻지 않�
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import shutil
 import tempfile
@@ -253,10 +252,13 @@ class WikiSession:
         """창구 호출에 붙일 서버 간 인증 키.
 
         Spring→AI 와 AI→Spring 이 같은 내부 키를 쓴다 (`API_컨벤션` 8.1). 라우터가
-        `app.state.api_key` 를 넘겨 주므로 `serve.py --internal-api-key` 로만 준 경우에도
-        비지 않는다. 넘어오지 않았으면 환경변수로 되돌아간다.
+        `app.state.api_key` 를 넘겨 주므로 `serve.py --internal-api-key`(또는
+        `INTERNAL_API_KEY`/`.env`)로만 준 경우에도 비지 않는다 — `ServerSettings` 가
+        조립 지점(`serve.py`)에서 이미 그 우선순위를 병합했다. **여기서 `os.environ` 을
+        다시 읽지 않는다** — 값이 여기 도달하지 못했다면 그것은 조립 지점의 버그이지,
+        이 계층에서 되돌아갈 문제가 아니다.
         """
-        return self.internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
+        return self.internal_api_key or ""
 
     async def _teardown(self) -> None:
         try:

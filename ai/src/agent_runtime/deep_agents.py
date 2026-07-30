@@ -25,8 +25,8 @@ Optional dependency: install with `uv sync --extra deepagents`.
 
 from __future__ import annotations
 
+import asyncio
 import logging
-import os
 import tempfile
 import time
 import sys
@@ -44,8 +44,6 @@ DEFAULT_TIER_MODELS = {
     FAST: "anthropic:claude-haiku-4-5-20251001",
     QUALITY: "anthropic:claude-sonnet-4-6",
 }
-# 코드 수정 없이 갈아끼우기 위한 환경변수. 게이트웨이 목록이 바뀌면 배포에서 먼저 막힌다.
-TIER_ENV = {FAST: "AI_MODEL_FAST", QUALITY: "AI_MODEL_QUALITY"}
 
 # DeepAgents' built-ins. Every one of these is a way around the MCP server.
 EXCLUDED_BUILTIN_TOOLS = frozenset({
@@ -118,18 +116,53 @@ class DeepAgentsRuntime:
     # 이유와 기본값은 `base.py::spawns_mcp_server` 에 있다.
     spawns_mcp_server = True
 
-    def __init__(self, model: str = "anthropic:claude-opus-4-6"):
+    def __init__(self, model: str = "anthropic:claude-opus-4-6", *,
+                 fast_model: str | None = None, quality_model: str | None = None,
+                 credentials: dict[str, tuple[str, str]] | None = None):
+        """모델과 자격증명을 **인자로 받는다.** `os.environ` 을 읽지 않는다.
+
+        읽던 시절에는 이 클래스를 테스트하려면 환경변수를 몽키패치해야 했고, 어떤
+        설정에 의존하는지가 시그니처에 드러나지 않았다. 설정을 고르는 일은 조립
+        지점(`wiki_api/serve.py`)의 몫이다.
+
+        `credentials` 는 단일 `(api_key, base_url)` 쌍이 아니라 **프로바이더 이름 →
+        (api_key, base_url) 표**다. 에이전트 모델(`model`)과 티어 모델(`fast_model`·
+        `quality_model`)의 프로바이더가 다를 수 있기 때문이다 — 단일 쌍을 쓰면 한
+        프로바이더의 키가 다른 프로바이더의 클라이언트로 간다 (벤더 교차 문제).
+        `_credential_kwargs` 가 호출할 모델의 접두사로 그때그때 조회한다.
+        """
         self.model = model
+        self._tier_models = {FAST: fast_model, QUALITY: quality_model}
+        self._credentials = credentials or {}
 
     def _model_for(self, tier: str) -> str:
-        """tier → 모델 이름. 환경변수가 있으면 그것을 쓴다.
+        """tier → 모델 이름. 생성자 인자가 있으면 그것을 쓴다.
 
         모르는 tier 를 조용히 기본 모델로 떨어뜨리지 않는다 — 오타 하나가 측정을
         무의미하게 만드는 것보다 즉시 터지는 쪽이 낫다.
         """
         if tier not in DEFAULT_TIER_MODELS:
             raise ValueError(f"모르는 tier: {tier!r} (가능: {sorted(DEFAULT_TIER_MODELS)})")
-        return os.environ.get(TIER_ENV[tier], "") or DEFAULT_TIER_MODELS[tier]
+        return self._tier_models.get(tier) or DEFAULT_TIER_MODELS[tier]
+
+    def _credential_kwargs(self, model: str) -> dict:
+        """**호출할 모델의** `provider:name` 접두사로 자격증명 표를 조회한다.
+
+        `complete()` 는 티어 모델로, `_run`(에이전트 경로)은 `self.model` 로 부른다 —
+        단일 자격증명을 두 경로에 공유하면 에이전트와 티어의 프로바이더가 갈릴 때 한쪽이
+        틀린 벤더의 키를 받는다.
+
+        값이 있을 때만 넣는다. 빈 문자열을 넘기면 SDK 가 「빈 키」로 읽어 자기 폴백조차
+        막는다.
+        """
+        provider = (model or "").split(":", 1)[0]
+        api_key, base_url = self._credentials.get(provider, ("", ""))
+        kwargs = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        return kwargs
 
     def complete(self, messages: list[dict], *, tier: str = QUALITY,
                  timeout: int | None = None) -> CompletionResult:
@@ -147,7 +180,8 @@ class DeepAgentsRuntime:
         requested = self._model_for(tier)
         model = init_chat_model(requested,
                                 timeout=timeout or DEFAULT_COMPLETE_TIMEOUT,
-                                max_retries=0)
+                                max_retries=0,
+                                **self._credential_kwargs(requested))
         started = time.monotonic()
         reply = model.invoke(messages)
         usage = getattr(reply, "usage_metadata", None) or {}
@@ -209,19 +243,21 @@ class DeepAgentsRuntime:
     async def _run(self, instruction: str, root: Path, scope_key: str,
                    job_id: str, tool_log: Path,
                    limit: int = CALL_TIMEOUT_SECONDS) -> tuple[str, dict, int]:
-        import asyncio
-
         from deepagents import (
             GeneralPurposeSubagentProfile,
             HarnessProfile,
             create_deep_agent,
             register_harness_profile,
         )
+        from langchain.chat_models import init_chat_model
         from langchain_mcp_adapters.client import MultiServerMCPClient
 
         client = MultiServerMCPClient(_server_config(root, scope_key, job_id, tool_log))
         tools = await client.get_tools()
 
+        # `register_harness_profile` keys its lookup off the model *name*, so it
+        # still gets the string — only `create_deep_agent` needs the instance to
+        # carry credentials (a string there means `os.environ` again).
         register_harness_profile(
             self.model,
             HarnessProfile(
@@ -229,8 +265,9 @@ class DeepAgentsRuntime:
                 general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
             ),
         )
+        model = init_chat_model(self.model, **self._credential_kwargs(self.model))
         agent = create_deep_agent(
-            model=self.model,
+            model=model,
             tools=tools,
             subagents=[],
             # Deliberately almost empty. The standards live in the `guide` tool so
