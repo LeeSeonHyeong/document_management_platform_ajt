@@ -292,7 +292,39 @@ references.py:76      링크 파서는 pages/{pageKey}.md 를 해석
 test_api_wiki.py:161  ID 기반 주소를 테스트가 고정하고 있음
 ```
 
-**과도기 push 경로에서도 라이브 페이지의 내부 링크가 해석되지 않는다.** 창구를 만들지 않아도 고쳐야 하는 결함이다. `lint` 가 라이브 전용 페이지의 내용 검사를 하지 않으므로(`tools/lint.py:39`) 조용히 지나갈 수 있다.
+**과도기 push 경로에서도 라이브 페이지의 내부 링크가 해석되지 않는다.** 창구를 만들지 않아도 고쳐야 하는 결함이다. `lint` 가 라이브 전용 페이지의 내용 검사를 하지 않으므로(`tools/lint.py:39`) AI 쪽에서는 조용히 지나간다.
+
+### 4.2.1 S15P11B106-149 가 머지되면서 하드 실패로 승격됐다
+
+`-149`(AI 발급 경로 반영)가 develop 에 들어왔다. **그 변경은 옳고, 이 결함과 만나서 문서 반영을 통째로 실패시킨다.**
+
+`-149` 는 반영 전에 본문의 Wiki 링크를 실제 경로 목록과 대조하고, 없으면 예외를 던진다.
+
+```java
+// WikiMarkdownLinkValidator:22-23
+if (!target.endsWith(".md") || target.contains("..")
+        || !allowedAddresses.contains(target)) {
+    throw new IllegalArgumentException("Wiki 페이지 링크를 찾을 수 없습니다: " + target);
+}
+```
+
+백엔드 설계 문서도 못 박았다 — *"존재하지 않는 Wiki 페이지를 가리키면 전체 반영을 실패시킨다"* (`../docs/superpowers/specs/2026-07-30-wiki-agent-paths-design.md`).
+
+그래서 실패 경로가 이렇게 닫힌다.
+
+```
+1  백엔드가 selectedWikis 에 wikiPath 를 보내지 않는다
+2  AI 가 라이브 페이지를 pages/{wikiId}.md 로 적재한다
+3  에이전트가 그 페이지를 링크한다 — 자기가 본 주소를 쓴다
+4  Spring 이 실제 경로 목록(pages/{pageKey}.md)과 대조한다 → 없다
+5  예외 → 그 문서의 반영이 전체 실패한다
+```
+
+**즉 에이전트가 기존 페이지를 링크하는 순간 변환이 실패한다.** 병합·"관련 문서" 링크는 정상 동작이므로 드문 경우가 아니다.
+
+`wikiPath` 를 계약 1.6.0 에서 필수로 한 것이 이 실패의 정본 해결책이다. 백엔드가 그 값을 채우면 AI 의 주소가 실제 파일명과 같아지고 검증을 통과한다.
+
+**확인 필요** — `-149` 가 `selectedWikis` 에 `wikiPath` 를 넣지 않은 것은 코드로 확인했다 (`backend/.../global/ai/` 안에서 `wikiPath` 는 `WikiTransformationResponse.java:25` 한 곳, 즉 AI→Spring 방향뿐이다). 실제로 반영 실패가 재현되는지는 실기동으로 확인해야 한다 — 지금 근거는 코드 판독이다.
 
 ### 4.3 조치
 
