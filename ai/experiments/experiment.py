@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +38,36 @@ DATA = "data"
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _cli_environment() -> dict:
+    """스폰된 CLI 의 판본과 설정 출처.
+
+    두 조건이 결과를 바꾸는 것을 실제로 겪었다 (`INDEX.md` 「측정을 막고 있는 것」).
+
+    **판본** — 2026-07-27 측정은 MCP 툴을 정상적으로 불렀는데 2026-07-30 에는 같은 코드로
+    지연 로딩에 걸려 못 불렀다. 판본을 안 적으면 그 차이를 나중에 설명할 방법이 없다.
+
+    **설정 출처** — 스폰된 CLI 가 운영자 `~/.claude` 를 물려받는다. 격리했는지에 따라 툴
+    표면이 달라지므로 결과가 측정한 사람에 의존한다.
+
+    `claude` 가 없거나 응답하지 않으면 `None` 을 적는다. 조건 기록이 측정을 막으면 안 된다.
+    """
+    version = None
+    executable = shutil.which("claude")
+    if executable:
+        try:
+            proc = subprocess.run([executable, "--version"], capture_output=True,
+                                  text=True, timeout=20)
+            version = proc.stdout.strip() or None
+        except (OSError, subprocess.SubprocessError):
+            version = None
+    return {
+        "cliVersion": version,
+        # `claude_code.py` 가 `--setting-sources ""` 로 띄운다 — 빈 값이 "아무 출처도 읽지
+        # 않는다" 다. 이 값을 바꾸면 여기도 바꿔야 한다.
+        "settingSources": "",
+    }
 
 
 def code_fingerprint() -> dict:
@@ -110,12 +142,21 @@ class Experiment:
     # ----- lifecycle --------------------------------------------------------
 
     def start(self, *, runtime: str, model: str | None, scope: str,
-              corpus: list[str], purpose: str, dry_run: bool = False) -> dict:
+              corpus: list[str], purpose: str, dry_run: bool = False,
+              effort: str | None = None) -> dict:
         """Create the directory and write the manifest. Refuses to overwrite.
 
         A finished measurement cannot be reproduced — the model is not
         deterministic and the run costs an hour — so clobbering one is the kind of
         mistake that has no undo.
+
+        `effort` 는 `None` 이면 "CLI 기본값" 을 뜻한다. 키를 항상 쓰는 이유는 그것과
+        "기록을 안 했다" 를 구별해야 해서다 — 2026-07-27 측정들이 후자였고 어느 단계로
+        돌았는지 지금도 모른다 (설계 문서 D8).
+
+        `cliVersion` 과 `settingSources` 는 인자로 받지 않고 여기서 직접 읽는다. 호출부가
+        잊을 수 있는 것을 조건 기록에서 빼면 안 된다 — `code_fingerprint` 를 여기 둔 것과
+        같은 이유다.
         """
         if self.has_result():
             raise FileExistsError(
@@ -132,7 +173,10 @@ class Experiment:
             "corpus": corpus,
             "purpose": purpose,
             "dryRun": dry_run,
+            # `None` = CLI 기본값. 키가 없는 것과 다르다 (docstring).
+            "effort": effort,
             "code": code_fingerprint(),
+            **_cli_environment(),
         }
         self.manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"

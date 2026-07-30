@@ -37,7 +37,9 @@ cd ai
 uv sync
 uv run pytest -m "not ocr"                  # OCR 제외 (CI 후보)
 uv run pytest                               # 전체 — 로컬 Tesseract(eng) 필요
-INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000   # 서버 기동
+INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000   # 서버 기동 (claude-code)
+uv sync --extra deepagents                                         # 배포 런타임 설치
+AI_RUNTIME=deepagents INTERNAL_API_KEY=... uv run python -m wiki_api.serve   # 배포 형태
 ```
 
 ## 구조와 경계
@@ -51,7 +53,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 | --- | --- |
 | `document_parser` | 파일 → Markdown (TXT·MD·DOCX·PDF, 이미지 PDF는 OCR) |
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
-| `agent_runtime` | 에이전트 실행 — claude-code(지금)·deepagents(배포) 런타임, 시간 상한 |
+| `agent_runtime` | 에이전트 실행 — claude-code(지금)·deepagents(배포) 런타임, 시간 상한. **기본값이 `claude-code` 라 배포에서 `AI_RUNTIME=deepagents` 를 안 주면 기동은 되고 첫 요청에서 실패한다** — `serve.py` 가 CLI 부재를 기동 시점에 막지만 근본 해결은 키 확보 후 기본값 전환이다 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |
 | `viewer/` | 위키 참조 그래프 뷰어 (개발 도구). 데이터는 `python -m wiki_mcp.graph_api --root <저장소> --scope ALL` 로 띄운다 |
 | `experiments/` | 측정 기록 — `INDEX.md` 가 수치의 정본. 실험별로 `report.json`(문서→위키 변경 매핑 포함)·`data/wiki/`(생성된 위키 전문)·`graph.json`(각주 단위 인용 그래프)이 있어 "어떤 원본에서 어떤 위키가 나왔나"를 추적할 수 있다 |
