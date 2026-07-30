@@ -46,6 +46,14 @@ ajt:
     storage:
       root-path: ${INQUIRY_STORAGE_ROOT:build/ajt-inquiries}
 
+server:
+  tomcat:
+    # 업로드 용량 초과(413) 시 Tomcat이 미판독 요청 본문을 삼켜 연결을 유지하도록 한다.
+    # 설정이 없으면(기본 2MB) 초과분을 못 삼켜 연결을 끊고 Tomcat 기본 HTML 오류를 반환하여
+    # 공통 JSON 오류 envelope 대신 HTML이 나간다. max-request-size(100MB)를 덮도록 넉넉히 준다.
+    # (회귀 방지: MaxUploadSizeExceededIntegrationTest)
+    max-swallow-size: 128MB
+
 management:
   endpoints:
     web:
