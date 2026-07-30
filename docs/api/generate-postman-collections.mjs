@@ -807,7 +807,7 @@ const publicFolders = [
         ],
         policy: ["권한이 없는 문서는 목록에 포함하지 않습니다."],
         response: [
-          "`items`: 문서 ID, 파일명, scopeKey, 카테고리, 상태, 업로드자와 시각",
+          "`items`: 문서 ID, 파일명, MIME 타입(mimeType), 파일 크기(fileSize), 카테고리(documentCategoryId·documentCategoryName), scopeKey, 공개 유형(visibilityType: all/department), 공개 부서 목록(departments[].departmentId·name), 상태, 업로드자(uploadedBy.userId·name)와 업로드 시각(uploadedAt)",
           "`page`, `size`, `totalCount`, `totalPages`",
         ],
         errors: [
@@ -825,7 +825,7 @@ const publicFolders = [
         usage: "원본문서 상세 화면에서 사용합니다.",
         pathParams: ["`documentId`: 조회할 문서 ID"],
         response: [
-          "문서 메타데이터, 카테고리, 공개 범위와 처리 상태",
+          "문서 메타데이터(mimeType·fileSize·uploadedBy·uploadedAt), 카테고리(documentCategoryId·documentCategoryName), 공개 범위(visibilityType·departments)와 처리 상태",
           "`relatedWikis`: 반영 완료된 연결 Wiki 목록",
           "`downloadUrl`: 권한 검증이 적용된 다운로드 URL",
         ],
@@ -2176,6 +2176,34 @@ const internalFolders = [
             "`400 Bad Request`: 파라미터 오류",
             "`401 Unauthorized`: 내부 API 키 오류",
             "`404 Not Found`: `WIKI_CAPABILITY_EXPIRED` · `WIKI_SCOPE_NOT_FOUND` · `WIKI_NOT_FOUND`. HTTP 상태는 같고 `code`로 구분합니다",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 범위 관계",
+        method: "GET",
+        path: "/internal/v1/wiki-spaces/:scopeKey/relations",
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.",
+          usage:
+            "에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`scopeKey`: 조회 범위"],
+          policy: [
+            "`wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).",
+            "역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.",
+            "Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.",
+          ],
+          response: [
+            "`scopeVersion`",
+            "`items[].wikiId`",
+            "`items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID",
+            "`items[].documentRefs`: 근거 원본문서 ID",
+          ],
+          errors: [
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다",
           ],
         }),
       }),

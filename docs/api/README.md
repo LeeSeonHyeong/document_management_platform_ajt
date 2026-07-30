@@ -2,11 +2,11 @@
 
 ## 계약 버전
 
-- 현재 버전: `1.6.0`
+- 현재 버전: `1.6.1`
 - 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.11
 - 공개 API: 56개
 - Spring Boot → FastAPI 내부 API: 7개
-- FastAPI → Spring Boot Wiki 조회 창구: 7개
+- FastAPI → Spring Boot Wiki 조회 창구: 8개
 
 > 두 방향 모두 `AJT-FastAPI-Internal-API` 컬렉션에 있다. 조회 창구는 FastAPI가 호출자이고
 > Spring Boot가 응답한다 — `baseVariable`이 `backendBaseUrl`인 요청이 그것이다.

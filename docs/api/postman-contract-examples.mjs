@@ -1,4 +1,4 @@
-export const contractVersion = "1.6.0";
+export const contractVersion = "1.6.1";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -863,6 +863,24 @@ const contracts = {
     error: {
       httpStatus: 404,
       errorCode: "WIKI_NOT_FOUND",
+      message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/wiki-spaces/:scopeKey/relations": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scopeVersion: 47,
+        items: [
+          { wikiId: "101", wikiRefs: ["102", "115"], documentRefs: ["15"] },
+          { wikiId: "102", wikiRefs: [], documentRefs: ["15", "16"] },
+          { wikiId: "115", wikiRefs: ["101"], documentRefs: [] },
+        ],
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "WIKI_SCOPE_NOT_FOUND",
       message: "요청한 자료를 찾을 수 없습니다.",
     },
   },
