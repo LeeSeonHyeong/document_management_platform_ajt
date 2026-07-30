@@ -13,6 +13,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.ajt.backend.domain.department.Department;
+import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.document.api.DocumentDeleteResponse;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
 import com.ajt.backend.domain.document.api.DocumentFileReplaceResponse;
@@ -63,6 +64,7 @@ class DocumentManagementServiceTest {
     private final DocumentFileMutation documentFileMutation = mock(DocumentFileMutation.class);
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
+    private final DepartmentRepository departmentRepository = mock(DepartmentRepository.class);
     private final DocumentManagementService service = new DocumentManagementService(
             currentMemberProvider,
             documentRepository,
@@ -71,7 +73,8 @@ class DocumentManagementServiceTest {
             parseJobLauncher,
             documentFileStorage,
             memberRepository,
-            wikiScopeRepository
+            wikiScopeRepository,
+            departmentRepository
     );
 
     @Test
@@ -92,12 +95,13 @@ class DocumentManagementServiceTest {
         assertThat(response.originalFileName()).isEqualTo("rule.md");
         assertThat(response.scopeKey()).isEqualTo("ALL");
         assertThat(response.status()).isEqualTo("uploaded");
-        assertThat(response.category().documentCategoryId()).isEqualTo("7");
-        assertThat(response.category().name()).isEqualTo("취업규칙");
+        assertThat(response.documentCategoryId()).isEqualTo("7");
+        assertThat(response.documentCategoryName()).isEqualTo("취업규칙");
+        assertThat(response.visibilityType()).isEqualTo("all");
+        assertThat(response.departments()).isEmpty();
         assertThat(response.downloadUrl()).isEqualTo("/api/v1/documents/15/file");
         assertThat(response.relatedWikis()).isEmpty();
-        assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-07-28T05:00:00Z"));
-        assertThat(response.updatedAt()).isEqualTo(Instant.parse("2026-07-28T05:01:00Z"));
+        assertThat(response.uploadedAt()).isEqualTo(Instant.parse("2026-07-28T05:00:00Z"));
     }
 
     @Test
@@ -309,7 +313,7 @@ class DocumentManagementServiceTest {
         assertThat(item.originalFileName()).isEqualTo("rule.md");
         assertThat(item.scopeKey()).isEqualTo("ALL");
         assertThat(item.status()).isEqualTo("uploaded");
-        assertThat(item.category().name()).isEqualTo("취업규칙");
+        assertThat(item.documentCategoryName()).isEqualTo("취업규칙");
         // 관리자는 접근범위 계산이 필요 없으므로 부서/공개범위 조회를 하지 않는다.
         verify(memberRepository, never()).findById(anyLong());
         verify(wikiScopeRepository, never()).findByVisibilityType(any());
@@ -391,7 +395,7 @@ class DocumentManagementServiceTest {
         assertThat(response.jobId()).isEqualTo("42");
         assertThat(response.status()).isEqualTo("waiting");
         assertThat(response.document().documentId()).isEqualTo("15");
-        assertThat(response.document().category().name()).isEqualTo("취업규칙");
+        assertThat(response.document().documentCategoryName()).isEqualTo("취업규칙");
         assertThat(document.status().name()).isEqualTo("UPLOADED");
         verify(parseJobLauncher).launch(any(AiJob.class));
         // 같은 범위 수정은 이 문서만 증분 재처리한다(범위 전체를 훑지 않는다).
@@ -424,7 +428,7 @@ class DocumentManagementServiceTest {
 
         assertThat(response.jobId()).isEqualTo("42");
         assertThat(response.document().scopeKey()).isEqualTo("D1-D3");
-        assertThat(response.document().category().name()).isEqualTo("사규");
+        assertThat(response.document().documentCategoryName()).isEqualTo("사규");
         assertThat(document.scopeKey()).isEqualTo("D1-D3");
         assertThat(document.status().name()).isEqualTo("UPLOADED");
         // 새 범위(문서 단위) + 기존 범위(범위 단위) → 재처리 작업 2건
@@ -538,6 +542,46 @@ class DocumentManagementServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("부서 공개 문서 목록은 공개유형·부서 이름·업로더 이름을 채워 응답한다")
+    void findDocumentsFillsDepartmentAndUploaderNames() throws Exception {
+        Document document = Document.uploaded(
+                10L, 7L, "D1-D2", "rule.md", "wiki/D1-D2/sources/15/original.md", "text/markdown", 1024L);
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(document), PageRequest.of(0, 20), 1));
+        given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "D1-D2", "사규")));
+        Member uploader = mock(Member.class);
+        given(uploader.getId()).willReturn(10L);
+        given(uploader.getName()).willReturn("김관리");
+        given(memberRepository.findAllById(any())).willReturn(List.of(uploader));
+        Department dev = mock(Department.class);
+        given(dev.getId()).willReturn(1L);
+        given(dev.getName()).willReturn("개발부");
+        Department plan = mock(Department.class);
+        given(plan.getId()).willReturn(2L);
+        given(plan.getName()).willReturn("기획부");
+        given(departmentRepository.findAllById(any())).willReturn(List.of(dev, plan));
+
+        DocumentListResponse response =
+                service.findDocuments(1, 20, "D1-D2", null, null, null, null, null, null, null, null);
+
+        DocumentSummaryResponse item = response.items().get(0);
+        assertThat(item.mimeType()).isEqualTo("text/markdown");
+        assertThat(item.fileSize()).isEqualTo(1024L);
+        assertThat(item.documentCategoryId()).isEqualTo("7");
+        assertThat(item.documentCategoryName()).isEqualTo("사규");
+        assertThat(item.visibilityType()).isEqualTo("department");
+        assertThat(item.departments()).hasSize(2);
+        assertThat(item.departments().get(0).departmentId()).isEqualTo("1");
+        assertThat(item.departments().get(0).name()).isEqualTo("개발부");
+        assertThat(item.departments().get(1).departmentId()).isEqualTo("2");
+        assertThat(item.departments().get(1).name()).isEqualTo("기획부");
+        assertThat(item.uploadedBy().userId()).isEqualTo("10");
+        assertThat(item.uploadedBy().name()).isEqualTo("김관리");
     }
 
     private Document uploadedDocument() {

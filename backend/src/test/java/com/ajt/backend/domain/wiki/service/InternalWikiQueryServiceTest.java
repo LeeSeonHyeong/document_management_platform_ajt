@@ -225,4 +225,72 @@ class InternalWikiQueryServiceTest {
             assertThat(item.snippet()).isEqualTo("연차는 15일입니다.");
         });
     }
+
+    @Test
+    void returnsEveryWikiEdgeInScopeWithCurrentScopeVersion() {
+        WikiScope scope = mock(WikiScope.class);
+        Wiki first = mock(Wiki.class);
+        Wiki second = mock(Wiki.class);
+        given(scope.scopeVersion()).willReturn(47L);
+        given(wikiScopeRepository.findById("D1-D2")).willReturn(Optional.of(scope));
+        given(wikiRepository.findAllByScopeKey("D1-D2")).willReturn(List.of(first, second));
+        given(first.id()).willReturn(101L);
+        given(first.wikiRefs()).willReturn(List.of(102L, 115L));
+        given(first.documentRefs()).willReturn(List.of(15L));
+        given(second.id()).willReturn(102L);
+        given(second.wikiRefs()).willReturn(List.of());
+        given(second.documentRefs()).willReturn(List.of(15L, 16L));
+
+        InternalWikiQueryService.WikiSpaceRelations response = service.spaceRelations("D1-D2");
+
+        assertThat(response.scopeVersion()).isEqualTo(47L);
+        assertThat(response.items()).hasSize(2);
+        assertThat(response.items().get(0).wikiId()).isEqualTo("101");
+        assertThat(response.items().get(0).wikiRefs()).containsExactly("102", "115");
+        assertThat(response.items().get(0).documentRefs()).containsExactly("15");
+        assertThat(response.items().get(1).wikiId()).isEqualTo("102");
+        assertThat(response.items().get(1).wikiRefs()).isEmpty();
+        assertThat(response.items().get(1).documentRefs()).containsExactly("15", "16");
+    }
+
+    @Test
+    void returnsEmptyItemsForScopeWithoutWiki() {
+        WikiScope scope = mock(WikiScope.class);
+        given(scope.scopeVersion()).willReturn(3L);
+        given(wikiScopeRepository.findById("D1-D2")).willReturn(Optional.of(scope));
+        given(wikiRepository.findAllByScopeKey("D1-D2")).willReturn(List.of());
+
+        InternalWikiQueryService.WikiSpaceRelations response = service.spaceRelations("D1-D2");
+
+        assertThat(response.scopeVersion()).isEqualTo(3L);
+        assertThat(response.items()).isEmpty();
+    }
+
+    @Test
+    void hidesSpaceRelationsForUnknownScope() {
+        given(wikiScopeRepository.findById("NOPE")).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.spaceRelations("NOPE"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.WIKI_SCOPE_NOT_FOUND);
+    }
+
+    @Test
+    void keepsDanglingWikiRefsInsteadOfFilteringThem() {
+        // 설계 4절 — 끊어진 참조를 걸러내면 데이터가 이미 깨져 있다는 사실이 숨는다.
+        // 999 는 이 범위에 없는 Wiki 다. 그래도 응답에 그대로 실려야 한다.
+        WikiScope scope = mock(WikiScope.class);
+        Wiki only = mock(Wiki.class);
+        given(scope.scopeVersion()).willReturn(47L);
+        given(wikiScopeRepository.findById("D1-D2")).willReturn(Optional.of(scope));
+        given(wikiRepository.findAllByScopeKey("D1-D2")).willReturn(List.of(only));
+        given(only.id()).willReturn(101L);
+        given(only.wikiRefs()).willReturn(List.of(999L));
+        given(only.documentRefs()).willReturn(List.of());
+
+        InternalWikiQueryService.WikiSpaceRelations response = service.spaceRelations("D1-D2");
+
+        assertThat(response.items().get(0).wikiRefs()).containsExactly("999");
+    }
 }

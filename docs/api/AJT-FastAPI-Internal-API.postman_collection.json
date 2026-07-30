@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT FastAPI Internal API",
-    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.6.0이며 Frontend는 직접 호출하지 않습니다.",
+    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.6.1이며 Frontend는 직접 호출하지 않습니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,7 +32,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.0",
+      "value": "1.6.1",
       "type": "string"
     },
     {
@@ -1770,6 +1770,143 @@
               ],
               "cookie": [],
               "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wikis/:wikiId/relations\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 범위 관계",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/relations",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-spaces",
+                ":scopeKey",
+                "relations"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "scopeKey",
+                  "value": "{{scopeKey}}",
+                  "description": "scopeKey 경로 변수"
+                }
+              ]
+            },
+            "description": "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- 역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.\n- Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`\n- `items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `items[].documentRefs`: 근거 원본문서 ID\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/relations",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "relations"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- 역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.\n- Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`\n- `items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `items[].documentRefs`: 근거 원본문서 ID\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"items\": [\n    {\n      \"wikiId\": \"101\",\n      \"wikiRefs\": [\n        \"102\",\n        \"115\"\n      ],\n      \"documentRefs\": [\n        \"15\"\n      ]\n    },\n    {\n      \"wikiId\": \"102\",\n      \"wikiRefs\": [],\n      \"documentRefs\": [\n        \"15\",\n        \"16\"\n      ]\n    },\n    {\n      \"wikiId\": \"115\",\n      \"wikiRefs\": [\n        \"101\"\n      ],\n      \"documentRefs\": []\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/relations",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "relations"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- 역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.\n- Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`\n- `items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `items[].documentRefs`: 근거 원본문서 ID\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_SCOPE_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wiki-spaces/:scopeKey/relations\",\n  \"fieldErrors\": []\n}"
             }
           ]
         },

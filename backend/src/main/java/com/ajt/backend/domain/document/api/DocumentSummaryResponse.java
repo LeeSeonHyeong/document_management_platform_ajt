@@ -2,32 +2,55 @@ package com.ajt.backend.domain.document.api;
 
 import com.ajt.backend.domain.document.model.Document;
 import java.time.Instant;
+import java.util.List;
 
 /**
  * 원본문서 목록의 한 줄 정보입니다. (관리자 문서 관리 목록 화면용)
+ * 프론트 계약(schema.js DocumentListItem)에 맞춰 카테고리·공개범위·업로더를 평탄한 필드로 내려준다.
+ *
+ * <p>참고(S15P11B106-70): 이 리치 응답 모양은 프론트 요구에 맞춘 것으로, 현재 Postman 계약의
+ * 목록 응답 서술(문서ID·파일명·scopeKey·카테고리·상태·업로드자·시각)보다 넓다.
+ * 계약(docs/api) 갱신은 팀 계약 변경 절차로 별도 반영 예정. (코드 선반영)
  */
 public record DocumentSummaryResponse(
         String documentId,
         String originalFileName,
+        String mimeType,
+        long fileSize,
+        String documentCategoryId,
+        String documentCategoryName,
         String scopeKey,
-        CategoryResponse category,
+        String visibilityType,
+        List<DocumentDepartmentResponse> departments,
         String status,
-        String uploaderId,
-        Instant createdAt
+        String failureReason,
+        DocumentUploaderResponse uploadedBy,
+        Instant uploadedAt
 ) {
 
-    public record CategoryResponse(String documentCategoryId, String name) {
-    }
-
-    /** 카테고리명은 호출부에서 한 번에 조회해 넘겨준다(문서별 개별 조회 시 N+1 방지). */
-    public static DocumentSummaryResponse from(Document document, String categoryName) {
+    /**
+     * 카테고리명·공개범위(부서 목록)·업로더는 호출부에서 페이지 단위로 한 번에 조회해 넘겨준다(N+1 방지).
+     */
+    public static DocumentSummaryResponse from(
+            Document document,
+            String documentCategoryName,
+            String visibilityType,
+            List<DocumentDepartmentResponse> departments,
+            DocumentUploaderResponse uploadedBy
+    ) {
         return new DocumentSummaryResponse(
                 String.valueOf(document.id()),
                 document.originalFileName(),
+                document.mimeType(),
+                document.fileSize(),
+                String.valueOf(document.documentCategoryId()),
+                documentCategoryName,
                 document.scopeKey(),
-                new CategoryResponse(String.valueOf(document.documentCategoryId()), categoryName),
+                visibilityType,
+                departments,
                 document.status().name().toLowerCase(),
-                String.valueOf(document.uploaderId()),
+                document.failureReason(),
+                uploadedBy,
                 document.createdAt()
         );
     }

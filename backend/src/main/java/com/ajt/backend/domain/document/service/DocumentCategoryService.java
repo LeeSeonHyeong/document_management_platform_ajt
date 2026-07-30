@@ -1,5 +1,6 @@
 package com.ajt.backend.domain.document.service;
 
+import com.ajt.backend.domain.document.ScopeKey;
 import com.ajt.backend.domain.document.api.DocumentCategoryCreateRequest;
 import com.ajt.backend.domain.document.api.DocumentCategoryListResponse;
 import com.ajt.backend.domain.document.api.DocumentCategoryResponse;
@@ -12,8 +13,6 @@ import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
-import java.util.Arrays;
-import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -135,23 +134,10 @@ public class DocumentCategoryService {
     }
 
     private WikiScope wikiScopeFrom(String scopeKey) {
-        if ("ALL".equals(scopeKey)) {
-            return WikiScope.all();
-        }
-        if (!scopeKey.matches("D\\d+(?:-D\\d+)*")) {
-            throw new BusinessException(ErrorCode.INVALID_SCOPE_KEY);
-        }
-
+        // scope_key 파싱·검증(형식·정규화)은 ScopeKey.parse 단일 출처를 재사용한다.
         try {
-            List<Long> departmentIds = Arrays.stream(scopeKey.split("-"))
-                    .map(value -> value.substring(1))
-                    .map(Long::valueOf)
-                    .toList();
-            WikiScope wikiScope = WikiScope.department(departmentIds);
-            if (!wikiScope.scopeKey().equals(scopeKey)) {
-                throw new BusinessException(ErrorCode.INVALID_SCOPE_KEY);
-            }
-            return wikiScope;
+            ScopeKey parsed = ScopeKey.parse(scopeKey);
+            return parsed.isAll() ? WikiScope.all() : WikiScope.department(parsed.departmentIds());
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.INVALID_SCOPE_KEY);
         }
