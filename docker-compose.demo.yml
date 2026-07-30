@@ -1,0 +1,24 @@
+# 로컬 프로파일 데모용 compose (콘텐츠가 채워진 화면 시연용)
+#
+# - 백엔드를 SPRING_PROFILES_ACTIVE=local 로 띄운다 → H2(인메모리) + LocalDataInitializer 더미데이터 자동 시드.
+# - MySQL 없음 (H2 가 백엔드에 내장). 그래서 데이터는 컨테이너 재시작 시 리셋된다 (라이브 데모엔 무방).
+# - 로그인: admin@ajt.com / password123!  (그 외 계정도 모두 비번 password123!)
+# - HTTPS 는 그대로 (프론트 nginx 가 443 에서 TLS, 인증서 공유).
+#
+# 실행: docker compose -f docker-compose.demo.yml -p demo --env-file .env.demo up -d --build
+
+services:
+  backend:
+    build: ./backend
+    env_file: ["${COMPANY_ENV:-.env.demo}"]   # SPRING_PROFILES_ACTIVE=local, AJT_AUTH_COOKIE_SECURE=true
+    restart: unless-stopped
+    # MySQL 의존 없음 — H2 인메모리라 DB 컨테이너가 필요 없다.
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${FRONTEND_PORT:-8090}:443"          # 데모 포트 → 컨테이너 443(TLS)
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro  # 도메인 인증서 공유
+    depends_on: [backend]
+    restart: unless-stopped
