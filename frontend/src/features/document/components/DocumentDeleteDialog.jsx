@@ -1,24 +1,61 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Check, Circle, FileText, Info, Sparkles } from 'lucide-react'
-import { Modal, Button } from '@/components/ui'
+import { AlertTriangle, Check, ChevronRight, Circle, FileText, Info, Sparkles } from 'lucide-react'
+import { Modal, Button, useToast } from '@/components/ui'
+import { useDeleteDocument } from '../queries'
+import { useAiJobPolling } from '../hooks/useAiJobPolling'
 
-// Figma 4-7-2R ~ 4-7-3R — 삭제 확인 후 AI 삭제 처리 화면으로 전환한다.
-// 실제 삭제 완료 처리는 추후 AI 작업 상태 API가 연결된 뒤 반영한다.
-export default function DocumentDeleteDialog({ open, onClose, document, onBackground }) {
-  const [phase, setPhase] = useState('confirm')
+// Figma 4-7-2R ~ 4-7-4R — 삭제 확인 → 위키 반영 진행 → 완료.
+// DELETE /documents/:id 는 202로 반영 작업 jobId를 주므로, 그 작업을 폴링해 진행·완료를 판단한다.
+export default function DocumentDeleteDialog({
+  open,
+  onClose,
+  document,
+  onBackground,
+  onViewWiki,
+  onGoToList,
+}) {
+  const toast = useToast()
+  // 어느 문서의 삭제 작업인지 함께 들고 있는다. 다이얼로그는 부모에 계속 마운트된 상태로
+  // open만 토글되므로, 문서가 바뀌었을 때 이전 작업의 완료 화면이 잠깐 보이는 것을 막는다.
+  const [deletion, setDeletion] = useState(null) // { documentId, jobId }
+  const deleteMutation = useDeleteDocument()
+  const jobId =
+    deletion && String(deletion.documentId) === String(document?.documentId) ? deletion.jobId : null
+  const { job, isFinished } = useAiJobPolling(open ? jobId : null)
 
-  // 다이얼로그가 다시 열릴 때 항상 확인 단계부터 시작한다.
+  // 다이얼로그가 열리고 닫힐 때 항상 확인 단계부터 시작한다.
   useEffect(() => {
-    if (open) setPhase('confirm')
-  }, [open])
+    setDeletion(null)
+  }, [open, document?.documentId])
 
   function handleDelete() {
-    setPhase('processing')
+    const documentId = document?.documentId
+    deleteMutation.mutate(documentId, {
+      onSuccess: (data) => {
+        if (data?.jobId) setDeletion({ documentId, jobId: data.jobId })
+        else onGoToList?.()
+      },
+      onError: (error) => {
+        if (error?.status === 403) toast.error('이 문서를 삭제할 권한이 없습니다.')
+        else toast.error('삭제 요청에 실패했습니다.')
+      },
+    })
   }
 
   if (!open) return null
 
-  if (phase === 'processing') {
+  if (jobId && isFinished) {
+    return (
+      <DeleteDoneDialog
+        document={document}
+        failureReason={job?.status === 'completed' ? null : job?.failureReason}
+        onViewWiki={onViewWiki}
+        onGoToList={onGoToList ?? onBackground ?? onClose}
+      />
+    )
+  }
+
+  if (jobId) {
     return (
       <DeleteProgressDialog
         open
@@ -53,7 +90,7 @@ export default function DocumentDeleteDialog({ open, onClose, document, onBackgr
           <Button variant="outline" onClick={onClose} fullWidth>
             취소
           </Button>
-          <Button variant="danger" onClick={handleDelete} fullWidth>
+          <Button variant="danger" onClick={handleDelete} loading={deleteMutation.isPending} fullWidth>
             삭제하고 위키 반영
           </Button>
         </>
@@ -162,6 +199,87 @@ function DeleteProgressDialog({ open, document, onBackground }) {
           <span className="size-2.5 rounded-sm bg-violet-400" />
         </span>
         <p className="truncate">{relatedWikiTitle} · 원본 기반 내용 정리 중</p>
+      </div>
+    </Modal>
+  )
+}
+
+// Figma 4-7-4R — 위키 반영까지 끝난 뒤의 완료 화면.
+function DeleteDoneDialog({ document, failureReason, onViewWiki, onGoToList }) {
+  const relatedWikis = document?.relatedWikis ?? []
+  const firstWiki = relatedWikis[0] ?? null
+  const fileSizeMb = document?.fileSize
+    ? `${(document.fileSize / (1024 * 1024)).toFixed(1)} MB`
+    : '용량 미확인'
+
+  return (
+    <Modal
+      open
+      size="lg"
+      showClose={false}
+      closeOnOverlay={false}
+      footerClassName="grid grid-cols-2 gap-3 bg-slate-50 px-6 py-4"
+      footer={
+        <>
+          <Button
+            variant="outline"
+            onClick={() => firstWiki && onViewWiki?.(firstWiki.wikiId)}
+            disabled={!firstWiki}
+            fullWidth
+          >
+            갱신된 위키 보기
+          </Button>
+          <Button variant="primary" onClick={onGoToList} fullWidth>
+            목록으로
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col items-center pt-2 text-center">
+        <span className="flex size-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 ring-4 ring-emerald-100">
+          {failureReason ? <AlertTriangle className="size-7" /> : <Check className="size-7" strokeWidth={2.6} />}
+        </span>
+        <h2 className="mt-4 text-xl font-bold text-slate-900">
+          {failureReason ? '삭제 처리가 완료되지 않았습니다' : '원본 문서가 삭제되었습니다'}
+        </h2>
+        <p className="mt-1.5 text-sm text-slate-500">
+          {failureReason ?? '위키 반영까지 정상적으로 완료되었습니다.'}
+        </p>
+      </div>
+
+      <div className="mt-5 space-y-2">
+        {firstWiki && (
+          <button
+            type="button"
+            onClick={() => onViewWiki?.(firstWiki.wikiId)}
+            className="focus-ring flex w-full items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-left hover:bg-primary-50"
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-violet-500">
+              <span className="size-2.5 rounded-sm bg-violet-400" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-slate-800">
+                위키 문서 {relatedWikis.length}건 갱신
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-slate-400">
+                {firstWiki.title} · 원본 기반 내용 정리됨
+              </span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-slate-400" />
+          </button>
+        )}
+
+        <div className="flex items-center gap-3 rounded-xl bg-emerald-50/60 px-4 py-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500">
+            <Check className="size-4" strokeWidth={2.6} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-800">원본 파일 삭제</p>
+            <p className="mt-0.5 truncate text-xs text-slate-400">
+              {document?.originalFileName ?? '원본 문서'} · {fileSizeMb}
+            </p>
+          </div>
+        </div>
       </div>
     </Modal>
   )

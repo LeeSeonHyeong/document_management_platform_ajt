@@ -81,7 +81,11 @@ export default function WikiAdminPanel({ wikiId, showEditor = true }) {
             )}
           </PanelCard>
 
-          <PanelCard title="관련 문서" count={wiki.evidenceDocuments?.length ?? 0}>
+          <PanelCard
+            title="출처 원본"
+            subtitle="이 위키를 생성할 때 참고한 원본 문서"
+            count={wiki.evidenceDocuments?.length ?? 0}
+          >
             {wiki.evidenceDocuments?.length > 0 ? (
               <ul className="space-y-2">
                 {wiki.evidenceDocuments.map((document) => (
@@ -136,12 +140,15 @@ export default function WikiAdminPanel({ wikiId, showEditor = true }) {
   )
 }
 
-function PanelCard({ title, count, children }) {
+function PanelCard({ title, subtitle, count, children }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-bold text-slate-800">{title}</h2>
-        {count != null && <span className="text-xs font-semibold text-slate-400">{count}</span>}
+      <div className="mb-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-bold text-slate-800">{title}</h2>
+          {count != null && <span className="text-xs font-semibold text-slate-400">{count}</span>}
+        </div>
+        {subtitle && <p className="mt-1 text-xs text-slate-400">{subtitle}</p>}
       </div>
       {children}
     </section>

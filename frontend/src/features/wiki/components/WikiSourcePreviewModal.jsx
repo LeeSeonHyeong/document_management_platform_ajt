@@ -1,7 +1,10 @@
+import { Link } from 'react-router-dom'
 import { Download, FileText } from 'lucide-react'
 import { Button, Modal, Spinner, useToast } from '@/components/ui'
 import { fetchDocumentFile } from '@/features/document/api'
 import { useDocument } from '@/features/document/queries'
+import { useAuth } from '@/hooks/useAuth'
+import { ROLES } from '@/shared/constants/enums'
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '-'
@@ -24,6 +27,9 @@ function fileExtension(name) {
 
 export default function WikiSourcePreviewModal({ open, onClose, evidenceDocument }) {
   const toast = useToast()
+  const { role } = useAuth()
+  // 문서 상세는 ADMIN 전용 라우트(routes/index.jsx)라 관리자에게만 링크를 노출한다.
+  const isAdmin = role === ROLES.ADMIN
   const documentId = evidenceDocument?.documentId
   const { data: doc, isLoading } = useDocument(open ? documentId : undefined)
   const fileName = evidenceDocument?.originalFileName ?? doc?.originalFileName
@@ -52,6 +58,15 @@ export default function WikiSourcePreviewModal({ open, onClose, evidenceDocument
         <span className="block truncate text-sm font-bold text-slate-800">{fileName ?? '원본 문서'}</span>
         <span className="mt-0.5 block text-xs font-normal text-slate-400">
           원본 문서 · {fileExtension(fileName)} · {formatBytes(doc?.fileSize)} · {formatDate(doc?.uploadedAt)}
+          {isAdmin && documentId && (
+            <Link
+              to={`/admin/documents/source/${documentId}`}
+              onClick={onClose}
+              className="focus-ring ml-2 rounded font-semibold text-primary-600 hover:text-primary-700"
+            >
+              문서 관리에서 상세 보기 →
+            </Link>
+          )}
         </span>
       </span>
     </span>
@@ -86,6 +101,7 @@ export default function WikiSourcePreviewModal({ open, onClose, evidenceDocument
               </p>
             </div>
           </div>
+          {/* TODO(API): 미리보기 페이지 수·본문 필드가 계약에 없음. 계약에 추가되면 실제 값으로 대체한다. */}
           <div className="mt-4 flex justify-center">
             <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
               1 / 1
