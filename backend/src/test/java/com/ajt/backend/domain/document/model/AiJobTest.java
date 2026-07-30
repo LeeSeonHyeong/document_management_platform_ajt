@@ -126,6 +126,19 @@ class AiJobTest {
         assertThat(processingJob().documentResults()).isEmpty();
     }
 
+    @Test
+    @DisplayName("취소된 작업은 이후 문서 결과를 기록해도 취소 상태를 유지한다")
+    void keepsCancelledStatusWhenRecordingCurrentDocumentResult() {
+        AiJob job = processingJob();
+
+        job.cancel();
+        job.recordResult(AiJob.DocumentParseResult.succeeded(3L, "휴가 규정을 Wiki에 반영했습니다."));
+
+        assertThat(job.status()).isEqualTo(AiJobStatus.CANCELLED);
+        assertThat(job.documentResults()).extracting(AiJob.DocumentParseResult::documentId)
+                .containsExactly(3L);
+    }
+
     private AiJob processingJob() {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(3L, 4L));
         job.start();
