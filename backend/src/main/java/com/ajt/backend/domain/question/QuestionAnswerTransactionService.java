@@ -1,7 +1,7 @@
 package com.ajt.backend.domain.question;
 
 import com.ajt.backend.domain.member.Member;
-import com.ajt.backend.domain.question.QuestionAskService.VerifiedSources;
+import com.ajt.backend.domain.question.QuestionAskService.AuthorizedSources;
 import com.ajt.backend.domain.question.dto.QuestionAskResponse;
 import com.ajt.backend.domain.question.dto.QuestionAskSourceResponse;
 import com.ajt.backend.domain.question.dto.QuestionEvidenceDocumentResponse;
@@ -45,21 +45,25 @@ public class QuestionAnswerTransactionService {
     /**
      * 답변과 출처를 저장하고 응답을 만듭니다.
      *
-     * <p>출처는 <b>권한 검증을 통과한 자료만</b> 저장한다. AI 응답에 그 밖의 ID가 있어도 무시하며,
-     * 제목도 AI가 준 값이 아니라 DB 값을 쓴다.
+     * <p>수정(S15P11B106-169): {@code questionType}이 AI 응답으로 옮겨왔으므로 인자로 받지 않고
+     * 응답에서 읽는다. 출처 제목도 <b>AI가 준 값을 그대로</b> 저장한다 — 에이전트가 읽은 기록의
+     * 제목이고 계약이 필수로 정한 값이다. <b>열람 권한만</b> 백엔드가 다시 걸러
+     * ({@code authorized}) 권한 밖 ID는 저장·응답에서 뺀다.
+     *
+     * <p>{@code sources}가 비어 있는 것은 정상이다 — 근거를 찾지 못한 답변이며
+     * {@code answer_source} 행이 0건이 된다 (FR-QNA-007).
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public QuestionAskResponse saveAnswer(
             long questionId,
             String conversationKey,
-            String questionType,
             AnswerGenerationResponse answer,
-            VerifiedSources verified,
+            AuthorizedSources authorized,
             Function<List<Long>, List<QuestionEvidenceDocumentResponse>> evidenceLoader
     ) {
         AiQuestion question = questionRepository.findById(questionId)
                 .orElseThrow(() -> new IllegalStateException("질문을 찾을 수 없습니다: " + questionId));
-        question.recordSuccess(QuestionType.fromApiValue(questionType));
+        question.recordSuccess(QuestionType.fromApiValue(answer.questionType()));
 
         AiAnswer saved = answerRepository.save(AiAnswer.create(question, answer.answer()));
 
@@ -67,34 +71,32 @@ public class QuestionAnswerTransactionService {
         for (AnswerGenerationResponse.Source source : answer.sources()) {
             if (source.isWiki()) {
                 Long wikiId = parseId(source.wikiId());
-                String title = wikiId == null ? null : verified.wikiTitles().get(wikiId);
-                if (title == null) {
-                    // 권한 검증을 통과하지 않은 출처다. 저장·응답에서 제외한다.
+                if (!authorized.allowsWiki(wikiId)) {
+                    // 열람 권한이 없거나 그 사이 삭제된 Wiki다. 저장·응답에서 제외한다.
                     continue;
                 }
-                answerSourceRepository.save(AnswerSource.wiki(saved, wikiId, title));
+                answerSourceRepository.save(AnswerSource.wiki(saved, wikiId, source.title()));
                 sources.add(QuestionAskSourceResponse.wiki(
                         String.valueOf(wikiId),
-                        title,
-                        evidenceLoader.apply(verified.wikiDocumentRefs().getOrDefault(wikiId, List.of()))
+                        source.title(),
+                        evidenceLoader.apply(authorized.wikiDocumentRefs().getOrDefault(wikiId, List.of()))
                 ));
                 continue;
             }
             if (source.isSchedule()) {
                 Long scheduleId = parseId(source.scheduleId());
-                String title = scheduleId == null ? null : verified.scheduleTitles().get(scheduleId);
-                if (title == null) {
+                if (!authorized.allowsSchedule(scheduleId)) {
                     continue;
                 }
-                answerSourceRepository.save(AnswerSource.schedule(saved, scheduleId, title));
-                sources.add(QuestionAskSourceResponse.schedule(String.valueOf(scheduleId), title));
+                answerSourceRepository.save(AnswerSource.schedule(saved, scheduleId, source.title()));
+                sources.add(QuestionAskSourceResponse.schedule(String.valueOf(scheduleId), source.title()));
             }
         }
 
         return new QuestionAskResponse(
                 conversationKey,
                 String.valueOf(questionId),
-                questionType,
+                answer.questionType(),
                 answer.answer(),
                 List.copyOf(sources),
                 saved.getCreatedAt()
