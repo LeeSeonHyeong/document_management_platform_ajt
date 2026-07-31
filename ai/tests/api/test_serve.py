@@ -10,6 +10,8 @@
 import subprocess
 import sys
 
+import pytest
+
 
 def test_serve_imports_outside_pytest():
     """별도 프로세스에서도 진입점이 임포트돼야 한다."""
@@ -222,3 +224,31 @@ def test_the_readable_error_never_echoes_a_secret_field_value(monkeypatch):
         serve.settings_from_args_or_die(serve.build_parser().parse_args([]))
 
     assert secret not in str(excinfo.value)
+
+
+def test_startup_rejects_model_without_its_credential():
+    """OpenAI 모델을 지정했는데 OpenAI 키가 없으면 기동에서 막는다.
+
+    첫 요청에서 「인증 방법을 못 찾았다」로 죽는 것보다 기동에서 죽는 쪽이 낫다.
+    `claude-code` CLI 부재를 기동에서 막는 것과 같은 이유다.
+    """
+    from wiki_api.serve import check_model_credentials
+    from wiki_api.settings import ServerSettings
+
+    settings = ServerSettings(internal_api_key="k", runtime="deepagents",
+                              model="openai:gpt-4o-mini", openai_api_key="")
+
+    with pytest.raises(SystemExit) as raised:
+        check_model_credentials(settings)
+
+    assert "openai" in str(raised.value).lower()
+
+
+def test_startup_passes_when_the_credential_is_there():
+    from wiki_api.serve import check_model_credentials
+    from wiki_api.settings import ServerSettings
+
+    settings = ServerSettings(internal_api_key="k", runtime="deepagents",
+                              model="openai:gpt-4o-mini", openai_api_key="sk-test")
+
+    check_model_credentials(settings)   # 예외가 없으면 통과

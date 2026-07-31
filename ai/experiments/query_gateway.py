@@ -1,4 +1,4 @@
-"""가짜 Wiki 조회 창구 — 계약 v1.5.0 「Wiki 조회 창구」 7개를 파일 트리로 흉내 낸다.
+"""가짜 조회 창구 — 계약의 「Wiki 조회 창구」 8개와 「일정 조회 API」 2개를 흉내 낸다.
 
 **이 파일은 폐기 대상이다.** 백엔드가 창구를 만들면 사라진다. `src/` 아래 어느
 파일도 이것을 임포트하지 않는다.
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -60,6 +61,9 @@ class GatewayState:
     # 테스트가 이 값을 올려 scope_changed 를 유발한다.
     scope_version: int = 47
     pages: dict[str, dict] = field(default_factory=dict)
+    # 일정은 위키 트리에 없다 — 별도 JSON 에서 읽는다 (`--schedules`). 비워 두면 일정
+    # 도구가 「결과가 없습니다」를 낸다.
+    schedules: dict[str, dict] = field(default_factory=dict)
 
     def load(self) -> None:
         base = self.corpus / "wiki" / self.scope_key
@@ -95,10 +99,12 @@ def _not_found() -> JSONResponse:
 
 
 def build_gateway(corpus: Path, *, scope_key: str, capability: str,
-                  api_key: str, scope_version: int = 47) -> FastAPI:
+                  api_key: str, scope_version: int = 47,
+                  schedules: list[dict] | None = None) -> FastAPI:
     state = GatewayState(Path(corpus), scope_key, capability, api_key,
                          scope_version)
     state.load()
+    state.schedules = {row["scheduleId"]: dict(row) for row in (schedules or [])}
 
     app = FastAPI(title="AJT Wiki Query Gateway (fake)")
     app.state.gateway = state
@@ -192,6 +198,40 @@ def build_gateway(corpus: Path, *, scope_key: str, capability: str,
         return {"documentId": document_id, "originalFileName": f"{document_id}.pdf",
                 "parsedMarkdown": path.read_text(encoding="utf-8")}
 
+    # ---- 일정 조회 (계약 1.8.0 「일정 조회 API」 2개) ------------------------
+    #
+    # **허가값을 쓰지 않는다.** 일정 권한은 범위가 아니라 사용자·부서로 갈리므로 계약이
+    # `questionId` 를 권한 판정 근거로 정했다 (헤더에 X-Wiki-Capability 가 없다).
+    # 이 가짜는 `questionId` 가 있는지만 본다 — **진짜 권한 판정을 흉내 내지 않는다.**
+    #
+    # 시각은 UTC(`Z`)로 낸다. 계약이 그렇고, `from`·`to` 는 날짜라 **경계에서 KST 와
+    # 어긋난다** — 그 판정은 백엔드 몫이고 이 가짜는 단순 문자열 비교로 자른다.
+
+    @app.get("/internal/v1/schedules")
+    async def schedules(request: Request, questionId: str):
+        if request.headers.get("X-Internal-API-Key") != state.api_key:
+            return _not_found()
+        params = request.query_params
+        start, end = params.get("from", ""), params.get("to", "")
+        keyword = params.get("keyword") or ""
+        limit = int(params.get("limit") or 50)
+        rows = [row for row in state.schedules.values()
+                if (not start or row["startAt"][:10] >= start)
+                and (not end or row["startAt"][:10] <= end)
+                and (not keyword or keyword in row["title"])]
+        shown = [{k: v for k, v in row.items() if k != "content"}
+                 for row in rows[:limit]]
+        return {"items": shown, "truncated": len(rows) > limit}
+
+    @app.get("/internal/v1/schedules/{schedule_id}")
+    async def schedule_detail(request: Request, schedule_id: str, questionId: str):
+        if request.headers.get("X-Internal-API-Key") != state.api_key:
+            return _not_found()
+        row = state.schedules.get(schedule_id)
+        if not row:
+            return _not_found()
+        return dict(row)
+
     return app
 
 
@@ -202,11 +242,17 @@ def main() -> None:
     parser.add_argument("--capability", default="cap-local")
     parser.add_argument("--api-key", default="key-local")
     parser.add_argument("--port", type=int, default=8090)
+    parser.add_argument("--schedules", help="일정 JSON (`schedules` 배열이 있는 파일)")
     args = parser.parse_args()
+
+    rows = []
+    if args.schedules:
+        rows = json.loads(Path(args.schedules).read_text(encoding="utf-8"))["schedules"]
 
     import uvicorn
     uvicorn.run(build_gateway(Path(args.corpus), scope_key=args.scope,
-                             capability=args.capability, api_key=args.api_key),
+                             capability=args.capability, api_key=args.api_key,
+                             schedules=rows),
                 host="127.0.0.1", port=args.port)
 
 

@@ -44,6 +44,10 @@ class RunResult:
     # 총계만으로는 D8 을 좁힐 수 없어서 넣었다: 시간 ≈ 출력토큰 ÷ 55 로 거의 일정하므로
     # 출력 토큰이 곧 지연시간이고, 그것을 줄이려면 어느 턴에서 나오는지부터 알아야 한다.
     detail: dict | None = None
+    # 모델이 낸 구조화 응답 (`response_format` 을 준 실행에서만 채워진다). 챗봇의 「쓴 자료
+    # 신고」와 질문 유형이 여기 온다. **`detail` 에 섞지 않는다** — 그쪽은 측정·진단용이고
+    # 계약 응답에 실리지 않는 값이다.
+    structured: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +98,17 @@ class Runtime(Protocol):
     # `timeout` 은 이 문서에 허용된 초다 (`agent_runtime/limits.py`). 세션은 sync 런타임을
     # `asyncio.to_thread` 로 띄우는데 그 스레드는 취소할 수 없으므로, 런타임 자체 timeout
     # 이 NFR-PERF-002 를 강제하는 유일한 수단이다. 안 넘기면 각 런타임의 기존 기본값.
+
+    def run_with_tools(self, guide: str, question: str, *, tools: list,
+                       max_turns: int, timeout: int,
+                       response_format=None) -> RunResult: ...
+    # MCP 없이 도구를 직접 붙여 도는 실행. **쓰기가 없는 작업(챗봇)만 쓴다** — 작업 공간도
+    # 스코프 격리도 없다. `tools` 는 `agent_runtime.tools.AgentTool` 목록이다.
+    # `guide` 는 시스템 지침, `question` 은 첫 사용자 메시지다. **한 문자열을 양쪽에 넣지
+    # 않는다** — 목차가 두 번 실려 입력이 두 배가 된다.
+    # 상한은 턴 수(`max_turns`)가 주 장치이고 `timeout` 은 한 턴이 이상하게 오래 걸릴 때
+    # 끊는 안전장치다. 턴 상한에 걸린 실행은 `RunResult.error == "turn_limit"` 이다 —
+    # 호출자가 그것으로 `AGENT_TURN_LIMIT_REACHED` 를 낸다.
 
     def complete(self, messages: list[dict], *, tier: str = QUALITY,
                  timeout: int | None = None) -> CompletionResult: ...
@@ -249,113 +264,10 @@ def edit_instruction(wiki_address: str, scope_key: str, instruction: str,
     )
 
 
-def answer_context_instruction(question: str, messages: list[dict],
-                               indexes: list[dict],
-                               schedules: list[dict]) -> list[dict]:
-    """챗봇 1단계 프롬프트. **content block 목록을 돌려준다.**
-
-    문자열이 아니라 block 목록인 이유는 캐싱이다. 첫 block 이 목차이고 거기에
-    `cache_control` 이 붙는다 — 질문마다 목차가 같으므로 접두사가 고정되고, 읽기가 10%
-    과금이 된다. **목차가 맨 앞이 아니면 접두사가 매번 달라져 적중이 0 이 된다.**
-
-    캐시가 걸리는 최소 토큰(haiku 계열은 2,048 로 알려져 있다)을 넘지 못하면 캐싱이 아예
-    작동하지 않는다. 작은 스코프에서는 그럴 수 있고, 그때 비용은 캐시 없는 값이다.
-    """
-    index_text = "\n\n".join(
-        f"### 범위 `{entry['scopeKey']}`\n\n{entry['indexMarkdown']}"
-        for entry in indexes
-    ) or "(권한 있는 위키가 없다)"
-
-    schedule_text = "\n".join(
-        f"- `{s['scheduleId']}` {s['title']} — {s['startAt']} ~ {s['endAt']}"
-        + (f" — 대상 {s['targetText']}" if s.get("targetText") else "")
-        + (f" — 장소 {s['location']}" if s.get("location") else "")
-        for s in schedules
-    ) or "(권한 있는 일정이 없다)"
-
-    history = "\n".join(
-        f"  {'사용자' if m['role'] == 'user' else '답변'}: {m['content']}"
-        for m in messages
-    )
-    history_text = f"\n\n## 이전 대화\n\n{history}" if history else ""
-
-    return [{
-        "role": "user",
-        "content": [
-            # ① 고정 — 캐시 대상. 질문마다 같아야 한다.
-            {"type": "text",
-             "text": f"## 위키 목차\n\n{index_text}",
-             "cache_control": {"type": "ephemeral"}},
-            # ② 변동 — 캐시 경계 뒤.
-            {"type": "text",
-             "text": (
-                 f"## 일정 목록\n\n{schedule_text}{history_text}\n\n"
-                 f"## 현재 질문\n\n{question}\n\n"
-                 f"위 질문에 답하는 데 필요한 자료를 고른다. 질문 종류를 판단하고 "
-                 f"(`wiki`·`schedule`·`mixed`), 위키와 일정을 각각 관련도 순서로 "
-                 f"**최대 5개**씩 고른다.\n\n"
-                 f"위키는 목차 링크(`pages/{{wikiId}}.md`)에 실재하는 ID 로만, 일정은 위 "
-                 f"목록에 있는 ID 로만 답한다. 관련된 것이 없으면 빈 배열을 낸다 — 억지로 "
-                 f"채우지 않는다. 이전 대화를 참고해 현재 질문이 무엇을 가리키는지 본다.\n\n"
-                 f"다른 말 없이 JSON 만 출력한다:\n"
-                 f'{{"questionType": "mixed", "wikiIds": ["101"], '
-                 f'"scheduleIds": ["31"], "reason": "고른 이유 한두 문장"}}\n'
-             )},
-        ],
-    }]
-
-
-def answer_instruction(question: str, messages: list[dict], wikis: list[dict],
-                       schedules: list[dict], question_type: str) -> list[dict]:
-    """챗봇 2단계 프롬프트.
-
-    1단계와 달리 캐싱을 걸지 않는다 — 실린 본문이 질문마다 다르므로 공유 접두사가 없다.
-
-    `questionType` 별로 쓰는 배열이 다르다 (계약 정책): `wiki` 는 위키만, `schedule` 은
-    일정만, `mixed` 는 둘 다. 그래서 안 쓰는 쪽은 프롬프트에 넣지 않는다 — 넣으면 모델이
-    질문과 무관한 자료를 근거로 끌어온다.
-
-    **주어진 자료 밖으로 나가지 말라고 지시한다.** 근거 없는 답변 금지(NFR-AI-002)는
-    위키 편집과 같은 규칙이고, 챗봇에서는 그것이 곧 환각 방지다.
-    """
-    parts = []
-    if question_type in ("wiki", "mixed"):
-        wiki_text = "\n\n".join(
-            f"### 위키 `{w['wikiId']}` — {w['title']}\n\n{w['contentMarkdown']}"
-            for w in wikis
-        ) or "(위키 자료 없음)"
-        parts.append(f"## 위키 자료\n\n{wiki_text}")
-    if question_type in ("schedule", "mixed"):
-        schedule_text = "\n\n".join(
-            f"### 일정 `{s['scheduleId']}` — {s['title']}\n"
-            f"- 기간: {s['startAt']} ~ {s['endAt']}\n"
-            + (f"- 대상: {s['targetText']}\n" if s.get("targetText") else "")
-            + (f"- 장소: {s['location']}\n" if s.get("location") else "")
-            + f"\n{s['content']}"
-            for s in schedules
-        ) or "(일정 자료 없음)"
-        parts.append(f"## 일정 자료\n\n{schedule_text}")
-
-    history = "\n".join(
-        f"  {'사용자' if m['role'] == 'user' else '답변'}: {m['content']}"
-        for m in messages
-    )
-    if history:
-        parts.append(f"## 이전 대화\n\n{history}")
-
-    parts.append(
-        f"## 현재 질문\n\n{question}\n\n"
-        f"위 자료만을 근거로 한국어로 답한다. **자료에 없는 내용은 쓰지 않는다** — "
-        f"자료가 없거나 답을 찾을 수 없으면 그렇다고 답한다. 이전 대화를 참고해 현재 "
-        f"질문이 무엇을 가리키는지 본다.\n\n"
-        f"`sources` 에는 **실제로 근거로 쓴** 자료만 넣는다. 읽었지만 답에 쓰지 않은 것은 "
-        f"넣지 않는다.\n\n"
-        f"다른 말 없이 JSON 만 출력한다:\n"
-        f'{{"answer": "답변 본문", "sources": ['
-        f'{{"type": "wiki", "wikiId": "101", "title": "휴가 규정"}}]}}\n'
-    )
-    return [{"role": "user", "content": "\n\n".join(parts)}]
-
+# 챗봇 프롬프트 두 개(`answer_context_instruction`·`answer_instruction`)는 계약 1.8.0 에서
+# 지웠다. 챗봇은 이제 지침을 시스템 자리에 싣고 도구로 조회하는 에이전트 하나이고, 그 지침은
+# `wiki_api/answer_guide.py` 가 정본이다. **프롬프트 캐싱은 다시 재야 한다** — 위 두 함수의
+# `cache_control` 블록 배치는 Anthropic 경로에서 측정한 것이고 지금 제공자는 OpenAI 다.
 
 def render_messages(messages: list[dict], *, label_single: bool = False,
                     trailing_newline: bool = False) -> str:

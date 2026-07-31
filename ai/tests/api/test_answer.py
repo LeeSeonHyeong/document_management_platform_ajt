@@ -1,203 +1,193 @@
-"""챗봇 2단계 — 답변 생성과 출처 복원.
+"""챗봇 엔드포인트 하나 — 에이전트가 조회하고 답한다.
 
-`sources` 는 모델의 자기 신고다. **지어낸 ID 는 막지만 "안 쓴 자료를 출처로 신고하는 것"은
-막지 못한다.** 그 한계를 알고 쓴다 — 각주 강제로 기계 검증할 수 있지만 계약에 답변 본문의
-각주 표기 형식이 없다.
+**출처는 모델의 신고와 읽은 기록의 교집합이다** (`answer.build_response`). 여기서는 그것이
+HTTP 표면에서 어떻게 보이는지를 본다 — 상태 코드, 계약 모양, 실패 이름.
 
-JSON 이 깨져도 답변을 버리지 않는다. 내용은 맞고 포맷만 틀린 경우가 흔하고, 버리면 재호출에
-같은 크레딧을 또 쓴다. `answer` 가 실제로 비었을 때만 실패시킨다.
+모델만 가짜다 (`chat_fakes.ScriptedAgentRuntime`). 도구·HTTP·장부는 진짜로 돌기 때문에
+「도구를 안 부르면 출처가 없다」가 이 테스트에서도 그대로 성립한다.
 """
 
 from fastapi.testclient import TestClient
 
-from agent_runtime.base import CompletionResult
-from wiki_api.answer import parse_answer
 from wiki_api.app import create_app
+
+from .chat_fakes import ScriptedAgentRuntime, use_fake_backend, wiki_and_schedule_backend
 
 API_KEY = "secret-key"
 PATH = "/internal/v1/answers"
-
-WIKIS = {"101": "휴가 규정", "102": "보상 체계"}
-SCHEDULES = {"31": "8월 휴가 일정"}
+BACKEND = "http://backend"
 
 REQUEST = {
     "questionId": "500",
     "conversationId": "chat-123",
-    "questionType": "mixed",
     "question": "연차 규정과 다음 휴가 일정을 알려줘.",
     "conversationMessages": [
         {"role": "user", "content": "연차 신청 방법을 알려줘."},
         {"role": "assistant", "content": "연차 신청 절차는 다음과 같습니다."},
     ],
-    "selectedWikis": [
-        {"wikiId": "101", "title": "휴가 규정", "contentMarkdown": "# 휴가 규정\n연차 15일"}
-    ],
-    "selectedSchedules": [
-        {"scheduleId": "31", "title": "8월 휴가 일정", "content": "개발부 휴가",
-         "startAt": "2026-08-03T01:00:00Z", "endAt": "2026-08-03T03:00:00Z"}
+    "wikiIndexes": [
+        {"scopeKey": "ALL", "indexMarkdown": "# 사내 규정\n- [휴가 규정](pages/101.md)",
+         "wikiCapability": "cap-all"}
     ],
 }
 
-GOOD = ('{"answer": "연차는 15일입니다.", "sources": '
-        '[{"type": "wiki", "wikiId": "101", "title": "휴가 규정"}]}')
+READ_BOTH = [("read_wiki", {"scopeKey": "ALL", "wikiId": "101"}),
+             ("read_schedule", {"scheduleId": "31"})]
+
+REPORT = {"answer": "연차는 15일입니다.", "usedWikiIds": ["101"],
+          "usedScheduleIds": ["31"], "questionType": "mixed"}
 
 
-class FakeRuntime:
-    name = "fake-answer"
-
-    def __init__(self, text: str, raises: Exception | None = None):
-        self.text = text
-        self.raises = raises
-        self.messages: list[list[dict]] = []
-        self.tiers: list[str] = []
-
-    def complete(self, messages, *, tier="quality", timeout=None):
-        self.messages.append(messages)
-        self.tiers.append(tier)
-        if self.raises:
-            raise self.raises
-        return CompletionResult(text=self.text)
-
-
-def _post(runtime, body=None):
-    app = create_app(api_key=API_KEY)
+def _post(monkeypatch, runtime, body=None, *, transport=None):
+    use_fake_backend(monkeypatch, transport or wiki_and_schedule_backend())
+    app = create_app(api_key=API_KEY, backend_base_url=BACKEND)
     app.state.runtime = runtime
     client = TestClient(app, raise_server_exceptions=False)
     return client.post(PATH, json=body or REQUEST,
                        headers={"X-Internal-API-Key": API_KEY})
 
 
-# ---- 파싱 ------------------------------------------------------------------
+def test_계약_모양으로_응답한다(monkeypatch):
+    response = _post(monkeypatch, ScriptedAgentRuntime(READ_BOTH, report=REPORT))
 
-def test_받은_ID_만_출처가_된다():
-    text = ('{"answer": "답", "sources": ['
-            '{"type": "wiki", "wikiId": "101", "title": "휴가 규정"},'
-            '{"type": "wiki", "wikiId": "999", "title": "지어낸 것"}]}')
-    answer, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert answer == "답"
-    assert [s.wikiId for s in sources] == ["101"]
-
-
-def test_제목은_요청값을_쓴다():
-    """모델이 제목을 바꿔 쓰면 answer_source.source_title 에 다른 문자열이 저장된다."""
-    text = ('{"answer": "답", "sources": '
-            '[{"type": "wiki", "wikiId": "101", "title": "엉뚱한 제목"}]}')
-    _, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert sources[0].title == "휴가 규정"
-
-
-def test_type_은_어느_배열에서_왔는지로_정한다():
-    text = ('{"answer": "답", "sources": '
-            '[{"type": "wiki", "scheduleId": "31", "title": "x"}]}')
-    _, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert sources[0].type == "schedule"
-    assert sources[0].scheduleId == "31"
-    assert sources[0].wikiId is None
-
-
-def test_ID_가_양쪽에_있으면_버린다():
-    """모호한 출처는 없는 출처보다 나쁘다."""
-    text = ('{"answer": "답", "sources": '
-            '[{"type": "wiki", "wikiId": "101", "scheduleId": "31", "title": "x"}]}')
-    _, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert sources == []
-
-
-def test_중복_출처를_지운다():
-    text = ('{"answer": "답", "sources": ['
-            '{"type": "wiki", "wikiId": "101", "title": "휴가 규정"},'
-            '{"type": "wiki", "wikiId": "101", "title": "휴가 규정"}]}')
-    _, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert len(sources) == 1
-
-
-def test_JSON_이_깨지면_전문을_답변으로_쓴다():
-    text = "연차는 15일입니다. 8월 3일에 개발부 휴가가 있습니다."
-    answer, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert answer == text
-    assert sources == []
-
-
-def test_sources_가_배열이_아니면_빈_배열이다():
-    text = '{"answer": "연차는 15일입니다.", "sources": "휴가 규정"}'
-    answer, sources = parse_answer(text, WIKIS, SCHEDULES)
-    assert answer == "연차는 15일입니다."
-    assert sources == []
-
-
-def test_answer_키가_없으면_전문을_쓴다():
-    text = '{"sources": [{"type": "wiki", "wikiId": "101", "title": "휴가 규정"}]}'
-    answer, _ = parse_answer(text, WIKIS, SCHEDULES)
-    assert answer == text
-
-
-def test_빈_답변은_None_을_돌려준다():
-    answer, sources = parse_answer('{"answer": "   ", "sources": []}', WIKIS, SCHEDULES)
-    assert answer is None
-
-
-# ---- 엔드포인트 ------------------------------------------------------------
-
-def test_계약_모양으로_응답한다():
-    response = _post(FakeRuntime(GOOD))
     assert response.status_code == 200, response.text
     assert response.json() == {
         "answer": "연차는 15일입니다.",
-        "sources": [{"type": "wiki", "wikiId": "101", "title": "휴가 규정"}],
+        "sources": [{"type": "wiki", "wikiId": "101", "title": "휴가 규정"},
+                    {"type": "schedule", "scheduleId": "31",
+                     "title": "8월 휴가 일정"}],
+        "questionType": "mixed",
     }
 
 
-def test_quality_tier_로_부른다():
-    runtime = FakeRuntime(GOOD)
-    _post(runtime)
-    assert runtime.tiers == ["quality"]
+def test_다섯_도구를_모두_붙인다(monkeypatch):
+    runtime = ScriptedAgentRuntime(READ_BOTH, report=REPORT)
+    _post(monkeypatch, runtime)
+
+    assert set(runtime.tool_names) == {"search_wiki", "read_wiki", "read_wiki_index",
+                                       "list_schedules", "read_schedule"}
 
 
-def test_자료가_0개여도_200_이다():
-    """400 이 아니다. 계약의 400 은 형식 오류를 뜻한다."""
-    runtime = FakeRuntime('{"answer": "관련 자료가 없어 답변할 수 없습니다.", "sources": []}')
-    body = dict(REQUEST, questionType="wiki", selectedWikis=[], selectedSchedules=[])
-    response = _post(runtime, body)
+def test_지침에_목차와_이전_대화가_실리고_질문은_따로_간다(monkeypatch):
+    """한 문자열을 지침과 질문 양쪽에 넣으면 목차가 두 번 실려 입력이 두 배가 된다."""
+    runtime = ScriptedAgentRuntime(READ_BOTH, report=REPORT)
+    _post(monkeypatch, runtime)
+
+    guide = runtime.guides[0]
+    assert "휴가 규정" in guide                       # 목차
+    assert "연차 신청 방법을 알려줘." in guide          # 이전 대화
+    assert runtime.questions[0] == REQUEST["question"]
+    assert REQUEST["question"] not in guide
+
+
+def test_찾아봤지만_없으면_200_이고_출처가_빈다(monkeypatch):
+    """FR-QNA-007 — 근거를 못 찾은 것은 오류가 아니다."""
+    runtime = ScriptedAgentRuntime(
+        [("search_wiki", {"scopeKey": "ALL", "query": "연차"})],
+        report={"answer": "위키에서 찾지 못했습니다.", "usedWikiIds": [],
+                "usedScheduleIds": [], "questionType": "wiki"})
+
+    response = _post(monkeypatch, runtime)
+
     assert response.status_code == 200
     assert response.json()["sources"] == []
-    assert response.json()["answer"]
+    assert response.json()["questionType"] == "wiki"
 
 
-def test_빈_답변은_계약_500_코드다():
-    response = _post(FakeRuntime('{"answer": "", "sources": []}'))
+def test_아예_조회하지_않으면_500_이고_이름이_구분된다(monkeypatch):
+    runtime = ScriptedAgentRuntime([], text="아마 15일일 것입니다.")
+
+    response = _post(monkeypatch, runtime)
+
     assert response.status_code == 500
-    assert response.json()["code"] == "ANSWER_GENERATION_FAILED"
+    assert response.json()["code"] == "NO_WIKI_OR_SCHEDULE_WAS_READ"
 
 
-def test_런타임_실패는_계약_500_코드다():
-    response = _post(FakeRuntime("", raises=RuntimeError("게이트웨이 거부")))
+def test_턴_상한은_자기_이름으로_나온다(monkeypatch):
+    runtime = ScriptedAgentRuntime(READ_BOTH, report=REPORT, error="turn_limit")
+
+    response = _post(monkeypatch, runtime)
+
     assert response.status_code == 500
-    assert response.json()["code"] == "ANSWER_GENERATION_FAILED"
+    assert response.json()["code"] == "AGENT_TURN_LIMIT_REACHED"
 
 
-def test_형식_오류는_계약_400_코드다():
-    response = _post(FakeRuntime(GOOD), dict(REQUEST, questionType="general"))
+def test_모델_고장은_모델_이름으로_나온다(monkeypatch):
+    runtime = ScriptedAgentRuntime([], raises=RuntimeError("게이트웨이 거부"))
+
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "MODEL_CALL_FAILED"
+
+
+def test_조회가_실패해도_에이전트는_계속_돈다(monkeypatch):
+    """도구가 문장으로 알려 주면 에이전트가 다른 범위를 볼 수 있다 — 500 으로 끊지 않는다.
+
+    다만 읽은 것이 없으므로 출처는 비고, 답변은 모델이 낸 것이 나간다.
+    """
+    runtime = ScriptedAgentRuntime(
+        [("read_wiki", {"scopeKey": "ALL", "wikiId": "101"})],
+        report={"answer": "지금은 확인할 수 없습니다.", "usedWikiIds": ["101"],
+                "usedScheduleIds": [], "questionType": "wiki"})
+
+    response = _post(monkeypatch, runtime,
+                     transport=wiki_and_schedule_backend(status=500))
+
+    assert response.status_code == 200
+    assert response.json()["sources"] == []
+
+
+def test_허가값이_없는_요청은_400_이다(monkeypatch):
+    """`wikiCapability` 없이 보내면 그 범위를 한 장도 못 읽는다 — 조용히 받지 않는다."""
+    body = {**REQUEST, "wikiIndexes": [{"scopeKey": "ALL", "indexMarkdown": "- 목차"}]}
+
+    response = _post(monkeypatch, ScriptedAgentRuntime(READ_BOTH, report=REPORT), body)
+
     assert response.status_code == 400
     assert response.json()["code"] == "INVALID_ANSWER_GENERATION_REQUEST"
 
 
-def test_questionType_별로_쓰는_배열이_다르다():
-    """wiki 질문에 일정 자료를 프롬프트에 넣으면 모델이 무관한 근거를 끌어온다."""
-    runtime = FakeRuntime(GOOD)
-    _post(runtime, dict(REQUEST, questionType="wiki"))
-    prompt = runtime.messages[0][0]["content"]
-    assert "휴가 규정" in prompt
-    assert "일정 자료" not in prompt
+def test_옛_2단계_필드를_보내면_400_이다(monkeypatch):
+    body = {**REQUEST, "questionType": "mixed",
+            "selectedWikis": [{"wikiId": "101", "title": "휴가 규정",
+                               "contentMarkdown": "본문"}]}
 
+    response = _post(monkeypatch, ScriptedAgentRuntime(READ_BOTH, report=REPORT), body)
 
-def test_입력이_상한을_넘으면_400_이고_모델을_부르지_않는다():
-    from wiki_api.answer import MAX_INPUT_BYTES
-
-    huge = "가" * (MAX_INPUT_BYTES // 3 + 100)
-    runtime = FakeRuntime(GOOD)
-    body = dict(REQUEST, selectedWikis=[
-        {"wikiId": "101", "title": "휴가 규정", "contentMarkdown": huge}])
-    response = _post(runtime, body)
     assert response.status_code == 400
-    assert response.json()["code"] == "INVALID_ANSWER_GENERATION_REQUEST"
-    assert runtime.messages == []
+
+
+def test_비동기_경로가_있으면_그것을_쓴다(monkeypatch):
+    """sync 런타임을 스레드로 돌리면 그 안의 `asyncio.run` 이 요청마다 루프를 새로 만들고
+    닫는다 — 모델 클라이언트 연결 풀이 죽은 루프에 묶여 **두 번째 요청부터 전부** 실패한다
+    (Spring 실연동 2026-07-31). 그래서 비동기 경로가 있으면 반드시 그쪽으로 가야 한다."""
+    class BothPaths(ScriptedAgentRuntime):
+        def __init__(self):
+            super().__init__(READ_BOTH, report=REPORT)
+            self.used = []
+
+        async def arun_with_tools(self, guide, question, **kwargs):
+            self.used.append("async")
+            return super().run_with_tools(guide, question, **kwargs)
+
+        def run_with_tools(self, guide, question, **kwargs):
+            self.used.append("sync")
+            return super().run_with_tools(guide, question, **kwargs)
+
+    runtime = BothPaths()
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 200, response.text
+    assert runtime.used == ["async"]
+
+
+def test_도구를_한_번도_못_부른_상한은_상한이_아니다(monkeypatch):
+    """모델 호출이 매번 실패해도 호출 수는 올라가 상한 이름이 먼저 나온다. 그 이름을 믿고
+    상한을 늘리려 들면 실제 고장(루프 결함·네트워크)을 못 본다."""
+    runtime = ScriptedAgentRuntime([], error="turn_limit")
+
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "MODEL_CALL_FAILED"

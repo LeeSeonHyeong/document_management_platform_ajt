@@ -127,8 +127,8 @@ def test_tier_가_모델을_고른다(mock_anthropic):
     runtime.complete(MESSAGES, tier=FAST, timeout=10)
     runtime.complete(MESSAGES, tier=QUALITY, timeout=10)
     sent = [r["body"]["model"] for r in mock_anthropic.requests]
-    assert sent[0] == DEFAULT_TIER_MODELS[FAST].removeprefix("anthropic:")
-    assert sent[1] == DEFAULT_TIER_MODELS[QUALITY].removeprefix("anthropic:")
+    assert sent[0] == DEFAULT_TIER_MODELS["anthropic"][FAST].removeprefix("anthropic:")
+    assert sent[1] == DEFAULT_TIER_MODELS["anthropic"][QUALITY].removeprefix("anthropic:")
 
 
 def test_생성자_인자가_tier_모델을_덮는다(mock_anthropic):
@@ -145,8 +145,8 @@ def test_모르는_tier_는_터진다():
 
 def test_기본_모델은_게이트웨이에_있는_이름이다():
     """GMS 에 없는 이름을 기본값으로 두면 배포 첫 요청이 400 이다."""
-    assert DEFAULT_TIER_MODELS[FAST] == "anthropic:claude-haiku-4-5-20251001"
-    assert DEFAULT_TIER_MODELS[QUALITY] == "anthropic:claude-sonnet-4-6"
+    assert DEFAULT_TIER_MODELS["anthropic"][FAST] == "anthropic:claude-haiku-4-5-20251001"
+    assert DEFAULT_TIER_MODELS["anthropic"][QUALITY] == "anthropic:claude-sonnet-4-6"
 
 
 def test_tier_models_come_from_constructor_arguments():
@@ -163,7 +163,7 @@ def test_tier_models_come_from_constructor_arguments():
 def test_tier_models_fall_back_to_the_measured_defaults():
     from agent_runtime.deep_agents import DEFAULT_TIER_MODELS, FAST, DeepAgentsRuntime
 
-    assert DeepAgentsRuntime()._model_for(FAST) == DEFAULT_TIER_MODELS[FAST]
+    assert DeepAgentsRuntime()._model_for(FAST) == DEFAULT_TIER_MODELS["anthropic"][FAST]
 
 
 def test_credentials_are_passed_to_the_model_explicitly(monkeypatch):
@@ -338,3 +338,28 @@ def test_run_경로에서도_빈_자격증명은_넘기지_않는다(monkeypatch
 
     assert "api_key" not in seen["init_kwargs"]
     assert "base_url" not in seen["init_kwargs"]
+
+
+def test_tier_models_follow_the_agent_provider():
+    """에이전트 모델이 openai 면 티어 기본값도 openai 여야 한다.
+
+    기본값이 anthropic 으로 박혀 있으면 OpenAI 만 설정한 배포가 첫 단발 호출에서
+    「인증 방법을 못 찾았다」로 죽는다 (2026-07-31 실측).
+    """
+    from agent_runtime.base import FAST, QUALITY
+    from agent_runtime.deep_agents import DeepAgentsRuntime
+
+    runtime = DeepAgentsRuntime(model="openai:gpt-4o-mini")
+
+    assert runtime._model_for(QUALITY).startswith("openai:")
+    assert runtime._model_for(FAST).startswith("openai:")
+
+
+def test_explicit_tier_models_still_win():
+    from agent_runtime.base import FAST
+    from agent_runtime.deep_agents import DeepAgentsRuntime
+
+    runtime = DeepAgentsRuntime(model="openai:gpt-4o-mini",
+                                fast_model="anthropic:claude-haiku-4-5-20251001")
+
+    assert runtime._model_for(FAST) == "anthropic:claude-haiku-4-5-20251001"

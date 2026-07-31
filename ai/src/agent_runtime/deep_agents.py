@@ -38,12 +38,22 @@ from .base import DEFAULT_COMPLETE_TIMEOUT, FAST, QUALITY, CompletionResult, Run
 
 logger = logging.getLogger("llmwiki.deepagents")
 
-# tier → 모델. 게이트웨이가 가진 것에 묶인다 — GMS 실측(2026-07-29)으로 확인된 이름만
-# 쓴다. 짧은 별칭(`claude-haiku-4-5`)은 400 이고 `claude-sonnet-5` 는 GMS 에 없다.
+# 제공자별 티어 기본값. **에이전트 모델의 제공자를 따라간다** — 하나만 지정한 배포가
+# 첫 단발 호출에서 다른 벤더의 키를 찾다 죽는 것을 막는다 (2026-07-31 실측).
+#
+# 이름은 게이트웨이가 가진 것에 묶인다 — GMS 실측(2026-07-29)으로 확인된 이름만 쓴다.
+# 짧은 별칭(`claude-haiku-4-5`)은 400 이고 `claude-sonnet-5` 는 GMS 에 없다.
 DEFAULT_TIER_MODELS = {
-    FAST: "anthropic:claude-haiku-4-5-20251001",
-    QUALITY: "anthropic:claude-sonnet-4-6",
+    "anthropic": {
+        FAST: "anthropic:claude-haiku-4-5-20251001",
+        QUALITY: "anthropic:claude-sonnet-4-6",
+    },
+    "openai": {
+        FAST: "openai:gpt-4o-mini",
+        QUALITY: "openai:gpt-4o-mini",
+    },
 }
+TIERS = (FAST, QUALITY)
 
 # DeepAgents' built-ins. Every one of these is a way around the MCP server.
 EXCLUDED_BUILTIN_TOOLS = frozenset({
@@ -118,7 +128,8 @@ class DeepAgentsRuntime:
 
     def __init__(self, model: str = "anthropic:claude-opus-4-6", *,
                  fast_model: str | None = None, quality_model: str | None = None,
-                 credentials: dict[str, tuple[str, str]] | None = None):
+                 credentials: dict[str, tuple[str, str]] | None = None,
+                 chat_model=None):
         """모델과 자격증명을 **인자로 받는다.** `os.environ` 을 읽지 않는다.
 
         읽던 시절에는 이 클래스를 테스트하려면 환경변수를 몽키패치해야 했고, 어떤
@@ -134,16 +145,26 @@ class DeepAgentsRuntime:
         self.model = model
         self._tier_models = {FAST: fast_model, QUALITY: quality_model}
         self._credentials = credentials or {}
+        # 완성된 모델 객체를 그대로 쓰는 자리. **가짜 모델을 끼우는 지점이다** — 모델 판단만
+        # 가짜고 루프·도구·응답 조립은 진짜로 돈다. 배포에서는 넘기지 않는다.
+        self._chat_model_override = chat_model
 
     def _model_for(self, tier: str) -> str:
         """tier → 모델 이름. 생성자 인자가 있으면 그것을 쓴다.
 
+        인자가 없으면 **에이전트 모델과 같은 제공자의** 기본값을 쓴다. 모르는 제공자면
+        에이전트 모델을 그대로 쓴다 — 다른 벤더로 새는 것보다 낫다.
+
         모르는 tier 를 조용히 기본 모델로 떨어뜨리지 않는다 — 오타 하나가 측정을
         무의미하게 만드는 것보다 즉시 터지는 쪽이 낫다.
         """
-        if tier not in DEFAULT_TIER_MODELS:
-            raise ValueError(f"모르는 tier: {tier!r} (가능: {sorted(DEFAULT_TIER_MODELS)})")
-        return self._tier_models.get(tier) or DEFAULT_TIER_MODELS[tier]
+        if tier not in TIERS:
+            raise ValueError(f"모르는 tier: {tier!r} (가능: {sorted(TIERS)})")
+        chosen = self._tier_models.get(tier)
+        if chosen:
+            return chosen
+        provider = (self.model or "").split(":", 1)[0]
+        return DEFAULT_TIER_MODELS.get(provider, {}).get(tier, self.model)
 
     def _credential_kwargs(self, model: str) -> dict:
         """**호출할 모델의** `provider:name` 접두사로 자격증명 표를 조회한다.
@@ -240,6 +261,104 @@ class DeepAgentsRuntime:
             elapsed_seconds=round(time.monotonic() - started, 1),
         )
 
+    def _chat_model(self, timeout: int):
+        """에이전트 모델 객체. 생성자에 `chat_model=` 이 오면 그것을 그대로 쓴다.
+
+        자격증명은 `_credential_kwargs` 로 **호출할 모델의 제공자** 몫만 넣는다 —
+        `complete()` 와 같은 이유다 (벤더 교차 방지).
+        """
+        if self._chat_model_override is not None:
+            return self._chat_model_override
+        from langchain.chat_models import init_chat_model
+
+        return init_chat_model(self.model, timeout=timeout, max_retries=0,
+                               **self._credential_kwargs(self.model))
+
+    async def arun_with_tools(self, guide: str, question: str, *, tools: list,
+                              max_turns: int, timeout: int,
+                              response_format=None) -> RunResult:
+        """MCP 없이 도구를 직접 붙여 돈다. 챗봇 전용이다. **호출자의 루프에서 돈다.**
+
+        `run` 과 달리 임시 디렉터리도 MCP 클라이언트도 만들지 않는다 — 쓰기가 없다.
+
+        **비동기가 정본이고 `run_with_tools` 가 껍데기다.** 뒤집으면(요청마다 `asyncio.run`)
+        모델 클라이언트의 연결 풀이 **닫힌 루프에 묶여** 두 번째 요청부터 전부
+        `RuntimeError: Event loop is closed` 로 죽는다 — 그것이 `APIConnectionError` 로 감싸
+        여 올라와 네트워크 장애처럼 보인다. Spring 실연동에서 확인했다 (2026-07-31): 서버
+        기동 후 첫 질문만 답하고 그다음은 전부 실패했다.
+        """
+        started = time.monotonic()
+        text, calls, structured, hit_limit = await self._run_with_tools(
+            guide, question, tools, max_turns, timeout, response_format)
+        return RunResult(text=text, tool_calls=calls, turns=sum(calls.values()),
+                         structured=structured,
+                         error="turn_limit" if hit_limit else None,
+                         elapsed_seconds=round(time.monotonic() - started, 2))
+
+    def run_with_tools(self, guide: str, question: str, *, tools: list,
+                       max_turns: int, timeout: int,
+                       response_format=None) -> RunResult:
+        """`arun_with_tools` 의 sync 껍데기. **돌고 있는 루프 안에서는 부르지 않는다** —
+        스크립트와 테스트용이다. 서버는 `arun_with_tools` 를 그대로 await 한다.
+        """
+        return asyncio.run(self.arun_with_tools(
+            guide, question, tools=tools, max_turns=max_turns, timeout=timeout,
+            response_format=response_format))
+
+    async def _run_with_tools(self, guide: str, question: str, tools: list,
+                              max_turns: int, timeout: int, response_format):
+        from deepagents import create_deep_agent
+        from langchain.agents.middleware import ModelCallLimitMiddleware
+        from langchain.agents.middleware.model_call_limit import (
+            ModelCallLimitExceededError,
+        )
+
+        # 턴 상한을 미들웨어로 건다. `recursion_limit` 만 쓰면 GraphRecursionError 가 나고
+        # 그것이 일반 예외로 잡혀 「모델 호출 실패」로 뭉개진다 — 상한 도달과 고장을
+        # 구분할 수 없게 된다.
+        #
+        # `exit_behavior="error"` 다. `"end"` 는 영어 안내문(`Model call limits
+        # exceeded: ...`)을 마지막 AI 메시지로 끼워 정상 종료처럼 끝내므로, 상한 도달을
+        # 알아내려면 그 문장을 문자열로 대조해야 한다 — 그 문장이 바뀌면 조용히 상한이
+        # 「빈 답변」이나 심지어 사용자에게 나가는 영어 답변으로 새어나간다.
+        limit = ModelCallLimitMiddleware(thread_limit=max_turns, exit_behavior="error")
+        # **도구 호출은 우리가 센다.** 상한 예외로 끝나면 그래프 상태를 못 받아 「몇 번
+        # 읽었나」가 사라지고, 호출자는 상한 도달과 「모델 호출이 매번 실패했다」를 구분할 수
+        # 없게 된다 (그 둘은 이름이 달라야 한다).
+        counted: dict[str, int] = {}
+        agent = create_deep_agent(
+            model=self._chat_model(timeout),
+            tools=langchain_tools(tools, counted),
+            subagents=[],
+            system_prompt=guide,          # 지침은 여기에만. 질문과 겹쳐 싣지 않는다.
+            middleware=[limit],
+            response_format=response_format,
+        )
+        hit_limit = False
+        try:
+            result = await asyncio.wait_for(
+                agent.ainvoke({"messages": [{"role": "user", "content": question}]}),
+                timeout=timeout,
+            )
+        except ModelCallLimitExceededError:
+            # 상한 도달은 고장이 아니라 상한 도달이다. 호출자가 자기 오류 이름으로 바꾼다.
+            # 그때까지 실제로 읽은 횟수를 함께 낸다 — 도구를 한 번도 못 불렀다면 그것은
+            # 상한이 아니라 모델 호출 실패이고, 이름이 달라야 한다.
+            return "", dict(counted), None, True
+        messages = result.get("messages") or []
+        # 구조화 응답은 **도구 호출로 온다** (LangChain `ToolStrategy`): 모델이 스키마
+        # 이름의 도구를 부르고 그 인자가 응답이 된다. 그것은 조회가 아니므로 세지 않는다 —
+        # 세면 위키도 일정도 읽지 않은 실행이 「조회했다」로 통과한다 (2026-07-31 확인).
+        # `counted` 는 우리가 감싼 도구만 세므로 그 문제가 애초에 없다.
+        calls = dict(counted)
+        text = _text_of(messages[-1].content) if messages else ""
+        structured = result.get("structured_response")
+        # pydantic 인스턴스로 온다. 계약 조립 쪽은 dict 를 다루므로 여기서 맞춘다 —
+        # `agent_runtime` 이 `wiki_api` 의 모델을 알 필요가 없게 하는 경계이기도 하다.
+        if hasattr(structured, "model_dump"):
+            structured = structured.model_dump()
+        return text, calls, structured, hit_limit
+
     async def _run(self, instruction: str, root: Path, scope_key: str,
                    job_id: str, tool_log: Path,
                    limit: int = CALL_TIMEOUT_SECONDS) -> tuple[str, dict, int]:
@@ -290,6 +409,32 @@ class DeepAgentsRuntime:
         messages = result.get("messages") or []
         text = str(getattr(messages[-1], "content", "")) if messages else ""
         return text, _usage(messages), _turns(messages)
+
+
+def langchain_tools(tools: list, counter: dict | None = None) -> list:
+    """`AgentTool` 목록을 LangChain 도구로 감싼다.
+
+    LangChain 임포트를 이 파일 안에 둔다 — 배포 의존성을 깔지 않은 설치에서도
+    `agent_runtime.tools` 는 임포트돼야 한다.
+
+    `counter` 를 주면 **호출될 때마다 이름별로 센다.** 그래프 상태에서 세지 않는 이유는
+    상한 예외로 끝난 실행에서는 그 상태를 받지 못하기 때문이다.
+    """
+    from langchain_core.tools import StructuredTool
+
+    def wrap(tool):
+        if counter is None:
+            return tool.call
+
+        def called(**kwargs):
+            counter[tool.name] = counter.get(tool.name, 0) + 1
+            return tool.call(**kwargs)
+
+        return called
+
+    return [StructuredTool.from_function(
+        func=wrap(tool), name=tool.name, description=tool.description,
+        args_schema=tool.input_schema) for tool in tools]
 
 
 def _usage(messages: list) -> dict:
