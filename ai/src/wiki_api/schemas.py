@@ -417,11 +417,25 @@ class WikiChange(Strict):
 
 
 class RelationChange(Strict):
-    action: Literal["link", "unlink"]
-    type: Literal["wiki_document", "wiki_wiki"]
-    wikiRef: str
-    documentId: str | None = None
-    targetWikiRef: str | None = None
+    """Wiki↔Wiki 관계 전용 (S15P11B106-157).
+
+    한때 `type="wiki_document"`(Wiki↔원본문서) 항목도 있었지만 그 정보는 항상
+    `wikiChanges[].evidence` 로도 나갔다 — Spring 은 evidence 를 `wiki.document_refs`
+    에 추가한다(그리고 `evidenceDocumentIds` 는 `originDocumentId` 를 항상 포함한다).
+    인용이 끊어진 항목을 걷어내는 경로는 Spring 에 아직 없다(별건)지만, `wiki_document`
+    관계는 어차피 소비자 없는 중복이었다. 게다가 Spring `RelationChange` 레코드는
+    애초에 `action`·`sourceWikiRef`·`targetWikiRef` 세 필드뿐이라 `type="wiki_document"`
+    항목은 `targetWikiRef` 가 없어 반영 시점에 죽었다 — 이름을 맞춰도 이 항목 자체가
+    문제였다. 그래서 AI 는 이제 위키↔위키 관계만 낸다.
+
+    `action` 어휘는 Spring `WikiTransformationApplier` 의 `ACTION_ADD`/`ACTION_REMOVE`
+    와 맞춘다 — `link`/`unlink` 가 아니다. Spring switch 의 `default` 는
+    `IllegalArgumentException` 을 던진다.
+    """
+    action: Literal["add", "remove"]
+    type: Literal["wiki_wiki"]
+    sourceWikiRef: str
+    targetWikiRef: str
 
 
 class IndexEntry(Strict):

@@ -10,8 +10,7 @@
 
 import pytest
 
-from wiki_api.changes import (TempRefs, build_response, parse_index_entries,
-                         snapshot_citations)
+from wiki_api.changes import TempRefs, build_response, parse_index_entries
 
 PAGE = """\
 ---
@@ -108,8 +107,14 @@ async def test_evidence_carries_location_and_quote(vault, scope_row):
     assert evidence[0].quote == "연차는 입사일을 기준으로 산정한다"
 
 
-async def test_relation_changes_are_undirected_links(vault, scope_row):
-    """DR-002·003: Wiki-문서 관계를 양쪽 JSON 에 한 트랜잭션으로 쓴다."""
+async def test_relation_changes_never_carry_a_wiki_document_item(vault, scope_row):
+    """S15P11B106-157: Wiki-원본문서 관계는 더 이상 `relationChanges` 로 나가지 않는다.
+
+    `wikiChanges[].evidence` 가 같은 정보를 나르고 Spring 은 그것으로 `wiki.document_refs`
+    를 채운다(`evidenceDocumentIds` 는 `originDocumentId` 를 항상 포함한다) — 그래서
+    `relationChanges` 는 위키↔위키(`wiki_wiki`) 전용이다. 이 페이지는 각주로 원본문서
+    101 을 인용하지만 그 관계는 `evidence` 로만 나가야 한다.
+    """
     _, scope_id, fs = vault
     address = await fs.allocate_page(scope_id)
     await fs.write(scope_id, address, PAGE, title="회의 운영")
@@ -117,11 +122,11 @@ async def test_relation_changes_are_undirected_links(vault, scope_row):
     await sync_references(fs, scope_id, address, PAGE)
 
     response = await build_response(fs, scope_id, summary="x")
-    links = [r for r in response.relationChanges if r.type == "wiki_document"]
 
-    assert links[0].action == "link"
-    assert links[0].documentId == "101"
-    assert links[0].wikiRef == "wiki-temp-1"
+    assert response.wikiChanges[0].evidence[0].documentId == "101"
+    assert all(r.type == "wiki_wiki" for r in response.relationChanges)
+    assert not any(getattr(r, "type", None) == "wiki_document"
+                   for r in response.relationChanges)
 
 
 async def test_an_inline_wiki_link_becomes_an_undirected_wiki_wiki_relation(vault, scope_row):
@@ -151,13 +156,15 @@ async def test_an_inline_wiki_link_becomes_an_undirected_wiki_wiki_relation(vaul
 
     response = await build_response(fs, scope_id, summary="x")
 
-    wiki_links = [(r.action, r.wikiRef, r.targetWikiRef)
+    wiki_links = [(r.action, r.sourceWikiRef, r.targetWikiRef)
                   for r in response.relationChanges if r.type == "wiki_wiki"]
-    assert wiki_links == [("link", "wiki-temp-1", "501")]
+    assert wiki_links == [("add", "wiki-temp-1", "501")]
 
 
-async def test_remove_becomes_an_unlink_and_a_remove(vault, scope_row):
-    """재조정이 이것에 기댄다 — 사라진 문서를 가리키던 관계를 걷어내야 한다."""
+async def test_remove_becomes_a_remove_with_no_wiki_document_unlink(vault, scope_row):
+    """S15P11B106-157: 사라진 위키가 원본문서만 인용하고(위키↔위키 링크가 없으면) 이제
+    `relationChanges` 는 비어 있어야 한다 — Wiki-원본문서 unlink 를 더 이상 여기서 안 낸다.
+    문서 자체가 사라지며 Spring 쪽 `document_refs` 는 그 문서 삭제로 정리된다."""
     _, scope_id, fs = vault
     address = await fs.allocate_page(scope_id)
     await fs.write(scope_id, address, PAGE, title="회의 운영")
@@ -174,12 +181,14 @@ async def test_remove_becomes_an_unlink_and_a_remove(vault, scope_row):
     response = await build_response(fs, scope_id, summary="x")
 
     assert response.wikiChanges[0].action == "remove"
-    assert any(r.action == "unlink" for r in response.relationChanges)
+    assert response.relationChanges == []
 
 
-async def test_dropping_a_footnote_yields_an_unlink(vault, scope_row):
-    """I4. 페이지를 고치면서 각주를 떨어뜨리면 그 Wiki-원본문서 관계는 끊어야 한다 (DR-002).
-    본문만 갱신하고 관계를 남기면 근거가 사라진 링크가 영구히 붙어 있다."""
+async def test_dropping_a_footnote_yields_no_relation_change(vault, scope_row):
+    """S15P11B106-157: 페이지를 고치면서 각주(Wiki-원본문서 인용)를 떨어뜨려도 더 이상
+    `relationChanges` 에는 안 실린다 — `wikiChanges[].evidence` 가 갱신된 인용 목록을
+    그대로 실어 Spring 이 그것을 `wiki.document_refs` 에 추가한다. (인용이 끊어진
+    항목을 걷어내는 경로는 Spring 에 아직 없다 — 별건.)"""
     _, scope_id, fs = vault
     address = await fs.allocate_page(scope_id)
     from wiki_mcp.tools.references import sync_references
@@ -188,39 +197,46 @@ async def test_dropping_a_footnote_yields_an_unlink(vault, scope_row):
 
     from wiki_mcp.vaultfs.local import commit_job
     await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "501")
-
-    # 에이전트가 돌기 전의 라이브 인용 스냅샷 — 세션이 `run_agent` 앞에서 이것을 찍는다.
-    before = await snapshot_citations(fs, scope_id)
-    assert before[address] == {"101"}
 
     stripped = PAGE.split("[^1]")[0].rstrip() + "\n"
     await fs.write(scope_id, address, stripped, title="회의 운영")
     await sync_references(fs, scope_id, address, stripped)
 
-    response = await build_response(fs, scope_id, summary="x", live_citations=before)
+    response = await build_response(fs, scope_id, summary="x")
 
-    unlinks = [(r.wikiRef, r.documentId) for r in response.relationChanges
-               if r.action == "unlink" and r.type == "wiki_document"]
-    assert unlinks == [("501", "101")]
+    assert response.relationChanges == []
+    assert response.wikiChanges[0].evidence == []
 
 
-async def test_a_kept_footnote_is_not_unlinked(vault, scope_row):
-    """유지된 각주까지 unlink 하면 반영 시점에 관계가 사라진다."""
+async def test_removing_a_page_unlinks_its_wiki_wiki_relation(vault, scope_row):
+    """위키↔위키 관계의 `remove` 는 각주가 아니라 **페이지 자체가 사라질 때** 난다 —
+    `action` 은 그 페이지의 `WikiChange.action` 을 그대로 물려받는다 (`changes.py`).
+    이 페이지가 지워지면 그 페이지가 걸었던 인라인 링크도 `relationChanges` 에
+    `action="remove"` 로 실려야 한다."""
     _, scope_id, fs = vault
-    address = await fs.allocate_page(scope_id)
     from wiki_mcp.tools.references import sync_references
-    await fs.write(scope_id, address, PAGE, title="회의 운영")
-    await sync_references(fs, scope_id, address, PAGE)
     from wiki_mcp.vaultfs.local import commit_job
+
+    target = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, target, PAGE, title="회의 운영", category="근무 정책")
+    await sync_references(fs, scope_id, target, PAGE)
     await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "501")
 
-    before = await snapshot_citations(fs, scope_id)
-    await fs.write(scope_id, address, PAGE + "\n한 문장 덧붙인다.\n", title="회의 운영")
-    await sync_references(fs, scope_id, address, PAGE)
+    linking = await fs.allocate_page(scope_id)
+    body = (PAGE.replace("title: 회의 운영", "title: 회의 준비")
+            .replace("주간 회의는 30분을 넘기지 않는다[^1].",
+                     f"자세한 것은 [회의 운영]({target})을 본다[^1]."))
+    await fs.write(scope_id, linking, body, title="회의 준비", category="근무 정책")
+    await sync_references(fs, scope_id, linking, body)
+    await commit_job(fs.scope_key, fs.job_id, scope_id, lambda: "502")
 
-    response = await build_response(fs, scope_id, summary="x", live_citations=before)
+    await fs.remove(scope_id, linking)
 
-    assert not [r for r in response.relationChanges if r.action == "unlink"]
+    response = await build_response(fs, scope_id, summary="x")
+
+    wiki_links = [(r.action, r.sourceWikiRef, r.targetWikiRef)
+                  for r in response.relationChanges if r.type == "wiki_wiki"]
+    assert wiki_links == [("remove", "502", "501")]
 
 
 async def test_wiki_change_carries_the_wiki_path(vault, scope_row):

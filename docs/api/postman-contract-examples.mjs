@@ -648,7 +648,15 @@ const contracts = {
             ],
           },
         ],
-        relationChanges: [],
+        relationChanges: [
+          {
+            action: "add",
+            type: "wiki_wiki",
+            // 관계의 출발 Wiki. 같은 응답의 `wikiChanges[].tempWikiId` 또는 기존 `wikiId`를 담는다.
+            sourceWikiRef: "wiki-temp-1",
+            targetWikiRef: "101",
+          },
+        ],
         indexEntries: [
           {
             wikiRef: "wiki-temp-1",
@@ -683,7 +691,14 @@ const contracts = {
           },
         ],
         categoryChanges: [],
-        relationChanges: [],
+        relationChanges: [
+          {
+            action: "add",
+            type: "wiki_wiki",
+            sourceWikiRef: "100",
+            targetWikiRef: "101",
+          },
+        ],
         indexEntries: [
           {
             wikiRef: "100",

@@ -73,11 +73,17 @@ def test_removal_returns_the_transform_shape():
                                     "relationChanges", "indexEntries"}
 
 
-def test_removing_the_last_citation_unlinks_the_document():
+def test_removing_the_last_citation_drops_it_from_evidence_not_relation_changes():
+    """S15P11B106-157: Wiki-원본문서 관계는 `relationChanges` 로 안 나간다 — 걷어낸 근거는
+    `wikiChanges[].evidence` 에서 그냥 빠진다. Spring 은 evidence 를 `wiki.document_refs`
+    에 추가한다 — 인용이 끊어진 항목을 걷어내는 경로는 Spring 에 아직 없다(별건)지만,
+    이번 요청이 evidence 에서 문서 15 를 뺀 채로 다시 실어 보내므로 문서 15 에 대한
+    별도 `remove` 신호가 필요 없다."""
     body = _post(RemovingRuntime()).json()
-    unlinks = [r for r in body["relationChanges"]
-               if r["action"] == "unlink" and r["documentId"] == "15"]
-    assert unlinks, "사라진 문서를 가리키던 관계를 걷어내야 한다 (DR-002)"
+    assert not any(r["type"] == "wiki_document" for r in body["relationChanges"])
+    evidence_doc_ids = {e["documentId"] for change in body["wikiChanges"]
+                        for e in change.get("evidence") or []}
+    assert "15" not in evidence_doc_ids
 
 
 def test_the_instruction_lists_the_pages_that_cite_the_document():
@@ -148,10 +154,15 @@ def test_replaced_backlinks_are_still_found_from_the_old_content():
 
 
 def test_replaced_does_not_emit_a_removal_unlink():
-    """교체는 문서가 사라진 것이 아니다 — 관계를 끊으면 새 내용의 근거까지 잃는다."""
+    """교체는 문서가 사라진 것이 아니다 — 관계를 끊으면 새 내용의 근거까지 잃는다.
+
+    `relationChanges` 는 위키↔위키 전용이라(S15P11B106-157) `documentId` 필드 자체가
+    없다 — 이 단정은 항상 공허하게 통과한다. 삭제되지 않는다는 것 자체는
+    `test_dropping_a_footnote_yields_no_relation_change`(test_changes.py) 가 이미
+    검증한다."""
     body = _post(ReplacingRuntime(), REPLACED).json()
     assert [r for r in body["relationChanges"]
-            if r["action"] == "unlink" and r["documentId"] == "15"] == []
+            if r["action"] == "remove" and r.get("documentId") == "15"] == []
 
 
 def test_agent_error_fails_the_removal():

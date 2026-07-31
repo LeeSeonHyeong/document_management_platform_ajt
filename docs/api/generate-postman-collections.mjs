@@ -1811,8 +1811,14 @@ const internalFolders = [
           "`categoryChanges`, `wikiChanges`, `relationChanges`",
           "`wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`",
           "`wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)",
-          "`wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거",
+          "`wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.",
+          "`relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.",
+          "`relationChanges[].action`: `add` 또는 `remove`",
+          "`relationChanges[].type`: 항상 `wiki_wiki`",
+          "`relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`",
+          "`relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`",
           "`indexEntries`: AI가 정한 목차 구조·순서·제목·요약",
+          "`indexEntries[].wikiRef`, `order`, `title`, `summary`",
         ],
         errors: [
           "`400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류",
@@ -1864,6 +1870,7 @@ const internalFolders = [
           "`agentMessage`: 관리자에게 보여줄 응답",
           "`wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`",
           "`wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.",
+          "`relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.",
         ],
         errors: [
           "`400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류",
