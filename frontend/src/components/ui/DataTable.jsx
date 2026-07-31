@@ -15,10 +15,8 @@ export default function DataTable({
   onRowClick,
   toolbar,
   className,
-  headerAlign = 'left',
 }) {
   const keyOf = (row, i) => (typeof rowKey === 'function' ? rowKey(row) : (row[rowKey] ?? i))
-  const alignClass = { left: 'text-left', center: 'text-center', right: 'text-right' }
 
   return (
     <div className={cn('overflow-hidden rounded-xl border border-slate-200 bg-white', className)}>
@@ -35,8 +33,7 @@ export default function DataTable({
                 <th
                   key={col.key}
                   className={cn(
-                    'whitespace-nowrap px-4 py-3',
-                    alignClass[col.headerAlign] ?? alignClass[headerAlign] ?? 'text-left',
+                    'whitespace-nowrap px-4 py-3 text-center',
                     col.headerClassName,
                   )}
                 >
@@ -70,18 +67,27 @@ export default function DataTable({
                     onRowClick && 'cursor-pointer hover:bg-slate-50',
                   )}
                 >
-                  {columns.map((col) => (
+                  {columns.map((col, columnIndex) => {
+                    const content = col.render ? col.render(row) : row[col.key]
+                    return (
                     <td
                       key={col.key}
                       className={cn(
                         'px-4 py-3',
-                        alignClass[col.align] ?? 'text-left',
+                        columnIndex === 0 ? 'text-left' : 'text-center',
                         col.className,
                       )}
                     >
-                      {col.render ? col.render(row) : row[col.key]}
+                      {columnIndex === 0 ? (
+                        content
+                      ) : (
+                        <div className="flex w-full items-center justify-center text-center">
+                          {content}
+                        </div>
+                      )}
                     </td>
-                  ))}
+                    )
+                  })}
                 </tr>
               ))
             )}

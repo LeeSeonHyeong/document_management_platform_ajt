@@ -92,7 +92,7 @@ function SummaryCard({ summary }) {
       </div>
 
       <div className="grid grid-cols-[minmax(0,2fr)_1fr_1fr_minmax(0,1.4fr)_110px_100px] gap-3 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500">
-        <span>파일명</span>
+        <span className="text-center">파일명</span>
         <span className="text-center">공개 부서</span>
         <span className="text-center">카테고리</span>
         <span className="text-center">생성된 위키 문서</span>

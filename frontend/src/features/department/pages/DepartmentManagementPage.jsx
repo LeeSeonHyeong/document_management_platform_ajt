@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Info, Plus, RotateCcw, UserRound } from 'lucide-react'
+import { ChevronDown, Info, Plus, RotateCcw, UserRound } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
@@ -227,12 +227,12 @@ export default function DepartmentManagementPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="border-y border-slate-100 bg-slate-50 text-left text-xs text-slate-500">
+              <thead className="border-y border-slate-100 bg-slate-50 text-xs text-slate-500">
                 <tr>
-                  <th className="px-5 py-3">부서명</th>
-                  <th className="px-5 py-3">인원 수</th>
-                  <th className="px-5 py-3">부서 관리자</th>
-                  <th className="px-5 py-3 text-right">관리</th>
+                  <th className="px-5 py-3 text-center">부서명</th>
+                  <th className="px-5 py-3 text-center">인원 수</th>
+                  <th className="px-5 py-3 text-center">부서 관리자</th>
+                  <th className="px-5 py-3 text-center">관리</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -254,9 +254,9 @@ export default function DepartmentManagementPage() {
                           <span className="font-semibold text-slate-800">{department.name}</span>
                         </div>
                       </td>
-                      <td className="px-5 py-3 font-semibold text-slate-700">{count}명</td>
-                      <td className="px-5 py-3">
-                        <div className="relative max-w-xs">
+                      <td className="px-5 py-3 text-center font-semibold text-slate-700">{count}명</td>
+                      <td className="px-5 py-3 text-center">
+                        <div className="relative mx-auto max-w-xs text-left">
                           <span
                             className={cn(
                               'pointer-events-none absolute inset-y-0 left-2 my-auto flex size-7 items-center justify-center rounded-full text-xs font-bold',
@@ -279,7 +279,7 @@ export default function DepartmentManagementPage() {
                                 [department.departmentId]: event.target.value,
                               })
                             }
-                            className="focus-ring h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-11 pr-3 text-sm text-slate-700"
+                            className="focus-ring h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-11 pr-9 text-sm text-slate-700"
                           >
                             <option value="">관리자 미지정</option>
                             {managerCandidates.map((manager) => (
@@ -288,18 +288,30 @@ export default function DepartmentManagementPage() {
                               </option>
                             ))}
                           </select>
+                          <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-slate-400" />
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-rose-200 text-rose-600 hover:bg-rose-50"
-                          disabled={count > 0}
-                          onClick={() => setDeleteTarget(department)}
-                        >
-                          삭제
-                        </Button>
+                      <td className="px-5 py-3 text-center">
+                        <span className="group relative inline-flex">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                            disabled={count > 0}
+                            onClick={() => setDeleteTarget(department)}
+                          >
+                            삭제
+                          </Button>
+                          {count > 0 && (
+                            <span
+                              role="tooltip"
+                              className="pointer-events-none absolute bottom-[calc(100%+8px)] right-0 z-20 hidden whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block"
+                            >
+                              소속 인원 {count}명이 있어 삭제할 수 없습니다.
+                              <span className="absolute -bottom-1 right-5 size-2 rotate-45 bg-slate-900" />
+                            </span>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   )

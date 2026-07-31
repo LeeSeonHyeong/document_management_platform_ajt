@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Info } from 'lucide-react'
-import { Modal, Button, Input, Select, Textarea, useToast } from '@/components/ui'
+import { Modal, Button, Field, Input, Textarea, useToast } from '@/components/ui'
 import { useCreateDocumentCategory, useUpdateDocumentCategory } from '../queries'
+import DepartmentMultiSelect from './DepartmentMultiSelect'
 
 // Figma 4-8-1R — 원본문서 카테고리 추가/수정.
 export default function DocumentCategoryFormModal({
@@ -10,15 +11,17 @@ export default function DocumentCategoryFormModal({
   scopeKey,
   category,
   departments = [],
-  defaultDepartment = '',
-  onDefaultDepartmentChange,
+  defaultDepartments = [],
+  departmentLabel = '부서별 지정',
+  documentCount = 0,
+  onDefaultDepartmentsChange,
   onClose,
   onSaved,
 }) {
   const toast = useToast()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [departmentValue, setDepartmentValue] = useState('')
+  const [departmentValues, setDepartmentValues] = useState([])
 
   const createMutation = useCreateDocumentCategory()
   const updateMutation = useUpdateDocumentCategory(scopeKey)
@@ -28,15 +31,17 @@ export default function DocumentCategoryFormModal({
     if (!open) return
     setName(mode === 'edit' ? (category?.name ?? '') : '')
     setDescription(mode === 'edit' ? (category?.description ?? '') : '')
-    setDepartmentValue(defaultDepartment)
-  }, [open, mode, category, defaultDepartment])
+    setDepartmentValues(defaultDepartments)
+  }, [open, mode, category, defaultDepartments])
 
   function handleSave() {
     const trimmed = name.trim()
     if (!trimmed || saving) return
 
     const onSuccess = () => {
-      onDefaultDepartmentChange?.(departmentValue)
+      if (mode === 'edit' && documentCount === 0) {
+        onDefaultDepartmentsChange?.(departmentValues)
+      }
       onSaved?.()
       onClose?.()
     }
@@ -79,7 +84,7 @@ export default function DocumentCategoryFormModal({
           {mode === 'edit' ? '카테고리 수정' : '카테고리 추가'}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
-          이름과 기본 공개 부서를 변경할 수 있습니다.
+          {mode === 'edit' ? '이름과 설명을 변경할 수 있습니다.' : '새 카테고리를 추가합니다.'}
         </p>
       </div>
 
@@ -91,32 +96,41 @@ export default function DocumentCategoryFormModal({
           onChange={(event) => setName(event.target.value)}
           placeholder="카테고리 이름"
         />
-        <Select
-          label="기본 공개 부서"
-          value={departmentValue}
-          onChange={(event) => setDepartmentValue(event.target.value)}
-          options={[
-            { value: '', label: '부서별 지정' },
-            { value: 'ALL', label: '전체 공개' },
-            ...departments.map((department) => ({
-              value: String(department.departmentId),
-              label: department.name,
-            })),
-          ]}
-          className="text-left"
-        />
+        {mode === 'edit' && (
+          <Field label="공개 부서">
+            {documentCount === 0 ? (
+              <DepartmentMultiSelect
+                value={departmentValues}
+                departments={departments}
+                onChange={setDepartmentValues}
+                placeholder="공개 부서 (선택)"
+                allowWrap
+              />
+            ) : (
+              <div className="flex min-h-10 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2">
+                <span className="whitespace-normal break-keep text-sm text-slate-500">
+                  {departmentLabel}
+                </span>
+              </div>
+            )}
+            {documentCount > 0 && (
+              <p className="text-left text-xs text-rose-500">
+                * 해당 카테고리에 문서가 존재합니다.
+              </p>
+            )}
+          </Field>
+        )}
         <Textarea
           label="설명"
-          hint="선택"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
-          placeholder="이 카테고리에 대한 간단한 설명"
-          rows={3}
-          className="h-24 resize-none overflow-y-auto"
+          placeholder="이 카테고리에 대한 간단한 설명 (선택)"
+          rows={2}
+          className="h-16 resize-none overflow-y-auto"
         />
         <div className="flex items-center gap-2 rounded-xl bg-primary-50 px-3 py-2.5 text-xs text-slate-500">
           <Info className="size-4 shrink-0 text-primary-500" />
-          이름을 바꿔도 기존 문서의 분류는 그대로 유지됩니다.
+          이름을 바꿔도 기존 문서 {documentCount}건의 분류는 그대로 유지됩니다.
         </div>
       </div>
     </Modal>

@@ -1,7 +1,5 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { LogOut } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import Input from '@/components/ui/Input'
@@ -32,8 +30,7 @@ function StatusBadge({ active, children }) {
 }
 
 export default function MyProfilePage() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const toast = useToast()
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -53,11 +50,6 @@ export default function MyProfilePage() {
   const passwordFormatValid = PASSWORD_PATTERN.test(newPassword)
   const passwordMatches = newPassword === confirmPassword
   const canChangePassword = currentPassword && passwordFormatValid && passwordMatches
-
-  const handleLogout = async () => {
-    await logout()
-    navigate('/login', { replace: true })
-  }
 
   const rows = [
     ['이름', user?.name ?? '-'],
@@ -127,10 +119,7 @@ export default function MyProfilePage() {
         </div>
       </Card>
 
-      <div className="flex items-center justify-between pt-1">
-        <Button variant="outline" onClick={handleLogout} className="border-rose-200 text-rose-500 hover:bg-rose-50">
-          <LogOut className="size-4" /> 로그아웃
-        </Button>
+      <div className="flex justify-end pt-1">
         <Button
           disabled={!canChangePassword}
           loading={passwordMutation.isPending}

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, Check, ChevronLeft, Info, Plus } from 'lucide-react'
-import { Button, Modal, Select, useToast } from '@/components/ui'
+import { AlertTriangle, Check, ChevronDown, ChevronLeft, Info, Plus } from 'lucide-react'
+import { Button, Modal, useToast } from '@/components/ui'
 import { useDepartments } from '@/features/department/useDepartments'
 import {
   useCreateDocumentCategory,
@@ -10,6 +11,8 @@ import {
   useDocuments,
 } from '../queries'
 import DocumentCategoryFormModal from '../components/DocumentCategoryFormModal'
+import DepartmentMultiSelect from '../components/DepartmentMultiSelect'
+import { buildScopeKey } from '../scope'
 
 const CATEGORY_TONES = [
   'bg-blue-100 text-blue-700',
@@ -26,7 +29,8 @@ const CATEGORY_TONES = [
 export default function DocumentCategoryPage() {
   const toast = useToast()
   const [newName, setNewName] = useState('')
-  const [newDepartment, setNewDepartment] = useState('')
+  const [newDepartments, setNewDepartments] = useState([])
+  const [scopeFilter, setScopeFilter] = useState('')
   const [defaultDepartments, setDefaultDepartments] = useState({})
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
@@ -50,31 +54,38 @@ export default function DocumentCategoryPage() {
     [documents],
   )
 
-  function departmentValueFor(category) {
+  function departmentValuesFor(category) {
     if (defaultDepartments[category.documentCategoryId] !== undefined) {
-      return defaultDepartments[category.documentCategoryId]
+      const saved = defaultDepartments[category.documentCategoryId]
+      return Array.isArray(saved) ? saved : [saved]
     }
-    if (category.scopeKey === 'ALL') return 'ALL'
-    const firstDepartmentId = category.scopeKey?.match(/^D(\d+)/)?.[1]
-    return firstDepartmentId ?? ''
+    if (category.scopeKey === 'ALL') return ['ALL']
+    return [...(category.scopeKey?.matchAll(/D(\d+)/g) ?? [])].map((match) => match[1])
+  }
+
+  function departmentValueFor(category) {
+    return departmentValuesFor(category)[0] ?? ''
   }
 
   function handleAdd() {
     const name = newName.trim()
     if (!name || createMutation.isPending) return
-    const categoryScopeKey = newDepartment === 'ALL' || !newDepartment ? 'ALL' : `D${newDepartment}`
+    const categoryScopeKey =
+      newDepartments.includes('ALL') || newDepartments.length === 0
+        ? 'ALL'
+        : buildScopeKey('department', newDepartments)
     createMutation.mutate(
       { scopeKey: categoryScopeKey, name, description: '' },
       {
         onSuccess: (category) => {
-          if (newDepartment) {
+          if (newDepartments.length > 0) {
             setDefaultDepartments((current) => ({
               ...current,
-              [category.documentCategoryId]: newDepartment,
+              [category.documentCategoryId]: newDepartments,
             }))
           }
           setNewName('')
-          setNewDepartment('')
+          setNewDepartments([])
           toast.success('카테고리를 추가했습니다.')
         },
         onError: (error) => {
@@ -103,10 +114,21 @@ export default function DocumentCategoryPage() {
     })
   }
 
-  function handleSaveDefaults() {
-    // TODO(API): 카테고리 기본 공개 부서 필드가 확정되면 이 상태를 PATCH 요청에 연결한다.
-    toast.success('기본 공개 부서 변경사항을 화면에 저장했습니다.')
-  }
+  const scopeOptions = Array.from(
+    new Map(
+      categories.map((category) => {
+        const values = departmentValuesFor(category)
+        const key = scopeFilterKey(values)
+        return [key, { value: key, label: departmentLabelFor(values, departments) }]
+      }),
+    ).values(),
+  )
+  const filteredCategories =
+    !scopeFilter
+      ? categories
+      : categories.filter((category) =>
+          scopeFilter === scopeFilterKey(departmentValuesFor(category)),
+        )
 
   return (
     <section className="space-y-5">
@@ -152,19 +174,11 @@ export default function DocumentCategoryPage() {
             placeholder="추가할 카테고리명 입력"
             className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400"
           />
-          <div className="w-48 shrink-0">
-            <Select
-              value={newDepartment}
-              onChange={(event) => setNewDepartment(event.target.value)}
-              placeholder="기본 공개 부서 (선택)"
-              options={[
-                { value: 'ALL', label: '전체 공개' },
-                ...departments.map((department) => ({
-                  value: String(department.departmentId),
-                  label: department.name,
-                })),
-              ]}
-              className="h-9"
+          <div className="w-52 shrink-0">
+            <DepartmentMultiSelect
+              value={newDepartments}
+              departments={departments}
+              onChange={setNewDepartments}
             />
           </div>
           <Button
@@ -178,13 +192,33 @@ export default function DocumentCategoryPage() {
           </Button>
         </div>
 
+        <div className="mx-5 mb-4 flex items-center justify-end gap-2">
+          <Button
+            size="md"
+            variant="primary"
+            onClick={() => setScopeFilter('')}
+            disabled={!scopeFilter}
+            className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300"
+          >
+            초기화
+          </Button>
+          <div className="w-56">
+            <ScopeCombinationFilter
+              value={scopeFilter}
+              options={scopeOptions}
+              onChange={setScopeFilter}
+              placeholder="공개 부서 필터"
+            />
+          </div>
+        </div>
+
         <div className="overflow-x-auto border-t border-slate-200">
           <table className="w-full min-w-[760px] border-collapse text-left">
             <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
               <tr>
                 <th className="px-5 py-3 text-center">카테고리명</th>
                 <th className="w-28 px-4 py-3 text-center">문서 수</th>
-                <th className="w-64 px-4 py-3 text-center">기본 공개 부서</th>
+                <th className="w-64 px-4 py-3 text-center">공개 부서</th>
                 <th className="w-44 px-5 py-3 text-center">관리</th>
               </tr>
             </thead>
@@ -196,7 +230,7 @@ export default function DocumentCategoryPage() {
                   </td>
                 </tr>
               ) : (
-                categories.map((category, index) => {
+                filteredCategories.map((category, index) => {
                   const count = documentCounts[category.documentCategoryId] ?? 0
                   const deletable = count === 0
                   return (
@@ -216,24 +250,10 @@ export default function DocumentCategoryPage() {
                       <td className={`px-4 py-3 text-center text-sm font-semibold ${count ? 'text-slate-700' : 'text-slate-400'}`}>
                         {count}건
                       </td>
-                      <td className="px-4 py-3">
-                        <Select
-                          value={departmentValueFor(category)}
-                          onChange={(event) =>
-                            setDefaultDepartments((current) => ({
-                              ...current,
-                              [category.documentCategoryId]: event.target.value,
-                            }))
-                          }
-                          options={[
-                            { value: '', label: '부서별 지정' },
-                            { value: 'ALL', label: '전체 공개' },
-                            ...departments.map((department) => ({
-                              value: String(department.departmentId),
-                              label: department.name,
-                            })),
-                          ]}
-                          className="h-9 text-left"
+                      <td className="px-4 py-3 text-center text-sm font-medium text-slate-700">
+                        <DepartmentSummary
+                          values={departmentValuesFor(category)}
+                          departments={departments}
                         />
                       </td>
                       <td className="px-5 py-3">
@@ -274,6 +294,13 @@ export default function DocumentCategoryPage() {
                   )
                 })
               )}
+              {!isLoading && filteredCategories.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-5 py-12 text-center text-sm text-slate-400">
+                    선택한 공개 부서에 해당하는 카테고리가 없습니다.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -284,27 +311,23 @@ export default function DocumentCategoryPage() {
         </div>
       </div>
 
-      <footer className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-slate-400">변경한 기본 공개 부서는 저장해야 반영됩니다.</p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => history.back()}>
-            되돌리기
-          </Button>
-          <Button onClick={handleSaveDefaults}>변경사항 저장</Button>
-        </div>
-      </footer>
-
       <DocumentCategoryFormModal
         open={Boolean(editing)}
         mode="edit"
         scopeKey={scopeKey}
         category={editing}
         departments={departments}
-        defaultDepartment={editing ? departmentValueFor(editing) : ''}
-        onDefaultDepartmentChange={(value) =>
+        defaultDepartments={editing ? departmentValuesFor(editing) : []}
+        departmentLabel={
+          editing
+            ? departmentLabelFor(departmentValuesFor(editing), departments)
+            : '부서별 지정'
+        }
+        documentCount={editing ? (documentCounts[editing.documentCategoryId] ?? 0) : 0}
+        onDefaultDepartmentsChange={(values) =>
           setDefaultDepartments((current) => ({
             ...current,
-            [editing.documentCategoryId]: value,
+            [editing.documentCategoryId]: values,
           }))
         }
         onClose={() => setEditing(null)}
@@ -328,8 +351,209 @@ export default function DocumentCategoryPage() {
 }
 
 function departmentLabelFor(value, departments) {
-  if (value === 'ALL') return '전체 공개'
-  return departments.find((department) => String(department.departmentId) === String(value))?.name ?? '부서별 지정'
+  const values = Array.isArray(value) ? value : [value]
+  if (values.includes('ALL')) return '전체 공개'
+  const names = values
+    .map((departmentId) =>
+      departments.find((department) => String(department.departmentId) === String(departmentId))?.name,
+    )
+    .filter(Boolean)
+  return names.length > 0 ? names.join(', ') : '부서별 지정'
+}
+
+function scopeFilterKey(values) {
+  if (values.includes('ALL')) return 'ALL'
+  return [...values].sort((left, right) => Number(left) - Number(right)).join('-')
+}
+
+function ScopeCombinationFilter({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef(null)
+  const popupRef = useRef(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const selectedOption = options.find((option) => option.value === value)
+  const label = selectedOption?.label ?? placeholder
+
+  useEffect(() => {
+    if (!open) return undefined
+
+    function updatePosition() {
+      const rect = buttonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const popupWidth = 288
+      setPosition({
+        top: rect.bottom + 6,
+        left: Math.max(12, Math.min(rect.right - popupWidth, window.innerWidth - popupWidth - 12)),
+      })
+    }
+
+    function closeOnOutside(event) {
+      if (!buttonRef.current?.contains(event.target) && !popupRef.current?.contains(event.target)) {
+        setOpen(false)
+      }
+    }
+
+    updatePosition()
+    window.addEventListener('mousedown', closeOnOutside)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('mousedown', closeOnOutside)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
+
+  function select(optionValue) {
+    onChange(value === optionValue ? '' : optionValue)
+    setOpen(false)
+  }
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="focus-ring flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-700"
+      >
+        <span className={`truncate ${!value ? 'text-slate-400' : ''}`}>{label}</span>
+        <ChevronDown className="size-4 shrink-0 text-slate-400" />
+      </button>
+
+      {open && (
+        createPortal(
+          <div
+            ref={popupRef}
+            style={{ position: 'fixed', top: position.top, left: position.left, width: 288 }}
+            className="z-[100] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+          >
+            <div className="max-h-44 overflow-y-auto p-2">
+              {options.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => select(option.value)}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${
+                    value === option.value
+                      ? 'bg-primary-50 font-semibold text-slate-800'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span
+                    className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                      value === option.value
+                        ? 'border-primary-500 bg-primary-500 text-white'
+                        : 'border-slate-300 bg-white'
+                    }`}
+                  >
+                    {value === option.value && <Check className="size-3" />}
+                  </span>
+                  <span className="min-w-0 whitespace-normal break-keep">{option.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          ,
+          document.body,
+        )
+      )}
+    </>
+  )
+}
+
+function DepartmentSummary({ values, departments }) {
+  const [open, setOpen] = useState(false)
+  const buttonRef = useRef(null)
+  const popupRef = useRef(null)
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const allVisible = values.includes('ALL')
+  const names = values
+    .map((departmentId) =>
+      departments.find((department) => String(department.departmentId) === String(departmentId))?.name,
+    )
+    .filter(Boolean)
+  const label = allVisible
+    ? '전체 공개'
+    : names.length > 2
+      ? `${names[0]} 외 ${names.length - 1}팀`
+      : names.join(', ') || '부서별 지정'
+
+  useEffect(() => {
+    if (!open) return undefined
+
+    function updatePosition() {
+      const rect = buttonRef.current?.getBoundingClientRect()
+      if (!rect) return
+      setPosition({
+        top: rect.bottom + 6,
+        left: rect.left + rect.width / 2,
+      })
+    }
+
+    function closeOnOutside(event) {
+      if (!buttonRef.current?.contains(event.target) && !popupRef.current?.contains(event.target)) {
+        setOpen(false)
+      }
+    }
+
+    updatePosition()
+    window.addEventListener('mousedown', closeOnOutside)
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('mousedown', closeOnOutside)
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open])
+
+  if (allVisible || names.length <= 2) return <span>{label}</span>
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="focus-ring inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 hover:bg-slate-100"
+        aria-expanded={open}
+      >
+        {label}
+        <ChevronDown className="size-3.5 text-slate-400" />
+      </button>
+      {open &&
+        createPortal(
+          <div
+            ref={popupRef}
+            style={{
+              position: 'fixed',
+              top: position.top,
+              left: position.left,
+              transform: 'translateX(-50%)',
+            }}
+            className="z-[100] min-w-44 overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-xl"
+          >
+            <div className="border-b border-slate-100 bg-slate-50 px-3 py-2">
+              <p className="text-xs font-semibold text-slate-700">공개 부서</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">총 {names.length}팀</p>
+            </div>
+            <div className="space-y-1 p-2">
+              {names.map((name) => (
+                <span
+                  key={name}
+                  className="flex items-center gap-2 whitespace-nowrap rounded-lg px-2 py-1.5 text-xs font-medium text-slate-600"
+                >
+                  <span className="size-1.5 rounded-full bg-primary-500" />
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  )
 }
 
 function CategoryDeleteDialog({ open, category, departmentLabel, onClose, onConfirm, loading }) {
