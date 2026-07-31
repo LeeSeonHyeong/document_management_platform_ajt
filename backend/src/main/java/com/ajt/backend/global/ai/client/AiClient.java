@@ -12,7 +12,5 @@ public interface AiClient {
 
     WikiEditResponse editWiki(WikiEditRequest request);
 
-    AnswerContextSelectionResponse selectAnswerContext(AnswerContextSelectionRequest request);
-
     AnswerGenerationResponse generateAnswer(AnswerGenerationRequest request);
 }

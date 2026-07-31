@@ -94,6 +94,9 @@ public enum ErrorCode {
 
     // 수정: 신규 추가. 질문 이력 조회의 필터·페이지값 오류(400).
     INVALID_QUESTION_FILTER(HttpStatus.BAD_REQUEST, "질문 이력 조회 조건이 올바르지 않습니다."),
+    // 추가(S15P11B106-169): AI 에이전트용 일정 조회는 questionId로 권한을 판정하므로, 그 번호가 없으면
+    //   판정 근거가 없다. 계약(내부 API)이 정한 404 코드다.
+    QUESTION_NOT_FOUND(HttpStatus.NOT_FOUND, "요청한 질문을 찾을 수 없습니다."),
 
     // 챗봇 답변 생성 중 AI 서버를 쓸 수 없는 경우(계약의 503).
     AI_SERVER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 답변 서버를 이용할 수 없습니다.");

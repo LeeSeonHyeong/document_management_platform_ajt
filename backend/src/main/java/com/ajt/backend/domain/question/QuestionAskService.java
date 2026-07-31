@@ -12,30 +12,30 @@ import com.ajt.backend.domain.question.dto.QuestionAskResponse;
 import com.ajt.backend.domain.question.dto.QuestionAskSourceResponse;
 import com.ajt.backend.domain.question.dto.QuestionEvidenceDocumentResponse;
 import com.ajt.backend.domain.schedule.model.Schedule;
-import com.ajt.backend.domain.schedule.model.ScheduleStatus;
-import com.ajt.backend.domain.schedule.model.ScheduleVisibility;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
+import com.ajt.backend.domain.schedule.service.ScheduleVisibilityPolicy;
 import com.ajt.backend.domain.wiki.model.Wiki;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
+import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.ai.client.AiClient;
+import com.ajt.backend.global.ai.client.AiClientErrorMapper;
 import com.ajt.backend.global.ai.client.AiClientException;
-import com.ajt.backend.global.ai.client.AnswerContextSelectionRequest;
-import com.ajt.backend.global.ai.client.AnswerContextSelectionResponse;
 import com.ajt.backend.global.ai.client.AnswerGenerationRequest;
 import com.ajt.backend.global.ai.client.AnswerGenerationResponse;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -44,14 +44,13 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 챗봇 질문 오케스트레이션입니다. (FR-QNA, POST /api/v1/questions)
  *
- * <p>계약의 2단계 흐름을 지휘한다.
- * <ol>
- *   <li>이 사용자가 접근할 수 있는 <b>목차와 일정 요약만</b> 보내 필요한 자료 ID를 받는다.</li>
- *   <li>받은 ID의 권한을 <b>다시 검사</b>하고 본문을 읽어 답변을 생성한다.</li>
- * </ol>
+ * <p>수정(S15P11B106-169): 계약 1.8.0 에서 <b>AI를 한 번만 부른다.</b> 자료 선택 단계가 없어졌고,
+ * 요청에는 이 사용자가 접근할 수 있는 <b>범위별 목차와 그 범위 조회 허가값만</b> 싣는다. 본문과
+ * 일정 목록은 싣지 않는다 — 에이전트가 조회 API로 필요한 것을 직접 읽는다.
  *
- * <p>권한 재검증이 이 서비스의 핵심이다. AI는 권한을 모르고, 1단계 후보에 없는 ID를 낼 수도 있다.
- * 걸러진 자료는 2단계 요청에 실리지 않으므로 답변과 출처에도 나타나지 않는다.
+ * <p>권한은 두 갈래로 건다. Wiki는 범위마다 발급한 <b>허가값</b>으로, 일정은 <b>질문 번호</b>로
+ * 판정한다(설계 §3·§7). 그리고 AI가 신고한 출처는 저장 전에 <b>열람 권한을 다시 본다</b> —
+ * 읽지 않은 ID를 신고하는 것까지는 조회 권한이 막아주지 않기 때문이다.
  *
  * <p>AI 호출은 트랜잭션 밖에서 한다. 질문·답변 저장만 트랜잭션으로 묶는다.
  */
@@ -62,6 +61,13 @@ public class QuestionAskService {
     private static final int MAX_QUESTION_LENGTH = 1000;
     /** 멀티턴 문맥으로 실어 보낼 이전 질문 수입니다. 요청이 계약 상한을 넘지 않도록 제한합니다. */
     private static final int CONVERSATION_HISTORY_LIMIT = 5;
+    /**
+     * Wiki 조회 허가값의 유효 기간입니다.
+     *
+     * <p>챗봇 한 번의 생애를 덮어야 한다. 에이전트 시간 상한(25초)에 재시도 1회를 더한 것보다
+     * 넉넉해야 하며, 짧으면 정상 질문이 만료로 실패한다. 5분에서 시작한다.
+     */
+    private static final Duration CAPABILITY_TTL = Duration.ofMinutes(5);
 
     private final AiClient aiClient;
     private final MemberRepository memberRepository;
@@ -72,6 +78,8 @@ public class QuestionAskService {
     private final DocumentRepository documentRepository;
     private final AiQuestionRepository questionRepository;
     private final QuestionAnswerTransactionService answerTransactionService;
+    private final ScheduleVisibilityPolicy scheduleVisibilityPolicy;
+    private final WikiCapabilityService wikiCapabilityService;
 
     public QuestionAskService(
             AiClient aiClient,
@@ -82,7 +90,9 @@ public class QuestionAskService {
             ScheduleRepository scheduleRepository,
             DocumentRepository documentRepository,
             AiQuestionRepository questionRepository,
-            QuestionAnswerTransactionService answerTransactionService
+            QuestionAnswerTransactionService answerTransactionService,
+            ScheduleVisibilityPolicy scheduleVisibilityPolicy,
+            WikiCapabilityService wikiCapabilityService
     ) {
         this.aiClient = aiClient;
         this.memberRepository = memberRepository;
@@ -93,6 +103,8 @@ public class QuestionAskService {
         this.documentRepository = documentRepository;
         this.questionRepository = questionRepository;
         this.answerTransactionService = answerTransactionService;
+        this.scheduleVisibilityPolicy = scheduleVisibilityPolicy;
+        this.wikiCapabilityService = wikiCapabilityService;
     }
 
     public QuestionAskResponse ask(AuthenticatedMember loginMember, QuestionAskRequest request) {
@@ -104,49 +116,56 @@ public class QuestionAskService {
         // 실패해도 이력에 남긴다(FR-QNA-008). 저장 뒤 questionId를 AI 요청에 싣는다.
         AiQuestion aiQuestion = answerTransactionService.saveQuestion(member, conversationKey, question);
 
-        List<AnswerContextSelectionRequest.ConversationMessage> history =
+        List<AnswerGenerationRequest.ConversationMessage> history =
                 conversationHistory(member.getId(), conversationKey, aiQuestion.getId());
         Set<String> accessibleScopeKeys = accessibleScopeKeys(member);
-        List<Schedule> accessibleSchedules = accessibleSchedules(member);
 
         try {
-            AnswerContextSelectionResponse selection = aiClient.selectAnswerContext(
-                    new AnswerContextSelectionRequest(
-                            String.valueOf(aiQuestion.getId()),
-                            conversationKey,
-                            question,
-                            history,
-                            wikiIndexes(accessibleScopeKeys),
-                            scheduleSummaries(accessibleSchedules)
-                    ));
-
-            // 권한 재검증: AI가 고른 ID 중 이 사용자가 볼 수 있는 것만 남긴다.
-            List<Wiki> selectedWikis = verifiedWikis(selection.wikiIds(), accessibleScopeKeys);
-            List<Schedule> selectedSchedules = verifiedSchedules(selection.scheduleIds(), accessibleSchedules);
-
-            AnswerGenerationResponse answer = aiClient.generateAnswer(new AnswerGenerationRequest(
+            AnswerGenerationResponse answer = generateWithOneRetry(new AnswerGenerationRequest(
                     String.valueOf(aiQuestion.getId()),
                     conversationKey,
-                    selection.questionType(),
                     question,
                     history,
-                    selectedWikiPayloads(selectedWikis),
-                    selectedSchedulePayloads(selectedSchedules)
+                    wikiIndexes(accessibleScopeKeys)
             ));
 
             return answerTransactionService.saveAnswer(
                     aiQuestion.getId(),
                     conversationKey,
-                    selection.questionType(),
                     answer,
-                    verifiedSourceTitles(selectedWikis, selectedSchedules),
+                    authorizedSources(answer, member, accessibleScopeKeys),
                     this::evidenceDocuments
             );
         } catch (AiClientException exception) {
             answerTransactionService.markFailed(aiQuestion.getId(), failureReason(exception));
-            log.warn("AI 답변 생성 실패: questionId={}, failureType={}",
-                    aiQuestion.getId(), exception.failureType());
-            throw new BusinessException(ErrorCode.AI_SERVER_UNAVAILABLE);
+            log.warn("AI 답변 생성 실패: questionId={}, failureType={}, code={}",
+                    aiQuestion.getId(), exception.failureType(), exception.upstreamCode());
+            // 오류 이름별 안내를 그대로 사용자에게 낸다 (설계 §6.7).
+            throw new BusinessException(
+                    ErrorCode.AI_SERVER_UNAVAILABLE,
+                    AiClientErrorMapper.messageFor(exception.upstreamCode()));
+        }
+    }
+
+    /**
+     * 실패하면 한 번 더 시도합니다.
+     *
+     * <p>재시도가 안전한 근거: AI 는 작업 공간에만 쓰고 반영은 백엔드가 한다. 실패한 실행은 위키에
+     * 아무 흔적을 남기지 않는다.
+     *
+     * <p><b>다시 불러도 결과가 같은 실패는 재시도하지 않는다.</b> 챗봇은 사용자가 기다리는 중이라
+     * 25초가 50초가 되는 것이 그대로 체감된다 (설계 §6.8).
+     */
+    private AnswerGenerationResponse generateWithOneRetry(AnswerGenerationRequest request) {
+        try {
+            return aiClient.generateAnswer(request);
+        } catch (AiClientException first) {
+            if (!AiClientErrorMapper.isRetryableAnswerFailure(first.upstreamCode())) {
+                throw first;
+            }
+            log.warn("AI 답변 생성 1차 실패 — 한 번 더 시도한다. questionId={}, code={}",
+                    request.questionId(), first.upstreamCode());
+            return aiClient.generateAnswer(request);
         }
     }
 
@@ -179,22 +198,22 @@ public class QuestionAskService {
      * 같은 대화의 최근 질문·답변을 계약의 {@code conversationMessages} 형태로 만듭니다.
      * 방금 저장한 이번 질문은 제외한다 — 그건 {@code question} 필드로 따로 간다.
      */
-    private List<AnswerContextSelectionRequest.ConversationMessage> conversationHistory(
+    private List<AnswerGenerationRequest.ConversationMessage> conversationHistory(
             long memberId,
             String conversationKey,
             long currentQuestionId
     ) {
         List<AiQuestion> previous = questionRepository
                 .findByMember_IdAndConversationKeyOrderByCreatedAtAsc(memberId, conversationKey);
-        List<AnswerContextSelectionRequest.ConversationMessage> messages = new ArrayList<>();
+        List<AnswerGenerationRequest.ConversationMessage> messages = new ArrayList<>();
         for (AiQuestion past : previous) {
             if (past.getId() == currentQuestionId || !past.isSuccess()) {
                 continue;
             }
-            messages.add(new AnswerContextSelectionRequest.ConversationMessage("user", past.getContent()));
+            messages.add(new AnswerGenerationRequest.ConversationMessage("user", past.getContent()));
             String answer = answerTransactionService.answerContentOf(past.getId());
             if (answer != null && !answer.isBlank()) {
-                messages.add(new AnswerContextSelectionRequest.ConversationMessage("assistant", answer));
+                messages.add(new AnswerGenerationRequest.ConversationMessage("assistant", answer));
             }
         }
         int from = Math.max(0, messages.size() - CONVERSATION_HISTORY_LIMIT * 2);
@@ -220,35 +239,80 @@ public class QuestionAskService {
      * 초안(DRAFT)은 관리자 승인 전이라 사용자에게 공개하지 않는다(FR-SCH).
      */
     private List<Schedule> accessibleSchedules(Member member) {
-        Long departmentId = member.getDepartment() == null ? null : member.getDepartment().getId();
+        // 수정(S15P11B106-169): 판정을 ScheduleVisibilityPolicy로 꺼냈다. AI 에이전트용 일정 조회가
+        //   같은 판정을 써야 하는데, 복사해 두면 한쪽만 고쳐져 조용히 어긋난다.
         return scheduleRepository.findAll().stream()
-                .filter(schedule -> schedule.status() == ScheduleStatus.APPROVED)
-                .filter(schedule -> isVisibleTo(schedule, member.getId(), departmentId))
+                .filter(schedule -> scheduleVisibilityPolicy.isReadableBy(schedule, member))
                 .toList();
     }
 
-    private boolean isVisibleTo(Schedule schedule, long memberId, Long departmentId) {
-        ScheduleVisibility visibility = schedule.visibilityType();
-        if (visibility == ScheduleVisibility.ALL) {
-            return true;
-        }
-        if (visibility == ScheduleVisibility.PERSONAL) {
-            return schedule.authorId() == memberId;
-        }
-        return departmentId != null && schedule.departmentIds().contains(departmentId);
-    }
-
-    private List<AnswerContextSelectionRequest.WikiIndex> wikiIndexes(Set<String> scopeKeys) {
-        List<AnswerContextSelectionRequest.WikiIndex> indexes = new ArrayList<>();
+    /**
+     * 범위별 목차와 그 범위 조회 허가값입니다.
+     *
+     * <p>수정(S15P11B106-169): 챗봇은 범위가 여러 개다(전사 + 소속 부서). 그래서 이미 있는 발급
+     * 함수를 <b>범위 수만큼</b> 부른다. 허가값을 같은 행에 담아 목차와 본문 권한이 어긋나지 않게
+     * 한다.
+     */
+    private List<AnswerGenerationRequest.WikiIndex> wikiIndexes(Set<String> scopeKeys) {
+        List<AnswerGenerationRequest.WikiIndex> indexes = new ArrayList<>();
         for (String scopeKey : scopeKeys.stream().sorted().toList()) {
             String indexMarkdown = readIndexQuietly(scopeKey);
             if (indexMarkdown == null || indexMarkdown.isBlank()) {
                 // 목차가 없는 공간은 고를 것도 없어 후보에서 빼 요청 크기를 줄인다.
                 continue;
             }
-            indexes.add(new AnswerContextSelectionRequest.WikiIndex(scopeKey, indexMarkdown));
+            // WikiScope의 식별자가 scopeKey다(JpaRepository<WikiScope, String>).
+            WikiScope scope = wikiScopeRepository.findById(scopeKey).orElse(null);
+            if (scope == null) {
+                // 목차 파일은 있는데 공간이 없다. 허가값을 발급할 근거(범위 버전)가 없으므로 뺀다.
+                log.warn("Wiki 공간을 찾지 못해 목차에서 제외합니다: scopeKey={}", scopeKey);
+                continue;
+            }
+            String capability = wikiCapabilityService.issue(
+                    scopeKey, scope.scopeVersion(), CAPABILITY_TTL);
+            indexes.add(new AnswerGenerationRequest.WikiIndex(scopeKey, indexMarkdown, capability));
         }
         return indexes;
+    }
+
+    /**
+     * AI가 신고한 출처 중 <b>이 사용자가 볼 수 있는 것만</b> 남깁니다.
+     *
+     * <p>제목은 AI가 준 값을 그대로 쓴다 — 에이전트가 읽은 기록의 제목이고, 계약이 필수로 정한
+     * 값이다. 다만 <b>열람 권한은 백엔드가 다시 본다</b>: 허가값과 질문 번호로 AI가 읽을 수 있는
+     * 범위는 이미 제한되지만, 읽지 않은 ID를 신고하는 것 자체를 막지는 못한다. 권한 판정은
+     * 백엔드 몫이므로 여기서 한 번 더 거른다.
+     */
+    private AuthorizedSources authorizedSources(
+            AnswerGenerationResponse answer,
+            Member member,
+            Set<String> accessibleScopeKeys
+    ) {
+        List<Long> wikiIds = new ArrayList<>();
+        List<Long> scheduleIds = new ArrayList<>();
+        for (AnswerGenerationResponse.Source source : answer.sources()) {
+            if (source.isWiki()) {
+                parseId(source.wikiId()).ifPresent(wikiIds::add);
+            } else if (source.isSchedule()) {
+                parseId(source.scheduleId()).ifPresent(scheduleIds::add);
+            }
+        }
+
+        Map<Long, List<Long>> wikiDocumentRefs = new LinkedHashMap<>();
+        if (!wikiIds.isEmpty()) {
+            wikiRepository.findAllById(wikiIds).stream()
+                    .filter(wiki -> accessibleScopeKeys.contains(wiki.scopeKey()))
+                    .forEach(wiki -> wikiDocumentRefs.put(wiki.id(), wiki.documentRefs()));
+        }
+
+        Set<Long> readableScheduleIds = new HashSet<>();
+        if (!scheduleIds.isEmpty()) {
+            scheduleRepository.findAllById(scheduleIds).stream()
+                    .filter(schedule -> scheduleVisibilityPolicy.isReadableBy(schedule, member))
+                    .forEach(schedule -> readableScheduleIds.add(schedule.id()));
+        }
+
+        return new AuthorizedSources(wikiDocumentRefs, readableScheduleIds);
     }
 
     private String readIndexQuietly(String scopeKey) {
@@ -260,108 +324,14 @@ public class QuestionAskService {
         }
     }
 
-    private List<AnswerContextSelectionRequest.ScheduleSummary> scheduleSummaries(List<Schedule> schedules) {
-        return schedules.stream()
-                .map(schedule -> new AnswerContextSelectionRequest.ScheduleSummary(
-                        String.valueOf(schedule.id()),
-                        schedule.title(),
-                        schedule.startAt().toString(),
-                        schedule.endAt().toString(),
-                        schedule.targetText(),
-                        schedule.location()
-                ))
-                .toList();
-    }
-
-    /**
-     * AI가 고른 Wiki 중 접근 가능한 공간에 실제로 있고 본문이 있는 것만 남깁니다.
-     * 후보에 없던 ID를 냈거나 그 사이 삭제된 Wiki는 여기서 걸러진다.
-     */
-    private List<Wiki> verifiedWikis(List<String> wikiIds, Set<String> accessibleScopeKeys) {
-        List<Long> ids = parseIds(wikiIds);
-        if (ids.isEmpty()) {
-            return List.of();
-        }
-        return wikiRepository.findAllById(ids).stream()
-                .filter(wiki -> accessibleScopeKeys.contains(wiki.scopeKey()))
-                .filter(wiki -> !readWikiMarkdownQuietly(wiki).isBlank())
-                .toList();
-    }
-
-    private List<Schedule> verifiedSchedules(List<String> scheduleIds, List<Schedule> accessibleSchedules) {
-        Set<Long> ids = new HashSet<>(parseIds(scheduleIds));
-        if (ids.isEmpty()) {
-            return List.of();
-        }
-        return accessibleSchedules.stream()
-                .filter(schedule -> ids.contains(schedule.id()))
-                .toList();
-    }
-
     /** 계약상 ID는 문자열이다. 숫자가 아닌 값은 조회할 수 없으므로 버린다. */
-    private List<Long> parseIds(List<String> ids) {
-        if (ids == null) {
-            return List.of();
-        }
-        List<Long> parsed = new ArrayList<>();
-        for (String id : ids) {
-            try {
-                parsed.add(Long.parseLong(id));
-            } catch (NumberFormatException exception) {
-                log.warn("숫자가 아닌 ID를 선택 결과에서 제외합니다: {}", id);
-            }
-        }
-        return parsed;
-    }
-
-    private List<AnswerGenerationRequest.SelectedWiki> selectedWikiPayloads(List<Wiki> wikis) {
-        return wikis.stream()
-                .map(wiki -> new AnswerGenerationRequest.SelectedWiki(
-                        String.valueOf(wiki.id()),
-                        wiki.title(),
-                        readWikiMarkdownQuietly(wiki)
-                ))
-                .toList();
-    }
-
-    private List<AnswerGenerationRequest.SelectedSchedule> selectedSchedulePayloads(List<Schedule> schedules) {
-        return schedules.stream()
-                .map(schedule -> new AnswerGenerationRequest.SelectedSchedule(
-                        String.valueOf(schedule.id()),
-                        schedule.title(),
-                        schedule.content(),
-                        schedule.startAt().toString(),
-                        schedule.endAt().toString(),
-                        schedule.targetText(),
-                        schedule.location()
-                ))
-                .toList();
-    }
-
-    private String readWikiMarkdownQuietly(Wiki wiki) {
-        if (wiki.wikiPath() == null || wiki.wikiPath().isBlank()) {
-            return "";
-        }
+    private Optional<Long> parseId(String id) {
         try {
-            return wikiFileStorage.readWikiMarkdown(wiki.wikiPath());
-        } catch (IOException exception) {
-            log.warn("Wiki 본문을 읽지 못해 문맥에서 제외합니다: wikiId={}", wiki.id());
-            return "";
+            return Optional.of(Long.parseLong(id));
+        } catch (NumberFormatException | NullPointerException exception) {
+            log.warn("숫자가 아닌 출처 ID를 제외합니다: {}", id);
+            return Optional.empty();
         }
-    }
-
-    /**
-     * 저장·응답에 쓸 출처 제목입니다. AI 응답의 출처는 <b>권한 검증을 통과한 자료만</b> 인정한다.
-     * 제목도 AI가 준 값이 아니라 DB 값을 쓴다.
-     */
-    private VerifiedSources verifiedSourceTitles(List<Wiki> wikis, List<Schedule> schedules) {
-        Map<Long, String> wikiTitles = new LinkedHashMap<>();
-        wikis.forEach(wiki -> wikiTitles.put(wiki.id(), wiki.title()));
-        Map<Long, String> scheduleTitles = new LinkedHashMap<>();
-        schedules.forEach(schedule -> scheduleTitles.put(schedule.id(), schedule.title()));
-        Map<Long, List<Long>> documentRefs = wikis.stream()
-                .collect(Collectors.toMap(Wiki::id, Wiki::documentRefs, (a, b) -> a, LinkedHashMap::new));
-        return new VerifiedSources(wikiTitles, scheduleTitles, documentRefs);
     }
 
     /** Wiki 출처의 연결 원본문서입니다. 근거 자료로만 표시하며 본문은 답변에 쓰지 않는다(FR-QNA). */
@@ -386,12 +356,19 @@ public class QuestionAskService {
     }
 
     /**
-     * 권한 검증을 통과한 출처입니다. 저장과 응답이 같은 값을 쓰도록 한 곳에 모읍니다.
+     * 열람 권한을 통과한 출처입니다. 제목은 AI 응답의 값을 쓰므로 담지 않고, <b>인정된 ID와 그
+     * Wiki의 연결 원본문서만</b> 담는다.
      */
-    public record VerifiedSources(
-            Map<Long, String> wikiTitles,
-            Map<Long, String> scheduleTitles,
-            Map<Long, List<Long>> wikiDocumentRefs
+    public record AuthorizedSources(
+            Map<Long, List<Long>> wikiDocumentRefs,
+            Set<Long> scheduleIds
     ) {
+        public boolean allowsWiki(Long wikiId) {
+            return wikiId != null && wikiDocumentRefs.containsKey(wikiId);
+        }
+
+        public boolean allowsSchedule(Long scheduleId) {
+            return scheduleId != null && scheduleIds.contains(scheduleId);
+        }
     }
 }

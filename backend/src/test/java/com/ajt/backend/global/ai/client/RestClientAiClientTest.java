@@ -771,6 +771,127 @@ class RestClientAiClientTest {
                 .isEqualTo(AiClientFailureType.CONNECTION_FAILED);
     }
 
+    @Test
+    @DisplayName("답변 요청을 계약 1.8.0 대로 보낸다 — 목차와 허가값만 싣고 본문·일정은 없다")
+    void sendsAnswerContractWithIndexesOnly() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/answers"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("X-Internal-API-Key", "local-dev-key"))
+                .andExpect(content().json("""
+                        {
+                          "questionId": "500",
+                          "conversationId": "chat-1",
+                          "question": "연차 며칠이야?",
+                          "conversationMessages": [],
+                          "wikiIndexes": [
+                            {
+                              "scopeKey": "ALL",
+                              "indexMarkdown": "# 목차",
+                              "wikiCapability": "capability"
+                            }
+                          ]
+                        }
+                        """))
+                // 없어진 필드가 실리지 않는다.
+                .andExpect(content().string(not(containsString("selectedWikis"))))
+                .andExpect(content().string(not(containsString("selectedSchedules"))))
+                .andExpect(content().string(not(containsString("scheduleSummaries"))))
+                .andRespond(withSuccess("""
+                        {
+                          "answer": "연차는 15일입니다.",
+                          "sources": [
+                            {"type": "wiki", "wikiId": "101", "title": "휴가 규정"}
+                          ],
+                          "questionType": "wiki"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        AnswerGenerationResponse response = client.generateAnswer(answerRequest());
+
+        assertThat(response.answer()).isEqualTo("연차는 15일입니다.");
+        assertThat(response.questionType()).isEqualTo("wiki");
+        assertThat(response.sources()).singleElement()
+                .satisfies(source -> {
+                    assertThat(source.wikiId()).isEqualTo("101");
+                    assertThat(source.title()).isEqualTo("휴가 규정");
+                });
+        server.verify();
+    }
+
+    @Test
+    @DisplayName("근거를 못 찾은 답변(빈 sources)은 정상 응답으로 읽는다")
+    void readsAnswerWithoutSourcesAsSuccess() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/answers"))
+                .andRespond(withSuccess("""
+                        {"answer": "정보가 부족합니다.", "sources": [], "questionType": "wiki"}
+                        """, MediaType.APPLICATION_JSON));
+
+        AnswerGenerationResponse response = client.generateAnswer(answerRequest());
+
+        assertThat(response.sources()).isEmpty();
+        assertThat(response.answer()).isEqualTo("정보가 부족합니다.");
+    }
+
+    @Test
+    @DisplayName("questionType이 없는 응답은 잘못된 응답으로 본다 — question 테이블에 저장할 값이다")
+    void rejectsAnswerWithoutQuestionType() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/answers"))
+                .andRespond(withSuccess("""
+                        {"answer": "답", "sources": []}
+                        """, MediaType.APPLICATION_JSON));
+
+        AiClientException error = catchThrowableOfType(
+                AiClientException.class, () -> client.generateAnswer(answerRequest()));
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("출처에 title이 없으면 잘못된 응답으로 본다 — source_title이 NOT NULL이다")
+    void rejectsSourceWithoutTitle() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/answers"))
+                .andRespond(withSuccess("""
+                        {
+                          "answer": "답",
+                          "sources": [{"type": "wiki", "wikiId": "101"}],
+                          "questionType": "wiki"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        AiClientException error = catchThrowableOfType(
+                AiClientException.class, () -> client.generateAnswer(answerRequest()));
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
+    }
+
+    @Test
+    @DisplayName("계약이 정한 오류 이름을 그대로 실어 올린다 — 재시도 판단 근거다")
+    void keepsContractErrorCodeFromAnswerFailure() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/answers"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {"status": 500, "code": "AGENT_TIMED_OUT",
+                                 "message": "시간 상한에 걸렸습니다.", "fieldErrors": []}
+                                """));
+
+        AiClientException error = catchThrowableOfType(
+                AiClientException.class, () -> client.generateAnswer(answerRequest()));
+
+        assertThat(error.failureType()).isEqualTo(AiClientFailureType.SERVER_ERROR);
+        assertThat(error.upstreamCode()).isEqualTo("AGENT_TIMED_OUT");
+    }
+
+    private AnswerGenerationRequest answerRequest() {
+        return new AnswerGenerationRequest(
+                "500",
+                "chat-1",
+                "연차 며칠이야?",
+                List.of(),
+                List.of(new AnswerGenerationRequest.WikiIndex("ALL", "# 목차", "capability"))
+        );
+    }
+
     private WikiEditRequest wikiEditRequest() {
         return new WikiEditRequest(
                 "100",

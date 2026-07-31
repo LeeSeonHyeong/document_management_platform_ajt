@@ -4,55 +4,53 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * 답변 2단계 — 답변 생성 요청입니다. (POST /internal/v1/answers)
+ * 챗봇 답변 생성 요청입니다. (POST /internal/v1/answers)
  *
- * <p>Spring Boot가 1단계 선택 ID의 권한을 재검증하고 읽어 온 본문만 담는다. 권한이 없어 걸러진
- * 자료는 여기에 실리지 않으므로 답변과 출처에도 나타나지 않는다.
+ * <p>수정(S15P11B106-169): 계약 1.8.0 에서 <b>자료 선택 단계가 없어졌다.</b> 본문과 일정 목록을
+ * 싣지 않고, 에이전트가 Wiki 조회 API·일정 조회 API 로 필요한 것을 직접 읽는다. 그래서 요청이
+ * 네 덩이로 끝난다 — 번호 둘, 질문, 이전 대화, 그리고 범위별 목차.
  */
 public record AnswerGenerationRequest(
         String questionId,
         String conversationId,
-        String questionType,
         String question,
-        List<AnswerContextSelectionRequest.ConversationMessage> conversationMessages,
-        List<SelectedWiki> selectedWikis,
-        List<SelectedSchedule> selectedSchedules
+        List<ConversationMessage> conversationMessages,
+        List<WikiIndex> wikiIndexes
 ) {
     public AnswerGenerationRequest {
         questionId = requireNotBlank(questionId, "questionId");
         conversationId = requireNotBlank(conversationId, "conversationId");
-        questionType = requireNotBlank(questionType, "questionType");
         question = requireNotBlank(question, "question");
         conversationMessages = List.copyOf(Objects.requireNonNull(
                 conversationMessages, "conversationMessages must not be null"));
-        selectedWikis = List.copyOf(Objects.requireNonNull(selectedWikis, "selectedWikis must not be null"));
-        selectedSchedules = List.copyOf(Objects.requireNonNull(
-                selectedSchedules, "selectedSchedules must not be null"));
+        wikiIndexes = List.copyOf(Objects.requireNonNull(wikiIndexes, "wikiIndexes must not be null"));
     }
 
-    public record SelectedWiki(String wikiId, String title, String contentMarkdown) {
+    /** 멀티턴 문맥입니다. {@code role}은 계약상 {@code user} 또는 {@code assistant}입니다. */
+    public record ConversationMessage(String role, String content) {
 
-        public SelectedWiki {
-            wikiId = requireNotBlank(wikiId, "wikiId");
-            title = requireNotBlank(title, "title");
-            contentMarkdown = requireNotBlank(contentMarkdown, "contentMarkdown");
+        public ConversationMessage {
+            role = requireNotBlank(role, "role");
+            content = requireNotBlank(content, "content");
         }
     }
 
-    public record SelectedSchedule(
-            String scheduleId,
-            String title,
-            String content,
-            String startAt,
-            String endAt,
-            String targetText,
-            String location
-    ) {
-        public SelectedSchedule {
-            scheduleId = requireNotBlank(scheduleId, "scheduleId");
-            title = requireNotBlank(title, "title");
-            startAt = requireNotBlank(startAt, "startAt");
-            endAt = requireNotBlank(endAt, "endAt");
+    /**
+     * 범위 하나의 목차와 <b>그 범위 조회 허가값</b>입니다.
+     *
+     * <p>허가값을 별도 배열로 두지 않고 이 행에 넣는다. 두 배열로 나누면 한쪽에만 있는 범위가
+     * 생기고, 그러면 에이전트가 목차는 읽었는데 본문은 못 읽는 상태가 된다. 한 행에 두면 그
+     * 어긋남이 애초에 불가능하다.
+     *
+     * <p>{@code wikiCapability}는 필수다 — 빠진 범위는 조회가 전부 실패해 「근거 없음」으로
+     * 나오고 원인을 짐작하기 어렵다. 로그·오류 응답에 남기지 않는다.
+     */
+    public record WikiIndex(String scopeKey, String indexMarkdown, String wikiCapability) {
+
+        public WikiIndex {
+            scopeKey = requireNotBlank(scopeKey, "scopeKey");
+            indexMarkdown = Objects.requireNonNull(indexMarkdown, "indexMarkdown must not be null");
+            wikiCapability = requireNotBlank(wikiCapability, "wikiCapability");
         }
     }
 
