@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.8이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.9이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.8",
+      "value": "1.6.9",
       "type": "string"
     },
     {
@@ -1287,7 +1287,7 @@
                 }
               ]
             },
-            "description": "관리자가 사용자 이름, 역할, 소속 부서와 계정 상태를 수정합니다.\n사용자 관리 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `userId`: 수정할 사용자 ID\n\n### Query Params\n없음\n\n### Request Body\n- `name`: 변경할 이름\n- `role`: `admin` 또는 `employee`\n- `departmentId`: 변경할 부서 ID\n- `accountStatus`: `active` 또는 `inactive`\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 수정 화면에 접근할 수 있습니다. 단, 부서관리자는 사원 계정만 수정할 수 있고 다른 관리자 계정(다른 부서관리자·최고관리자)은 수정할 수 없습니다.\n- 전달하지 않은 필드는 변경하지 않습니다.\n- 사용자는 삭제하지 않고 비활성화합니다.\n- 처리되지 않은 문의가 남은 담당자의 비활성화 또는 employee 전환은 허용하지 않습니다.\n- 관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.\n- 최고관리자는 부서관리자를 employee로 강등하거나 비활성화할 수 있습니다.\n- 사용자 비밀번호는 이 API에서 변경하지 않고 이메일 재설정으로만 변경합니다.\n\n### Response\n- 수정된 사용자 전체 정보(`isSuperAdmin` 포함).\n\n### Error\n- `400 Bad Request`: 필드값 또는 부서가 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음, 또는 부서관리자가 다른 관리자 계정을 수정하려는 경우(`DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN`)\n- `404 Not Found`: 존재하지 않는 사용자\n- `409 Conflict`: 변경할 수 없는 사용자 상태(미승인 계정·자기 강등/비활성화·미처리 문의 담당자 강등 등)",
+            "description": "관리자가 사용자 이름, 역할, 소속 부서와 계정 상태를 수정합니다.\n사용자 관리 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `userId`: 수정할 사용자 ID\n\n### Query Params\n없음\n\n### Request Body\n- `name`: 변경할 이름\n- `role`: `admin` 또는 `employee`\n- `departmentId`: 변경할 부서 ID\n- `accountStatus`: `active` 또는 `inactive`\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 수정 화면에 접근할 수 있습니다. 단, 부서관리자는 사원 계정만 수정할 수 있고 다른 관리자 계정(다른 부서관리자·최고관리자)은 수정할 수 없습니다.\n- 부서관리자는 사원 계정의 이름과 부서만 수정할 수 있습니다. 역할(`role`)과 계정 상태(`accountStatus`) 변경은 최고관리자만 가능하며, 부서관리자가 직접 API 호출로 변경을 시도하면 403으로 거절합니다(요청 값이 현재 값과 실제로 달라질 때만 거절, 기존 값 재전송은 허용).\n- 전달하지 않은 필드는 변경하지 않습니다.\n- 사용자는 삭제하지 않고 비활성화합니다.\n- 처리되지 않은 문의가 남은 담당자의 비활성화 또는 employee 전환은 허용하지 않습니다.\n- 관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.\n- 최고관리자는 부서관리자를 employee로 강등하거나 비활성화할 수 있습니다.\n- 사용자 비밀번호는 이 API에서 변경하지 않고 이메일 재설정으로만 변경합니다.\n\n### Response\n- 수정된 사용자 전체 정보(`isSuperAdmin` 포함).\n\n### Error\n- `400 Bad Request`: 필드값 또는 부서가 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음, 또는 부서관리자가 다른 관리자 계정을 수정하거나 사원의 역할·계정 상태를 변경하려는 경우(`DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN`)\n- `404 Not Found`: 존재하지 않는 사용자\n- `409 Conflict`: 변경할 수 없는 사용자 상태(미승인 계정·자기 강등/비활성화·미처리 문의 담당자 강등 등)",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"홍길동\",\n  \"role\": \"employee\",\n  \"departmentId\": \"2\",\n  \"accountStatus\": \"active\"\n}",

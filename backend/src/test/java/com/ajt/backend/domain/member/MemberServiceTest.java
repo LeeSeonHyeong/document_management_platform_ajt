@@ -566,6 +566,89 @@ class MemberServiceTest {
     }
 
     @Test
+    @DisplayName("부서관리자가 API 직접 호출로 사원 role을 admin으로 바꾸려 하면 403(S15P11B106-86)")
+    void departmentManagerCannotChangeEmployeeRole() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        AuthenticatedMember managerActor = new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("admin");
+
+        assertThatThrownBy(() -> memberService.updateUser(managerActor, employee.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN);
+        // 실제로 승격되지 않았는지 확인
+        assertThat(memberRepository.findById(employee.getId()).orElseThrow().getRole()).isEqualTo(Role.EMPLOYEE);
+    }
+
+    @Test
+    @DisplayName("부서관리자가 API 직접 호출로 사원 accountStatus를 inactive로 바꾸려 하면 403(S15P11B106-86)")
+    void departmentManagerCannotChangeEmployeeAccountStatus() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        AuthenticatedMember managerActor = new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setAccountStatus("inactive");
+
+        assertThatThrownBy(() -> memberService.updateUser(managerActor, employee.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN);
+        assertThat(memberRepository.findById(employee.getId()).orElseThrow().getAccountStatus())
+                .isEqualTo(AccountStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("부서관리자가 role·accountStatus를 기존 값 그대로 보내며 이름/부서만 바꾸면 허용(S15P11B106-86)")
+    void departmentManagerCanSendUnchangedRoleAndStatus() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Department other = departmentRepository.save(new Department("인사부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        AuthenticatedMember managerActor = new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN);
+        // 프론트가 기존 값을 그대로 재전송하는 상황: role=employee, accountStatus=active(현재와 동일) + 이름·부서 변경
+        UserUpdateRequest request =
+                UserUpdateRequest.of("새이름", "employee", String.valueOf(other.getId()), "active");
+
+        UserResponse updated = memberService.updateUser(managerActor, employee.getId(), request);
+
+        assertThat(updated.name()).isEqualTo("새이름");
+        assertThat(updated.department().name()).isEqualTo("인사부");
+        assertThat(updated.role()).isEqualTo("employee");
+        assertThat(updated.accountStatus()).isEqualTo("active");
+    }
+
+    @Test
+    @DisplayName("최고관리자는 사원의 role·accountStatus를 변경할 수 있다(S15P11B106-86)")
+    void superAdminCanChangeEmployeeRoleAndStatus() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member superAdmin = memberRepository.save(approvedAdmin(department)); // 부서장 미지정 → 최고관리자
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        AuthenticatedMember superActor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("admin");
+        request.setAccountStatus("inactive");
+
+        UserResponse updated = memberService.updateUser(superActor, employee.getId(), request);
+
+        assertThat(updated.role()).isEqualTo("admin");
+        assertThat(updated.accountStatus()).isEqualTo("inactive");
+    }
+
+    @Test
     @DisplayName("부서관리자는 다른 관리자 계정을 수정할 수 없다(403)")
     void departmentManagerCannotModifyAnotherAdmin() {
         Department department = departmentRepository.save(new Department("개발부"));
