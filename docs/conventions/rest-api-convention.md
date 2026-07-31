@@ -824,7 +824,6 @@ POST /internal/v1/source-parses
 POST /internal/v1/wiki-transformations
 POST /internal/v1/schedule-extractions
 POST /internal/v1/wiki-edits
-POST /internal/v1/answer-context-selections
 POST /internal/v1/answers
 ```
 
@@ -838,12 +837,19 @@ AI 서버는 DB와 서비스 파일을 직접 변경하지 않습니다.
 
 프론트엔드는 질문 유형을 보내지 않습니다. AI 서버가 질문 맥락을 `wiki`, `schedule`, `mixed`로 자동 판단합니다.
 
-답변은 두 단계로 생성합니다.
+답변은 **호출 한 번**으로 생성합니다. 에이전트가 필요한 자료를 스스로 조회합니다.
 
-1. 백엔드가 권한 내 Wiki 공간의 `index.md`와 일정 요약을 `/internal/v1/answer-context-selections`에 전달합니다.
-2. AI가 종류별 최대 5개의 Wiki ID 또는 일정 ID를 관련도 순서로 반환합니다.
-3. 백엔드가 ID의 존재 여부와 권한을 다시 검사하고 선택된 Wiki Markdown 또는 일정 내용만 `/internal/v1/answers`에 전달합니다.
-4. AI가 최종 답변과 실제 사용한 출처 ID를 반환합니다.
+1. 백엔드가 권한 내 Wiki 공간의 `index.md`를 `/internal/v1/answers`에 전달합니다. **본문과 일정 목록은 전달하지 않습니다.** 목차 각 행에는 그 범위의 조회 허가값(`wikiCapability`)을 함께 담습니다.
+2. AI 에이전트가 질문 맥락을 보고 질문 유형을 판단하고, 필요한 Wiki 본문은 Wiki 조회 API로, 일정은 일정 조회 API로 직접 읽습니다.
+3. AI가 답변과 **답변에 사용한** 자료의 출처 ID·제목, 그리고 질문 유형을 반환합니다.
+
+출처는 에이전트가 읽은 자료 중 답변에 사용한 것입니다. AI 서버는 에이전트의 신고를 실제로 읽은 기록과 대조해 걸러내므로, 읽지 않은 자료는 사용했다고 신고해도 출처가 되지 않습니다. 출처 제목은 백엔드가 `answer_source.source_title`에 저장하므로 함께 반환합니다.
+
+근거를 **찾아봤지만 없으면** 빈 출처와 함께 정보가 부족하다는 안내를 반환합니다 — 추측으로 답변을 만들지 않습니다. 조회를 **아예 시도하지 않은** 실행만 실패로 처리합니다.
+
+AI 서버는 25초 안에 응답합니다. 백엔드 읽기 타임아웃은 그보다 넉넉해야 합니다. AI 호출이 실패하면 백엔드가 한 번 재시도하되, 다시 불러도 결과가 같은 실패(요청 형식 오류, 근거 없음)는 재시도하지 않습니다.
+
+조회 권한은 Wiki는 요청에 실린 허가값으로, 일정은 질문 ID로 판정합니다. 내부 API 키는 호출자가 AI 서버임만 증명하고 누구를 대신해 묻는지는 증명하지 않기 때문입니다.
 
 Wiki 질문은 사용자가 접근할 수 있는 Wiki만 사용합니다. 원본문서는 답변 검색에 직접 사용하지 않고 Wiki의 근거 자료로만 조회합니다. 혼합 질문은 Wiki와 일정을 함께 사용할 수 있습니다.
 

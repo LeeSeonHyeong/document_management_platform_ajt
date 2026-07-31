@@ -1,4 +1,4 @@
-export const contractVersion = "1.7.0";
+export const contractVersion = "1.8.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -758,27 +758,14 @@ const contracts = {
       message: "일정 추출 요청 구조가 올바르지 않습니다.",
     },
   },
-  "POST /internal/v1/answer-context-selections": {
-    success: {
-      httpStatus: 200,
-      body: {
-        questionType: "mixed",
-        wikiIds: ["101"],
-        scheduleIds: ["31"],
-        reason: "휴가 규정과 다음 일정을 모두 묻는 질문입니다.",
-      },
-    },
-    error: {
-      httpStatus: 400,
-      errorCode: "INVALID_ANSWER_CONTEXT_REQUEST",
-      message: "질문 또는 후보 자료 구조가 올바르지 않습니다.",
-    },
-  },
   "POST /internal/v1/answers": {
     success: {
       httpStatus: 200,
       body: {
         answer: "연차 규정과 다음 휴가 일정은 다음과 같습니다.",
+        // 에이전트가 읽은 자료 중 답변에 사용했다고 신고한 것이다. 읽은 기록과 대조해
+        // 걸러지므로, 사용했다고 적어도 실제로 읽지 않은 자료는 여기에 들어올 수 없다.
+        // `title` 은 백엔드가 `answer_source.source_title` 에 저장하므로 필수다.
         sources: [
           {
             type: "wiki",
@@ -791,12 +778,15 @@ const contracts = {
             title: "8월 휴가 일정",
           },
         ],
+        // 에이전트가 질문 맥락을 보고 판단한다 (FR-QNA-002). 읽은 자료의 종류가 아니다 —
+        // 일정 질문을 Wiki 로 답하는 경우가 있어 결과로 정하면 유형이 뒤집힌다.
+        questionType: "mixed",
       },
     },
     error: {
-      httpStatus: 400,
-      errorCode: "INVALID_ANSWER_GENERATION_REQUEST",
-      message: "답변 생성 요청 문맥이 올바르지 않습니다.",
+      httpStatus: 500,
+      errorCode: "NO_WIKI_OR_SCHEDULE_WAS_READ",
+      message: "위키도 일정도 읽지 않아 근거가 없습니다.",
     },
   },
 
@@ -961,6 +951,55 @@ const contracts = {
       httpStatus: 404,
       errorCode: "DOCUMENT_NOT_FOUND",
       message: "요청한 자료를 찾을 수 없습니다.",
+    },
+  },
+
+  // ---- 일정 조회 API (FastAPI → Spring Boot) ----------------------------------
+  // 챗봇 에이전트가 질문에 맞는 기간을 정해 직접 조회한다. 권한은 `questionId` 로
+  // 판정한다 — 내부 API 키는 호출자가 AI 서버임만 증명하고 "누구 대신 묻는지"는
+  // 증명하지 않는다.
+  //
+  "GET /internal/v1/schedules": {
+    success: {
+      httpStatus: 200,
+      body: {
+        items: [
+          {
+            scheduleId: "31",
+            title: "8월 휴가 일정",
+            startAt: "2026-08-03T01:00:00Z",
+            endAt: "2026-08-03T03:00:00Z",
+            targetText: "개발부",
+            location: "본사",
+          },
+        ],
+        // 잘린 사실을 모르면 에이전트가 전부 본 것으로 단정한다.
+        truncated: false,
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "QUESTION_NOT_FOUND",
+      message: "요청한 질문을 찾을 수 없습니다.",
+    },
+  },
+  "GET /internal/v1/schedules/:scheduleId": {
+    success: {
+      httpStatus: 200,
+      body: {
+        scheduleId: "31",
+        title: "8월 휴가 일정",
+        content: "개발부 휴가 일정 안내",
+        startAt: "2026-08-03T01:00:00Z",
+        endAt: "2026-08-03T03:00:00Z",
+        targetText: "개발부",
+        location: "본사",
+      },
+    },
+    error: {
+      httpStatus: 404,
+      errorCode: "SCHEDULE_NOT_FOUND",
+      message: "요청한 일정을 찾을 수 없습니다.",
     },
   },
 };
