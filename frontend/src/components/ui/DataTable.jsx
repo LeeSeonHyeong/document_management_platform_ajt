@@ -15,6 +15,7 @@ export default function DataTable({
   onRowClick,
   toolbar,
   className,
+  tableClassName,
 }) {
   const keyOf = (row, i) => (typeof rowKey === 'function' ? rowKey(row) : (row[rowKey] ?? i))
 
@@ -26,7 +27,7 @@ export default function DataTable({
         </div>
       )}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className={cn('w-full text-sm', tableClassName)}>
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-xs font-medium text-slate-500">
               {columns.map((col) => (
