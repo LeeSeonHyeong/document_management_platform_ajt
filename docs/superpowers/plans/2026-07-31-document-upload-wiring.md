@@ -336,3 +336,80 @@ After push, use the server runbook supplied in the handoff to:
 - recreate `ajt-develop` with `.env.develop` on port 8090;
 - verify `/api/v1/health` returns 200;
 - upload a Wiki document through 8090 and verify the Network POST, DB rows, and named-volume file.
+
+### Task 5: Fix multipart transport regression
+
+**Files:**
+- Create: `frontend/src/features/document/api.test.js`
+- Modify: `frontend/src/features/document/api.js`
+
+**Interfaces:**
+- Verifies: `uploadDocuments(payload)` sends a `FormData` body with repeated `files` fields.
+- Verifies: document upload and replacement requests override the shared JSON content type with
+  `multipart/form-data`.
+
+- [ ] **Step 1: Write a failing API regression test**
+
+Mock only the axios boundary and assert that the real `uploadDocuments` function passes a
+`FormData` body containing the selected file and a multipart request header.
+
+- [ ] **Step 2: Run the focused test and verify RED**
+
+Run: `cd frontend && npm run test -- src/features/document/api.test.js`
+
+Expected: FAIL because the upload request has no multipart content type override.
+
+- [ ] **Step 3: Apply the minimal transport fix**
+
+Add `headers: { 'Content-Type': 'multipart/form-data' }` to the document upload and replacement
+requests, matching the existing inquiry attachment implementation.
+
+- [ ] **Step 4: Run the focused test and verify GREEN**
+
+Run: `cd frontend && npm run test -- src/features/document/api.test.js`
+
+Expected: all focused API tests pass.
+
+### Task 6: Preserve card file selection and drag-and-drop
+
+**Files:**
+- Modify: `frontend/src/features/document/components/DocumentUploadModal.jsx`
+- Modify: `frontend/src/features/document/pages/DocumentListPage.jsx`
+- Create: `frontend/src/features/document/documentUploadEntry.test.jsx`
+
+**Interfaces:**
+- Produces: document-card file selection callback that opens the modal with the selected files.
+- Produces: `DocumentUploadModal({ open, initialFiles, onClose, onUploaded })`.
+- Preserves: schedule preview upload behavior unchanged.
+
+- [ ] **Step 1: Write failing interaction tests**
+
+Verify that both the document-card file input and drop event pass files into the upload modal, and
+that the modal renders files supplied through `initialFiles`.
+
+- [ ] **Step 2: Run the focused test and verify RED**
+
+Run: `cd frontend && npm run test -- src/features/document/documentUploadEntry.test.jsx`
+
+Expected: FAIL because the document card currently has no direct file-selection callback and the
+modal has no `initialFiles` input.
+
+- [ ] **Step 3: Implement the minimal interaction bridge**
+
+Give `UploadCard` a separate immediate file-selection callback for Wiki documents. Use the same
+hidden file input for click and drop events, open the modal with those files, and hydrate the modal
+file list from `initialFiles` without starting a fake upload.
+
+- [ ] **Step 4: Run focused and complete verification**
+
+Run:
+
+```bash
+cd frontend
+npm run test -- src/features/document/api.test.js src/features/document/documentUploadEntry.test.jsx
+npm run lint
+npm run test
+npm run build
+```
+
+Expected: focused tests and the full suite pass; lint exits 0; production build succeeds.
