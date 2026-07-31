@@ -1,8 +1,10 @@
 package com.ajt.backend.domain.auth;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -161,6 +163,113 @@ class AuthControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("CSRF_TOKEN_INVALID"))
                 .andExpect(jsonPath("$.message").value("CSRF 토큰이 올바르지 않습니다."));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/me/password 요청은 현재 비밀번호가 맞으면 204로 비밀번호를 변경한다")
+    void changeMyPasswordReturnsNoContent() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+        String csrfToken = "csrf-token";
+
+        mockMvc.perform(patch("/api/v1/me/password")
+                        .cookie(new Cookie(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME, accessTokenService.createAccessToken(member)))
+                        .cookie(new Cookie(CsrfTokenService.CSRF_COOKIE_NAME, csrfToken))
+                        .header(CsrfTokenService.CSRF_HEADER_NAME, csrfToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "password123!",
+                                  "newPassword": "newPassword123!"
+                                }
+                                """))
+                .andExpect(status().isNoContent());
+        assertThat(passwordEncoder.matches("newPassword123!", member.getPasswordHash())).isTrue();
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/me/password 요청은 인증 쿠키가 없으면 401을 반환한다")
+    void changeMyPasswordRequiresLogin() throws Exception {
+        mockMvc.perform(patch("/api/v1/me/password")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "password123!",
+                                  "newPassword": "newPassword123!"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/me/password 요청은 현재 비밀번호가 틀리면 400 INVALID_CURRENT_PASSWORD를 반환한다")
+    void changeMyPasswordRejectsWrongCurrentPassword() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+        String csrfToken = "csrf-token";
+
+        mockMvc.perform(patch("/api/v1/me/password")
+                        .cookie(new Cookie(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME, accessTokenService.createAccessToken(member)))
+                        .cookie(new Cookie(CsrfTokenService.CSRF_COOKIE_NAME, csrfToken))
+                        .header(CsrfTokenService.CSRF_HEADER_NAME, csrfToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "wrongPassword!",
+                                  "newPassword": "newPassword123!"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_CURRENT_PASSWORD"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/me/password 요청은 새 비밀번호 형식이 정책에 맞지 않으면 400을 반환한다")
+    void changeMyPasswordRejectsInvalidNewPasswordFormat() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+        String csrfToken = "csrf-token";
+
+        mockMvc.perform(patch("/api/v1/me/password")
+                        .cookie(new Cookie(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME, accessTokenService.createAccessToken(member)))
+                        .cookie(new Cookie(CsrfTokenService.CSRF_COOKIE_NAME, csrfToken))
+                        .header(CsrfTokenService.CSRF_HEADER_NAME, csrfToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "password123!",
+                                  "newPassword": "short"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/me/password 요청은 CSRF 토큰이 없으면 403을 반환한다")
+    void changeMyPasswordRejectsMissingCsrf() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+
+        mockMvc.perform(patch("/api/v1/me/password")
+                        .cookie(new Cookie(AuthCookieService.ACCESS_TOKEN_COOKIE_NAME, accessTokenService.createAccessToken(member)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "password123!",
+                                  "newPassword": "newPassword123!"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CSRF_TOKEN_INVALID"));
     }
 
     @Test

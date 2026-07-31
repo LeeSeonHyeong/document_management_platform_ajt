@@ -383,8 +383,9 @@ const publicFolders = [
         summary: "로그인한 사용자의 계정 및 소속 정보를 조회합니다.",
         usage: "마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.",
         policy: [
-          "사용자는 이 화면에서 정보를 직접 수정하거나 비밀번호를 변경할 수 없습니다.",
-          "비밀번호 변경은 이메일 재설정 절차로만 수행합니다.",
+          "사용자는 이 화면에서 이름·이메일·부서 정보를 직접 수정할 수 없습니다.",
+          "비밀번호 변경은 별도 `PATCH /api/v1/me/password` API로 수행할 수 있습니다.",
+          "이메일 재설정 절차도 별도로 유지합니다.",
           "프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.",
         ],
         response: [
@@ -394,6 +395,36 @@ const publicFolders = [
           "`signupStatus`, `accountStatus`, `createdAt`, `updatedAt`",
         ],
         errors: ["`401 Unauthorized`: accessToken이 유효하지 않음"],
+      }),
+    }),
+    request({
+      name: "내 비밀번호 변경",
+      method: "PATCH",
+      path: "/api/v1/me/password",
+      headers: [{ key: "Content-Type", value: "application/json" }],
+      body: rawJson({
+        currentPassword: "oldPassword123!",
+        newPassword: "newPassword123!",
+      }),
+      description: docs({
+        summary: "로그인한 사용자가 현재 비밀번호를 확인한 뒤 본인 비밀번호를 변경합니다.",
+        usage: "마이페이지 비밀번호 변경 화면에서 사용합니다.",
+        requestBody: [
+          "`currentPassword`: 현재 비밀번호",
+          "`newPassword`: 새 비밀번호(8자 이상 100자 이하)",
+        ],
+        policy: [
+          "인증된 본인 계정에만 적용되며 대상 사용자를 지정하는 입력은 받지 않습니다.",
+          "현재 비밀번호가 일치해야 변경합니다.",
+          "새 비밀번호는 회원가입·재설정과 동일한 정책(8자 이상 100자 이하)을 적용하고 현재 비밀번호와 같으면 거부합니다.",
+          "관리자가 타인 비밀번호를 변경하는 기능이 아니며, 이메일 인증번호 재설정과는 별개 기능입니다.",
+        ],
+        response: ["성공 시 본문 없이 `204 No Content`를 반환합니다."],
+        errors: [
+          "`400 Bad Request`: 새 비밀번호 형식 오류(`INVALID_REQUEST`), 현재 비밀번호 불일치(`INVALID_CURRENT_PASSWORD`), 또는 새 비밀번호가 현재와 동일(`NEW_PASSWORD_SAME_AS_CURRENT`)",
+          "`401 Unauthorized`: accessToken이 유효하지 않음",
+          "`403 Forbidden`: CSRF 토큰이 없거나 올바르지 않음",
+        ],
       }),
     }),
     request({

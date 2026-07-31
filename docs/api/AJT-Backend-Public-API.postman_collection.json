@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.4이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.5이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.4",
+      "value": "1.6.5",
       "type": "string"
     },
     {
@@ -888,7 +888,7 @@
               "query": [],
               "variable": []
             },
-            "description": "로그인한 사용자의 계정 및 소속 정보를 조회합니다.\n마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사용자는 이 화면에서 정보를 직접 수정하거나 비밀번호를 변경할 수 없습니다.\n- 비밀번호 변경은 이메일 재설정 절차로만 수행합니다.\n- 프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.\n\n### Response\n- `userId`, `email`, `name`, `employeeNo`, `role`\n- `department`: 소속 부서 ID와 이름\n- `isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)\n- `signupStatus`, `accountStatus`, `createdAt`, `updatedAt`\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+            "description": "로그인한 사용자의 계정 및 소속 정보를 조회합니다.\n마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사용자는 이 화면에서 이름·이메일·부서 정보를 직접 수정할 수 없습니다.\n- 비밀번호 변경은 별도 `PATCH /api/v1/me/password` API로 수행할 수 있습니다.\n- 이메일 재설정 절차도 별도로 유지합니다.\n- 프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.\n\n### Response\n- `userId`, `email`, `name`, `employeeNo`, `role`\n- `department`: 소속 부서 ID와 이름\n- `isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)\n- `signupStatus`, `accountStatus`, `createdAt`, `updatedAt`\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
           },
           "response": [
             {
@@ -909,7 +909,7 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "로그인한 사용자의 계정 및 소속 정보를 조회합니다.\n마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사용자는 이 화면에서 정보를 직접 수정하거나 비밀번호를 변경할 수 없습니다.\n- 비밀번호 변경은 이메일 재설정 절차로만 수행합니다.\n- 프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.\n\n### Response\n- `userId`, `email`, `name`, `employeeNo`, `role`\n- `department`: 소속 부서 ID와 이름\n- `isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)\n- `signupStatus`, `accountStatus`, `createdAt`, `updatedAt`\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "로그인한 사용자의 계정 및 소속 정보를 조회합니다.\n마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사용자는 이 화면에서 이름·이메일·부서 정보를 직접 수정할 수 없습니다.\n- 비밀번호 변경은 별도 `PATCH /api/v1/me/password` API로 수행할 수 있습니다.\n- 이메일 재설정 절차도 별도로 유지합니다.\n- 프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.\n\n### Response\n- `userId`, `email`, `name`, `employeeNo`, `role`\n- `department`: 소속 부서 ID와 이름\n- `isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)\n- `signupStatus`, `accountStatus`, `createdAt`, `updatedAt`\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "OK",
               "code": 200,
@@ -945,7 +945,7 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "로그인한 사용자의 계정 및 소속 정보를 조회합니다.\n마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사용자는 이 화면에서 정보를 직접 수정하거나 비밀번호를 변경할 수 없습니다.\n- 비밀번호 변경은 이메일 재설정 절차로만 수행합니다.\n- 프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.\n\n### Response\n- `userId`, `email`, `name`, `employeeNo`, `role`\n- `department`: 소속 부서 ID와 이름\n- `isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)\n- `signupStatus`, `accountStatus`, `createdAt`, `updatedAt`\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "로그인한 사용자의 계정 및 소속 정보를 조회합니다.\n마이페이지의 읽기 전용 내 정보 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사용자는 이 화면에서 이름·이메일·부서 정보를 직접 수정할 수 없습니다.\n- 비밀번호 변경은 별도 `PATCH /api/v1/me/password` API로 수행할 수 있습니다.\n- 이메일 재설정 절차도 별도로 유지합니다.\n- 프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.\n\n### Response\n- `userId`, `email`, `name`, `employeeNo`, `role`\n- `department`: 소속 부서 ID와 이름\n- `isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)\n- `signupStatus`, `accountStatus`, `createdAt`, `updatedAt`\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "Unauthorized",
               "code": 401,
@@ -964,6 +964,47 @@
               "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 401,\n  \"error\": \"Unauthorized\",\n  \"code\": \"INVALID_ACCESS_TOKEN\",\n  \"message\": \"로그인이 필요합니다.\",\n  \"path\": \"/api/v1/me\",\n  \"fieldErrors\": []\n}"
             }
           ]
+        },
+        {
+          "name": "내 비밀번호 변경",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/api/v1/me/password",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "password"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "description": "로그인한 사용자가 현재 비밀번호를 확인한 뒤 본인 비밀번호를 변경합니다.\n마이페이지 비밀번호 변경 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `currentPassword`: 현재 비밀번호\n- `newPassword`: 새 비밀번호(8자 이상 100자 이하)\n\n### 정책\n- 인증된 본인 계정에만 적용되며 대상 사용자를 지정하는 입력은 받지 않습니다.\n- 현재 비밀번호가 일치해야 변경합니다.\n- 새 비밀번호는 회원가입·재설정과 동일한 정책(8자 이상 100자 이하)을 적용하고 현재 비밀번호와 같으면 거부합니다.\n- 관리자가 타인 비밀번호를 변경하는 기능이 아니며, 이메일 인증번호 재설정과는 별개 기능입니다.\n\n### Response\n- 성공 시 본문 없이 `204 No Content`를 반환합니다.\n\n### Error\n- `400 Bad Request`: 새 비밀번호 형식 오류(`INVALID_REQUEST`), 현재 비밀번호 불일치(`INVALID_CURRENT_PASSWORD`), 또는 새 비밀번호가 현재와 동일(`NEW_PASSWORD_SAME_AS_CURRENT`)\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: CSRF 토큰이 없거나 올바르지 않음",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"oldPassword123!\",\n  \"newPassword\": \"newPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
         },
         {
           "name": "사용자 목록 조회",

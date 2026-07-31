@@ -3,9 +3,11 @@ package com.ajt.backend.domain.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.ajt.backend.domain.auth.dto.ChangePasswordRequest;
 import com.ajt.backend.domain.auth.dto.LoginRequest;
 import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.AuthMessageResponse;
+import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
 import com.ajt.backend.domain.auth.dto.PasswordResetVerifyRequest;
 import com.ajt.backend.domain.auth.dto.SignupRequest;
@@ -166,6 +168,75 @@ class AuthServiceTest {
 
         assertThat(response.user().role()).isEqualTo("admin");
         assertThat(response.user().isSuperAdmin()).isFalse();
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 맞으면 새 비밀번호로 변경되고 새 비밀번호로 인코딩되어 저장된다")
+    void changeMyPasswordSucceedsWithCorrectCurrentPassword() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+
+        authService.changeMyPassword(
+                new AuthenticatedMember(member.getId(), member.getEmail(), Role.EMPLOYEE),
+                new ChangePasswordRequest("password123!", "newPassword123!"));
+
+        assertThat(passwordEncoder.matches("newPassword123!", member.getPasswordHash())).isTrue();
+        assertThat(passwordEncoder.matches("password123!", member.getPasswordHash())).isFalse();
+    }
+
+    @Test
+    @DisplayName("현재 비밀번호가 틀리면 비밀번호를 변경하지 않고 400으로 거절한다")
+    void changeMyPasswordRejectsWrongCurrentPassword() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+
+        assertThatThrownBy(() -> authService.changeMyPassword(
+                new AuthenticatedMember(member.getId(), member.getEmail(), Role.EMPLOYEE),
+                new ChangePasswordRequest("wrongPassword!", "newPassword123!")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_CURRENT_PASSWORD);
+        assertThat(passwordEncoder.matches("password123!", member.getPasswordHash())).isTrue();
+    }
+
+    @Test
+    @DisplayName("새 비밀번호가 현재 비밀번호와 같으면 400으로 거절한다")
+    void changeMyPasswordRejectsSameAsCurrent() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(Member.approvedEmployee(
+                department, "employee@ajt.com", "홍길동",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+
+        assertThatThrownBy(() -> authService.changeMyPassword(
+                new AuthenticatedMember(member.getId(), member.getEmail(), Role.EMPLOYEE),
+                new ChangePasswordRequest("password123!", "password123!")))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT);
+    }
+
+    @Test
+    @DisplayName("비밀번호 변경은 인증 주체 본인 계정에만 적용되고 다른 회원 계정은 바뀌지 않는다")
+    void changeMyPasswordAppliesOnlyToAuthenticatedMember() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member me = memberRepository.save(Member.approvedEmployee(
+                department, "me@ajt.com", "본인",
+                passwordEncoder.encode("password123!"), "AJT-2026-0001"));
+        Member other = memberRepository.save(Member.approvedEmployee(
+                department, "other@ajt.com", "타인",
+                passwordEncoder.encode("password123!"), "AJT-2026-0002"));
+
+        authService.changeMyPassword(
+                new AuthenticatedMember(me.getId(), me.getEmail(), Role.EMPLOYEE),
+                new ChangePasswordRequest("password123!", "newPassword123!"));
+
+        assertThat(passwordEncoder.matches("newPassword123!", me.getPasswordHash())).isTrue();
+        // 대상 userId를 받지 않으므로 다른 회원 비밀번호는 구조적으로 변경될 수 없다
+        assertThat(passwordEncoder.matches("password123!", other.getPasswordHash())).isTrue();
     }
 
     @Test
