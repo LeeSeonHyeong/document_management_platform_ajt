@@ -323,16 +323,35 @@ class DocumentUploadControllerTest {
     }
 
     @Test
-    @DisplayName("문서 삭제 성공 시 202와 Wiki 재처리 작업 정보를 반환한다")
+    @DisplayName("문서 삭제 성공 시 202와 Wiki 재처리 작업 정보를 반환한다(reprocessRequired=true)")
     void deletesDocument() throws Exception {
         given(documentManagementService.delete(15L))
-                .willReturn(new DocumentDeleteResponse("42", "ALL", "waiting"));
+                .willReturn(new DocumentDeleteResponse(true, true, "42", "ALL", "waiting"));
 
         mockMvc.perform(delete("/api/v1/documents/{documentId}", 15L))
                 .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.deleted").value(true))
+                .andExpect(jsonPath("$.reprocessRequired").value(true))
                 .andExpect(jsonPath("$.jobId").value("42"))
                 .andExpect(jsonPath("$.scopeKey").value("ALL"))
                 .andExpect(jsonPath("$.status").value("waiting"));
+
+        verify(documentManagementService).delete(15L);
+    }
+
+    @Test
+    @DisplayName("재처리할 내용이 없으면 202 + deleted=true·reprocessRequired=false·jobId=null·status=skipped")
+    void deletesDocumentWithoutReprocess() throws Exception {
+        given(documentManagementService.delete(15L))
+                .willReturn(new DocumentDeleteResponse(true, false, null, "ALL", "skipped"));
+
+        mockMvc.perform(delete("/api/v1/documents/{documentId}", 15L))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.deleted").value(true))
+                .andExpect(jsonPath("$.reprocessRequired").value(false))
+                .andExpect(jsonPath("$.jobId").isEmpty())
+                .andExpect(jsonPath("$.scopeKey").value("ALL"))
+                .andExpect(jsonPath("$.status").value("skipped"));
 
         verify(documentManagementService).delete(15L);
     }

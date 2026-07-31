@@ -1,4 +1,4 @@
-export const contractVersion = "1.6.7";
+export const contractVersion = "1.6.8";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";

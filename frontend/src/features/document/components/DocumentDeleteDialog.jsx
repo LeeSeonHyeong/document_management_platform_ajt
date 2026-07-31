@@ -5,7 +5,9 @@ import { useDeleteDocument } from '../queries'
 import { useAiJobPolling } from '../hooks/useAiJobPolling'
 
 // Figma 4-7-2R ~ 4-7-4R — 삭제 확인 → 위키 반영 진행 → 완료.
-// DELETE /documents/:id 는 202로 반영 작업 jobId를 주므로, 그 작업을 폴링해 진행·완료를 판단한다.
+// DELETE /documents/:id 는 202로 { deleted, reprocessRequired, jobId, ... }를 준다.
+// reprocessRequired=true이고 jobId가 있을 때만 그 작업을 폴링하고, 재처리할 내용이 없으면
+// (reprocessRequired=false, jobId=null, status=skipped) 그대로 삭제 완료로 처리한다.
 export default function DocumentDeleteDialog({
   open,
   onClose,
@@ -37,8 +39,19 @@ export default function DocumentDeleteDialog({
     }
     deleteMutation.mutate(documentId, {
       onSuccess: (data) => {
-        if (data?.jobId) setDeletion({ documentId, jobId: data.jobId })
-        else onGoToList?.()
+        // S15P11B106-93: 삭제 응답은 { deleted, reprocessRequired, jobId, scopeKey, status } 형태다.
+        if (!data?.deleted) {
+          toast.error('문서 삭제 응답이 올바르지 않습니다.')
+          return
+        }
+        // Wiki/AI 재처리 작업이 생성된 경우에만 작업 상태를 폴링한다.
+        if (data.reprocessRequired && data.jobId) {
+          setDeletion({ documentId, jobId: data.jobId })
+          return
+        }
+        // 재처리할 내용이 없는 정상 삭제(reprocessRequired=false, jobId=null, status=skipped).
+        toast.success('문서가 삭제되었습니다.')
+        onGoToList?.()
       },
       onError: (error) => {
         if (error?.status === 403) toast.error('이 문서를 삭제할 권한이 없습니다.')

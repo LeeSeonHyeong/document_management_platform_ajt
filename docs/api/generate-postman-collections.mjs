@@ -994,9 +994,19 @@ const publicFolders = [
         pathParams: ["`documentId`: 삭제할 문서 ID"],
         policy: [
           "삭제 후 해당 scopeKey의 현재 문서를 기준으로 Wiki를 재처리합니다.",
+          "삭제한 문서에 파싱 본문이 없거나 Wiki에 반영된 적이 없어 재처리할 내용이 없으면 재처리 작업을 만들지 않고 `reprocessRequired=false`·`jobId=null`·`status=skipped`로 응답합니다(정상).",
+          "삭제 실패·권한 없음·처리 중인 문서는 성공 응답이 아니라 아래 에러로 응답합니다(성공 응답의 `deleted`는 항상 `true`).",
+          "프론트는 `reprocessRequired=true`이고 `jobId`가 있을 때만 AI 작업 상태(`GET /api/v1/ai-jobs/{jobId}`)를 조회합니다.",
           "삭제 복구와 과거 버전 조회는 제공하지 않습니다.",
         ],
-        response: ["`202 Accepted`와 Wiki 재처리 `jobId`"],
+        response: [
+          "`202 Accepted`",
+          "`deleted`: 삭제 성공 여부(이 응답이 오면 항상 `true`)",
+          "`reprocessRequired`: 삭제로 Wiki 재처리 작업이 필요/생성됐는지 여부",
+          "`jobId`(nullable): 재처리 작업 ID. `reprocessRequired=false`이면 `null`이 정상입니다.",
+          "`scopeKey`: 삭제된 문서의 공개 범위 키",
+          "`status`: 재처리 작업이 생성되면 `waiting`, 재처리할 내용이 없으면 `skipped`",
+        ],
         errors: [
           "`403 Forbidden`: 관리자 권한 없음",
           "`404 Not Found`: 존재하지 않는 문서",

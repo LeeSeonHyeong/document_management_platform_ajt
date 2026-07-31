@@ -60,7 +60,10 @@ export async function replaceDocumentFile(documentId, file) {
   return data
 }
 
-// DELETE /api/v1/documents/:documentId — 202, 재처리 jobId를 반환한다(즉시 204가 아님).
+// DELETE /api/v1/documents/:documentId — 202
+//   { deleted, reprocessRequired, jobId, scopeKey, status }
+//   deleted=true(실패는 에러 응답). reprocessRequired=true면 Wiki 재처리 작업이 생성되고 jobId·status=waiting,
+//   재처리할 내용이 없으면 reprocessRequired=false·jobId=null·status=skipped(정상). jobId=null을 실패로 보지 않는다.
 export async function deleteDocument(documentId) {
   const { data } = await apiClient.delete(`/documents/${documentId}`)
   return data

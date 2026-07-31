@@ -308,8 +308,10 @@ public class DocumentManagementService {
      *
      * <p>파싱 본문이 없으면 걷어낼 근거가 없어 작업을 만들지 않고 {@code null}을 돌려준다.
      * 파싱 전이거나 파싱에 실패한 문서는 Wiki에 반영된 적이 없다.
-     * TODO(계약): 이 경우 응답의 jobId가 없다. 계약은 202+jobId를 요구하므로 "재처리할 것이
-     *  없는 삭제" 응답 형태를 프론트와 합의해야 한다. (카테고리만 변경 시 200 건과 같은 성격)
+     *
+     * <p>수정(S15P11B106-93): 이 {@code null}("재처리할 것이 없는 삭제")은 delete()에서
+     * {@code reprocessRequired=false}·{@code jobId=null}·{@code status=skipped}로 응답에 담긴다.
+     * 프론트는 {@code reprocessRequired=true}이고 {@code jobId}가 있을 때만 AI 작업 상태를 조회한다.
      */
     private AiJob removeDeletedDocumentFromScope(
             long requesterId,
@@ -400,10 +402,16 @@ public class DocumentManagementService {
 
         AiJob job = removeDeletedDocumentFromScope(
                 admin.memberId(), documentId, scopeKey, removedParsedMarkdown);
+        // 수정(S15P11B106-93): 여기 도달했으면 삭제는 성공(실패는 위에서 예외로 처리됨). 재처리 작업이 생성됐으면
+        //   reprocessRequired=true·waiting·jobId, 재처리할 내용이 없어 작업을 만들지 않았으면 false·skipped·null로
+        //   내려 프론트가 "jobId=null이 정상 상황"임을 구분할 수 있게 한다.
+        boolean reprocessRequired = job != null;
         return new DocumentDeleteResponse(
-                job == null ? null : String.valueOf(job.id()),
+                true,
+                reprocessRequired,
+                reprocessRequired ? String.valueOf(job.id()) : null,
                 scopeKey,
-                job == null ? null : job.status().name().toLowerCase()
+                reprocessRequired ? job.status().name().toLowerCase() : "skipped"
         );
     }
 
