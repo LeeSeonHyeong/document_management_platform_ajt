@@ -66,6 +66,35 @@ class MemberServiceTest {
         assertThat(response.department().name()).isEqualTo("개발부");
         assertThat(response.signupStatus()).isEqualTo("approved");
         assertThat(response.accountStatus()).isEqualTo("active");
+        // 신규 필드: 사원은 최고관리자가 아니다
+        assertThat(response.isSuperAdmin()).isFalse();
+    }
+
+    @Test
+    @DisplayName("내 정보 조회 응답의 isSuperAdmin은 부서장이 아닌 관리자면 true다")
+    void findMeReturnsSuperAdminTrueForNonManagerAdmin() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+
+        UserResponse response =
+                memberService.findMe(new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN));
+
+        assertThat(response.role()).isEqualTo("admin");
+        assertThat(response.isSuperAdmin()).isTrue();
+    }
+
+    @Test
+    @DisplayName("내 정보 조회 응답의 isSuperAdmin은 부서장으로 지정된 관리자면 false다")
+    void findMeReturnsSuperAdminFalseForDepartmentManager() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+
+        UserResponse response =
+                memberService.findMe(new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN));
+
+        assertThat(response.isSuperAdmin()).isFalse();
     }
 
     @Test

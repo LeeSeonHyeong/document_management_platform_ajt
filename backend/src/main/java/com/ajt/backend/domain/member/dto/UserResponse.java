@@ -16,10 +16,13 @@ public record UserResponse(
         UserDepartmentResponse department,
         String signupStatus,
         String accountStatus,
+        // 수정(S15P11B106-83): 최고관리자 여부. true면 사용자 관리·가입 승인/거절 권한이 있다.
+        //   role=admin만으로는 부서관리자와 구분되지 않으므로 프론트는 이 값으로 권한을 판단한다.
+        boolean isSuperAdmin,
         Instant createdAt,
         Instant updatedAt
 ) {
-    public static UserResponse from(Member member) {
+    public static UserResponse from(Member member, boolean isSuperAdmin) {
         return new UserResponse(
                 String.valueOf(member.getId()),
                 member.getEmail(),
@@ -29,6 +32,7 @@ public record UserResponse(
                 UserDepartmentResponse.from(member.getDepartment()),
                 member.getSignupStatus().apiValue(),
                 member.getAccountStatus().apiValue(),
+                isSuperAdmin,
                 member.getCreatedAt(),
                 member.getUpdatedAt()
         );

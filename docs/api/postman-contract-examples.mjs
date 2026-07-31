@@ -1,4 +1,4 @@
-export const contractVersion = "1.6.3";
+export const contractVersion = "1.6.4";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -71,7 +71,7 @@ const contracts = {
       httpStatus: 200,
       body: {
         expiresIn: 3600,
-        user,
+        user: { ...user, isSuperAdmin: false },
       },
       headers: [
         {
@@ -164,6 +164,7 @@ const contracts = {
       httpStatus: 200,
       body: {
         ...user,
+        isSuperAdmin: false,
         createdAt: "2026-07-01T02:00:00Z",
         updatedAt: "2026-07-27T09:00:00Z",
       },

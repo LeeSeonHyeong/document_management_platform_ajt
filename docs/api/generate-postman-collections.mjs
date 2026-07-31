@@ -183,11 +183,13 @@ const publicFolders = [
           "가입 상태가 `approved`이고 계정 상태가 `active`인 사용자만 로그인할 수 있습니다.",
           "초기 범위에서는 refreshToken을 발급하지 않습니다.",
           "JWT는 `AJT_ACCESS_TOKEN` HttpOnly 쿠키로만 발급하며 응답 본문과 JavaScript에 노출하지 않습니다.",
+          "프론트는 `role=admin`만으로 사용자 관리 권한을 판단하면 안 됩니다. 사용자 관리·가입 승인/거절 가능 여부는 `isSuperAdmin` 값으로 판단합니다.",
         ],
         response: [
           "`Set-Cookie`: `AJT_ACCESS_TOKEN` JWT HttpOnly 쿠키 (`Secure`, `SameSite=Lax`, `Path=/`)",
           "`expiresIn`: 토큰 만료까지 남은 초",
-          "`user`: 로그인 사용자 ID, 이름, 역할, 부서, 계정 상태",
+          "`user`: 로그인 사용자 ID, 이름, 역할, 부서, 계정 상태와 최고관리자 여부(`isSuperAdmin`)",
+          "`user.isSuperAdmin`: `true`=최고관리자(사용자 관리·가입 승인/거절 메뉴 접근 가능), `false`=부서관리자 또는 일반 사원(접근 불가)",
         ],
         errors: [
           "`400 Bad Request`: 이메일 또는 비밀번호 형식 오류",
@@ -383,10 +385,12 @@ const publicFolders = [
         policy: [
           "사용자는 이 화면에서 정보를 직접 수정하거나 비밀번호를 변경할 수 없습니다.",
           "비밀번호 변경은 이메일 재설정 절차로만 수행합니다.",
+          "프론트는 새로고침 후 이 응답의 `isSuperAdmin`으로 사용자 관리 메뉴/접근 권한을 복원합니다. `role=admin`만으로 판단하지 않습니다.",
         ],
         response: [
           "`userId`, `email`, `name`, `employeeNo`, `role`",
           "`department`: 소속 부서 ID와 이름",
+          "`isSuperAdmin`: 최고관리자 여부. `true`=사용자 관리·가입 승인/거절 메뉴 접근 가능, `false`=부서관리자 또는 일반 사원(접근 불가)",
           "`signupStatus`, `accountStatus`, `createdAt`, `updatedAt`",
         ],
         errors: ["`401 Unauthorized`: accessToken이 유효하지 않음"],
@@ -419,7 +423,7 @@ const publicFolders = [
           "`keyword`: 이름 또는 이메일 검색어",
           "`sort`: 정렬필드와 방향",
         ],
-        policy: ["관리자만 조회할 수 있습니다."],
+        policy: ["최고관리자만 조회할 수 있습니다(부서관리자는 `role=admin`이지만 접근 불가)."],
         response: [
           "`items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부",
           "`page`, `size`, `totalCount`, `totalPages`",
@@ -440,10 +444,13 @@ const publicFolders = [
         usage: "사용자 관리 상세·수정 화면에서 대상 사용자를 불러올 때 사용합니다.",
         pathParams: ["`userId`: 조회할 사용자 ID"],
         policy: [
-          "관리자만 조회할 수 있습니다.",
+          "최고관리자만 조회할 수 있습니다(부서관리자는 `role=admin`이지만 접근 불가).",
           "`PATCH /api/v1/users/{userId}` 수정 화면과 짝이 되는 조회 API입니다.",
         ],
-        response: ["대상 사용자 전체 정보(수정 API 응답과 동일한 `UserResponse`)"],
+        response: [
+          "대상 사용자 전체 정보(수정 API 응답과 동일한 `UserResponse`).",
+          "`isSuperAdmin`: 대상 사용자의 최고관리자 여부(boolean).",
+        ],
         errors: [
           "`401 Unauthorized`: accessToken이 유효하지 않음",
           "`403 Forbidden`: 관리자 권한 없음",
@@ -473,13 +480,14 @@ const publicFolders = [
           "`accountStatus`: `active` 또는 `inactive`",
         ],
         policy: [
+          "최고관리자만 수정할 수 있습니다(부서관리자는 `role=admin`이지만 접근 불가).",
           "전달하지 않은 필드는 변경하지 않습니다.",
           "사용자는 삭제하지 않고 비활성화합니다.",
           "처리되지 않은 문의가 남은 담당자의 비활성화 또는 employee 전환은 허용하지 않습니다.",
-          "관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.",
+          "최고관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.",
           "사용자 비밀번호는 이 API에서 변경하지 않고 이메일 재설정으로만 변경합니다.",
         ],
-        response: ["수정된 사용자 전체 정보"],
+        response: ["수정된 사용자 전체 정보(`isSuperAdmin` 포함)."],
         errors: [
           "`400 Bad Request`: 필드값 또는 부서가 유효하지 않음",
           "`403 Forbidden`: 관리자 권한 없음",
@@ -508,7 +516,7 @@ const publicFolders = [
           "`keyword`: 이름 또는 이메일 검색어",
         ],
         policy: [
-          "관리자만 조회할 수 있습니다.",
+          "최고관리자만 조회할 수 있습니다(부서관리자는 `role=admin`이지만 접근 불가).",
           "거부된 신청도 삭제하지 않고 목록에 보존합니다.",
         ],
         response: [
@@ -532,6 +540,7 @@ const publicFolders = [
         usage: "가입 승인 관리 화면의 승인 동작에서 사용합니다.",
         pathParams: ["`userId`: 승인할 가입 신청 사용자 ID"],
         policy: [
+          "최고관리자만 승인할 수 있습니다(부서관리자는 `role=admin`이지만 접근 불가).",
           "`pending` 상태에서만 승인할 수 있습니다.",
           "승인 시 시스템이 중복되지 않는 사번을 생성합니다.",
           "승인하면 가입 상태를 `approved`, 계정 상태를 `active`로 변경합니다.",
@@ -556,6 +565,7 @@ const publicFolders = [
         usage: "가입 승인 관리 화면의 거부 동작에서 사용합니다.",
         pathParams: ["`userId`: 거부할 가입 신청 사용자 ID"],
         policy: [
+          "최고관리자만 거부할 수 있습니다(부서관리자는 `role=admin`이지만 접근 불가).",
           "`pending` 상태에서만 거부할 수 있습니다.",
           "거부하면 가입 상태를 `rejected`, 계정 상태를 `inactive`로 변경하고 사용자 행을 보존합니다.",
         ],
