@@ -1,4 +1,4 @@
-export const contractVersion = "1.6.9";
+export const contractVersion = "1.6.10";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -475,7 +475,7 @@ const contracts = {
     success: {
       httpStatus: 200,
       body: {
-        items: [schedule],
+        items: [{ ...schedule, updatedAt: timestamp }],
       },
     },
     error: {
@@ -505,13 +505,14 @@ const contracts = {
       {
         name: "200 OK - 사원 응답",
         httpStatus: 200,
-        body: schedule,
+        body: { ...schedule, updatedAt: timestamp },
       },
       {
         name: "200 OK - 관리자 응답",
         httpStatus: 200,
         body: {
           ...schedule,
+          updatedAt: timestamp,
           sourceDocument: {
             originalFileName: "8월일정.xlsx",
             sourceFileUrl: "/api/v1/schedules/31/source-file",

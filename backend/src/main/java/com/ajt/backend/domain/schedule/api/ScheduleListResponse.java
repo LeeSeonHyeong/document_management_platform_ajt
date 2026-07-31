@@ -21,7 +21,10 @@ public record ScheduleListResponse(List<Item> items) {
             List<String> departmentIds,
             Instant startAt,
             Instant endAt,
-            String status
+            String status,
+            // 수정(S15P11B106-87): 낙관적 동시성 토큰. 수정 폼이 목록 아이템으로 편집을 시작하므로, 목록에도
+            //   담아 수정 요청의 expectedUpdatedAt으로 그대로 실어 보낼 수 있게 한다.
+            Instant updatedAt
     ) {
     }
 
@@ -43,7 +46,8 @@ public record ScheduleListResponse(List<Item> items) {
                 schedule.departmentIds().stream().map(String::valueOf).toList(),
                 schedule.startAt(),
                 schedule.endAt(),
-                schedule.status().apiValue()
+                schedule.status().apiValue(),
+                schedule.updatedAt()
         );
     }
 }

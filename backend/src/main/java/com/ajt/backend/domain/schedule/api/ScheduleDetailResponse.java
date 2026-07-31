@@ -19,6 +19,9 @@ public record ScheduleDetailResponse(
         Instant startAt,
         Instant endAt,
         String status,
+        // 수정(S15P11B106-87): 낙관적 동시성 토큰. 수정 화면은 이 값을 그대로 수정 요청의 expectedUpdatedAt으로 보낸다.
+        //   수정 성공 응답에는 증가된 최신 값이 담긴다.
+        Instant updatedAt,
         SourceDocument sourceDocument
 ) {
 
@@ -50,6 +53,7 @@ public record ScheduleDetailResponse(
                 schedule.startAt(),
                 schedule.endAt(),
                 schedule.status().apiValue(),
+                schedule.updatedAt(),
                 sourceDocument
         );
     }
