@@ -48,6 +48,9 @@ public enum ErrorCode {
     // 수정(S15P11B106-71): 신규 추가. 가입 승인(APPROVED)되지 않은 계정을 사용자 수정 API로 고치려는 경우의 409
     //   코드(FR-USR-007: 관리자는 "승인된" 사용자 계정만 수정 가능. PENDING/REJECTED는 승인·거부 전용 API로만 상태 변경).
     USER_NOT_MODIFIABLE(HttpStatus.CONFLICT, "승인된 사용자만 수정할 수 있습니다."),
+    // 수정(S15P11B106-78): 신규 추가. 관리자가 사용자 수정 API로 자기 자신을 사원으로 강등하거나 비활성화하려는
+    //   경우의 409 코드. 본인이 관리자 권한을 잃어 관리자 화면에 접근하지 못하는 운영 사고를 막는다.
+    SELF_PRIVILEGE_REMOVAL_FORBIDDEN(HttpStatus.CONFLICT, "자기 자신을 사원으로 강등하거나 비활성화할 수 없습니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
     SIGNUP_ALREADY_PENDING(HttpStatus.CONFLICT, "이미 가입 승인 대기 중인 이메일입니다."),
     SIGNUP_ALREADY_APPROVED(HttpStatus.CONFLICT, "이미 가입 완료된 이메일입니다."),

@@ -2,9 +2,9 @@
 
 ## 계약 버전
 
-- 현재 버전: `1.6.2`
+- 현재 버전: `1.6.3`
 - 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.11
-- 공개 API: 56개
+- 공개 API: 57개
 - Spring Boot → FastAPI 내부 API: 7개
 - FastAPI → Spring Boot Wiki 조회 창구: 8개
 

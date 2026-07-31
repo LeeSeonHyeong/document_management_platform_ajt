@@ -64,7 +64,9 @@ public class Member {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
-    @Column(name = "updated_at")
+    // 수정(S15P11B106-78): ERD의 member.updated_at은 NOT NULL이다. 엔티티에도 nullable=false를 명시해 ERD와 맞춘다.
+    //   생성 시 @PrePersist가 createdAt과 같은 값으로 채우고, 이후 변경 시 @PreUpdate/touch가 최신 시각으로 갱신한다.
+    @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
     protected Member() {

@@ -65,6 +65,18 @@ public class MemberController {
     }
 
     /**
+     * GET /api/v1/users/{userId}
+     * 관리자가 사용자 상세/수정 화면에서 특정 사용자 한 명의 최신 정보를 조회합니다(S15P11B106-78).
+     */
+    @GetMapping("/api/v1/users/{userId}")
+    public UserResponse user(
+            @AuthenticationPrincipal AuthenticatedMember loginMember,
+            @PathVariable Long userId
+    ) {
+        return memberService.findUser(loginMember, userId);
+    }
+
+    /**
      * PATCH /api/v1/users/{userId}
      * 관리자가 사용자 이름, 역할, 부서, 계정 상태를 필요한 항목만 수정합니다.
      */
