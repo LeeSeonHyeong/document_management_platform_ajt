@@ -90,7 +90,10 @@ public enum ErrorCode {
     INQUIRY_ANSWER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 답변이 등록된 문의입니다."),
 
     // 수정: 신규 추가. 질문 이력 조회의 필터·페이지값 오류(400).
-    INVALID_QUESTION_FILTER(HttpStatus.BAD_REQUEST, "질문 이력 조회 조건이 올바르지 않습니다.");
+    INVALID_QUESTION_FILTER(HttpStatus.BAD_REQUEST, "질문 이력 조회 조건이 올바르지 않습니다."),
+
+    // 챗봇 답변 생성 중 AI 서버를 쓸 수 없는 경우(계약의 503).
+    AI_SERVER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AI 답변 서버를 이용할 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;
