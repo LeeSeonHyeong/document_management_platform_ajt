@@ -432,6 +432,26 @@ const publicFolders = [
       }),
     }),
     request({
+      name: "사용자 단건 조회",
+      method: "GET",
+      path: "/api/v1/users/:userId",
+      description: docs({
+        summary: "관리자가 특정 사용자 한 명의 최신 상세 정보를 조회합니다.",
+        usage: "사용자 관리 상세·수정 화면에서 대상 사용자를 불러올 때 사용합니다.",
+        pathParams: ["`userId`: 조회할 사용자 ID"],
+        policy: [
+          "관리자만 조회할 수 있습니다.",
+          "`PATCH /api/v1/users/{userId}` 수정 화면과 짝이 되는 조회 API입니다.",
+        ],
+        response: ["대상 사용자 전체 정보(수정 API 응답과 동일한 `UserResponse`)"],
+        errors: [
+          "`401 Unauthorized`: accessToken이 유효하지 않음",
+          "`403 Forbidden`: 관리자 권한 없음",
+          "`404 Not Found`: 존재하지 않는 사용자",
+        ],
+      }),
+    }),
+    request({
       name: "사용자 정보 및 상태 수정",
       method: "PATCH",
       path: "/api/v1/users/:userId",
@@ -456,6 +476,7 @@ const publicFolders = [
           "전달하지 않은 필드는 변경하지 않습니다.",
           "사용자는 삭제하지 않고 비활성화합니다.",
           "처리되지 않은 문의가 남은 담당자의 비활성화 또는 employee 전환은 허용하지 않습니다.",
+          "관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.",
           "사용자 비밀번호는 이 API에서 변경하지 않고 이메일 재설정으로만 변경합니다.",
         ],
         response: ["수정된 사용자 전체 정보"],

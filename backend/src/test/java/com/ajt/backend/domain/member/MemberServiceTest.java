@@ -17,6 +17,7 @@ import com.ajt.backend.domain.member.dto.UserUpdateRequest;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -147,7 +148,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         // role만 전달(부분 수정): 사원으로 강등
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
@@ -165,7 +166,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         // accountStatus만 전달(부분 수정): 비활성화. 역할은 여전히 admin이지만 활성 자격을 잃음
         UserUpdateRequest request = new UserUpdateRequest();
         request.setAccountStatus("inactive");
@@ -183,7 +184,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setName("새이름");
 
@@ -206,7 +207,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setDepartmentId(String.valueOf(otherDepartment.getId()));
 
@@ -223,7 +224,7 @@ class MemberServiceTest {
     void updateUserAllowsDemotingNonManagerAdmin() {
         Department department = departmentRepository.save(new Department("기획부"));
         Member admin = memberRepository.save(approvedAdmin(department));
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
 
@@ -257,7 +258,7 @@ class MemberServiceTest {
         Member author = memberRepository.save(
                 approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
         savePendingInquiry(author, admin);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
 
@@ -275,7 +276,7 @@ class MemberServiceTest {
         Member author = memberRepository.save(
                 approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
         savePendingInquiry(author, admin);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setAccountStatus("inactive");
 
@@ -295,7 +296,7 @@ class MemberServiceTest {
         Inquiry inquiry = savePendingInquiry(author, admin);
         inquiry.markAnswered();
         inquiryRepository.save(inquiry);
-        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
 
@@ -372,6 +373,211 @@ class MemberServiceTest {
         assertThat(response.accountStatus()).isEqualTo("inactive");
         assertThat(pending.getSignupStatus()).isEqualTo(SignupStatus.REJECTED);
         assertThat(pending.getAccountStatus()).isEqualTo(AccountStatus.INACTIVE);
+    }
+
+    @Test
+    @DisplayName("회원 생성 시 createdAt과 updatedAt이 모두 채워지고 서로 같다")
+    void memberCreationSetsCreatedAndUpdatedAtEqual() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member member = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        memberRepository.flush(); // @PrePersist 반영
+
+        assertThat(member.getCreatedAt()).isNotNull();
+        assertThat(member.getUpdatedAt()).isNotNull();
+        assertThat(member.getUpdatedAt()).isEqualTo(member.getCreatedAt());
+    }
+
+    @Test
+    @DisplayName("사용자 수정 시 updatedAt이 생성 시각 이후로 갱신된다")
+    void updateRefreshesUpdatedAt() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        memberRepository.flush();
+        Instant createdUpdatedAt = employee.getUpdatedAt();
+        AuthenticatedMember actor = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setName("새이름");
+
+        memberService.updateUser(actor, employee.getId(), request);
+        memberRepository.flush(); // @PreUpdate/touch 반영
+
+        assertThat(employee.getUpdatedAt()).isNotNull();
+        assertThat(employee.getUpdatedAt()).isAfterOrEqualTo(createdUpdatedAt);
+    }
+
+    @Test
+    @DisplayName("관리자는 사용자 단건 조회로 대상 사용자 상세를 받는다")
+    void findUserReturnsDetail() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member employee = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+
+        UserResponse response = memberService.findUser(
+                new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN), employee.getId());
+
+        assertThat(response.userId()).isEqualTo(String.valueOf(employee.getId()));
+        assertThat(response.email()).isEqualTo("employee@ajt.com");
+        assertThat(response.department().name()).isEqualTo("개발부");
+    }
+
+    @Test
+    @DisplayName("일반 사용자는 사용자 단건 조회를 할 수 없다(403)")
+    void findUserRequiresAdmin() {
+        AuthenticatedMember employee = new AuthenticatedMember(1L, "employee@ajt.com", Role.EMPLOYEE);
+
+        assertThatThrownBy(() -> memberService.findUser(employee, 1L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 사용자 단건 조회는 404")
+    void findUserNotFound() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+
+        assertThatThrownBy(() -> memberService.findUser(
+                new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN), Long.MAX_VALUE))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.MEMBER_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("관리자가 자기 자신을 사원으로 강등하려 하면 409")
+    void updateUserRejectsSelfDemotion() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        AuthenticatedMember self = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("employee");
+
+        assertThatThrownBy(() -> memberService.updateUser(self, admin.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SELF_PRIVILEGE_REMOVAL_FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("관리자가 자기 자신을 비활성화하려 하면 409")
+    void updateUserRejectsSelfDeactivation() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        AuthenticatedMember self = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setAccountStatus("inactive");
+
+        assertThatThrownBy(() -> memberService.updateUser(self, admin.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SELF_PRIVILEGE_REMOVAL_FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("관리자가 자기 자신의 이름 등 안전한 필드는 수정할 수 있다")
+    void updateUserAllowsSelfSafeFieldEdit() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        AuthenticatedMember self = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setName("새관리자이름");
+
+        UserResponse response = memberService.updateUser(self, admin.getId(), request);
+
+        assertThat(response.name()).isEqualTo("새관리자이름");
+        assertThat(response.role()).isEqualTo("admin");
+        assertThat(response.accountStatus()).isEqualTo("active");
+    }
+
+    @Test
+    @DisplayName("최고관리자(부서관리자가 아닌 ADMIN)는 사용자 목록을 조회할 수 있다")
+    void superAdminCanListUsers() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member superAdmin = memberRepository.save(approvedAdmin(department));
+        AuthenticatedMember actor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
+
+        UserListResponse response = memberService.findUsers(actor, 1, 20, null, null, null, null, null, null);
+
+        assertThat(response.totalCount()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 사용자 목록을 조회할 수 없다(403)")
+    void departmentManagerCannotListUsers() {
+        AuthenticatedMember manager = savedDepartmentManagerActor();
+
+        assertThatThrownBy(() -> memberService.findUsers(manager, 1, 20, null, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 사용자 단건 조회를 할 수 없다(403)")
+    void departmentManagerCannotViewUserDetail() {
+        AuthenticatedMember manager = savedDepartmentManagerActor();
+
+        assertThatThrownBy(() -> memberService.findUser(manager, manager.memberId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 사용자를 수정할 수 없다(403)")
+    void departmentManagerCannotUpdateUser() {
+        AuthenticatedMember manager = savedDepartmentManagerActor();
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setName("변경시도");
+
+        assertThatThrownBy(() -> memberService.updateUser(manager, manager.memberId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 가입 요청 목록·승인·거부를 할 수 없다(403)")
+    void departmentManagerCannotAccessSignupRequests() {
+        AuthenticatedMember manager = savedDepartmentManagerActor();
+
+        assertThatThrownBy(() -> memberService.findSignupRequests(manager, 1, 20, "pending", null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+        assertThatThrownBy(() -> memberService.approveSignupRequest(manager, manager.memberId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+        assertThatThrownBy(() -> memberService.rejectSignupRequest(manager, manager.memberId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("일반 사원은 사용자 관리 API를 사용할 수 없다(403)")
+    void employeeCannotAccessUserManagement() {
+        AuthenticatedMember employee = new AuthenticatedMember(1L, "employee@ajt.com", Role.EMPLOYEE);
+
+        assertThatThrownBy(() -> memberService.findUsers(employee, 1, 20, null, null, null, null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    // 부서관리자(어느 부서의 manager_id로 지정된 ADMIN)를 만들어 그 사용자로 동작하는 actor를 반환한다.
+    private AuthenticatedMember savedDepartmentManagerActor() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        return new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN);
     }
 
     private Member approvedAdmin(Department department) {
