@@ -13,10 +13,12 @@ public record AuthUserResponse(
         String role,
         AuthDepartmentResponse department,
         String signupStatus,
-        String accountStatus
+        String accountStatus,
+        // 수정(S15P11B106-83): 최고관리자 여부. 프론트는 role=admin이 아니라 이 값으로 사용자 관리 권한을 판단한다.
+        boolean isSuperAdmin
 ) {
 
-    public static AuthUserResponse from(Member member) {
+    public static AuthUserResponse from(Member member, boolean isSuperAdmin) {
         return new AuthUserResponse(
                 String.valueOf(member.getId()),
                 member.getEmail(),
@@ -25,7 +27,8 @@ public record AuthUserResponse(
                 member.getRole().apiValue(),
                 AuthDepartmentResponse.from(member.getDepartment()),
                 member.getSignupStatus().apiValue(),
-                member.getAccountStatus().apiValue()
+                member.getAccountStatus().apiValue(),
+                isSuperAdmin
         );
     }
 }

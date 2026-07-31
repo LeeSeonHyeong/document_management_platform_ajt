@@ -66,7 +66,9 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.email").value("employee@ajt.com"))
                 .andExpect(jsonPath("$.department.name").value("개발부"))
                 .andExpect(jsonPath("$.signupStatus").value("approved"))
-                .andExpect(jsonPath("$.accountStatus").value("active"));
+                .andExpect(jsonPath("$.accountStatus").value("active"))
+                // 신규: /me 응답에 isSuperAdmin(boolean)이 내려온다(사원이므로 false)
+                .andExpect(jsonPath("$.isSuperAdmin").value(false));
     }
 
     @Test

@@ -49,8 +49,9 @@ class MemberServiceApprovalRetryTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-07-31T00:00:00Z"), ZoneOffset.UTC);
+        SuperAdminChecker superAdminChecker = new SuperAdminChecker(departmentRepository);
         memberService = new MemberService(
-                memberRepository, departmentRepository, inquiryRepository, clock, selfProvider);
+                memberRepository, departmentRepository, inquiryRepository, superAdminChecker, clock, selfProvider);
         // self 프록시 호출이 실제 인스턴스 메서드를 그대로 실행하도록 한다(트랜잭션 경계는 이 단위테스트의 관심사가 아님).
         when(selfProvider.getObject()).thenReturn(memberService);
     }

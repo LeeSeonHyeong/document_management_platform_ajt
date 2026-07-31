@@ -46,6 +46,7 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final DepartmentRepository departmentRepository;
     private final InquiryRepository inquiryRepository;
+    private final SuperAdminChecker superAdminChecker;
     private final Clock clock;
     // 수정(S15P11B106-72): 사번 재시도는 승인 1회(approveSignupOnce)를 트랜잭션 단위로 실행하는데, 같은 빈의
     //   @Transactional 메서드를 this로 호출하면 프록시를 거치지 않아 트랜잭션 경계가 적용되지 않는다. 프록시
@@ -56,12 +57,14 @@ public class MemberService {
             MemberRepository memberRepository,
             DepartmentRepository departmentRepository,
             InquiryRepository inquiryRepository,
+            SuperAdminChecker superAdminChecker,
             Clock clock,
             ObjectProvider<MemberService> selfProvider
     ) {
         this.memberRepository = memberRepository;
         this.departmentRepository = departmentRepository;
         this.inquiryRepository = inquiryRepository;
+        this.superAdminChecker = superAdminChecker;
         this.clock = clock;
         this.selfProvider = selfProvider;
     }
@@ -73,7 +76,7 @@ public class MemberService {
     @Transactional(readOnly = true)
     public UserResponse findMe(AuthenticatedMember loginMember) {
         Member member = findMember(loginMember.memberId());
-        return UserResponse.from(member);
+        return UserResponse.from(member, superAdminChecker.isSuperAdmin(member));
     }
 
     /**
@@ -113,7 +116,7 @@ public class MemberService {
     public UserResponse findUser(AuthenticatedMember loginMember, Long userId) {
         requireSuperAdmin(loginMember);
         Member member = findMember(userId);
-        return UserResponse.from(member);
+        return UserResponse.from(member, superAdminChecker.isSuperAdmin(member));
     }
 
     /**
@@ -165,7 +168,7 @@ public class MemberService {
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, exception.getMessage());
         }
-        return UserResponse.from(member);
+        return UserResponse.from(member, superAdminChecker.isSuperAdmin(member));
     }
 
     /**
@@ -288,7 +291,9 @@ public class MemberService {
     //   (에러 코드·상태는 그대로 두어 프론트/계약과의 충돌을 피한다).
     private void requireSuperAdmin(AuthenticatedMember loginMember) {
         requireAdmin(loginMember);
-        if (departmentRepository.existsByManager_Id(loginMember.memberId())) {
+        // 판별 기준(role=ADMIN이면서 부서장 아님)은 SuperAdminChecker로 단일화한다. 여기선 requireAdmin을
+        // 이미 통과했으므로 isAdmin=true이고, 부서장으로 지정돼 있으면 최고관리자가 아니라 403으로 거절한다.
+        if (!superAdminChecker.isSuperAdmin(loginMember.memberId(), loginMember.isAdmin())) {
             throw new BusinessException(
                     ErrorCode.ADMIN_PERMISSION_REQUIRED,
                     "사용자 관리는 최고관리자만 사용할 수 있습니다."

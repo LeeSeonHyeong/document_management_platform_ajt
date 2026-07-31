@@ -16,6 +16,7 @@ import com.ajt.backend.domain.member.AccountStatus;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.SignupStatus;
+import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.global.auth.AccessTokenService;
 import com.ajt.backend.global.auth.PasswordResetCodeStore;
 import com.ajt.backend.global.auth.PasswordResetRateLimiter;
@@ -42,6 +43,8 @@ public class AuthService {
     private final PasswordResetCodeStore passwordResetCodeStore;
     private final PasswordResetRateLimiter passwordResetRateLimiter;
     private final EmailSender emailSender;
+    // 수정(S15P11B106-83): 로그인 응답의 isSuperAdmin을 사용자 관리 권한 판별과 같은 기준으로 채우기 위해 재사용.
+    private final SuperAdminChecker superAdminChecker;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthService(
@@ -51,7 +54,8 @@ public class AuthService {
             AccessTokenService accessTokenService,
             PasswordResetCodeStore passwordResetCodeStore,
             PasswordResetRateLimiter passwordResetRateLimiter,
-            EmailSender emailSender
+            EmailSender emailSender,
+            SuperAdminChecker superAdminChecker
     ) {
         this.memberRepository = memberRepository;
         this.departmentRepository = departmentRepository;
@@ -60,6 +64,7 @@ public class AuthService {
         this.passwordResetCodeStore = passwordResetCodeStore;
         this.passwordResetRateLimiter = passwordResetRateLimiter;
         this.emailSender = emailSender;
+        this.superAdminChecker = superAdminChecker;
     }
 
     /**
@@ -92,7 +97,7 @@ public class AuthService {
         return new LoginResult(
                 accessTokenService.createAccessToken(member),
                 accessTokenService.expiresInSeconds(),
-                AuthUserResponse.from(member)
+                AuthUserResponse.from(member, superAdminChecker.isSuperAdmin(member))
         );
     }
 

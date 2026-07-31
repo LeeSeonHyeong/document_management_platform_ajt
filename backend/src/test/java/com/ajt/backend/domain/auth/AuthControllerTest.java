@@ -107,7 +107,9 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.tokenType").doesNotExist())
                 .andExpect(jsonPath("$.expiresIn").value(3600))
                 .andExpect(jsonPath("$.user.email").value("employee@ajt.com"))
-                .andExpect(jsonPath("$.user.department.name").value("개발부"));
+                .andExpect(jsonPath("$.user.department.name").value("개발부"))
+                // 신규: 로그인 응답 user에 isSuperAdmin(boolean)이 내려온다(사원이므로 false)
+                .andExpect(jsonPath("$.user.isSuperAdmin").value(false));
     }
 
     @Test
