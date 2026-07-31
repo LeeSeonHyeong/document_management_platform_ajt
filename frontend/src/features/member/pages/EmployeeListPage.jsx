@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import DataTable from '@/components/ui/DataTable'
 import EmptyState from '@/components/ui/EmptyState'
+import Pagination from '@/components/ui/Pagination'
 import SearchBar from '@/components/ui/SearchBar'
 import { ACCOUNT_STATUS, ROLES, SIGNUP_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
@@ -17,17 +18,32 @@ const FILTERS = [
   { value: ACCOUNT_STATUS.INACTIVE, label: '비활성' },
 ]
 
+const PAGE_SIZE = 20
+
 export default function EmployeeListPage() {
   const navigate = useNavigate()
   const [searchInput, setSearchInput] = useState('')
   const [keyword, setKeyword] = useState('')
   const [filter, setFilter] = useState('all')
+  const [page, setPage] = useState(1)
+
+  // 검색어·필터를 바꾸면 목록 조건이 달라지므로 첫 페이지부터 다시 본다.
+  const handleSearch = (value) => {
+    setKeyword(value)
+    setPage(1)
+  }
+  const handleFilter = (value) => {
+    setFilter(value)
+    setPage(1)
+  }
 
   // query.data는 백엔드 JSON 응답입니다.
   // items=직원 배열, totalCount=전체 직원 수, page/totalPages=페이지 정보입니다.
+  // 직원 목록은 가입 승인(approved)된 계정만 대상으로 합니다.
   const params = {
-    page: 1,
-    size: 100,
+    page,
+    size: PAGE_SIZE,
+    signupStatus: SIGNUP_STATUS.APPROVED,
     keyword: keyword || undefined,
     role: filter === ROLES.ADMIN || filter === ROLES.EMPLOYEE ? filter : undefined,
     status: filter === ACCOUNT_STATUS.INACTIVE ? filter : undefined,
@@ -49,14 +65,21 @@ export default function EmployeeListPage() {
   })
 
   const employees = query.data?.items ?? []
-  const counts = useMemo(() => {
-    const source = query.data?.items ?? []
-    return {
-      total: query.data?.totalCount ?? source.length,
-      admins: source.filter((employee) => employee.role === ROLES.ADMIN).length,
-      employees: source.filter((employee) => employee.role === ROLES.EMPLOYEE).length,
-    }
-  }, [query.data])
+
+  // 상단 카드의 관리자/사원 수는 현재 페이지가 아니라 전체 승인 계정 기준이어야 하므로
+  // role별로 size=1 조회해 totalCount만 받아온다(가입 대기 카드와 같은 방식).
+  const roleCountQueries = useQueries({
+    queries: [ROLES.ADMIN, ROLES.EMPLOYEE].map((role) => {
+      const countParams = { page: 1, size: 1, signupStatus: SIGNUP_STATUS.APPROVED, role }
+      return {
+        queryKey: qk.users.list(countParams),
+        queryFn: () => fetchUsers(countParams),
+      }
+    }),
+  })
+  const adminCount = roleCountQueries[0].data?.totalCount ?? 0
+  const employeeCount = roleCountQueries[1].data?.totalCount ?? 0
+  const totalCount = adminCount + employeeCount
 
   const columns = [
     {
@@ -95,9 +118,9 @@ export default function EmployeeListPage() {
   return (
     <div className="space-y-5">
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="전체 직원" value={counts.total} caption="현재 등록 계정" />
-        <StatCard label="관리자" value={counts.admins} tone="blue" caption="관리 권한 보유" />
-        <StatCard label="사원" value={counts.employees} tone="slate" caption="일반 계정" />
+        <StatCard label="전체 직원" value={totalCount} caption="현재 등록 계정" />
+        <StatCard label="관리자" value={adminCount} tone="blue" caption="관리 권한 보유" />
+        <StatCard label="사원" value={employeeCount} tone="slate" caption="일반 계정" />
         <StatCard
           label="가입 승인 대기"
           value={pendingSignupQuery.data?.totalCount ?? 0}
@@ -113,7 +136,7 @@ export default function EmployeeListPage() {
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900">직원 현황</h2>
               <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-600">
-                {counts.total}명
+                {totalCount}명
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-400">계정 권한과 재직 상태를 한 곳에서 관리합니다.</p>
@@ -124,7 +147,7 @@ export default function EmployeeListPage() {
           <SearchBar
             value={searchInput}
             onChange={setSearchInput}
-            onSearch={setKeyword}
+            onSearch={handleSearch}
             placeholder="이름 또는 부서로 검색"
             className="min-w-64 flex-1"
           />
@@ -134,7 +157,7 @@ export default function EmployeeListPage() {
                 key={item.value}
                 size="sm"
                 variant={filter === item.value ? 'secondary' : 'outline'}
-                onClick={() => setFilter(item.value)}
+                onClick={() => handleFilter(item.value)}
               >
                 {item.label}
               </Button>
@@ -150,6 +173,11 @@ export default function EmployeeListPage() {
           onRowClick={(employee) => navigate(`/admin/users/${employee.userId}`)}
           emptyState={<EmptyState title="조건에 맞는 직원이 없습니다." />}
         />
+        {(query.data?.totalPages ?? 1) > 1 && (
+          <div className="border-t border-slate-100 px-5 py-4">
+            <Pagination page={query.data.page} totalPages={query.data.totalPages} onChange={setPage} />
+          </div>
+        )}
       </section>
     </div>
   )

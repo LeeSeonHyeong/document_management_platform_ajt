@@ -125,14 +125,38 @@ export const handlers = [
     const keyword = (url.searchParams.get('keyword') ?? '').toLowerCase()
     const role = url.searchParams.get('role')
     const status = url.searchParams.get('status')
-    const items = users.filter((employee) => {
+    const signupStatus = url.searchParams.get('signupStatus')
+    const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
+    const size = Math.max(1, Number(url.searchParams.get('size')) || 100)
+    const filtered = users.filter((employee) => {
       const matchesKeyword =
         !keyword ||
         employee.name.toLowerCase().includes(keyword) ||
         employee.department?.name.toLowerCase().includes(keyword)
-      return matchesKeyword && (!role || employee.role === role) && (!status || employee.accountStatus === status)
+      return matchesKeyword
+        && (!role || employee.role === role)
+        && (!status || employee.accountStatus === status)
+        && (!signupStatus || employee.signupStatus === signupStatus)
     })
-    return HttpResponse.json({ items, page: 1, size: 100, totalCount: items.length, totalPages: 1 })
+    const start = (page - 1) * size
+    return HttpResponse.json({
+      items: filtered.slice(start, start + size),
+      page,
+      size,
+      totalCount: filtered.length,
+      totalPages: Math.max(1, Math.ceil(filtered.length / size)),
+    })
+  }),
+
+  http.get('/api/v1/users/:userId', ({ params }) => {
+    const employee = findUserById(params.userId)
+    if (!employee) {
+      return HttpResponse.json(
+        errorBody(404, 'USER_NOT_FOUND', '직원을 찾을 수 없습니다.', `/api/v1/users/${params.userId}`),
+        { status: 404 },
+      )
+    }
+    return HttpResponse.json(employee)
   }),
 
   http.patch('/api/v1/users/:userId', async ({ params, request }) => {

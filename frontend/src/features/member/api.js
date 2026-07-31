@@ -7,12 +7,10 @@ export async function fetchUsers(params = {}) {
   return data
 }
 
-// 현재 백엔드 계약에는 GET /users/{userId}가 없습니다.
-// 임시로 목록을 넉넉히 조회한 뒤 userId가 같은 직원을 찾습니다.
-// 추후 단건 조회 API가 추가되면 이 함수 내부만 교체하면 됩니다.
+// 사용자 상세/수정 화면에서 특정 직원 한 명을 GET /users/{userId}로 직접 조회합니다.
 export async function fetchUser(userId) {
-  const data = await fetchUsers({ page: 1, size: 100 })
-  return data.items.find((employee) => employee.userId === String(userId)) ?? null
+  const { data } = await apiClient.get(`/users/${userId}`)
+  return data
 }
 
 // 직원 수정 요청 본문:
