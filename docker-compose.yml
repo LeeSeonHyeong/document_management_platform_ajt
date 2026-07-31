@@ -1,0 +1,61 @@
+# AJT 운영 배포용 docker-compose
+# Jenkins가 미리 빌드한 Git commit SHA 이미지로 backend + frontend + mysql을 실행한다.
+# DEPLOY_ENV_FILE은 Compose 변수 해석과 컨테이너 환경변수 주입에 같은 파일을 사용하게 한다.
+
+services:
+  mysql:
+    image: mysql:8.4
+    env_file:
+      - "${DEPLOY_ENV_FILE:-.env}"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docs/db/erd.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  backend:
+    image: "${BACKEND_IMAGE:-ajt-backend}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    env_file:
+      - "${DEPLOY_ENV_FILE:-.env}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ajt-files:/data/ajt
+    healthcheck:
+      # 전역 Actuator health는 SMTP 같은 외부 연동 상태까지 포함한다.
+      # 컨테이너 생존 여부는 인증 없이 공개된 서비스 자체 헬스 엔드포인트로 판단한다.
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  frontend:
+    image: "${FRONTEND_IMAGE:-ajt-frontend}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    ports:
+      - "${FRONTEND_PORT:-443}:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "--spider", "--quiet", "https://127.0.0.1/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+    name: "${MYSQL_VOLUME_NAME:-ajt-prod-mysql-data}"
+  ajt-files:
+    name: "${AJT_FILES_VOLUME_NAME:-ajt-prod-files}"
