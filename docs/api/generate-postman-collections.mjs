@@ -1056,6 +1056,27 @@ const publicFolders = [
       }),
     }),
     request({
+      name: "AI 작업 시작",
+      method: "POST",
+      path: "/api/v1/ai-jobs/:jobId/start",
+      description: docs({
+        summary: "업로드로 만들어진 대기 작업의 파싱·Wiki 변환을 시작합니다.",
+        usage: "관리자 AI 작업 대기 화면의 시작 동작에서 사용합니다.",
+        pathParams: ["`jobId`: 시작할 AI 작업 ID"],
+        policy: [
+          "업로드는 작업을 waiting으로만 만들고, 이 API를 호출해야 처리가 시작됩니다.",
+          "관리자가 대기 화면에서 문서별 공개 범위를 확정한 뒤 호출합니다.",
+          "waiting 상태의 작업만 시작할 수 있어 같은 작업을 중복으로 시작할 수 없습니다.",
+        ],
+        response: ["`202 Accepted`", "`jobId`, `status`: `processing`"],
+        errors: [
+          "`403 Forbidden`: 관리자 권한 없음",
+          "`404 Not Found`: 존재하지 않는 작업",
+          "`409 Conflict`: 이미 시작되었거나 종료된 작업",
+        ],
+      }),
+    }),
+    request({
       name: "AI 작업 중단",
       method: "POST",
       path: "/api/v1/ai-jobs/:jobId/cancel",

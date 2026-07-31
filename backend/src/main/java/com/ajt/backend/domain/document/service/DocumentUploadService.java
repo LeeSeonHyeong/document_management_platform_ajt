@@ -33,7 +33,6 @@ public class DocumentUploadService {
     private final DocumentRepository documentRepository;
     private final AiJobRepository aiJobRepository;
     private final DocumentFileStorage fileStorage;
-    private final DocumentParseJobLauncher parseJobLauncher;
 
     public DocumentUploadService(
             CurrentMemberProvider currentMemberProvider,
@@ -41,8 +40,7 @@ public class DocumentUploadService {
             DocumentCategoryRepository documentCategoryRepository,
             DocumentRepository documentRepository,
             AiJobRepository aiJobRepository,
-            DocumentFileStorage fileStorage,
-            DocumentParseJobLauncher parseJobLauncher
+            DocumentFileStorage fileStorage
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiScopeRepository = wikiScopeRepository;
@@ -50,7 +48,6 @@ public class DocumentUploadService {
         this.documentRepository = documentRepository;
         this.aiJobRepository = aiJobRepository;
         this.fileStorage = fileStorage;
-        this.parseJobLauncher = parseJobLauncher;
     }
 
     @Transactional
@@ -74,13 +71,14 @@ public class DocumentUploadService {
         try {
             List<Document> documents = saveDocuments(request, currentMember.memberId(), scopeKey, storedPaths);
             List<Long> documentIds = documents.stream().map(Document::id).toList();
+            // 업로드는 작업을 WAITING으로만 만든다. 실제 파싱·Wiki 변환은 관리자가 대기 화면에서
+            // 문서별 공개 범위를 확정한 뒤 POST /ai-jobs/{jobId}/start 로 시작한다(AiJobStartService).
             AiJob job = aiJobRepository.save(AiJob.waiting(
                     currentMember.memberId(),
                     scopeKey,
                     scopeKey + "/jobs/" + UUID.randomUUID(),
                     documentIds
             ));
-            parseJobLauncher.launch(job, DocumentReprocessPlan.added());
 
             return new DocumentUploadResponse(
                     String.valueOf(job.id()),

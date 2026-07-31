@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockMultipartFile;
 
 @DisplayName("원본문서 업로드 서비스")
@@ -39,15 +40,13 @@ class DocumentUploadServiceTest {
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final DocumentFileStorage fileStorage = mock(DocumentFileStorage.class);
-    private final DocumentParseJobLauncher parseJobLauncher = mock(DocumentParseJobLauncher.class);
     private final DocumentUploadService service = new DocumentUploadService(
             currentMemberProvider,
             wikiScopeRepository,
             documentCategoryRepository,
             documentRepository,
             aiJobRepository,
-            fileStorage,
-            parseJobLauncher
+            fileStorage
     );
 
     @Test
@@ -84,7 +83,10 @@ class DocumentUploadServiceTest {
         assertThat(response.status()).isEqualTo("waiting");
         assertThat(response.createdAt()).isNotNull();
         verify(wikiScopeRepository).save(any(WikiScope.class));
-        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
+        // 업로드는 작업을 대기 상태로만 남긴다. 실행은 POST /ai-jobs/{jobId}/start 가 담당한다.
+        ArgumentCaptor<AiJob> savedJobs = ArgumentCaptor.forClass(AiJob.class);
+        verify(aiJobRepository).save(savedJobs.capture());
+        assertThat(savedJobs.getValue().status()).isEqualTo(AiJobStatus.WAITING);
     }
 
     @Test
