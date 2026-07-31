@@ -631,6 +631,9 @@ class DocumentManagementServiceTest {
 
         DocumentDeleteResponse response = service.delete(15L);
 
+        // 수정(S15P11B106-93): 파싱 본문이 있으면 재처리 작업이 생성되어 reprocessRequired=true·waiting·jobId.
+        assertThat(response.deleted()).isTrue();
+        assertThat(response.reprocessRequired()).isTrue();
         assertThat(response.jobId()).isEqualTo("42");
         assertThat(response.scopeKey()).isEqualTo("ALL");
         assertThat(response.status()).isEqualTo("waiting");
@@ -661,7 +664,12 @@ class DocumentManagementServiceTest {
 
         DocumentDeleteResponse response = service.delete(15L);
 
+        // 수정(S15P11B106-93): 재처리할 내용이 없으면 삭제는 성공(deleted=true)이되 reprocessRequired=false·
+        //   jobId=null·status=skipped로 내려 "jobId=null이 정상 상황"임을 프론트가 구분할 수 있게 한다.
+        assertThat(response.deleted()).isTrue();
+        assertThat(response.reprocessRequired()).isFalse();
         assertThat(response.jobId()).isNull();
+        assertThat(response.status()).isEqualTo("skipped");
         assertThat(response.scopeKey()).isEqualTo("ALL");
         verify(documentRepository).delete(document);
         verify(parseJobLauncher, never()).launch(any(AiJob.class), any(DocumentReprocessPlan.class));

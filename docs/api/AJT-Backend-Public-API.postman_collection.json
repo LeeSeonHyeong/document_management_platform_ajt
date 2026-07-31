@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.7이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.8이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.7",
+      "value": "1.6.8",
       "type": "string"
     },
     {
@@ -2359,7 +2359,7 @@
                 }
               ]
             },
-            "description": "Wiki 원본문서와 관련 파일을 하드 삭제합니다.\n원본문서 상세 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `documentId`: 삭제할 문서 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 삭제 후 해당 scopeKey의 현재 문서를 기준으로 Wiki를 재처리합니다.\n- 삭제 복구와 과거 버전 조회는 제공하지 않습니다.\n\n### Response\n- `202 Accepted`와 Wiki 재처리 `jobId`\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 문서\n- `409 Conflict`: 처리 중인 문서"
+            "description": "Wiki 원본문서와 관련 파일을 하드 삭제합니다.\n원본문서 상세 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `documentId`: 삭제할 문서 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 삭제 후 해당 scopeKey의 현재 문서를 기준으로 Wiki를 재처리합니다.\n- 삭제한 문서에 파싱 본문이 없거나 Wiki에 반영된 적이 없어 재처리할 내용이 없으면 재처리 작업을 만들지 않고 `reprocessRequired=false`·`jobId=null`·`status=skipped`로 응답합니다(정상).\n- 삭제 실패·권한 없음·처리 중인 문서는 성공 응답이 아니라 아래 에러로 응답합니다(성공 응답의 `deleted`는 항상 `true`).\n- 프론트는 `reprocessRequired=true`이고 `jobId`가 있을 때만 AI 작업 상태(`GET /api/v1/ai-jobs/{jobId}`)를 조회합니다.\n- 삭제 복구와 과거 버전 조회는 제공하지 않습니다.\n\n### Response\n- `202 Accepted`\n- `deleted`: 삭제 성공 여부(이 응답이 오면 항상 `true`)\n- `reprocessRequired`: 삭제로 Wiki 재처리 작업이 필요/생성됐는지 여부\n- `jobId`(nullable): 재처리 작업 ID. `reprocessRequired=false`이면 `null`이 정상입니다.\n- `scopeKey`: 삭제된 문서의 공개 범위 키\n- `status`: 재처리 작업이 생성되면 `waiting`, 재처리할 내용이 없으면 `skipped`\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 문서\n- `409 Conflict`: 처리 중인 문서"
           },
           "response": []
         },
