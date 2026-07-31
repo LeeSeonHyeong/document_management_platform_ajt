@@ -18,13 +18,16 @@ export async function uploadDocuments({ files, documentCategoryId, visibilityTyp
 // GET /api/v1/documents — items: 문서 ID, 파일명, scopeKey, 카테고리, 상태, 업로드자, 업로드 시각
 export async function fetchDocuments(filters = {}) {
   const { data } = await apiClient.get('/documents', { params: filters })
-  return data
+  return {
+    ...data,
+    items: (data.items ?? []).map(normalizeDocument),
+  }
 }
 
 // GET /api/v1/documents/:documentId — 메타데이터 + relatedWikis(반영 완료된 연결 Wiki만)
 export async function fetchDocument(documentId) {
   const { data } = await apiClient.get(`/documents/${documentId}`)
-  return data
+  return normalizeDocument(data)
 }
 
 // PATCH /api/v1/documents/:documentId — 202, 재처리 jobId + 수정된 문서 정보를 함께 반환
@@ -34,7 +37,7 @@ export async function updateDocument(documentId, { documentCategoryId, visibilit
     visibilityType,
     departmentIds,
   })
-  return data
+  return normalizeDocument(data)
 }
 
 // GET /api/v1/documents/:documentId/file — blob. Content-Disposition에서 원본 파일명을 읽는다.
@@ -71,22 +74,29 @@ export async function retryDocument(documentId) {
 
 // ── 원본문서 카테고리 ────────────────────────────────────────────
 
+// 계약(docs/api generate-postman-collections.mjs): 카테고리 목록·생성·수정 응답의 ID 필드는 `categoryId`.
+// 컴포넌트는 문서 객체와 동일하게 `documentCategoryId`로 읽으므로, 여기서 별칭을 붙여 정규화한다.
+function normalizeCategory(category) {
+  if (!category) return category
+  return { ...category, documentCategoryId: category.documentCategoryId ?? category.categoryId }
+}
+
 // GET /api/v1/document-categories?scopeKey=
 export async function fetchDocumentCategories(scopeKey) {
   const { data } = await apiClient.get('/document-categories', { params: { scopeKey } })
-  return data.items ?? []
+  return (data.items ?? []).map(normalizeCategory)
 }
 
 // POST /api/v1/document-categories
 export async function createDocumentCategory({ scopeKey, name, description }) {
   const { data } = await apiClient.post('/document-categories', { scopeKey, name, description })
-  return data
+  return normalizeCategory(data)
 }
 
 // PATCH /api/v1/document-categories/:categoryId — scopeKey는 보내지 않는다.
 export async function updateDocumentCategory(categoryId, { name, description }) {
   const { data } = await apiClient.patch(`/document-categories/${categoryId}`, { name, description })
-  return data
+  return normalizeCategory(data)
 }
 
 // DELETE /api/v1/document-categories/:categoryId — 204
@@ -106,4 +116,21 @@ export async function fetchAiJob(jobId) {
 export async function cancelAiJob(jobId) {
   const { data } = await apiClient.post(`/ai-jobs/${jobId}/cancel`)
   return data
+}
+
+function normalizeDocument(document) {
+  const category = document.category ?? null
+  return {
+    ...document,
+    documentCategoryId:
+      document.documentCategoryId ??
+      category?.documentCategoryId ??
+      category?.categoryId ??
+      null,
+    documentCategoryName:
+      document.documentCategoryName ??
+      category?.name ??
+      null,
+    uploadedAt: document.uploadedAt ?? document.createdAt ?? null,
+  }
 }

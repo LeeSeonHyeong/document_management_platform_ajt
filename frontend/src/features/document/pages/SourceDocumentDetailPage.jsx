@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronDown, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
 import { Badge, Button, Spinner, useToast } from '@/components/ui'
+import WikiMarkdown from '@/features/wiki/components/WikiMarkdown'
+import { useAuth } from '@/hooks/useAuth'
 import { fetchDocumentFile } from '../api'
 import { useDocument } from '../queries'
 import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
-import DocumentMetaEditModal from '../components/DocumentMetaEditModal'
+import { readPreviewSourceDocuments, removePreviewDocument } from '../previewStorage'
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '-'
@@ -41,15 +43,37 @@ export default function SourceDocumentDetailPage() {
   const { documentId } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
+  const { user } = useAuth()
   const [downloading, setDownloading] = useState(false)
-  const [metaOpen, setMetaOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  const { data: doc, isLoading } = useDocument(documentId)
+  const [previewDocument] = useState(() =>
+    readPreviewSourceDocuments().find((document) => document.documentId === documentId),
+  )
+  const { data: serverDocument, isLoading } = useDocument(previewDocument ? undefined : documentId)
+  const doc = previewDocument ?? serverDocument
 
   async function handleDownload() {
     setDownloading(true)
     try {
+      if (doc?.previewOnly) {
+        let url = doc.downloadUrl
+        let temporaryUrl = false
+        if (!url && doc.previewContent != null) {
+          url = URL.createObjectURL(new Blob([doc.previewContent], { type: doc.mimeType || 'text/plain' }))
+          temporaryUrl = true
+        }
+        if (!url) {
+          toast.error('이 문서의 원본 파일을 다시 찾을 수 없습니다. 다시 업로드해주세요.')
+          return
+        }
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = doc.originalFileName ?? 'document'
+        anchor.click()
+        if (temporaryUrl) URL.revokeObjectURL(url)
+        return
+      }
       const { blob, fileName } = await fetchDocumentFile(documentId)
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -112,11 +136,17 @@ export default function SourceDocumentDetailPage() {
 
         <div className="mt-4 flex flex-1 flex-col items-center rounded-2xl bg-slate-50 p-8">
           <div className="min-h-80 w-full max-w-2xl rounded-md border border-slate-200 bg-white p-10 shadow-sm">
-            <p className="text-center text-lg font-bold text-slate-800">원본 문서 미리보기</p>
-            <p className="mt-8 text-sm font-semibold text-slate-700">{doc.originalFileName}</p>
-            <p className="mt-5 text-sm leading-8 text-slate-500">
-              파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
-            </p>
+            {doc.previewContent ? (
+              <WikiMarkdown markdown={doc.previewContent} validWikiIds={new Set()} />
+            ) : (
+              <>
+                <p className="text-center text-lg font-bold text-slate-800">원본 문서 미리보기</p>
+                <p className="mt-8 text-sm font-semibold text-slate-700">{doc.originalFileName}</p>
+                <p className="mt-5 text-sm leading-8 text-slate-500">
+                  파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
+                </p>
+              </>
+            )}
           </div>
           {/* TODO(API): 미리보기 본문·페이지 수 필드가 계약에 없어 플레이스홀더와 1 / 1로 둔다. */}
           <span className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">1 / 1</span>
@@ -143,27 +173,25 @@ export default function SourceDocumentDetailPage() {
             <h2 className="font-bold text-slate-800">문서 정보</h2>
           </div>
           <dl>
-            <InfoRow label="카테고리">
-              <MetadataButton onClick={() => setMetaOpen(true)}>
-                {doc.documentCategoryName ?? '미분류'}
-              </MetadataButton>
-            </InfoRow>
             <InfoRow label="공개 부서">
-              <MetadataButton onClick={() => setMetaOpen(true)}>
+              <MetadataDisplay>
                 {doc.visibilityType === 'all'
                   ? '전체 공개'
                   : (doc.departments ?? []).length > 1
                     ? `${doc.departments[0].name} 외 ${doc.departments.length - 1}`
                     : doc.departments?.[0]?.name ?? '미지정'}
-              </MetadataButton>
+              </MetadataDisplay>
+            </InfoRow>
+            <InfoRow label="카테고리">
+              <MetadataDisplay>{doc.documentCategoryName ?? '미분류'}</MetadataDisplay>
             </InfoRow>
             <div className="my-2 border-t border-slate-200" />
             <InfoRow label="업로더">
               <span className="flex items-center justify-end gap-2">
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
-                  {doc.uploadedBy?.name?.slice(0, 1) ?? '?'}
+                  {(doc.previewOnly ? user?.name : doc.uploadedBy?.name)?.slice(0, 1) ?? '?'}
                 </span>
-                {doc.uploadedBy?.name ?? '-'}
+                {doc.previewOnly ? user?.name ?? '-' : doc.uploadedBy?.name ?? '-'}
               </span>
             </InfoRow>
             <InfoRow label="업로드일">{formatDateTime(doc.uploadedAt)}</InfoRow>
@@ -200,16 +228,16 @@ export default function SourceDocumentDetailPage() {
       </aside>
       </div>
 
-      <DocumentMetaEditModal
-        open={metaOpen}
-        doc={doc}
-        onClose={() => setMetaOpen(false)}
-        onSaved={() => setMetaOpen(false)}
-      />
       <DocumentDeleteDialog
         open={deleteOpen}
         document={doc}
         onClose={() => setDeleteOpen(false)}
+        onDeletePreview={() => {
+          removePreviewDocument(doc.documentId)
+          setDeleteOpen(false)
+          toast.success('원본 문서를 삭제했습니다.')
+          navigate('/admin/documents/source')
+        }}
         onBackground={() => {
           setDeleteOpen(false)
           navigate('/admin/documents/source')
@@ -227,15 +255,10 @@ export default function SourceDocumentDetailPage() {
   )
 }
 
-function MetadataButton({ children, onClick }) {
+function MetadataDisplay({ children }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="focus-ring flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left text-sm font-semibold text-slate-700 hover:border-primary-300"
-    >
+    <div className="flex min-h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center text-sm font-semibold text-slate-700">
       <span className="truncate">{children}</span>
-      <ChevronDown className="size-4 shrink-0 text-slate-400" />
-    </button>
+    </div>
   )
 }

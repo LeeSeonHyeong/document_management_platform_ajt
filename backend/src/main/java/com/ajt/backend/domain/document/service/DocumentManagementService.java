@@ -1,7 +1,11 @@
 package com.ajt.backend.domain.document.service;
 
+import com.ajt.backend.domain.department.Department;
+import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.document.ScopeKey;
 import com.ajt.backend.domain.document.api.DocumentDeleteResponse;
+import com.ajt.backend.domain.document.api.DocumentDepartmentResponse;
+import com.ajt.backend.domain.document.api.DocumentUploaderResponse;
 import com.ajt.backend.domain.document.api.DocumentDetailResponse;
 import com.ajt.backend.domain.document.api.DocumentFileReplaceResponse;
 import com.ajt.backend.domain.document.api.DocumentListResponse;
@@ -70,6 +74,8 @@ public class DocumentManagementService {
     // 작업(DOC-03): 사원 접근권한 판정용. 소속 부서와 접근 가능한 공개범위(scopeKey)를 구한다.
     private final MemberRepository memberRepository;
     private final WikiScopeRepository wikiScopeRepository;
+    // 작업(S15P11B106-70): 목록·상세 응답에 공개범위 부서명을 채우기 위한 부서 조회.
+    private final DepartmentRepository departmentRepository;
 
     public DocumentManagementService(
             CurrentMemberProvider currentMemberProvider,
@@ -79,7 +85,8 @@ public class DocumentManagementService {
             DocumentParseJobLauncher parseJobLauncher,
             DocumentFileStorage documentFileStorage,
             MemberRepository memberRepository,
-            WikiScopeRepository wikiScopeRepository
+            WikiScopeRepository wikiScopeRepository,
+            DepartmentRepository departmentRepository
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.documentRepository = documentRepository;
@@ -89,6 +96,7 @@ public class DocumentManagementService {
         this.documentFileStorage = documentFileStorage;
         this.memberRepository = memberRepository;
         this.wikiScopeRepository = wikiScopeRepository;
+        this.departmentRepository = departmentRepository;
     }
 
     @Transactional(readOnly = true)
@@ -98,21 +106,7 @@ public class DocumentManagementService {
         DocumentCategory category = documentCategoryRepository.findById(document.documentCategoryId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
-        return new DocumentDetailResponse(
-                String.valueOf(document.id()),
-                document.originalFileName(),
-                document.scopeKey(),
-                new DocumentDetailResponse.CategoryResponse(
-                        String.valueOf(category.id()),
-                        category.name()
-                ),
-                document.status().name().toLowerCase(),
-                document.failureReason(),
-                "/api/v1/documents/%d/file".formatted(document.id()),
-                List.of(),
-                document.createdAt(),
-                document.updatedAt()
-        );
+        return toDetail(document, category);
     }
 
     /**
@@ -381,18 +375,41 @@ public class DocumentManagementService {
     }
 
     private DocumentDetailResponse toDetail(Document document, DocumentCategory category) {
+        ScopeKey scope = ScopeKey.parse(document.scopeKey());
         return new DocumentDetailResponse(
                 String.valueOf(document.id()),
                 document.originalFileName(),
+                document.mimeType(),
+                document.fileSize(),
+                String.valueOf(document.documentCategoryId()),
+                category.name(),
                 document.scopeKey(),
-                new DocumentDetailResponse.CategoryResponse(String.valueOf(category.id()), category.name()),
+                scope.visibilityType(),
+                departmentRefs(scope.departmentIds()),
                 document.status().name().toLowerCase(),
                 document.failureReason(),
-                "/api/v1/documents/%d/file".formatted(document.id()),
-                List.of(),
+                uploaderRef(document.uploaderId()),
                 document.createdAt(),
-                document.updatedAt()
+                "/api/v1/documents/%d/file".formatted(document.id()),
+                List.of()
         );
+    }
+
+    private DocumentUploaderResponse uploaderRef(long uploaderId) {
+        return memberRepository.findById(uploaderId)
+                .map(member -> new DocumentUploaderResponse(String.valueOf(member.getId()), member.getName()))
+                .orElse(null);
+    }
+
+    private List<DocumentDepartmentResponse> departmentRefs(List<Long> departmentIds) {
+        if (departmentIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, String> names = departmentRepository.findAllById(departmentIds).stream()
+                .collect(Collectors.toMap(Department::getId, Department::getName));
+        return departmentIds.stream()
+                .map(id -> new DocumentDepartmentResponse(String.valueOf(id), names.get(id)))
+                .toList();
     }
 
     /**
@@ -437,16 +454,39 @@ public class DocumentManagementService {
                 allowedScopeKeys, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo);
         Page<Document> documents = documentRepository.findAll(specification, pageable);
 
-        // 카테고리 이름은 문서마다 개별 조회하면 N+1이 되므로, 페이지의 카테고리 ID를 한 번에 모아 매핑한다.
-        // 리뷰: 카테고리가 삭제되어 매핑에 없으면 이름은 null로 내려간다(목록 자체는 정상). 카테고리 보호 정책상 실무 영향 적음.
-        Set<Long> categoryIds = documents.getContent().stream()
+        // 카테고리명·업로더명·공개범위 부서명을 문서마다 개별 조회하면 N+1이 되므로 페이지 단위로 한 번에 모아 매핑한다.
+        // 리뷰: 매핑에 없으면(카테고리 삭제 등) 이름은 null로 내려간다(목록 자체는 정상).
+        List<Document> content = documents.getContent();
+        Set<Long> categoryIds = content.stream()
                 .map(Document::documentCategoryId)
                 .collect(Collectors.toSet());
         Map<Long, String> categoryNames = documentCategoryRepository.findAllById(categoryIds).stream()
                 .collect(Collectors.toMap(DocumentCategory::id, DocumentCategory::name));
 
-        Page<DocumentSummaryResponse> mapped = documents.map(
-                document -> DocumentSummaryResponse.from(document, categoryNames.get(document.documentCategoryId())));
+        Set<Long> uploaderIds = content.stream()
+                .map(Document::uploaderId)
+                .collect(Collectors.toSet());
+        Map<Long, String> uploaderNames = memberRepository.findAllById(uploaderIds).stream()
+                .collect(Collectors.toMap(Member::getId, Member::getName));
+
+        Set<Long> departmentIds = content.stream()
+                .flatMap(document -> ScopeKey.parse(document.scopeKey()).departmentIds().stream())
+                .collect(Collectors.toSet());
+        Map<Long, String> departmentNames = departmentRepository.findAllById(departmentIds).stream()
+                .collect(Collectors.toMap(Department::getId, Department::getName));
+
+        Page<DocumentSummaryResponse> mapped = documents.map(document -> {
+            ScopeKey scope = ScopeKey.parse(document.scopeKey());
+            List<DocumentDepartmentResponse> departmentRefs = scope.departmentIds().stream()
+                    .map(id -> new DocumentDepartmentResponse(String.valueOf(id), departmentNames.get(id)))
+                    .toList();
+            DocumentUploaderResponse uploader = uploaderNames.containsKey(document.uploaderId())
+                    ? new DocumentUploaderResponse(String.valueOf(document.uploaderId()), uploaderNames.get(document.uploaderId()))
+                    : null;
+            return DocumentSummaryResponse.from(
+                    document, categoryNames.get(document.documentCategoryId()),
+                    scope.visibilityType(), departmentRefs, uploader);
+        });
         return DocumentListResponse.from(mapped);
     }
 

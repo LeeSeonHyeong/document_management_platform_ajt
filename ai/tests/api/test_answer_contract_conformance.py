@@ -21,6 +21,9 @@ from fastapi.testclient import TestClient
 
 from agent_runtime.base import CompletionResult
 from wiki_api.app import create_app
+from pydantic import TypeAdapter
+
+from wiki_api.schemas import RelationChange, TransformResponse
 
 REPO = Path(__file__).resolve().parents[3]
 COLLECTION = REPO / "docs" / "api" / "AJT-FastAPI-Internal-API.postman_collection.json"
@@ -216,6 +219,62 @@ def test_응답_헤더에_요청_ID_가_돌아온다():
         headers={SPRING_HEADER: API_KEY, "X-Request-Id": "spring-rid-77"})
     assert response.headers["X-Request-Id"] == "spring-rid-77"
     assert "requestId" not in response.json()
+
+
+# ---- Wiki 변환 / Wiki 관리자 수정 (S15P11B106-157) --------------------------
+#
+# `relationChanges[]` 항목의 필드 이름은 배열 이름과 달리 계약 본문(설명)에는
+# 오래도록 없었다 — 양쪽이 각자 이름을 붙였고 AI 는 `wikiRef`, Spring 은
+# `sourceWikiRef` 로 역직렬화해 실 연동에서 `wikiRef`가 `null`이 되고
+# `resolveWikiRef`가 던졌다. `RelationChange`는 `Strict`(extra="forbid")라
+# 계약 예시에 정의 안 된 필드가 있거나 정의된 필드가 빠지면 파싱이 그 자리에서
+# 터진다 — 이 테스트가 그 드리프트를 잡는다.
+
+def test_wiki_변환_응답_예시가_AI_스키마와_같은_필드_이름을_쓴다():
+    example = _example("Wiki 변환", 200)
+    response = TransformResponse.model_validate(example)
+    assert response.relationChanges, "예시에 relationChanges 항목이 있어야 필드를 검증한다"
+    assert response.relationChanges[0].sourceWikiRef == "wiki-temp-1"
+
+
+# `action` 값 자체가 Spring 어휘와 어긋난 적이 있다 (S15P11B106-157) — 필드 **이름**만
+# 보고 값을 안 보면 못 잡는다. Spring `WikiTransformationApplier.ACTION_ADD`/
+# `ACTION_REMOVE` (backend/.../ai/wiki/service/WikiTransformationApplier.java) 는
+# `"add"`/`"remove"` 만 알고, 그 밖은 switch 의 `default` 가 `IllegalArgumentException`
+# 을 던진다. `link`/`unlink` 로 되돌리면 이 단정들이 실패해야 한다 — 직접 되돌려 확인했다.
+SPRING_RELATION_ACTIONS = {"add", "remove"}
+
+
+def test_wiki_변환_응답_예시의_relationChanges_action_이_Spring_어휘다():
+    example = _example("Wiki 변환", 200)
+    response = TransformResponse.model_validate(example)
+    assert response.relationChanges, "예시에 relationChanges 항목이 있어야 값을 검증한다"
+    for relation in response.relationChanges:
+        assert relation.action in SPRING_RELATION_ACTIONS, (
+            f"Spring 이 모르는 action 값: {relation.action!r}")
+        assert relation.type == "wiki_wiki"
+
+
+def test_wiki_관리자_수정_응답_예시가_AI_스키마와_같은_필드_이름을_쓴다():
+    """`EditResponse` 전체가 아니라 `relationChanges` 만 본다 — `summary`(응답에는
+    실제로 실리지만 계약 예시에는 없는, 이 티켓과 무관한 별개의 드리프트) 때문에
+    전체 스키마 검증이 여기서 막히면 정작 잡아야 할 `sourceWikiRef` 회귀를 못 잡는다."""
+    example = _example("Wiki 관리자 수정", 200)
+    relations = TypeAdapter(list[RelationChange]).validate_python(
+        example["relationChanges"])
+    assert relations, "예시에 relationChanges 항목이 있어야 필드를 검증한다"
+    assert relations[0].sourceWikiRef == "100"
+
+
+def test_wiki_관리자_수정_응답_예시의_relationChanges_action_이_Spring_어휘다():
+    example = _example("Wiki 관리자 수정", 200)
+    relations = TypeAdapter(list[RelationChange]).validate_python(
+        example["relationChanges"])
+    assert relations, "예시에 relationChanges 항목이 있어야 값을 검증한다"
+    for relation in relations:
+        assert relation.action in SPRING_RELATION_ACTIONS, (
+            f"Spring 이 모르는 action 값: {relation.action!r}")
+        assert relation.type == "wiki_wiki"
 
 
 def test_계약에_정의된_두_엔드포인트가_앱에_등록됐다():

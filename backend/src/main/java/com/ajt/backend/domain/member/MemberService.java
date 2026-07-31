@@ -2,6 +2,8 @@ package com.ajt.backend.domain.member;
 
 import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.department.DepartmentRepository;
+import com.ajt.backend.domain.inquiry.InquiryRepository;
+import com.ajt.backend.domain.inquiry.InquiryStatus;
 import com.ajt.backend.domain.member.dto.SignupApprovalResponse;
 import com.ajt.backend.domain.member.dto.SignupRejectionResponse;
 import com.ajt.backend.domain.member.dto.SignupRequestListResponse;
@@ -20,6 +22,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -35,18 +39,31 @@ public class MemberService {
     private static final int DEFAULT_SIZE = 20;
     private static final int MAX_SIZE = 100;
 
+    // 수정(S15P11B106-72): 사번 UNIQUE 충돌 시 새 트랜잭션으로 재시도하기 위한 최대 시도 횟수.
+    //   동시 승인 경쟁은 매우 드물어 소수의 재시도로 충분하다.
+    private static final int MAX_EMPLOYEE_NO_ATTEMPTS = 5;
+
     private final MemberRepository memberRepository;
     private final DepartmentRepository departmentRepository;
+    private final InquiryRepository inquiryRepository;
     private final Clock clock;
+    // 수정(S15P11B106-72): 사번 재시도는 승인 1회(approveSignupOnce)를 트랜잭션 단위로 실행하는데, 같은 빈의
+    //   @Transactional 메서드를 this로 호출하면 프록시를 거치지 않아 트랜잭션 경계가 적용되지 않는다. 프록시
+    //   인스턴스를 ObjectProvider로 지연 조회해 self 호출에 사용한다(생성자 순환 주입 방지).
+    private final ObjectProvider<MemberService> selfProvider;
 
     public MemberService(
             MemberRepository memberRepository,
             DepartmentRepository departmentRepository,
-            Clock clock
+            InquiryRepository inquiryRepository,
+            Clock clock,
+            ObjectProvider<MemberService> selfProvider
     ) {
         this.memberRepository = memberRepository;
         this.departmentRepository = departmentRepository;
+        this.inquiryRepository = inquiryRepository;
         this.clock = clock;
+        this.selfProvider = selfProvider;
     }
 
     /**
@@ -75,7 +92,7 @@ public class MemberService {
             String keyword,
             String sort
     ) {
-        requireAdmin(loginMember);
+        requireSuperAdmin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
         Specification<Member> specification = userSpecification(status, signupStatus, role, managerAssignable, keyword);
         // 수정: 부서장 여부를 역할(ADMIN)이 아니라 department.manager_id 지정으로 판단하도록 변경(FR-USR-006).
@@ -88,13 +105,32 @@ public class MemberService {
     }
 
     /**
+     * MEM-01b 관리자 사용자 단건 조회 요구사항입니다(S15P11B106-78).
+     * 관리자 상세/수정 화면에서 특정 사용자 한 명의 최신 정보를 반환합니다. 목록을 훑어 찾지 않아도 되도록,
+     * userId로 직접 조회한다. 존재하지 않으면 404(MEMBER_NOT_FOUND).
+     */
+    @Transactional(readOnly = true)
+    public UserResponse findUser(AuthenticatedMember loginMember, Long userId) {
+        requireSuperAdmin(loginMember);
+        Member member = findMember(userId);
+        return UserResponse.from(member);
+    }
+
+    /**
      * MEM-02 관리자 사용자 수정 요구사항입니다.
      * 전달된 값만 수정하고, 전달되지 않은 값은 기존 정보를 그대로 둡니다.
      */
     @Transactional
     public UserResponse updateUser(AuthenticatedMember loginMember, Long userId, UserUpdateRequest request) {
-        requireAdmin(loginMember);
+        requireSuperAdmin(loginMember);
         Member member = findMember(userId);
+
+        // 수정(S15P11B106-71): 가드 1 — 가입 승인(APPROVED)된 사용자만 이 API로 수정할 수 있다(FR-USR-007:
+        //   "관리자는 승인된 사용자 계정을 조회·수정"). PENDING/REJECTED 계정을 여기서 ACTIVE·ADMIN으로 바꾸면
+        //   가입 승인 절차를 우회한 무효 데이터가 되므로, 승인·거부 전용 API로만 상태를 바꾸도록 409로 막는다.
+        if (member.getSignupStatus() != SignupStatus.APPROVED) {
+            throw new BusinessException(ErrorCode.USER_NOT_MODIFIABLE);
+        }
 
         // 수정: PATCH 부분 수정 규칙(§4.2). 이 4개 필드는 모두 필수라 비울 수 없으므로,
         //       "명시적 null"(키가 전달됐는데 값이 null)이면 400으로 거절한다. 키 생략은 그대로 둔다.
@@ -106,6 +142,15 @@ public class MemberService {
         Department department = findDepartmentOrNull(request.departmentId());
         Role role = parseRoleOrNull(request.role());
         AccountStatus accountStatus = parseAccountStatusOrNull(request.accountStatus());
+
+        // 수정(S15P11B106-78): 가드 3 — 관리자가 자기 자신을 사원으로 강등(EMPLOYEE)하거나 비활성화(INACTIVE)하면
+        //   본인이 관리자 권한을 잃어 관리자 화면에 못 들어가는 운영 사고가 나므로 409로 거절한다. 이름·부서 등
+        //   권한과 무관한 필드의 본인 수정은 허용한다.
+        rejectSelfPrivilegeRemoval(loginMember, member, role, accountStatus);
+
+        // 수정(S15P11B106-71): 가드 2 — 이번 수정으로 사원 강등(ADMIN→EMPLOYEE) 또는 비활성화(ACTIVE→INACTIVE)되는데
+        //   대상이 미처리(PENDING) 문의 담당자이면, 문의가 담당자 없이 붕 뜨므로 409로 거절한다(DR-027).
+        rejectDemotionOfPendingAssignee(member, role, accountStatus);
 
         // 수정(S15P11B106-69): 부서장 자동 해제 판단은 Member.updateByAdmin이 수행한다(FR-USR-008 v2.12).
         //   서비스는 이 회원이 부서장으로 지정된 부서(있으면)를 조회해 넘겨주는 역할만 한다.
@@ -135,7 +180,7 @@ public class MemberService {
             String status,
             String keyword
     ) {
-        requireAdmin(loginMember);
+        requireSuperAdmin(loginMember);
         Pageable pageable = createPageable(page, size, "createdAt,desc");
         Specification<Member> specification = signupRequestSpecification(status, keyword);
         Page<SignupRequestSummaryResponse> result = memberRepository.findAll(specification, pageable)
@@ -146,10 +191,47 @@ public class MemberService {
     /**
      * MEM-04 가입 신청 승인 요구사항입니다.
      * pending 회원에게 중복되지 않는 사번을 발급하고 approved/active 상태로 바꿉니다.
+     *
+     * <p>수정(S15P11B106-72): 사번은 "비어 있는 번호 찾기 → 저장"(check-then-act)이라 동시 승인 시 서로 같은
+     * 번호를 고를 수 있고, 그때 뒤늦게 저장하는 쪽이 employee_no UNIQUE 제약에 걸려 500으로 실패했다.
+     * 승인 1회(approveSignupOnce)를 트랜잭션 단위로 실행하고, 사번 충돌(DataIntegrityViolationException)이 나면
+     * 오염된 트랜잭션을 롤백한 뒤 다음 번호로 다시 발급해 재시도한다. 이 메서드 자체는 트랜잭션이 아니며 self
+     * 프록시로 호출하므로, 운영에서는 시도마다 새 트랜잭션이 열린다(자세한 전파 설명은 approveSignupOnce 참고).
+     * 권한 검사는 트랜잭션 밖에서 먼저 한다.
+     */
+    public SignupApprovalResponse approveSignupRequest(AuthenticatedMember loginMember, Long userId) {
+        requireSuperAdmin(loginMember);
+        MemberService self = selfProvider.getObject();
+        for (int attempt = 1; attempt <= MAX_EMPLOYEE_NO_ATTEMPTS; attempt++) {
+            try {
+                return self.approveSignupOnce(userId);
+            } catch (DataIntegrityViolationException conflict) {
+                // 사번 UNIQUE 충돌: 동시 승인으로 같은 번호가 먼저 저장된 경우. 실패한 시도의 트랜잭션은 롤백됐으니
+                // 다음 시도에서 회원을 다시 읽어 새 번호(직전 저장분이 반영된 다음 값)로 재발급한다.
+                if (attempt == MAX_EMPLOYEE_NO_ATTEMPTS) {
+                    throw new BusinessException(
+                            ErrorCode.RESOURCE_CONFLICT,
+                            "사번 발급이 반복적으로 충돌했습니다. 잠시 후 다시 시도해주세요."
+                    );
+                }
+            }
+        }
+        // 도달 불가(루프에서 반환하거나 마지막 시도에서 예외를 던진다).
+        throw new BusinessException(ErrorCode.INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * 수정(S15P11B106-72): 가입 승인 1회를 트랜잭션 단위로 수행한다. 사번을 발급·저장한 뒤 즉시 flush 하여
+     * employee_no UNIQUE 위반을 이 메서드 안에서 확정적으로 드러낸다(상위 재시도 루프가 잡을 수 있도록).
+     *
+     * <p>전파는 기본값(REQUIRED)이다. 운영에서는 상위 approveSignupRequest가 트랜잭션 없이(컨트롤러 직접 호출,
+     * open-in-view=false) self 프록시로 호출하므로 이 메서드가 매 시도마다 새 트랜잭션·새 영속성 컨텍스트를 열고,
+     * 충돌 시 그 트랜잭션만 롤백돼 재시도가 깨끗한 상태에서 진행된다. REQUIRES_NEW를 쓰지 않는 이유는, 통합테스트의
+     * @Transactional 롤백 트랜잭션에 합류해 아직 커밋되지 않은 대기 회원을 볼 수 있게 하기 위함이다(테스트에서는
+     * 실제 동시성 충돌이 없으므로 합류로 충분하다).
      */
     @Transactional
-    public SignupApprovalResponse approveSignupRequest(AuthenticatedMember loginMember, Long userId) {
-        requireAdmin(loginMember);
+    public SignupApprovalResponse approveSignupOnce(Long userId) {
         Member member = findSignupRequest(userId);
         try {
             member.approveSignup(generateEmployeeNo());
@@ -159,6 +241,7 @@ public class MemberService {
                     "승인 대기 상태의 신청만 승인할 수 있습니다."
             );
         }
+        memberRepository.flush();
         return SignupApprovalResponse.from(member);
     }
 
@@ -168,7 +251,7 @@ public class MemberService {
      */
     @Transactional
     public SignupRejectionResponse rejectSignupRequest(AuthenticatedMember loginMember, Long userId) {
-        requireAdmin(loginMember);
+        requireSuperAdmin(loginMember);
         Member member = findSignupRequest(userId);
         try {
             member.rejectSignup();
@@ -197,10 +280,58 @@ public class MemberService {
         }
     }
 
+    // 수정(S15P11B106-78): 사용자 관리 API는 모든 ADMIN이 아니라 "최고관리자"만 사용할 수 있다. 이 프로젝트는
+    //   별도 SUPER_ADMIN role을 두지 않고, 부서관리자도 Role.ADMIN을 쓴다. 부서관리자 여부는 role이 아니라
+    //   department.manager_id에 그 회원이 지정돼 있는지로 판단한다. 따라서 최고관리자 = "ADMIN이면서 어느
+    //   부서의 부서장으로도 지정되지 않은 사용자"다. 먼저 ADMIN 여부를 검사(비ADMIN·미인증은 기존과 동일한
+    //   403 ADMIN_PERMISSION_REQUIRED)하고, ADMIN이지만 부서관리자면 같은 403 코드로 거절하되 메시지로 구분한다
+    //   (에러 코드·상태는 그대로 두어 프론트/계약과의 충돌을 피한다).
+    private void requireSuperAdmin(AuthenticatedMember loginMember) {
+        requireAdmin(loginMember);
+        if (departmentRepository.existsByManager_Id(loginMember.memberId())) {
+            throw new BusinessException(
+                    ErrorCode.ADMIN_PERMISSION_REQUIRED,
+                    "사용자 관리는 최고관리자만 사용할 수 있습니다."
+            );
+        }
+    }
+
     // 수정: PATCH 필드가 전달됐는데(present) 값이 null이면, 비울 수 없는 필수 필드이므로 400으로 거절한다(§4.2).
     private void rejectExplicitNull(boolean present, Object value, String field) {
         if (present && value == null) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, field + " 필드는 null일 수 없습니다.");
+        }
+    }
+
+    // 수정(S15P11B106-78): 수정 대상이 로그인한 관리자 본인이고, 이번 수정으로 자기 역할을 EMPLOYEE로 바꾸거나 계정을
+    //   INACTIVE로 바꾸려 하면 409로 거절한다. 본인이 관리자 권한을 스스로 잃어 관리자 기능에 접근하지 못하는 사고를
+    //   막는다. 전달되지 않은 역할·계정 상태(null)나 다른 사용자 수정은 이 검사에 걸리지 않는다.
+    private void rejectSelfPrivilegeRemoval(
+            AuthenticatedMember loginMember, Member target, Role newRole, AccountStatus newAccountStatus) {
+        boolean isSelf = loginMember != null && target.getId().equals(loginMember.memberId());
+        if (!isSelf) {
+            return;
+        }
+        boolean demotesSelf = newRole == Role.EMPLOYEE;
+        boolean deactivatesSelf = newAccountStatus == AccountStatus.INACTIVE;
+        if (demotesSelf || deactivatesSelf) {
+            throw new BusinessException(ErrorCode.SELF_PRIVILEGE_REMOVAL_FORBIDDEN);
+        }
+    }
+
+    // 수정(S15P11B106-71): 이번 수정으로 사원으로 강등(ADMIN→EMPLOYEE)되거나 비활성화(ACTIVE→INACTIVE)되는 경우에만,
+    //   대상이 미처리(PENDING) 문의 담당자인지 확인해 하나라도 있으면 409로 거절한다(DR-027). 전달되지 않은 역할·계정
+    //   상태(null)는 변경이 아니므로 검사 대상이 아니며, 이미 EMPLOYEE·INACTIVE인 값을 그대로 두는 경우도 '전이'가
+    //   아니라 통과한다(강등·비활성화는 담당자 자격을 잃게 만드는 '변화'일 때만 문제가 된다).
+    private void rejectDemotionOfPendingAssignee(Member member, Role newRole, AccountStatus newAccountStatus) {
+        boolean demotedToEmployee = newRole == Role.EMPLOYEE && member.getRole() != Role.EMPLOYEE;
+        boolean deactivated = newAccountStatus == AccountStatus.INACTIVE
+                && member.getAccountStatus() != AccountStatus.INACTIVE;
+        if (!demotedToEmployee && !deactivated) {
+            return;
+        }
+        if (inquiryRepository.existsByAssignee_IdAndStatus(member.getId(), InquiryStatus.PENDING)) {
+            throw new BusinessException(ErrorCode.INQUIRY_ASSIGNEE_HAS_PENDING);
         }
     }
 

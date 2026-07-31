@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import { cn } from '@/shared/lib/cn'
 import { useDocuments } from '../queries'
+import { readPreviewSourceDocuments, readPreviewSummaries } from '../previewStorage'
 
 const TABS = [
   { to: '/admin/documents', label: '업로드', end: true },
@@ -12,11 +13,14 @@ const TABS = [
 export default function DocumentSectionTabs() {
   const { data: sourceData } = useDocuments({ page: 1, size: 1 })
   const { data: completedData } = useDocuments({ page: 1, size: 1, status: 'completed' })
-  const sourceCount = sourceData?.totalCount ?? sourceData?.totalItems ?? sourceData?.items?.length
+  const previewSourceCount = readPreviewSourceDocuments().length
+  const serverSourceCount =
+    sourceData?.totalCount ?? sourceData?.totalItems ?? sourceData?.totalElements ?? sourceData?.items?.length
+  const sourceCount = serverSourceCount == null ? previewSourceCount : serverSourceCount + previewSourceCount
   // 전체 AI 작업 이력 API가 생기기 전까지 완료 문서가 있으면 요약 묶음 1건으로 표시한다.
   const completedCount =
     completedData?.totalCount ?? completedData?.totalItems ?? completedData?.items?.length ?? 0
-  const summaryCount = completedCount > 0 ? 1 : 0
+  const summaryCount = (completedCount > 0 ? 1 : 0) + readPreviewSummaries().length
   return (
     <div className="flex h-12 items-end gap-2 border-b border-slate-200">
       {TABS.map((tab) => (

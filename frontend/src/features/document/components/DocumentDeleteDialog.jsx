@@ -10,6 +10,7 @@ export default function DocumentDeleteDialog({
   open,
   onClose,
   document,
+  onDeletePreview,
   onBackground,
   onViewWiki,
   onGoToList,
@@ -30,6 +31,10 @@ export default function DocumentDeleteDialog({
 
   function handleDelete() {
     const documentId = document?.documentId
+    if (document?.previewOnly) {
+      onDeletePreview?.(documentId)
+      return
+    }
     deleteMutation.mutate(documentId, {
       onSuccess: (data) => {
         if (data?.jobId) setDeletion({ documentId, jobId: data.jobId })

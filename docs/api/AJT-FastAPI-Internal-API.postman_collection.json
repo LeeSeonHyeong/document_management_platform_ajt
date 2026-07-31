@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT FastAPI Internal API",
-    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.6.0이며 Frontend는 직접 호출하지 않습니다.",
+    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.6.3이며 Frontend는 직접 호출하지 않습니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,7 +32,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.0",
+      "value": "1.6.3",
       "type": "string"
     },
     {
@@ -458,7 +458,7 @@
               "query": [],
               "variable": []
             },
-            "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+            "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/a3f2c1d4.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
@@ -493,7 +493,7 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/a3f2c1d4.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
@@ -518,7 +518,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"summary\": \"휴가 규정 Wiki를 생성했습니다.\",\n  \"categoryChanges\": [\n    {\n      \"action\": \"create\",\n      \"tempCategoryId\": \"category-temp-1\",\n      \"name\": \"휴가 및 근태\"\n    }\n  ],\n  \"wikiChanges\": [\n    {\n      \"action\": \"create\",\n      \"tempWikiId\": \"wiki-temp-1\",\n      \"wikiCategoryRef\": \"category-temp-1\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"evidence\": [\n        {\n          \"documentId\": \"15\",\n          \"footnote\": \"1\",\n          \"location\": \"3장 휴가\",\n          \"quote\": \"연차는 15일을 부여한다\"\n        }\n      ]\n    }\n  ],\n  \"relationChanges\": [],\n  \"indexEntries\": [\n    {\n      \"wikiRef\": \"wiki-temp-1\",\n      \"order\": 1,\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\"\n    }\n  ]\n}"
+              "body": "{\n  \"summary\": \"휴가 규정 Wiki를 생성했습니다.\",\n  \"categoryChanges\": [\n    {\n      \"action\": \"create\",\n      \"tempCategoryId\": \"category-temp-1\",\n      \"name\": \"휴가 및 근태\"\n    }\n  ],\n  \"wikiChanges\": [\n    {\n      \"action\": \"create\",\n      \"tempWikiId\": \"wiki-temp-1\",\n      \"wikiCategoryRef\": \"category-temp-1\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"evidence\": [\n        {\n          \"documentId\": \"15\",\n          \"footnote\": \"1\",\n          \"location\": \"3장 휴가\",\n          \"quote\": \"연차는 15일을 부여한다\"\n        }\n      ]\n    }\n  ],\n  \"relationChanges\": [\n    {\n      \"action\": \"add\",\n      \"type\": \"wiki_wiki\",\n      \"sourceWikiRef\": \"wiki-temp-1\",\n      \"targetWikiRef\": \"101\"\n    }\n  ],\n  \"indexEntries\": [\n    {\n      \"wikiRef\": \"wiki-temp-1\",\n      \"order\": 1,\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\"\n    }\n  ]\n}"
             },
             {
               "name": "400 Bad Request - 대표 오류",
@@ -543,7 +543,7 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/a3f2c1d4.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
@@ -595,7 +595,7 @@
               "query": [],
               "variable": []
             },
-            "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+            "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"wikiPath\": \"wiki/D1-D2/pages/c4d8e1b2.md\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
@@ -630,7 +630,7 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"wikiPath\": \"wiki/D1-D2/pages/c4d8e1b2.md\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
@@ -655,7 +655,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"agentMessage\": \"중복된 휴가 규정을 하나로 정리했습니다.\",\n  \"wikiChanges\": [\n    {\n      \"action\": \"update\",\n      \"wikiId\": \"100\",\n      \"wikiCategoryRef\": \"9\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n정리된 본문...\"\n    }\n  ],\n  \"categoryChanges\": [],\n  \"relationChanges\": [],\n  \"indexEntries\": [\n    {\n      \"wikiRef\": \"100\",\n      \"order\": 1,\n      \"title\": \"휴가 규정\",\n      \"summary\": \"정리된 휴가 규정\"\n    }\n  ]\n}"
+              "body": "{\n  \"agentMessage\": \"중복된 휴가 규정을 하나로 정리했습니다.\",\n  \"wikiChanges\": [\n    {\n      \"action\": \"update\",\n      \"wikiId\": \"100\",\n      \"wikiCategoryRef\": \"9\",\n      \"title\": \"휴가 규정\",\n      \"contentMarkdown\": \"# 휴가 규정\\n정리된 본문...\"\n    }\n  ],\n  \"categoryChanges\": [],\n  \"relationChanges\": [\n    {\n      \"action\": \"add\",\n      \"type\": \"wiki_wiki\",\n      \"sourceWikiRef\": \"100\",\n      \"targetWikiRef\": \"101\"\n    }\n  ],\n  \"indexEntries\": [\n    {\n      \"wikiRef\": \"100\",\n      \"order\": 1,\n      \"title\": \"휴가 규정\",\n      \"summary\": \"정리된 휴가 규정\"\n    }\n  ]\n}"
             },
             {
               "name": "400 Bad Request - 대표 오류",
@@ -680,7 +680,7 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
                 "body": {
                   "mode": "raw",
                   "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"wikiPath\": \"wiki/D1-D2/pages/c4d8e1b2.md\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
@@ -1770,6 +1770,143 @@
               ],
               "cookie": [],
               "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wikis/:wikiId/relations\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "Wiki 범위 관계",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Wiki-Capability",
+                "value": "{{wikiCapability}}",
+                "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/relations",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "internal",
+                "v1",
+                "wiki-spaces",
+                ":scopeKey",
+                "relations"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "scopeKey",
+                  "value": "{{scopeKey}}",
+                  "description": "scopeKey 경로 변수"
+                }
+              ]
+            },
+            "description": "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- 역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.\n- Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`\n- `items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `items[].documentRefs`: 근거 원본문서 ID\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다"
+          },
+          "response": [
+            {
+              "name": "200 OK - 성공",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/relations",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "relations"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- 역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.\n- Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`\n- `items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `items[].documentRefs`: 근거 원본문서 ID\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"scopeVersion\": 47,\n  \"items\": [\n    {\n      \"wikiId\": \"101\",\n      \"wikiRefs\": [\n        \"102\",\n        \"115\"\n      ],\n      \"documentRefs\": [\n        \"15\"\n      ]\n    },\n    {\n      \"wikiId\": \"102\",\n      \"wikiRefs\": [],\n      \"documentRefs\": [\n        \"15\",\n        \"16\"\n      ]\n    },\n    {\n      \"wikiId\": \"115\",\n      \"wikiRefs\": [\n        \"101\"\n      ],\n      \"documentRefs\": []\n    }\n  ]\n}"
+            },
+            {
+              "name": "404 Not Found - 대표 오류",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "X-Wiki-Capability",
+                    "value": "{{wikiCapability}}",
+                    "description": "요청 단위 열람 허가. 요청 종료·timeout·취소 시 만료된다"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/internal/v1/wiki-spaces/:scopeKey/relations",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "internal",
+                    "v1",
+                    "wiki-spaces",
+                    ":scopeKey",
+                    "relations"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "scopeKey",
+                      "value": "{{scopeKey}}",
+                      "description": "scopeKey 경로 변수"
+                    }
+                  ]
+                },
+                "description": "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.\n에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.\n\n### Authorization\n- `X-Internal-API-Key`와 `X-Wiki-Capability` 필요\n\n### Path Params\n- `scopeKey`: 조회 범위\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- `wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).\n- 역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.\n- Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.\n\n### Response\n- `scopeVersion`\n- `items[].wikiId`\n- `items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID\n- `items[].documentRefs`: 근거 원본문서 ID\n\n### Error\n- `401 Unauthorized`: 내부 API 키 오류\n- `404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"WIKI_SCOPE_NOT_FOUND\",\n  \"message\": \"요청한 자료를 찾을 수 없습니다.\",\n  \"path\": \"/internal/v1/wiki-spaces/:scopeKey/relations\",\n  \"fieldErrors\": []\n}"
             }
           ]
         },

@@ -20,6 +20,7 @@ import AiJobQueuePage from '@/features/document/pages/AiJobQueuePage'
 import AiJobProgressPage from '@/features/document/pages/AiJobProgressPage'
 import AiJobSummaryPage from '@/features/document/pages/AiJobSummaryPage'
 import AiJobSummaryListPage from '@/features/document/pages/AiJobSummaryListPage'
+import PreviewSummaryDetailPage from '@/features/document/pages/PreviewSummaryDetailPage'
 import DocumentCategoryPage from '@/features/document/pages/DocumentCategoryPage'
 import WikiPage from '@/features/wiki/pages/WikiPage'
 import EmployeeListPage from '@/features/member/pages/EmployeeListPage'
@@ -90,6 +91,7 @@ export const router = createBrowserRouter([
               { path: 'admin/documents/jobs/:jobId/progress', element: <AiJobProgressPage /> },
               { path: 'admin/documents/jobs/:jobId/summary', element: <AiJobSummaryPage /> },
               { path: 'admin/documents/summaries', element: <AiJobSummaryListPage /> },
+              { path: 'admin/documents/summaries/:summaryId', element: <PreviewSummaryDetailPage /> },
               { path: 'admin/documents/categories', element: <DocumentCategoryPage /> },
             ],
           },

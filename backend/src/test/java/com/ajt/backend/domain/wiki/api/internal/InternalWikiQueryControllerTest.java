@@ -86,4 +86,37 @@ class InternalWikiQueryControllerTest {
 
         then(queryService).should().pages("ALL", 500, "101");
     }
+
+    @Test
+    @DisplayName("범위 관계 조회는 capability 검증 뒤 경로의 scopeKey로 위임한다")
+    void delegatesSpaceRelationsWithPathScopeKey() throws Exception {
+        given(queryService.spaceRelations("ALL")).willReturn(
+                new InternalWikiQueryService.WikiSpaceRelations(47L, List.of(
+                        new InternalWikiQueryService.WikiRelationItem(
+                                "101", List.of("102", "115"), List.of("15")))));
+
+        mockMvc.perform(get("/internal/v1/wiki-spaces/ALL/relations")
+                        .header("X-Wiki-Capability", "capability"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scopeVersion").value(47))
+                .andExpect(jsonPath("$.items[0].wikiId").value("101"))
+                .andExpect(jsonPath("$.items[0].wikiRefs[0]").value("102"))
+                .andExpect(jsonPath("$.items[0].wikiRefs[1]").value("115"))
+                .andExpect(jsonPath("$.items[0].documentRefs[0]").value("15"));
+
+        then(capabilityService).should().require("capability", "ALL");
+    }
+
+    @Test
+    @DisplayName("Wiki가 없는 범위도 items를 빈 배열로 돌려준다")
+    void returnsEmptyArrayForSpaceWithoutWiki() throws Exception {
+        given(queryService.spaceRelations("ALL")).willReturn(
+                new InternalWikiQueryService.WikiSpaceRelations(47L, List.of()));
+
+        mockMvc.perform(get("/internal/v1/wiki-spaces/ALL/relations")
+                        .header("X-Wiki-Capability", "capability"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray())
+                .andExpect(jsonPath("$.items").isEmpty());
+    }
 }

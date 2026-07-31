@@ -432,6 +432,26 @@ const publicFolders = [
       }),
     }),
     request({
+      name: "사용자 단건 조회",
+      method: "GET",
+      path: "/api/v1/users/:userId",
+      description: docs({
+        summary: "관리자가 특정 사용자 한 명의 최신 상세 정보를 조회합니다.",
+        usage: "사용자 관리 상세·수정 화면에서 대상 사용자를 불러올 때 사용합니다.",
+        pathParams: ["`userId`: 조회할 사용자 ID"],
+        policy: [
+          "관리자만 조회할 수 있습니다.",
+          "`PATCH /api/v1/users/{userId}` 수정 화면과 짝이 되는 조회 API입니다.",
+        ],
+        response: ["대상 사용자 전체 정보(수정 API 응답과 동일한 `UserResponse`)"],
+        errors: [
+          "`401 Unauthorized`: accessToken이 유효하지 않음",
+          "`403 Forbidden`: 관리자 권한 없음",
+          "`404 Not Found`: 존재하지 않는 사용자",
+        ],
+      }),
+    }),
+    request({
       name: "사용자 정보 및 상태 수정",
       method: "PATCH",
       path: "/api/v1/users/:userId",
@@ -456,6 +476,7 @@ const publicFolders = [
           "전달하지 않은 필드는 변경하지 않습니다.",
           "사용자는 삭제하지 않고 비활성화합니다.",
           "처리되지 않은 문의가 남은 담당자의 비활성화 또는 employee 전환은 허용하지 않습니다.",
+          "관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.",
           "사용자 비밀번호는 이 API에서 변경하지 않고 이메일 재설정으로만 변경합니다.",
         ],
         response: ["수정된 사용자 전체 정보"],
@@ -491,7 +512,8 @@ const publicFolders = [
           "거부된 신청도 삭제하지 않고 목록에 보존합니다.",
         ],
         response: [
-          "`items`: 사용자 ID, 이메일, 이름, 소속 부서, 가입 상태와 신청 시각",
+          "`items`: 사용자 ID, 이메일, 이름, 사번, 소속 부서, 가입 상태와 신청 시각",
+          "`employeeNo`는 승인 완료 신청에만 값이 있고 대기·거부 신청은 `null`이다",
           "`page`, `size`, `totalCount`, `totalPages`",
         ],
         errors: [
@@ -807,7 +829,7 @@ const publicFolders = [
         ],
         policy: ["권한이 없는 문서는 목록에 포함하지 않습니다."],
         response: [
-          "`items`: 문서 ID, 파일명, scopeKey, 카테고리, 상태, 업로드자와 시각",
+          "`items`: 문서 ID, 파일명, MIME 타입(mimeType), 파일 크기(fileSize), 카테고리(documentCategoryId·documentCategoryName), scopeKey, 공개 유형(visibilityType: all/department), 공개 부서 목록(departments[].departmentId·name), 상태, 업로드자(uploadedBy.userId·name)와 업로드 시각(uploadedAt)",
           "`page`, `size`, `totalCount`, `totalPages`",
         ],
         errors: [
@@ -825,7 +847,7 @@ const publicFolders = [
         usage: "원본문서 상세 화면에서 사용합니다.",
         pathParams: ["`documentId`: 조회할 문서 ID"],
         response: [
-          "문서 메타데이터, 카테고리, 공개 범위와 처리 상태",
+          "문서 메타데이터(mimeType·fileSize·uploadedBy·uploadedAt), 카테고리(documentCategoryId·documentCategoryName), 공개 범위(visibilityType·departments)와 처리 상태",
           "`relatedWikis`: 반영 완료된 연결 Wiki 목록",
           "`downloadUrl`: 권한 검증이 적용된 다운로드 URL",
         ],
@@ -1810,8 +1832,14 @@ const internalFolders = [
           "`categoryChanges`, `wikiChanges`, `relationChanges`",
           "`wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`",
           "`wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)",
-          "`wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거",
+          "`wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.",
+          "`relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.",
+          "`relationChanges[].action`: `add` 또는 `remove`",
+          "`relationChanges[].type`: 항상 `wiki_wiki`",
+          "`relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`",
+          "`relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`",
           "`indexEntries`: AI가 정한 목차 구조·순서·제목·요약",
+          "`indexEntries[].wikiRef`, `order`, `title`, `summary`",
         ],
         errors: [
           "`400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류",
@@ -1863,6 +1891,7 @@ const internalFolders = [
           "`agentMessage`: 관리자에게 보여줄 응답",
           "`wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`",
           "`wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.",
+          "`relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.",
         ],
         errors: [
           "`400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류",
@@ -2176,6 +2205,34 @@ const internalFolders = [
             "`400 Bad Request`: 파라미터 오류",
             "`401 Unauthorized`: 내부 API 키 오류",
             "`404 Not Found`: `WIKI_CAPABILITY_EXPIRED` · `WIKI_SCOPE_NOT_FOUND` · `WIKI_NOT_FOUND`. HTTP 상태는 같고 `code`로 구분합니다",
+          ],
+        }),
+      }),
+      request({
+        name: "Wiki 범위 관계",
+        method: "GET",
+        path: "/internal/v1/wiki-spaces/:scopeKey/relations",
+        headers: [wikiCapabilityHeader],
+        description: docs({
+          summary: "범위 전체의 Wiki 참조 관계를 한 번에 조회합니다.",
+          usage:
+            "에이전트가 병합·제거로 남의 링크를 깨뜨리지 않으려면 범위 전체의 참조 관계를 알아야 합니다. Wiki 1건씩 조회하면 Wiki 장수만큼 호출이 나가므로 FastAPI는 이 API를 1회 호출해 그래프를 받습니다.",
+          auth: "`X-Internal-API-Key`와 `X-Wiki-Capability` 필요",
+          pathParams: ["`scopeKey`: 조회 범위"],
+          policy: [
+            "`wiki.wiki_refs`·`document_refs` JSON을 사용합니다. 별도 관계 테이블을 만들지 않습니다(DR-002).",
+            "역방향(`backlinks`)은 싣지 않습니다. 범위 전체 간선이 있으면 소비자가 뒤집어 구합니다.",
+            "Wiki가 0장인 범위는 `items`를 빈 배열로 반환합니다.",
+          ],
+          response: [
+            "`scopeVersion`",
+            "`items[].wikiId`",
+            "`items[].wikiRefs`: 이 Wiki가 참조하는 Wiki ID",
+            "`items[].documentRefs`: 근거 원본문서 ID",
+          ],
+          errors: [
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: `WIKI_CAPABILITY_EXPIRED`(허가 만료·철회) 또는 `WIKI_SCOPE_NOT_FOUND`(허가 범위 밖·범위 없음). HTTP 상태는 같고 `code`로 구분합니다",
           ],
         }),
       }),
