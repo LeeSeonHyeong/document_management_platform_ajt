@@ -74,3 +74,21 @@ export function updatePreviewDocument(documentId, changes) {
 
   return nextSources.find((document) => document.documentId === documentId) ?? null
 }
+
+export function removePreviewDocument(documentId) {
+  const sources = readPreviewSourceDocuments()
+  const target = sources.find((document) => document.documentId === documentId)
+  const nextSources = sources.filter((document) => document.documentId !== documentId)
+  sessionStorage.setItem(PREVIEW_SOURCE_DOCUMENTS_KEY, JSON.stringify(nextSources))
+
+  const summaries = readPreviewSummaries()
+  const nextSummaries = summaries
+    .map((summary) => ({
+      ...summary,
+      documents: summary.documents.filter((document) => document.documentId !== documentId),
+    }))
+    .filter((summary) => summary.documents.length > 0)
+  sessionStorage.setItem(PREVIEW_SUMMARIES_KEY, JSON.stringify(nextSummaries))
+
+  if (target?.downloadUrl?.startsWith('blob:')) URL.revokeObjectURL(target.downloadUrl)
+}

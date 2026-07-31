@@ -1,14 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
 import { Badge, Button, Spinner, useToast } from '@/components/ui'
 import WikiMarkdown from '@/features/wiki/components/WikiMarkdown'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchDocumentFile } from '../api'
-import { useDocument, useUpdateDocument } from '../queries'
+import { useDocument } from '../queries'
 import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
-import { QueueCategorySelect, QueueVisibilityDropdown } from '../components/QueueDocumentFields'
-import { readPreviewSourceDocuments, updatePreviewDocument } from '../previewStorage'
+import { readPreviewSourceDocuments, removePreviewDocument } from '../previewStorage'
 
 function formatBytes(bytes) {
   if (!bytes && bytes !== 0) return '-'
@@ -48,28 +47,33 @@ export default function SourceDocumentDetailPage() {
   const [downloading, setDownloading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
 
-  const [previewDocument, setPreviewDocument] = useState(() =>
+  const [previewDocument] = useState(() =>
     readPreviewSourceDocuments().find((document) => document.documentId === documentId),
   )
   const { data: serverDocument, isLoading } = useDocument(previewDocument ? undefined : documentId)
   const doc = previewDocument ?? serverDocument
-  const updateMutation = useUpdateDocument(previewDocument ? undefined : documentId)
-  const [metadataDraft, setMetadataDraft] = useState(null)
-
-  useEffect(() => {
-    if (!doc) return
-    setMetadataDraft({
-      documentCategoryId: doc.documentCategoryId ?? null,
-      documentCategoryName: doc.documentCategoryName ?? null,
-      visibilityType: doc.visibilityType ?? null,
-      departments: doc.departments ?? [],
-      scopeKey: doc.scopeKey ?? null,
-    })
-  }, [doc])
 
   async function handleDownload() {
     setDownloading(true)
     try {
+      if (doc?.previewOnly) {
+        let url = doc.downloadUrl
+        let temporaryUrl = false
+        if (!url && doc.previewContent != null) {
+          url = URL.createObjectURL(new Blob([doc.previewContent], { type: doc.mimeType || 'text/plain' }))
+          temporaryUrl = true
+        }
+        if (!url) {
+          toast.error('이 문서의 원본 파일을 다시 찾을 수 없습니다. 다시 업로드해주세요.')
+          return
+        }
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = doc.originalFileName ?? 'document'
+        anchor.click()
+        if (temporaryUrl) URL.revokeObjectURL(url)
+        return
+      }
       const { blob, fileName } = await fetchDocumentFile(documentId)
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
@@ -90,46 +94,6 @@ export default function SourceDocumentDetailPage() {
       <div className="flex justify-center py-16">
         <Spinner />
       </div>
-    )
-  }
-
-  const draftDocument = { ...doc, ...metadataDraft }
-  const metadataChanged =
-    String(draftDocument.documentCategoryId ?? '') !== String(doc.documentCategoryId ?? '') ||
-    draftDocument.scopeKey !== doc.scopeKey
-  const metadataComplete =
-    Boolean(draftDocument.documentCategoryId) &&
-    (draftDocument.visibilityType === 'all' ||
-      (draftDocument.visibilityType === 'department' && draftDocument.departments.length > 0))
-  const canSaveMetadata = metadataChanged && metadataComplete && !updateMutation.isPending
-
-  function handleMetadataSave() {
-    if (!canSaveMetadata) return
-    const changes = {
-      documentCategoryId: draftDocument.documentCategoryId,
-      documentCategoryName: draftDocument.documentCategoryName,
-      visibilityType: draftDocument.visibilityType,
-      departments: draftDocument.departments,
-      scopeKey: draftDocument.scopeKey,
-    }
-
-    if (doc.previewOnly) {
-      const updated = updatePreviewDocument(doc.documentId, changes)
-      if (updated) setPreviewDocument(updated)
-      toast.success('문서 정보가 저장되었습니다.')
-      return
-    }
-
-    updateMutation.mutate(
-      {
-        documentCategoryId: changes.documentCategoryId,
-        visibilityType: changes.visibilityType,
-        departmentIds: changes.departments.map((department) => department.departmentId),
-      },
-      {
-        onSuccess: () => toast.success('문서 정보가 저장되었습니다.'),
-        onError: () => toast.error('문서 정보 저장에 실패했습니다.'),
-      },
     )
   }
 
@@ -191,11 +155,11 @@ export default function SourceDocumentDetailPage() {
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-slate-400">삭제하면 위키 반영이 먼저 정리되고, 완료된 뒤 원본이 삭제됩니다.</p>
           <div className="flex gap-2">
-            <Button variant="danger" onClick={() => setDeleteOpen(true)} disabled={doc.previewOnly}>
+            <Button variant="danger" onClick={() => setDeleteOpen(true)}>
               <Trash2 className="size-4" />
               삭제
             </Button>
-            <Button variant="primary" onClick={handleDownload} loading={downloading} disabled={doc.previewOnly}>
+            <Button variant="primary" onClick={handleDownload} loading={downloading}>
               <Download className="size-4" />
               다운로드
             </Button>
@@ -210,27 +174,16 @@ export default function SourceDocumentDetailPage() {
           </div>
           <dl>
             <InfoRow label="공개 부서">
-              <QueueVisibilityDropdown
-                item={draftDocument}
-                localOnly
-                onApplied={(changes) =>
-                  setMetadataDraft((current) => ({
-                    ...current,
-                    ...changes,
-                    documentCategoryId: null,
-                    documentCategoryName: null,
-                  }))
-                }
-              />
+              <MetadataDisplay>
+                {doc.visibilityType === 'all'
+                  ? '전체 공개'
+                  : (doc.departments ?? []).length > 1
+                    ? `${doc.departments[0].name} 외 ${doc.departments.length - 1}`
+                    : doc.departments?.[0]?.name ?? '미지정'}
+              </MetadataDisplay>
             </InfoRow>
             <InfoRow label="카테고리">
-              <QueueCategorySelect
-                item={draftDocument}
-                localOnly
-                onApplied={(changes) =>
-                  setMetadataDraft((current) => ({ ...current, ...changes }))
-                }
-              />
+              <MetadataDisplay>{doc.documentCategoryName ?? '미분류'}</MetadataDisplay>
             </InfoRow>
             <div className="my-2 border-t border-slate-200" />
             <InfoRow label="업로더">
@@ -246,17 +199,6 @@ export default function SourceDocumentDetailPage() {
               {formatBytes(doc.fileSize)} · {fileExtension(doc.originalFileName)}
             </InfoRow>
           </dl>
-        </div>
-
-        <div className="flex justify-end">
-          <Button
-            variant="primary"
-            onClick={handleMetadataSave}
-            loading={updateMutation.isPending}
-            disabled={!canSaveMetadata}
-          >
-            저장
-          </Button>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
@@ -290,6 +232,12 @@ export default function SourceDocumentDetailPage() {
         open={deleteOpen}
         document={doc}
         onClose={() => setDeleteOpen(false)}
+        onDeletePreview={() => {
+          removePreviewDocument(doc.documentId)
+          setDeleteOpen(false)
+          toast.success('원본 문서를 삭제했습니다.')
+          navigate('/admin/documents/source')
+        }}
         onBackground={() => {
           setDeleteOpen(false)
           navigate('/admin/documents/source')
@@ -304,5 +252,13 @@ export default function SourceDocumentDetailPage() {
         }}
       />
     </section>
+  )
+}
+
+function MetadataDisplay({ children }) {
+  return (
+    <div className="flex min-h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-center text-sm font-semibold text-slate-700">
+      <span className="truncate">{children}</span>
+    </div>
   )
 }
