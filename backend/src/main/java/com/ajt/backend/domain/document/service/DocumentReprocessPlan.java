@@ -44,11 +44,28 @@ public record DocumentReprocessPlan(
         );
     }
 
+    /**
+     * 문서 1건의 원본 파일이 교체된 계획입니다. (FR-DOC-009 파일 교체)
+     *
+     * <p>옛 파싱 본문이 없으면 {@link #added()}로 강등한다. 교체는 같은 범위에 새 내용을 반영하는
+     * 것이어서 방향이 어긋나지 않고, 옛 내용을 걷어내지 못하는 한계만 남는다. (걷어내기와 다른
+     * 점이다 — 그쪽은 폴백하면 지우려던 문서를 다시 넣게 되므로 작업을 만들지 않는다.)
+     */
+    public static DocumentReprocessPlan replaced(long documentId, String removedParsedMarkdown) {
+        if (removedParsedMarkdown == null || removedParsedMarkdown.isBlank()) {
+            return ADDED;
+        }
+        return new DocumentReprocessPlan(
+                Map.of(documentId, WikiDocumentChangeType.DOCUMENT_REPLACED),
+                Map.of(documentId, removedParsedMarkdown)
+        );
+    }
+
     public WikiDocumentChangeType changeTypeOf(long documentId) {
         return changeTypes.getOrDefault(documentId, WikiDocumentChangeType.DOCUMENT_ADDED);
     }
 
-    /** 걷어내기 대상이 아니면 {@code null}입니다. */
+    /** 걷어내기·교체 대상이 아니면 {@code null}입니다. */
     public String removedParsedMarkdownOf(long documentId) {
         return removedParsedMarkdowns.get(documentId);
     }
