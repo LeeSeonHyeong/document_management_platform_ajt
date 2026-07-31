@@ -214,7 +214,7 @@ class QuestionAskServiceTest {
         givenMemberCanSee("ALL");
         Schedule otherDept = schedule(33L, "타부서 일정", ScheduleVisibility.DEPARTMENT, true, 99L, List.of(3L));
         Schedule mine = schedule(31L, "전사 일정", ScheduleVisibility.ALL, true, 99L, List.of());
-        given(scheduleRepository.findAllById(List.of(31L, 33L))).willReturn(List.of(mine, otherDept));
+        given(scheduleRepository.findAllByIdWithDepartments(List.of(31L, 33L))).willReturn(List.of(mine, otherDept));
         given(aiClient.generateAnswer(any())).willReturn(new AnswerGenerationResponse(
                 "일정입니다.",
                 List.of(
@@ -235,7 +235,7 @@ class QuestionAskServiceTest {
     void dropsDraftScheduleSource() throws Exception {
         givenMemberCanSee("ALL");
         Schedule draft = schedule(32L, "초안 일정", ScheduleVisibility.ALL, false, 99L, List.of());
-        given(scheduleRepository.findAllById(List.of(32L))).willReturn(List.of(draft));
+        given(scheduleRepository.findAllByIdWithDepartments(List.of(32L))).willReturn(List.of(draft));
         given(aiClient.generateAnswer(any())).willReturn(new AnswerGenerationResponse(
                 "일정입니다.",
                 List.of(new AnswerGenerationResponse.Source("schedule", null, "32", "초안 일정")),

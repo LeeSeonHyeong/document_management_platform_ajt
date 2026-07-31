@@ -307,7 +307,9 @@ public class QuestionAskService {
 
         Set<Long> readableScheduleIds = new HashSet<>();
         if (!scheduleIds.isEmpty()) {
-            scheduleRepository.findAllById(scheduleIds).stream()
+            // 수정(S15P11B106-171): 공개 부서를 함께 읽는다. 이 메서드는 트랜잭션 밖에서 도므로
+            //   findAllById 로 읽으면 detached 엔티티의 lazy 컬렉션을 건드려 500이 난다.
+            scheduleRepository.findAllByIdWithDepartments(scheduleIds).stream()
                     .filter(schedule -> scheduleVisibilityPolicy.isReadableBy(schedule, member))
                     .forEach(schedule -> readableScheduleIds.add(schedule.id()));
         }
