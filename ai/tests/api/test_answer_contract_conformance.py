@@ -19,11 +19,16 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from agent_runtime.base import CompletionResult
-from wiki_api.app import create_app
 from pydantic import TypeAdapter
 
+from wiki_api.app import create_app
 from wiki_api.schemas import RelationChange, TransformResponse
+
+from .chat_fakes import (
+    ScriptedAgentRuntime,
+    use_fake_backend,
+    wiki_and_schedule_backend,
+)
 
 REPO = Path(__file__).resolve().parents[3]
 COLLECTION = REPO / "docs" / "api" / "AJT-FastAPI-Internal-API.postman_collection.json"
@@ -60,162 +65,151 @@ def _example(name: str, code: int) -> dict:
     raise AssertionError(f"{name} 에 {code} 예시가 없다")
 
 
-class FakeRuntime:
-    """계약의 200 예시를 그대로 뱉는 런타임."""
+# ---- 챗봇 답변 (계약 1.8.0 — 엔드포인트 하나) --------------------------------
+#
+# 계약 1.8.0 이 1단계(`answer-context-selections`)를 지웠다. 그 경로가 앱에 남아 있으면
+# Spring 이 계속 부르고, 우리는 지운 줄 알고 있게 된다 — 아래 마지막 테스트가 그것을 막는다.
 
-    name = "fake-contract"
+@pytest.fixture
+def chat_client(monkeypatch):
+    """가짜 백엔드를 끼운 앱의 클라이언트를 만드는 픽스처.
 
-    def __init__(self, text: str):
-        self.text = text
+    조회 클라이언트는 요청마다 새로 생기므로 인스턴스가 아니라 **생성 자리**를 감싼다
+    (`chat_fakes.use_fake_backend`).
+    """
+    def make(runtime, transport=None):
+        use_fake_backend(monkeypatch, transport or wiki_and_schedule_backend(
+            wikis=_wikis_of_example(), schedules=_schedules_of_example()))
+        app = create_app(api_key=API_KEY, backend_base_url="http://backend")
+        app.state.runtime = runtime
+        return TestClient(app, raise_server_exceptions=False)
 
-    def complete(self, messages, *, tier="quality", timeout=None):
-        return CompletionResult(text=self.text)
-
-
-def _client(runtime):
-    app = create_app(api_key=API_KEY)
-    app.state.runtime = runtime
-    return TestClient(app, raise_server_exceptions=False)
-
-
-# ---- 1단계 -----------------------------------------------------------------
-
-def test_계약의_요청_예시가_그대로_통과한다():
-    body = _request_body("답변 자료 선택")
-    example = _example("답변 자료 선택", 200)
-    # 계약의 200 예시와 같은 선택을 모델이 냈다고 가정한다.
-    runtime = FakeRuntime(json.dumps(example, ensure_ascii=False))
-    response = _client(runtime).post("/internal/v1/answer-context-selections",
-                                     json=body, headers={SPRING_HEADER: API_KEY})
-    assert response.status_code == 200, response.text
-    assert response.json() == example
+    return make
 
 
-def test_1단계_응답_키가_계약과_같다():
-    example = _example("답변 자료 선택", 200)
-    body = _request_body("답변 자료 선택")
-    runtime = FakeRuntime(json.dumps(example, ensure_ascii=False))
-    response = _client(runtime).post("/internal/v1/answer-context-selections",
-                                     json=body, headers={SPRING_HEADER: API_KEY})
-    assert set(response.json()) == set(example)
-
-
-# ---- 2단계 -----------------------------------------------------------------
-
-def test_2단계_계약_요청_예시가_그대로_통과한다():
-    body = _request_body("답변 생성")
+def _example_runtime():
+    """계약 200 예시와 같은 답을 내는 런타임. 예시의 출처를 실제로 읽는다."""
     example = _example("답변 생성", 200)
-    runtime = FakeRuntime(json.dumps(example, ensure_ascii=False))
-    response = _client(runtime).post("/internal/v1/answers", json=body,
-                                     headers={SPRING_HEADER: API_KEY})
+    calls = []
+    for source in example["sources"]:
+        if source["type"] == "wiki":
+            calls.append(("read_wiki", {"scopeKey": "D1-D2",
+                                        "wikiId": source["wikiId"]}))
+        else:
+            calls.append(("read_schedule", {"scheduleId": source["scheduleId"]}))
+    report = {
+        "answer": example["answer"],
+        "usedWikiIds": [s["wikiId"] for s in example["sources"]
+                        if s["type"] == "wiki"],
+        "usedScheduleIds": [s["scheduleId"] for s in example["sources"]
+                            if s["type"] == "schedule"],
+        "questionType": example["questionType"],
+    }
+    return ScriptedAgentRuntime(calls, report=report)
+
+
+def _wikis_of_example() -> dict:
+    example = _example("답변 생성", 200)
+    return {s["wikiId"]: s["title"] for s in example["sources"]
+            if s["type"] == "wiki"}
+
+
+def _schedules_of_example() -> dict:
+    example = _example("답변 생성", 200)
+    return {s["scheduleId"]: s["title"] for s in example["sources"]
+            if s["type"] == "schedule"}
+
+
+def _post_contract_example(chat_client, body=None):
+    client = chat_client(_example_runtime())
+    return client.post("/internal/v1/answers", json=body or _request_body("답변 생성"),
+                       headers={SPRING_HEADER: API_KEY})
+
+
+def test_계약의_요청_예시가_그대로_통과한다(chat_client):
+    response = _post_contract_example(chat_client)
     assert response.status_code == 200, response.text
-    assert response.json() == example
+    assert response.json() == _example("답변 생성", 200)
 
 
-def test_출처는_안_쓰는_ID_를_실어_보내지_않는다():
+def test_응답_키가_계약과_같다(chat_client):
+    example = _example("답변 생성", 200)
+    assert set(_post_contract_example(chat_client).json()) == set(example)
+
+
+def test_출처는_안_쓰는_ID_를_실어_보내지_않는다(chat_client):
     """계약 예시의 wiki 출처에는 scheduleId 키가 아예 없다. null 로 보내면 Spring 이
     `answer_source` 에 빈 컬럼을 쓰려 든다."""
-    example = _example("답변 생성", 200)
-    body = _request_body("답변 생성")
-    runtime = FakeRuntime(json.dumps(example, ensure_ascii=False))
-    response = _client(runtime).post("/internal/v1/answers", json=body,
-                                     headers={SPRING_HEADER: API_KEY})
-    for source in response.json()["sources"]:
+    for source in _post_contract_example(chat_client).json()["sources"]:
         assert ("wikiId" in source) != ("scheduleId" in source)
         assert None not in source.values()
+        assert source["title"]          # `answer_source.source_title` 은 NOT NULL 이다
 
 
 # ---- 오류 표면 --------------------------------------------------------------
 
-@pytest.mark.parametrize("name,path", [
-    ("답변 자료 선택", "/internal/v1/answer-context-selections"),
-    ("답변 생성", "/internal/v1/answers"),
-])
-def test_400_본문이_계약_예시와_같은_키를_갖는다(name, path):
-    example = _example(name, 400)
-    runtime = FakeRuntime("{}")
-    # 계약에 없는 필드를 넣어 검증 실패를 만든다.
-    body = dict(_request_body(name), notAField="x")
-    response = _client(runtime).post(path, json=body,
-                                     headers={SPRING_HEADER: API_KEY})
+def test_400_본문이_Spring_레코드_필드를_모두_채운다(chat_client):
+    body = dict(_request_body("답변 생성"), notAField="x")
+    response = _post_contract_example(chat_client, body)
     assert response.status_code == 400
     actual = response.json()
-    assert set(actual) == set(example), f"{set(actual) ^ set(example)}"
-    assert actual["code"] == example["code"]
-    assert actual["path"] == path
-    assert actual["status"] == 400
+    assert SPRING_ERROR_FIELDS <= set(actual)
+    assert actual["code"] == "INVALID_ANSWER_GENERATION_REQUEST"
+    assert actual["path"] == "/internal/v1/answers"
     assert actual["error"] == "Bad Request"
 
 
-@pytest.mark.parametrize("name,path", [
-    ("답변 자료 선택", "/internal/v1/answer-context-selections"),
-    ("답변 생성", "/internal/v1/answers"),
-])
-def test_400_본문이_Spring_레코드_필드를_모두_채운다(name, path):
-    runtime = FakeRuntime("{}")
-    body = dict(_request_body(name), notAField="x")
-    response = _client(runtime).post(path, json=body,
-                                     headers={SPRING_HEADER: API_KEY})
-    assert SPRING_ERROR_FIELDS <= set(response.json())
-
-
-@pytest.mark.parametrize("path,code", [
-    ("/internal/v1/answer-context-selections", "ANSWER_CONTEXT_SELECTION_FAILED"),
-    ("/internal/v1/answers", "ANSWER_GENERATION_FAILED"),
-])
-def test_500_본문이_Spring_레코드_필드를_모두_채운다(path, code):
-    class Boom:
-        name = "boom"
-
-        def complete(self, messages, *, tier="quality", timeout=None):
-            raise RuntimeError("게이트웨이 거부")
-
-    name = ("답변 자료 선택" if path.endswith("selections") else "답변 생성")
-    response = _client(Boom()).post(path, json=_request_body(name),
-                                    headers={SPRING_HEADER: API_KEY})
+def test_500_본문이_계약_예시와_같은_키를_갖는다(chat_client):
+    """계약이 실은 대표 500 은 「위키도 일정도 읽지 않았다」다 — 도구 호출이 0건인 실행."""
+    example = _example("답변 생성", 500)
+    client = chat_client(ScriptedAgentRuntime([], text="아마 15일일 것입니다."))
+    response = client.post("/internal/v1/answers",
+                           json=_request_body("답변 생성"),
+                           headers={SPRING_HEADER: API_KEY})
     assert response.status_code == 500
     actual = response.json()
+    assert set(actual) == set(example), f"{set(actual) ^ set(example)}"
     assert SPRING_ERROR_FIELDS <= set(actual)
-    assert actual["code"] == code
+    assert actual["code"] == example["code"]
+    assert actual["path"] == example["path"]
     assert actual["error"] == "Internal Server Error"
 
 
-@pytest.mark.parametrize("path", [
-    "/internal/v1/answer-context-selections",
-    "/internal/v1/answers",
-])
-def test_키가_없으면_401_이다(path):
-    name = ("답변 자료 선택" if path.endswith("selections") else "답변 생성")
-    response = _client(FakeRuntime("{}")).post(path, json=_request_body(name))
+def test_예상_못한_고장은_경로의_실패_코드로_나간다(chat_client):
+    client = chat_client(ScriptedAgentRuntime([], raises=RuntimeError("게이트웨이 거부")))
+    response = client.post("/internal/v1/answers",
+                           json=_request_body("답변 생성"),
+                           headers={SPRING_HEADER: API_KEY})
+    assert response.status_code == 500
+    assert response.json()["code"] == "MODEL_CALL_FAILED"
+
+
+def test_키가_없으면_401_이다(chat_client):
+    client = chat_client(_example_runtime())
+    response = client.post("/internal/v1/answers", json=_request_body("답변 생성"))
     assert response.status_code == 401
     assert response.json()["code"] == "INVALID_INTERNAL_API_KEY"
 
 
-@pytest.mark.parametrize("path", [
-    "/internal/v1/answer-context-selections",
-    "/internal/v1/answers",
-])
-def test_계약이_정한_세_상태만_낸다(path):
+def test_계약이_정한_세_상태만_낸다(chat_client):
     """400·401·500 밖을 내면 Spring 분기에서 UNEXPECTED_STATUS 로 뭉개진다."""
-    name = ("답변 자료 선택" if path.endswith("selections") else "답변 생성")
-    body = _request_body(name)
-    client = _client(FakeRuntime("{}"))
-    seen = {
-        client.post(path, json=body, headers={SPRING_HEADER: API_KEY}).status_code,
-        client.post(path, json=dict(body, notAField=1),
-                    headers={SPRING_HEADER: API_KEY}).status_code,
-        client.post(path, json=body).status_code,
-        client.post(path, json=body, headers={SPRING_HEADER: "wrong"}).status_code,
-    }
+    body = _request_body("답변 생성")
+    seen = set()
+    for send in (lambda c: c.post("/internal/v1/answers", json=body,
+                                  headers={SPRING_HEADER: API_KEY}),
+                 lambda c: c.post("/internal/v1/answers", json=dict(body, notAField=1),
+                                  headers={SPRING_HEADER: API_KEY}),
+                 lambda c: c.post("/internal/v1/answers", json=body),
+                 lambda c: c.post("/internal/v1/answers", json=body,
+                                  headers={SPRING_HEADER: "wrong"})):
+        seen.add(send(chat_client(_example_runtime())).status_code)
     assert seen <= {200, 400, 401, 500}, seen
 
 
-def test_응답_헤더에_요청_ID_가_돌아온다():
+def test_응답_헤더에_요청_ID_가_돌아온다(chat_client):
     """`X-Request-Id` 는 본문이 아니라 헤더로만 나간다 (API_컨벤션 6.4)."""
-    body = _request_body("답변 자료 선택")
-    example = _example("답변 자료 선택", 200)
-    response = _client(FakeRuntime(json.dumps(example, ensure_ascii=False))).post(
-        "/internal/v1/answer-context-selections", json=body,
+    response = chat_client(_example_runtime()).post(
+        "/internal/v1/answers", json=_request_body("답변 생성"),
         headers={SPRING_HEADER: API_KEY, "X-Request-Id": "spring-rid-77"})
     assert response.headers["X-Request-Id"] == "spring-rid-77"
     assert "requestId" not in response.json()
@@ -277,12 +271,13 @@ def test_wiki_관리자_수정_응답_예시의_relationChanges_action_이_Sprin
         assert relation.type == "wiki_wiki"
 
 
-def test_계약에_정의된_두_엔드포인트가_앱에_등록됐다():
+def test_계약에_정의된_엔드포인트가_앱에_등록됐다():
     """`app.routes` 를 보지 않는다 — 이 FastAPI 버전은 `_IncludedRouter` 로 감싸서
     평탄화하지 않는다. OpenAPI 스키마가 실제로 노출되는 표면이다."""
     paths = create_app(api_key=API_KEY).openapi()["paths"]
-    assert "/internal/v1/answer-context-selections" in paths
     assert "/internal/v1/answers" in paths
+    # 1단계는 계약 1.8.0 이 지웠다. 남겨두면 백엔드가 계속 부른다.
+    assert "/internal/v1/answer-context-selections" not in paths
     # 기존 4개도 그대로 있어야 한다 — 라우터 등록 순서를 바꾸며 가리는 사고를 막는다.
     for path in ("/internal/v1/source-parses", "/internal/v1/wiki-context-selections",
                  "/internal/v1/wiki-transformations", "/internal/v1/wiki-edits"):

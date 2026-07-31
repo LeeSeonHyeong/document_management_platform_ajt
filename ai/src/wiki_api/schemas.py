@@ -478,7 +478,6 @@ class SourceParseResponse(Strict):
 
 # ---- 챗봇 답변 (계약 v1.3.0 「답변 생성」) ------------------------------------
 
-SELECTION_PATH = "/internal/v1/answer-context-selections"
 ANSWER_PATH = "/internal/v1/answers"
 
 
@@ -494,64 +493,28 @@ class ConversationMessage(Strict):
 
 
 class WikiIndexEntry(Strict):
+    """범위 하나의 목차와 그 범위 조회 허가값.
+
+    **허가값을 별도 배열로 두지 않고 이 행에 넣는다.** 두 배열로 나누면 한쪽에만 있는
+    범위가 생기고, 그 경우 에이전트가 목차는 읽었는데 본문은 못 읽는 상태가 된다.
+    """
+
     scopeKey: str
     indexMarkdown: str
+    # **필수다.** 없으면 그 범위의 위키를 한 장도 못 읽어 답변 근거가 사라지고, 원인이
+    # 「근거 없음」으로 나와 짐작하기 어렵다. 이 변경은 이미 엔드포인트를 지우는 비호환
+    # 변경이므로 「백엔드 배포 전 호환」을 위해 선택 필드로 둘 이유가 없다.
+    wikiCapability: str
 
 
-class ScheduleSummary(Strict):
-    """1단계에 오는 일정 후보. **본문은 없다** — 목차·요약만 보고 고른다."""
+class AnswerRequest(Strict):
+    """챗봇 요청. **본문도 일정 목록도 오지 않는다** — 에이전트가 도구로 조회한다."""
 
-    scheduleId: str
-    title: str
-    startAt: str
-    endAt: str
-    targetText: str | None = None
-    location: str | None = None
-
-
-class AnswerContextRequest(Strict):
     questionId: str
     conversationId: str
     question: str
     conversationMessages: list[ConversationMessage] = Field(default_factory=list)
     wikiIndexes: list[WikiIndexEntry] = Field(default_factory=list)
-    scheduleSummaries: list[ScheduleSummary] = Field(default_factory=list)
-
-
-class AnswerContextResponse(Strict):
-    questionType: Literal["wiki", "schedule", "mixed"]
-    wikiIds: list[str] = Field(default_factory=list)
-    scheduleIds: list[str] = Field(default_factory=list)
-    reason: str = ""
-
-
-class AnswerWiki(Strict):
-    """2단계에 오는 위키 본문. **변환용 `SelectedWiki` 와 모양이 다르다** — 계약의 답변
-    생성 요청은 세 필드뿐이고 카테고리·요약·참조가 없다."""
-
-    wikiId: str
-    title: str
-    contentMarkdown: str
-
-
-class AnswerSchedule(Strict):
-    scheduleId: str
-    title: str
-    content: str
-    startAt: str
-    endAt: str
-    targetText: str | None = None
-    location: str | None = None
-
-
-class AnswerRequest(Strict):
-    questionId: str
-    conversationId: str
-    questionType: Literal["wiki", "schedule", "mixed"]
-    question: str
-    conversationMessages: list[ConversationMessage] = Field(default_factory=list)
-    selectedWikis: list[AnswerWiki] = Field(default_factory=list)
-    selectedSchedules: list[AnswerSchedule] = Field(default_factory=list)
 
 
 class AnswerSource(Strict):
@@ -566,3 +529,5 @@ class AnswerSource(Strict):
 class AnswerResponse(Strict):
     answer: str
     sources: list[AnswerSource] = Field(default_factory=list)
+    # 1단계 응답이던 값이 여기로 옮겨왔다. 백엔드가 `question` 테이블에 저장한다.
+    questionType: Literal["wiki", "schedule", "mixed"]

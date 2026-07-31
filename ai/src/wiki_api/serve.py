@@ -140,8 +140,33 @@ def assert_runtime_is_usable(runtime_name: str) -> None:
             "배포에서는 --runtime deepagents 또는 AI_RUNTIME=deepagents 를 쓴다.")
 
 
+def check_model_credentials(settings: ServerSettings) -> None:
+    """모델의 제공자와 자격증명이 맞는지 기동 시점에 본다.
+
+    `claude-code` 는 로그인 세션으로 과금하므로 검사 대상이 아니다.
+
+    `assert_runtime_is_usable` 과 같은 이유로 기동에서 막는다 — 첫 요청에서 「인증 방법을
+    못 찾았다」로 죽으면 그 사이 들어온 요청이 전부 실패로 기록되고 원인이 남지 않는다.
+    """
+    if settings.runtime != "deepagents":
+        return
+    needed = {
+        (settings.model or "").split(":", 1)[0],
+        (settings.model_fast or "").split(":", 1)[0],
+        (settings.model_quality or "").split(":", 1)[0],
+    } - {""}
+    keys = {"anthropic": settings.anthropic_api_key,
+            "openai": settings.openai_api_key}
+    for provider in sorted(needed):
+        if provider in keys and not keys[provider]:
+            raise SystemExit(
+                f"{provider} 모델을 쓰도록 설정했는데 {provider} API 키가 없습니다. "
+                f"src/.env 의 {provider.upper()}_API_KEY 를 채우거나 모델을 바꾸십시오.")
+
+
 def build_app(settings: ServerSettings):
     assert_runtime_is_usable(settings.runtime)
+    check_model_credentials(settings)
     app = create_app(api_key=settings.internal_api_key,
                      backend_base_url=settings.backend_base_url)
     # `claude-code` 는 로그인 세션으로 과금한다 — 모델 API 키를 넘기면 `load_runtime` 이

@@ -132,6 +132,18 @@ class ClaudeCodeRuntime:
             raise ValueError(f"모르는 tier: {tier!r} (가능: {sorted(CLI_TIER_MODELS)})")
         return CLI_TIER_MODELS[tier]
 
+    def run_with_tools(self, guide: str, question: str, *, tools: list,
+                       max_turns: int, timeout: int,
+                       response_format=None) -> RunResult:
+        """CLI 는 도구를 MCP 로만 받는다. 직접 붙이는 경로가 없다.
+
+        기준 런타임은 `deepagents` 이고 CLI 는 모델 키가 없을 때 쓰는 시험용이다.
+        조용히 다른 경로로 돌리지 않는다 — 무엇으로 돌았는지 모르게 된다.
+        """
+        raise NotImplementedError(
+            "claude-code 런타임은 도구를 직접 붙일 수 없습니다. "
+            "챗봇 에이전트는 deepagents 런타임에서만 돕니다 (AI_RUNTIME=deepagents).")
+
     def complete(self, messages: list[dict], *, tier: str = QUALITY,
                  timeout: int | None = None) -> CompletionResult:
         """MCP 없는 단발 호출. **테스트 경로다.**
