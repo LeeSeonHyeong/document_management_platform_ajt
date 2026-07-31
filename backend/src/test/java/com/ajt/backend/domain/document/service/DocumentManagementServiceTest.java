@@ -231,6 +231,60 @@ class DocumentManagementServiceTest {
     }
 
     @Test
+    @DisplayName("파일 교체는 덮어쓰기 전에 읽은 파싱 본문과 함께 document_replaced로 재처리한다")
+    void replaceFileSendsReplacedChangeTypeWithPreviousParsedMarkdown() throws Exception {
+        Document document = parsedDocument(); // parsedPath 있음
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 취업규칙\n본문");
+        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
+                .willReturn("wiki/ALL/sources/15/original.md");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        service.replaceFile(15L,
+                new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes()));
+
+        ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher).launch(any(AiJob.class), plans.capture());
+        assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REPLACED);
+        assertThat(plans.getValue().removedParsedMarkdownOf(15L)).isEqualTo("# 옛 취업규칙\n본문");
+
+        // 원본을 덮어쓰기 전에 읽어야 한다 — 덮어쓴 뒤에는 옛 내용을 복원할 수 없다.
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(documentFileStorage);
+        order.verify(documentFileStorage).readText("wiki/ALL/sources/15/parsed.md");
+        order.verify(documentFileStorage).storeOriginal(any(), anyLong(), any());
+    }
+
+    @Test
+    @DisplayName("파일 교체 시 옛 파싱 본문이 없으면 document_added로 강등한다")
+    void replaceFileFallsBackToAddedWhenParsedMarkdownIsMissing() throws Exception {
+        Document document = uploadedDocument(); // parsedPath 없음(파싱 전 문서)
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
+                .willReturn("wiki/ALL/sources/15/original.md");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        service.replaceFile(15L,
+                new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes()));
+
+        ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher).launch(any(AiJob.class), plans.capture());
+        assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_ADDED);
+        assertThat(plans.getValue().removedParsedMarkdownOf(15L)).isNull();
+    }
+
+    @Test
     @DisplayName("파일 교체로 확장자가 바뀌어 경로가 달라지면 이전 파일을 정리한다")
     void replaceFileDeletesPreviousFileWhenPathChanges() throws Exception {
         Document document = uploadedDocument(); // 기존 경로: wiki/ALL/sources/15/original.md
@@ -561,14 +615,14 @@ class DocumentManagementServiceTest {
     }
 
     @Test
-    @DisplayName("관리자는 문서를 삭제하고 남은 문서 기준 재처리 작업을 생성한다")
+    @DisplayName("관리자는 문서를 삭제하고 이 문서를 근거로 쓴 Wiki를 걷어낸다")
     void deletesDocument() throws Exception {
-        Document document = uploadedDocument();
+        Document document = parsedDocument();
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
-        // 삭제 전 검사에서는 [문서], 삭제 후 재처리에서는 [] (남은 문서 없음)
-        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document), List.of());
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업규칙\n본문");
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -581,7 +635,36 @@ class DocumentManagementServiceTest {
         assertThat(response.scopeKey()).isEqualTo("ALL");
         assertThat(response.status()).isEqualTo("waiting");
         verify(documentRepository).delete(document);
-        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
+
+        ArgumentCaptor<AiJob> jobs = ArgumentCaptor.forClass(AiJob.class);
+        ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher).launch(jobs.capture(), plans.capture());
+        assertThat(jobs.getValue().scopeKey()).isEqualTo("ALL");
+        assertThat(jobs.getValue().documentIds()).containsExactly(15L);
+        assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REMOVED);
+        assertThat(plans.getValue().removedParsedMarkdownOf(15L)).isEqualTo("# 취업규칙\n본문");
+
+        // 파일을 지우기 전에 파싱 본문을 읽어야 한다.
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(documentFileStorage);
+        order.verify(documentFileStorage).readText("wiki/ALL/sources/15/parsed.md");
+        order.verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+    }
+
+    @Test
+    @DisplayName("파싱 전 문서를 삭제하면 걷어낼 근거가 없어 재처리 작업을 만들지 않는다")
+    void deleteSkipsRemovalWhenDocumentWasNeverParsed() throws Exception {
+        Document document = uploadedDocument(); // parsedPath 없음
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+
+        DocumentDeleteResponse response = service.delete(15L);
+
+        assertThat(response.jobId()).isNull();
+        assertThat(response.scopeKey()).isEqualTo("ALL");
+        verify(documentRepository).delete(document);
+        verify(parseJobLauncher, never()).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test

@@ -74,8 +74,11 @@ public class DocumentParseWorker {
             if (currentJob.status() == com.ajt.backend.domain.document.model.AiJobStatus.CANCELLED) {
                 break;
             }
+            WikiDocumentChangeType changeType = plan.changeTypeOf(documentId);
+            String removedParsedMarkdown = plan.removedParsedMarkdownOf(documentId);
+            boolean removing = changeType == WikiDocumentChangeType.DOCUMENT_REMOVED;
             Document document = documentsById.get(documentId);
-            if (document == null) {
+            if (document == null && !removing) {
                 // 업로드 후 삭제된 문서다. 나머지 문서는 계속 처리하고 이 문서만 실패로 남긴다.
                 AiJob.DocumentParseResult result = AiJob.DocumentParseResult.failed(
                         documentId,
@@ -87,10 +90,10 @@ public class DocumentParseWorker {
                 aiJobRepository.save(currentJob);
                 continue;
             }
-            AiJob.DocumentParseResult result =
-                    plan.changeTypeOf(documentId) == WikiDocumentChangeType.DOCUMENT_REMOVED
-                            ? removeDocument(job, document, plan.removedParsedMarkdownOf(documentId))
-                            : parseDocument(job, document);
+            // 걷어내기는 문서 행이 하드 삭제된 뒤에도 실행된다(DR-014). 문서 엔티티를 읽지 않는다.
+            AiJob.DocumentParseResult result = removing
+                    ? removeDocument(job, documentId, removedParsedMarkdown)
+                    : parseDocument(job, document, changeType, removedParsedMarkdown);
             documentResults.add(result);
             AiJob resultJob = aiJobRepository.findById(job.id()).orElse(job);
             resultJob.recordResult(result);
@@ -113,9 +116,23 @@ public class DocumentParseWorker {
                 .collect(Collectors.toMap(Document::id, Function.identity()));
     }
 
-    private AiJob.DocumentParseResult parseDocument(AiJob job, Document document) {
+    /**
+     * 원본문서를 파싱해 Wiki에 반영합니다. 추가({@code DOCUMENT_ADDED})와 교체
+     * ({@code DOCUMENT_REPLACED})가 이 경로를 함께 씁니다.
+     *
+     * <p>교체는 새 파일을 파싱해 보내면서 교체 전 본문({@code removedParsedMarkdown})도 함께
+     * 실어, 옛 내용을 근거로 쓴 문단·각주를 새 내용에 맞게 고치도록 한다. 옛 본문은 파일을
+     * 덮어쓰기 전에 읽어 둔 것이며 계획이 실어 온다.
+     */
+    private AiJob.DocumentParseResult parseDocument(
+            AiJob job,
+            Document document,
+            WikiDocumentChangeType changeType,
+            String removedParsedMarkdown
+    ) {
         document.startParsing();
         documentRepository.save(document);
+        String scopeKey = job.scopeKey();
         String parsedMarkdown;
         List<Long> selectedWikiIds;
         try {
@@ -132,11 +149,11 @@ public class DocumentParseWorker {
             WikiContextSelectionResponse selection = aiClient.selectWikiContext(new WikiContextSelectionRequest(
                     String.valueOf(job.id()),
                     String.valueOf(document.id()),
-                    document.scopeKey(),
-                    WikiDocumentChangeType.DOCUMENT_ADDED,
+                    scopeKey,
+                    changeType,
                     parsedMarkdown,
-                    null,
-                    wikiTransformationService.currentIndex(document.scopeKey())
+                    removedParsedMarkdown,
+                    wikiTransformationService.currentIndex(scopeKey)
             ));
             selectedWikiIds = wikiIds(selection);
             document.completeParsing(parsedPath, selectedWikiIds);
@@ -154,29 +171,33 @@ public class DocumentParseWorker {
             documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
-        return transformWiki(job, document, parsedMarkdown, selectedWikiIds);
+        return transformWiki(job, document, changeType, parsedMarkdown, removedParsedMarkdown, selectedWikiIds);
     }
 
     /**
-     * 문서가 이 범위에서 빠진 것을 Wiki에 반영합니다. (FR-DOC-008 범위 변경)
+     * 문서가 이 범위에서 빠진 것을 Wiki에 반영합니다.
+     * (FR-DOC-008 공개 범위 변경, DR-014 하드 삭제)
      *
-     * <p>파싱하지 않는다 — 원본은 이미 새 범위로 옮겨졌고 걷어내기에 필요한 옛 본문은 계획이
-     * 실어 온다. 문서 엔티티의 처리 상태도 건드리지 않는다: 같은 문서를 새 범위 작업이 이어서
-     * 처리하므로 여기서 상태를 옮기면 두 작업이 같은 문서 상태를 두고 다툰다.
+     * <p>파싱하지 않고 <b>문서 엔티티도 읽지 않는다</b> — 필요한 것은 문서 ID와 계획이 실어 온
+     * 옛 파싱 본문뿐이다. 범위 변경에서는 원본이 이미 새 범위로 옮겨졌고, 삭제에서는 문서 행과
+     * 파일이 이미 사라졌다.
+     *
+     * <p>범위 변경일 때 문서의 처리 상태를 건드리지 않는 것도 같은 이유다: 같은 문서를 새 범위
+     * 작업이 이어서 처리하므로 여기서 상태를 옮기면 두 작업이 한 문서 상태를 두고 다툰다.
      *
      * <p>변환 대상 범위는 문서의 현재 {@code scopeKey}가 아니라 작업의 {@code scopeKey}다.
-     * 이 작업이 실행될 때 문서 행은 이미 새 범위를 가리키고 있다.
+     * 범위 변경 시점에 문서 행은 이미 새 범위를 가리키고 있다.
      */
     private AiJob.DocumentParseResult removeDocument(
             AiJob job,
-            Document document,
+            long documentId,
             String removedParsedMarkdown
     ) {
         String scopeKey = job.scopeKey();
         try {
             WikiContextSelectionResponse selection = aiClient.selectWikiContext(new WikiContextSelectionRequest(
                     String.valueOf(job.id()),
-                    String.valueOf(document.id()),
+                    String.valueOf(documentId),
                     scopeKey,
                     WikiDocumentChangeType.DOCUMENT_REMOVED,
                     null,
@@ -185,7 +206,7 @@ public class DocumentParseWorker {
             ));
             var response = wikiTransformationService.requestForDocumentChange(
                     job.id(),
-                    document.id(),
+                    documentId,
                     scopeKey,
                     WikiDocumentChangeType.DOCUMENT_REMOVED,
                     null,
@@ -193,16 +214,16 @@ public class DocumentParseWorker {
                     wikiIds(selection)
             );
             WikiTransformationResult result = transactionService.applyRemovedDocument(
-                    document.id(), scopeKey, response);
-            return AiJob.DocumentParseResult.succeeded(document.id(), result.summary());
+                    documentId, scopeKey, response);
+            return AiJob.DocumentParseResult.succeeded(documentId, result.summary());
         } catch (AiClientException exception) {
             return AiJob.DocumentParseResult.failed(
-                    document.id(),
+                    documentId,
                     failureReason(exception),
                     exception.failureStage()
             );
         } catch (RuntimeException exception) {
-            return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
+            return AiJob.DocumentParseResult.failed(documentId, exception.getMessage(), null);
         }
     }
 
@@ -213,19 +234,25 @@ public class DocumentParseWorker {
     private AiJob.DocumentParseResult transformWiki(
             AiJob job,
             Document document,
+            WikiDocumentChangeType changeType,
             String parsedMarkdown,
+            String removedParsedMarkdown,
             List<Long> selectedWikiIds
     ) {
+        String scopeKey = job.scopeKey();
         try {
-            var response = wikiTransformationService.requestForAddedDocument(
+            var response = wikiTransformationService.requestForDocumentChange(
                     job.id(),
                     document.id(),
-                    document.scopeKey(),
+                    scopeKey,
+                    changeType,
                     parsedMarkdown,
+                    removedParsedMarkdown,
                     selectedWikiIds
             );
+            // 교체는 문서가 그대로 남으므로 추가와 같은 반영 경로를 쓴다 — 새 근거를 documentRefs에 더한다.
             WikiTransformationResult result = transactionService.applyAddedDocument(
-                    document.id(), document.scopeKey(), response);
+                    document.id(), scopeKey, response);
             // 반영 트랜잭션은 별도로 조회한 엔티티를 완료 처리한다. 이 인스턴스도 작업 결과를
             // 조립할 때 일관된 상태를 보도록만 맞추며, 여기서 다시 저장하지는 않는다.
             document.completeProcessing(result.affectedWikiIds());

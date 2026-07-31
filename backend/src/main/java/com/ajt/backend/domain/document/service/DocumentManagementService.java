@@ -165,6 +165,11 @@ public class DocumentManagementService {
         DocumentUploadRequest.validateReplacementFile(file);
         ensureNotInProgress(document);
 
+        // 새 파일을 저장하기 전에 교체 전 파싱 본문을 읽어 둔다. 저장 경로가 문서 ID 기준이라
+        // 원본이 덮어써지고, 재처리 중에는 parsed.md도 새 본문으로 덮어써져 옛 내용을 잃는다.
+        // 이 본문이 없으면 옛 내용을 근거로 쓴 문단·각주를 고치도록 지시할 수 없다.
+        String removedParsedMarkdown = readParsedMarkdownQuietly(document);
+
         String previousPath = document.originalPath();
         String newPath;
         try {
@@ -178,12 +183,14 @@ public class DocumentManagementService {
             deleteQuietly(previousPath);
         }
 
-        // TODO(계약): 파일 교체 후 재처리 "범위" 해석 확인 필요.
-        //  명세 문구 "교체 후 해당 scopeKey의 최신 Wiki 문서를 재처리"가
-        //  (a) 이 문서 1건만 증분 재처리 vs (b) scope 전체 재처리 중 어느 쪽인지 모호하다.
-        //  현재는 update의 '같은 범위=단건 증분 재처리' 패턴에 맞춰 (a)로 구현했다.
-        //  팀/계약 합의 후 (b)가 맞으면 reprocessScope(admin.memberId(), document.scopeKey())로 교체. (S15P11B106-44)
-        AiJob job = reprocessDocument(admin.memberId(), document);
+        // 재처리 범위는 이 문서 1건이다(update의 '같은 범위=단건 증분 재처리'와 같은 패턴).
+        // 교체 전 본문이 없으면 계획이 document_added로 강등되어, 옛 내용을 걷어내지 못하는
+        // 한계만 남는다. 방향이 어긋나지는 않는다(DocumentReprocessPlan.replaced 주석 참고).
+        AiJob job = reprocessDocument(
+                admin.memberId(),
+                document,
+                DocumentReprocessPlan.replaced(document.id(), removedParsedMarkdown)
+        );
         return new DocumentFileReplaceResponse(
                 String.valueOf(job.id()),
                 String.valueOf(document.id()),
@@ -294,6 +301,38 @@ public class DocumentManagementService {
     }
 
     /**
+     * 하드 삭제된 문서를 이 범위 Wiki에서 걷어내는 작업을 만듭니다. (DR-014)
+     *
+     * <p>문서 행이 이미 지워졌으므로 작업은 문서 ID만 들고 돈다. 워커의 걷어내기 경로는 문서
+     * 엔티티를 읽지 않는다.
+     *
+     * <p>파싱 본문이 없으면 걷어낼 근거가 없어 작업을 만들지 않고 {@code null}을 돌려준다.
+     * 파싱 전이거나 파싱에 실패한 문서는 Wiki에 반영된 적이 없다.
+     * TODO(계약): 이 경우 응답의 jobId가 없다. 계약은 202+jobId를 요구하므로 "재처리할 것이
+     *  없는 삭제" 응답 형태를 프론트와 합의해야 한다. (카테고리만 변경 시 200 건과 같은 성격)
+     */
+    private AiJob removeDeletedDocumentFromScope(
+            long requesterId,
+            long documentId,
+            String scopeKey,
+            String removedParsedMarkdown
+    ) {
+        if (removedParsedMarkdown == null || removedParsedMarkdown.isBlank()) {
+            log.info("파싱 본문이 없어 Wiki 걷어내기를 건너뜁니다: documentId={}, scopeKey={}",
+                    documentId, scopeKey);
+            return null;
+        }
+        AiJob job = aiJobRepository.save(AiJob.waiting(
+                requesterId,
+                scopeKey,
+                scopeKey + "/jobs/" + UUID.randomUUID(),
+                List.of(documentId)
+        ));
+        parseJobLauncher.launch(job, DocumentReprocessPlan.removed(documentId, removedParsedMarkdown));
+        return job;
+    }
+
+    /**
      * 문서의 현재 파싱 본문입니다. 파싱 전이거나 파일이 유실되면 {@code null}입니다.
      */
     private String readParsedMarkdownQuietly(Document document) {
@@ -331,13 +370,12 @@ public class DocumentManagementService {
     }
 
     /**
-     * 작업(DOC-05): 원본문서 하드 삭제.
-     * 문서와 관련 파일을 삭제한 뒤 해당 범위 Wiki 재처리를 트리거한다(202 + jobId).
+     * 작업(DOC-05): 원본문서 하드 삭제. (DR-014)
+     * 문서와 관련 파일을 삭제한 뒤 이 문서를 근거로 쓴 Wiki를 걷어낸다(202 + jobId).
      *
-     * <p>한계: 삭제된 문서가 만든 Wiki의 "확정 삭제"(고아 Wiki 제거)는 아직 하지 않는다.
-     * 현재는 남은 문서 재처리 트리거까지이며, 실제 Wiki 반영·정리는 AI/Wiki 연동 이후에 이뤄진다.
-     * TODO(위키): 문서 삭제 시 이 문서를 참조하는 Wiki의 documentRefs에서 문서를 제거하고,
-     *  참조가 0이 된 Wiki를 삭제(파일·목차·관계 정리)한다. wiki 도메인/AI 연동 후 별도 티켓으로 진행.
+     * <p>걷어내기는 {@code document_removed}로 나가며, 반영 단계에서 남은 Wiki의
+     * {@code documentRefs}에서 이 문서를 지운다. 근거가 전부 사라진 페이지의 삭제는 에이전트가
+     * 변경 목록으로 지시한다(FastAPI {@code reconcile_instruction}).
      */
     @Transactional
     public DocumentDeleteResponse delete(long documentId) {
@@ -347,8 +385,11 @@ public class DocumentManagementService {
         String scopeKey = document.scopeKey();
         String originalPath = document.originalPath();
         String parsedPath = document.parsedPath();
-        // 삭제 후 남은 문서로 범위 인덱스를 다시 만들어야 하므로 범위 단위로 재처리한다. 처리 중 문서가 있으면 충돌.
+        // 같은 공간의 Wiki를 동시에 고치지 않도록 처리 중 문서가 있으면 충돌로 막는다.
         ensureScopeNotProcessing(scopeKey);
+
+        // 파일을 지우기 전에 파싱 본문을 읽어 둔다. 걷어내기 요청의 필수값이다.
+        String removedParsedMarkdown = readParsedMarkdownQuietly(document);
 
         documentRepository.delete(document);
         documentRepository.flush();
@@ -357,18 +398,22 @@ public class DocumentManagementService {
             deleteQuietly(parsedPath);
         }
 
-        // 남은 문서 기준 범위 재처리를 트리거한다(실제 Wiki 반영·고아 Wiki 정리는 AI/Wiki 연동 후).
-        AiJob job = reprocessScope(admin.memberId(), scopeKey);
+        AiJob job = removeDeletedDocumentFromScope(
+                admin.memberId(), documentId, scopeKey, removedParsedMarkdown);
         return new DocumentDeleteResponse(
-                String.valueOf(job.id()),
+                job == null ? null : String.valueOf(job.id()),
                 scopeKey,
-                job.status().name().toLowerCase()
+                job == null ? null : job.status().name().toLowerCase()
         );
     }
 
     // 문서 한 건만 재처리 대상(UPLOADED)으로 되돌리고 AI 작업을 생성·실행한다(증분: 업로드·재시도와 동일한 패턴).
     // 파일 교체·같은 범위 수정처럼 특정 문서만 바뀐 경우에 사용한다.
     private AiJob reprocessDocument(long requesterId, Document document) {
+        return reprocessDocument(requesterId, document, DocumentReprocessPlan.added());
+    }
+
+    private AiJob reprocessDocument(long requesterId, Document document, DocumentReprocessPlan plan) {
         document.markForReprocess();
         AiJob job = aiJobRepository.save(AiJob.waiting(
                 requesterId,
@@ -376,27 +421,13 @@ public class DocumentManagementService {
                 document.scopeKey() + "/jobs/" + UUID.randomUUID(),
                 List.of(document.id())
         ));
-        parseJobLauncher.launch(job, DocumentReprocessPlan.added());
+        parseJobLauncher.launch(job, plan);
         return job;
     }
 
-    // 해당 범위의 현재 문서들을 재처리 대상(UPLOADED)으로 되돌리고 재처리 AI 작업을 생성·실행한다.
-    // 문서가 빠지는 경우(범위 변경 시 기존 범위, 삭제)의 인덱스 재생성에 사용한다.
-    // 리뷰(#3): 남은 문서가 0개면 documentIds가 비어 워커가 빈 작업을 FAILED로 마감한다(허위 실패).
-    //          "빈 범위 = Wiki 비우기"는 AI 측 처리 합의가 필요하며, 계약상 202+jobId는 그대로 반환된다. 후속 과제.
-    private AiJob reprocessScope(long requesterId, String scopeKey) {
-        List<Document> documents = documentRepository.findByScopeKey(scopeKey);
-        documents.forEach(Document::markForReprocess);
-        List<Long> documentIds = documents.stream().map(Document::id).toList();
-        AiJob job = aiJobRepository.save(AiJob.waiting(
-                requesterId,
-                scopeKey,
-                scopeKey + "/jobs/" + UUID.randomUUID(),
-                documentIds
-        ));
-        parseJobLauncher.launch(job, DocumentReprocessPlan.added());
-        return job;
-    }
+    // 범위 전체를 다시 훑던 reprocessScope는 제거했다. 문서가 빠지는 경우(범위 변경 시 기존 범위,
+    // 삭제)를 document_removed 단건으로 처리하므로 남은 문서를 다시 반영할 이유가 없다.
+    // 남은 문서가 0개일 때 빈 작업이 FAILED로 마감되던 허위 실패(옛 리뷰 #3)도 함께 사라졌다.
 
     private void ensureNotInProgress(Document document) {
         if (document.isInProgress()) {

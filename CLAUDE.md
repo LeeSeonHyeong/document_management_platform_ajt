@@ -21,6 +21,7 @@
 - `docs/conventions/rest-api-convention.md` — REST API 설계 규칙. API 추가·수정 전 읽는다.
 - `docs/requirements/요구사항정의서.md` — 기능·데이터 요구사항 확정본. 기능 구현 전 해당 FR/DR 항목을 확인한다.
 - `docs/db/erd.sql` — DB 스키마 SSOT (현재 MySQL 8.4 기준).
+- `docs/ai-handoff.md` — 현재 작업 인수인계. 다음 AI 작업자는 위 정본 문서를 읽기 전에 작업 맥락을 빠르게 확인할 수 있다.
 
 > ⚠️ **DB 스키마 변경 금지 원칙**
 > `docs/db/erd.sql`과 엔티티 스키마 매핑(`@Table`, `@Column`의 name·타입·제약, DDL)을 **임의로 변경하지 않는다.**
