@@ -6,20 +6,22 @@ import com.ajt.backend.domain.department.dto.DepartmentResponse;
 import com.ajt.backend.domain.department.dto.DepartmentUpdateRequest;
 import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
-import com.ajt.backend.domain.member.AccountStatus;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
-import com.ajt.backend.domain.member.Role;
-import com.ajt.backend.domain.member.SignupStatus;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DepartmentService {
+
+    private static final Logger log = LoggerFactory.getLogger(DepartmentService.class);
 
     private final DepartmentRepository departmentRepository;
     private final MemberRepository memberRepository;
@@ -45,6 +47,32 @@ public class DepartmentService {
     @Transactional(readOnly = true)
     public DepartmentListResponse findDepartments() {
         return DepartmentListResponse.from(departmentRepository.findAllByOrderByNameAsc());
+    }
+
+    /**
+     * S15P11B106-69 데이터 정리입니다.
+     * 부서장 자동 해제(S15P11B106-58) 도입 이전에 강등·비활성으로 자격을 잃은 채 남아 있는 부서장
+     * 지정을 해제합니다. 자격을 유지한 부서장은 그대로 두므로 반복 실행해도 안전합니다(idempotent).
+     * 해제한 건수를 반환합니다.
+     */
+    @Transactional
+    public int releaseIneligibleDepartmentManagers() {
+        List<Department> departments = departmentRepository.findByManagerIsNotNull();
+        int cleared = 0;
+        for (Department department : departments) {
+            if (!department.getManager().isEligibleAsDepartmentManager()) {
+                // 어느 부서의 어떤 지정을 해제했는지 추적할 수 있도록 부서·기존 부서장을 남긴다.
+                log.warn(
+                        "부서장 자격을 잃은 지정 해제: 부서='{}'(id={}), 기존 부서장 id={}",
+                        department.getName(),
+                        department.getId(),
+                        department.getManager().getId()
+                );
+                department.clearManager();
+                cleared++;
+            }
+        }
+        return cleared;
     }
 
     /**
@@ -165,9 +193,9 @@ public class DepartmentService {
         Long id = parseId(managerId, "관리자 ID는 숫자 문자열이어야 합니다.");
         Member manager = memberRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DEPARTMENT_MANAGER_INVALID));
-        if (manager.getRole() != Role.ADMIN
-                || manager.getSignupStatus() != SignupStatus.APPROVED
-                || manager.getAccountStatus() != AccountStatus.ACTIVE) {
+        // 수정(S15P11B106-69): 부서장 자격 판정을 Member.isEligibleAsDepartmentManager로 일원화한다.
+        //   (지정 검증과 자동 해제가 같은 자격 정의를 쓰도록 중복 제거.)
+        if (!manager.isEligibleAsDepartmentManager()) {
             throw new BusinessException(ErrorCode.DEPARTMENT_MANAGER_INVALID);
         }
         boolean alreadyAssigned = currentDepartmentId == null

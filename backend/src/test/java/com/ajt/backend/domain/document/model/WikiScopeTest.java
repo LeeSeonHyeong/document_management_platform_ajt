@@ -16,6 +16,7 @@ class WikiScopeTest {
 
         assertThat(scope.scopeKey()).isEqualTo("ALL");
         assertThat(scope.visibilityType()).isEqualTo(WikiScopeVisibilityType.ALL);
+        assertThat(scope.scopeVersion()).isZero();
         assertThat(scope.departmentRefs()).isEmpty();
         assertThat(scope.indexPath()).isEqualTo("wiki/ALL/index.md");
     }

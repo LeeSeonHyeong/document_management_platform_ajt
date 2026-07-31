@@ -337,6 +337,9 @@ class LocalVaultFS(VaultFS):
         sql = (
             "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
             "d.address, d.kind, d.title, d.category, d.original_file_name, d.tags, "
+            # 호출자가 이 행이 라이브인지 작업층인지 알아야 한다 —
+            # `FederatedVaultFS.search_chunks` 의 병합 기준이다.
+            "d.layer, "
             "rank AS score "
             "FROM document_chunks dc "
             "JOIN chunks_fts fts ON dc.rowid = fts.rowid "

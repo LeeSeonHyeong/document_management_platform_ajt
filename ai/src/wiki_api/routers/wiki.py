@@ -30,6 +30,22 @@ def _category_map(categories: list[CategoryRef]) -> dict[str, str]:
     return {c.name: c.wikiCategoryId for c in categories if c.name and c.wikiCategoryId}
 
 
+def _federation(app: FastAPI, payload) -> dict:
+    """창구 경로 재료를 세션 인자로 옮긴다 (계약 1.6.0).
+
+    셋 중 하나라도 없으면 세션이 push 로 돈다 (`session.py._federated`) — 여기서 미리
+    판정하지 않는 이유는 판정이 한 곳에만 있어야 하기 때문이다.
+
+    **`wikiCapability` 를 로그에 찍지 않는다.** 이 함수가 하는 일은 전달뿐이다.
+    """
+    return {
+        "wiki_capability": payload.wikiCapability,
+        "scope_version": payload.scopeVersion,
+        "backend_base_url": getattr(app.state, "backend_base_url", "") or None,
+        "internal_api_key": getattr(app.state, "api_key", "") or None,
+    }
+
+
 def _hydration_pages(payload: TransformRequest) -> list[dict]:
     """`selectedWikis` → `SpringVaultFS.open(pages=…)` 가 받는 dict.
 
@@ -44,6 +60,12 @@ def _hydration_pages(payload: TransformRequest) -> list[dict]:
         "summary": wiki.summary,
         "contentMarkdown": wiki.contentMarkdown,
         "categoryName": names.get(wiki.categoryId or ""),
+        # 백엔드가 아직 이 필드를 안 보내 오늘은 None 이다 (push 경로, 계약 §3 기준).
+        # `SpringVaultFS._insert_live` (spring.py:86-89) 가 이미 받을 준비가 돼 있어
+        # 백엔드가 채우기 시작하는 날 자동으로 옳아진다. 지금 빼 두면 그날도 계속
+        # 버려져 `address_from_wiki_path` 복원이 일어나지 않고, 기존 위키 주소가
+        # 실제 파일명과 달라져 백엔드 링크 검증에 걸리는 상태가 이어진다.
+        "wikiPath": wiki.wikiPath,
     } for wiki in payload.selectedWikis]
 
 
@@ -101,6 +123,7 @@ def build_router(app: FastAPI) -> APIRouter:
             runtime=app.state.runtime, pages=_hydration_pages(payload),
             index_markdown=payload.currentIndex,
             error_code="WIKI_TRANSFORMATION_FAILED",
+            **_federation(app, payload),
         ) as session:
             affected: list[dict] = []
             if payload.changeType == "document_added":
@@ -147,6 +170,7 @@ def build_router(app: FastAPI) -> APIRouter:
             # 빈 목차를 얹는다: 에이전트가 요약을 고치면 그 변경만 작업 층에 남고,
             # Spring 은 `indexEntries` 로 목차를 재구성한다 (설계 §3).
             index_markdown="", error_code="WIKI_EDIT_FAILED",
+            **_federation(app, payload),
         ) as session:
             address = await session.address_for_wiki_id(payload.wikiId)
             # 요청이 원본문서를 주므로 되물을 필요가 없다. lint 원문 대조용으로 넣어둔다.

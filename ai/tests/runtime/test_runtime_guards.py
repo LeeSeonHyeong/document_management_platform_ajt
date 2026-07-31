@@ -9,6 +9,7 @@ the DeepAgents path too, and these pin it without needing DeepAgents installed.
 
 import pytest
 
+from agent_runtime.base import FAST
 from agent_runtime.guards import bypassed_server
 from agent_runtime.claude_code import CALL_TIMEOUT_SECONDS as CLI_TIMEOUT
 from agent_runtime.deep_agents import (
@@ -112,3 +113,86 @@ def test_no_changes_is_not_a_bypass():
 def test_an_empty_tool_log_is_inconclusive_not_a_failure():
     """Counting can be off. Calling that a bypass would fail every such run."""
     assert bypassed_server(CHANGE, {}) is False
+
+
+def test_load_runtime_passes_model_settings_to_deepagents():
+    from agent_runtime import load_runtime
+
+    runtime = load_runtime("deepagents", "openai:main",
+                           fast_model="openai:fast-x", quality_model="openai:quality-y",
+                           credentials={"openai": ("key-1", "https://gw.example")})
+
+    assert runtime.model == "openai:main"
+    assert runtime._model_for(FAST) == "openai:fast-x"
+
+
+def test_load_runtime_gives_each_model_its_own_providers_credentials():
+    """에이전트 모델과 티어 모델의 프로바이더가 다르면 각자 맞는 키가 가야 한다
+    (Important 1 — Anthropic 키가 OpenAI 클라이언트로 새던 문제)."""
+    from agent_runtime import load_runtime
+
+    runtime = load_runtime(
+        "deepagents", "anthropic:claude-opus-4-6",
+        fast_model="openai:gpt-5.4-mini",
+        credentials={
+            "anthropic": ("anthropic-key", "https://anthropic.example"),
+            "openai": ("openai-key", "https://openai.example"),
+        })
+
+    assert runtime._credential_kwargs(runtime.model) == {
+        "api_key": "anthropic-key", "base_url": "https://anthropic.example"}
+    assert runtime._credential_kwargs(runtime._model_for(FAST)) == {
+        "api_key": "openai-key", "base_url": "https://openai.example"}
+
+
+def test_load_runtime_credentials_work_when_the_agent_model_is_unset():
+    """`AI_MODEL` 이 비고 티어 모델만 있어도 그 티어 모델의 키가 가야 한다 — 전에는
+    자격증명이 에이전트 모델 기준 하나뿐이라 이 경우 자격증명이 통째로 비었다."""
+    from agent_runtime import load_runtime
+
+    runtime = load_runtime(
+        "deepagents", None, fast_model="openai:gpt-5.4-mini",
+        credentials={"openai": ("openai-key", "")})
+
+    assert runtime._credential_kwargs(runtime._model_for(FAST)) == {"api_key": "openai-key"}
+
+
+def test_load_runtime_rejects_model_credentials_for_claude_code():
+    """CLI 는 로그인 세션으로 과금한다. 키를 받아 조용히 무시하면 그 키로 도는 줄 안다."""
+    from agent_runtime import load_runtime
+
+    with pytest.raises(ValueError, match="로그인 세션으로 과금"):
+        load_runtime("claude-code", credentials={"anthropic": ("key-1", "")})
+
+
+def test_run_actually_goes_through_asyncio_run(tmp_path, monkeypatch):
+    """`run()` 이 `asyncio.run(...)` 으로 `_run()` 을 실제로 구동하는지 확인한다.
+
+    이 버그는 `import asyncio` 가 `_run` 안 지역 임포트로만 있어서 `run()` 에서
+    `NameError` 가 났던 것이다 (`run()` 을 실제로 부르는 테스트가 없어서 놓쳤다). 여기서는
+    `_run` 을 코루틴을 돌려주는 fake 로 갈아끼워 `asyncio.run` 경로를 실제로 태운다 —
+    MCP 서버도 모델 호출도 없다.
+    """
+    from agent_runtime.deep_agents import DeepAgentsRuntime
+
+    async def fake_run(self, instruction, root, scope_key, job_id, tool_log, limit):
+        return "결과 텍스트", {"input_tokens": 3, "output_tokens": 5}, 2
+
+    monkeypatch.setattr(DeepAgentsRuntime, "_run", fake_run)
+
+    runtime = DeepAgentsRuntime()
+    result = runtime.run("지시", root=tmp_path, scope_key="ALL", job_id="job-1")
+
+    assert result.text == "결과 텍스트"
+    assert result.input_tokens == 3
+    assert result.output_tokens == 5
+    assert result.turns == 2
+    assert result.error is None
+
+
+def test_load_runtime_rejects_base_url_for_claude_code():
+    """base_url 단독으로도 거부해야 한다. api_key 체크만으로는 base_url 삭제 시 통과된다."""
+    from agent_runtime import load_runtime
+
+    with pytest.raises(ValueError, match="로그인 세션으로 과금"):
+        load_runtime("claude-code", credentials={"anthropic": ("", "https://gw.example")})

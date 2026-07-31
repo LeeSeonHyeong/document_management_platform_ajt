@@ -15,6 +15,8 @@ import com.ajt.backend.domain.document.model.AiJobStatus;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
+import com.ajt.backend.domain.document.model.WikiScope;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.document.service.CurrentMemberRole;
@@ -33,12 +35,14 @@ import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.AiClientFailureType;
 import com.ajt.backend.global.ai.client.WikiEditRequest;
 import com.ajt.backend.global.ai.client.WikiEditResponse;
+import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import com.ajt.backend.global.error.FieldErrorResponse;
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Optional;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -60,6 +64,8 @@ class WikiChatMessageServiceTest {
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final AiClient aiClient = mock(AiClient.class);
     private final WikiTransformationApplier applier = mock(WikiTransformationApplier.class);
+    private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
+    private final WikiCapabilityService wikiCapabilityService = mock(WikiCapabilityService.class);
     private final WikiChatMessageService service = new WikiChatMessageService(
             currentMemberProvider,
             wikiRepository,
@@ -70,13 +76,17 @@ class WikiChatMessageServiceTest {
             documentFileStorage,
             aiJobRepository,
             aiClient,
-            applier
+            applier,
+            wikiScopeRepository,
+            wikiCapabilityService
     );
 
     private final AtomicLong nextMessageId = new AtomicLong(1L);
 
     @BeforeEach
     void setUp() {
+        given(wikiScopeRepository.findById(SCOPE_KEY)).willReturn(Optional.of(WikiScope.all()));
+        given(wikiCapabilityService.issue(eq(SCOPE_KEY), eq(0L), any(Duration.class))).willReturn("capability");
         given(wikiChatMessageRepository.save(any(WikiChatMessage.class))).willAnswer(invocation -> {
             WikiChatMessage message = invocation.getArgument(0);
             assign(message, "id", nextMessageId.getAndIncrement());
@@ -156,7 +166,10 @@ class WikiChatMessageServiceTest {
         assertThat(request.scopeKey()).isEqualTo(SCOPE_KEY);
         assertThat(request.instruction()).isEqualTo("중복 규정을 정리해줘.");
         assertThat(request.currentWiki().title()).isEqualTo("휴가 규정");
+        assertThat(request.currentWiki().wikiPath()).isEqualTo("wiki/ALL/pages/101.md");
         assertThat(request.currentWiki().contentMarkdown()).isEqualTo("# 휴가 규정\n본문");
+        assertThat(request.wikiCapability()).isEqualTo("capability");
+        assertThat(request.scopeVersion()).isZero();
         assertThat(request.evidenceDocuments()).singleElement().satisfies(document -> {
             assertThat(document.documentId()).isEqualTo("15");
             assertThat(document.originalFileName()).isEqualTo("취업규칙.pdf");

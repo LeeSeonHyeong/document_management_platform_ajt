@@ -186,6 +186,18 @@ async def _ingest_one(root: Path, scope_key: str, seq: int, source: Path,
         "error": result.error,
         "reply": result.text,
     }
+    # 턴별·툴별 내역. 총계만으로는 D8 을 좁힐 수 없다 — 시간 ≈ 출력토큰 ÷ 55 로 거의
+    # 일정하므로 출력 토큰이 곧 지연시간이고, 줄이려면 어느 턴에서 나오는지부터 알아야
+    # 한다. `stream-json` 을 내지 못하는 런타임에서는 `None` 이라 키를 빼 둔다.
+    if result.detail is not None:
+        record["detail"] = result.detail
+        # 서버측 집계와 스트림측 집계가 다르면 CLI 가 부른 툴이 서버에 도달하지 않았다는
+        # 뜻이다. 어느 한쪽만으로는 그것을 알 수 없다.
+        stream_calls = result.detail.get("toolCalls") or {}
+        if stream_calls != result.tool_calls:
+            record["toolCallMismatch"] = {
+                "server": result.tool_calls, "stream": stream_calls,
+            }
 
     await LocalVaultFS.open(root, scope_key, job_id)
     try:
@@ -692,8 +704,13 @@ async def _ingest_via_api(root: Path, scope_key: str, seq: int, source: Path,
 
 async def _run_batch(root: Path, scope_key: str, sources: list[Path],
                      runtime_name: str, model: str | None,
-                     dry_run: bool = False, client=None) -> dict:
-    """`client` 가 있으면 AI 서버를 HTTP 로 부른다 (`--via-api`), 없으면 옛 경로다."""
+                     dry_run: bool = False, client=None,
+                     effort: str | None = None) -> dict:
+    """`client` 가 있으면 AI 서버를 HTTP 로 부른다 (`--via-api`), 없으면 옛 경로다.
+
+    `effort` 를 여기까지 넘겨야 한다. `manifest.json` 에만 적고 실행에 안 걸면 그 기록이
+    거짓이 되고 대조 측정 전체가 무의미해진다.
+    """
     if client is not None:
         sequence = WikiIdSequence(root)
         categories = CategoryRegistry(root)
@@ -706,7 +723,7 @@ async def _run_batch(root: Path, scope_key: str, sources: list[Path],
             "order": [s.name for s in sources], "documents": records,
         }
 
-    runtime = load_runtime(runtime_name, model)
+    runtime = load_runtime(runtime_name, model, effort=effort)
     sequence = WikiIdSequence(root)
     records = []
     for seq, source in enumerate(sources, start=1):
@@ -718,6 +735,7 @@ async def _run_batch(root: Path, scope_key: str, sources: list[Path],
         "scope": scope_key,
         "runtime": runtime_name,
         "model": getattr(runtime, "model", None),
+        "effort": getattr(runtime, "effort", None),
         "order": [s.name for s in sources],
         "documents": records,
     }
@@ -737,6 +755,11 @@ def main() -> None:
     parser.add_argument("--scope", default="ALL", help="scope_key")
     parser.add_argument("--runtime", default="claude-code", choices=["claude-code", "deepagents"])
     parser.add_argument("--model", default=None, help="런타임 모델")
+    # 안 주면 CLI 기본값으로 돈다. `manifest.json` 에는 그 사실이 `None` 으로 남는다 —
+    # 2026-07-27 측정들은 그 기록조차 없어서 어느 단계로 돌았는지 지금도 모른다 (D8).
+    parser.add_argument("--effort", default=None,
+                        choices=["low", "medium", "high", "xhigh", "max"],
+                        help="claude-code 사고 노력 단계. 안 주면 CLI 기본값")
     parser.add_argument("--dry-run", action="store_true",
                         help="AI 서버 응답을 기록하되 파일에 반영하지 않는다")
     parser.add_argument("--via-api", default=None, metavar="URL",
@@ -750,6 +773,11 @@ def main() -> None:
 
     if not args.sources:
         parser.error("원본문서 파일 경로가 최소 1개 필요하다")
+
+    if args.effort and args.via_api:
+        # `--via-api` 는 AI 서버가 자기 런타임으로 돈다. 여기서 준 `--effort` 는 어디에도
+        # 안 걸리는데 `manifest.json` 에는 적힌다 — 거짓 기록이다.
+        parser.error("--effort 는 --via-api 와 함께 쓸 수 없다. AI 서버를 띄울 때 정한다")
 
     warning = dry_run_warning(args.dry_run, args.from_experiment)
     if warning:
@@ -767,11 +795,12 @@ def main() -> None:
         try:
             manifest = experiment.start(
                 runtime=args.runtime,
-                model=load_runtime(args.runtime, args.model).model,
+                model=load_runtime(args.runtime, args.model, effort=args.effort).model,
                 scope=args.scope,
                 corpus=[s.name for s in sources],
                 purpose=args.purpose or "(기록 없음)",
                 dry_run=args.dry_run,
+                effort=args.effort,
             )
         except FileExistsError as exc:
             parser.error(str(exc))
@@ -790,12 +819,14 @@ def main() -> None:
     async def run() -> dict:
         if not args.via_api:
             return await _run_batch(root, args.scope, sources, args.runtime, args.model,
-                                    dry_run=args.dry_run)
+                                    dry_run=args.dry_run, effort=args.effort)
         key = args.internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
         if not key:
             print("경고: 내부 API 키가 없다 — AI 서버가 모든 요청을 401 로 막는다 "
                   "(--internal-api-key 또는 INTERNAL_API_KEY)", file=sys.stderr)
         async with api_client(args.via_api, key) as client:
+            # `--via-api` 는 AI 서버가 자기 런타임으로 돈다 — `effort` 는 그 서버를 띄울
+            # 때 정해지므로 여기서 넘길 수 없다. 그 경로로 잰 값은 서버 쪽 설정에 달렸다.
             return await _run_batch(root, args.scope, sources, args.runtime, args.model,
                                     dry_run=args.dry_run, client=client)
 

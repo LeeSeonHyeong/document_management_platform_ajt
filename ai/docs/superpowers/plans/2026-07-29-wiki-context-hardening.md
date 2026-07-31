@@ -246,12 +246,22 @@ Task 6·7 의 결과를 해석하려면 이것이 먼저다. 지금은 총계만
 - [ ] `RunResult` 에 그 내역을 추가한다. 기존 필드는 유지한다 (계약 응답에는 안 실린다)
 - [ ] `--effort` 를 인자로 받아 전달할 수 있게 한다. 기본값은 지정하지 않는다
 
-**Step 3: 기록에 남긴다** — **막혔다.** `backend_sim.py` 가 이 브랜치에 없다 (챗봇
-브랜치에만 있고 develop 은 하네스를 안 들고 있다 — `INDEX.md` 이관 주석). 챗봇 MR 병합 후 처리한다.
+**Step 3: 기록에 남긴다** — 완료. 챗봇 MR(!71) 병합으로 `backend_sim.py` 가 develop 에 왔다.
 
-- [ ] `backend_sim.py` 가 `manifest.json` 에 `effort` 를 적는다. **지금까지 모든 측정이 CLI 기본값으로 돌았고 그 값이 기록되지 않았다**
-- [ ] `manifest.json` 에 CLI 판본과 설정 출처도 적는다 — 스폰된 CLI 가 운영자 `~/.claude` 를 물려받아 툴 표면이 달라진다 (`INDEX.md` 「측정을 막고 있는 것」)
-- [ ] `report.json` 에 턴별·툴별 내역을 담는다. `RunResult.detail` 이 그 모양이다
+- [x] `backend_sim.py` 가 `manifest.json` 에 `effort` 를 적는다. `None` 이 「CLI 기본값」을
+      뜻하고 키를 항상 쓴다 — 「기록을 안 했다」와 구별해야 한다. 2026-07-27 측정들이
+      후자였고 어느 단계로 돌았는지 지금도 모른다
+- [x] `manifest.json` 에 `cliVersion`·`settingSources` 도 적는다. **인자로 받지 않고
+      `experiment.py` 가 직접 읽는다** — 호출부가 잊을 수 있는 것을 조건 기록에서 빼면 안 된다
+- [x] `report.json` 에 턴별·툴별 내역을 담는다 (`RunResult.detail`)
+- [x] **서버측·스트림측 툴 집계가 다르면 `toolCallMismatch` 로 남긴다.** 실제로 그 상황을
+      겪었다 — 스트림 `Bash` 10회, 서버측 0회. 어느 한쪽만으로는 알 수 없다
+- [x] `--effort` 를 `load_runtime` 까지 배선했다. **`manifest.json` 에만 적고 실행에 안 걸면
+      그 기록이 거짓이고 대조 측정 전체가 무의미해진다** — 실제 실행 경로(`_run_batch`)가
+      빠져 있어서 그렇게 될 뻔했다
+- [x] `--effort` + `--via-api` 조합을 거부한다. 그 경로는 AI 서버가 자기 런타임으로 도므로
+      여기서 준 값이 어디에도 안 걸리는데 manifest 에는 적힌다
+- [x] `deepagents` 에 `effort` 를 넘기면 거부한다. 조용히 무시하면 같은 거짓 기록이 된다
 
 **Verify:**
 - [x] `uv run pytest tests/runtime -m "not ocr"` 통과 — 46건

@@ -553,7 +553,7 @@ class WikiQueryClient:
 cd ai && uv run pytest tests/mcp/test_query_client.py -v
 ```
 
-Expected: 5 passed
+Expected: 8 passed
 
 - [ ] **Step 5: 전체 테스트가 여전히 통과하는 것을 확인한다**
 
@@ -561,7 +561,7 @@ Expected: 5 passed
 cd ai && uv run pytest -m "not ocr" -q
 ```
 
-Expected: 511 passed, 2 skipped (기존 506 + 신규 5)
+Expected: 516 passed, 2 skipped (직전 508 + 신규 8)
 
 - [ ] **Step 6: 커밋한다**
 
@@ -579,7 +579,19 @@ git commit -m "feat(ai): Wiki 조회 창구 HTTP 클라이언트 추가"
 **Files:**
 - Create: `src/wiki_mcp/vaultfs/federated.py`
 - Modify: `src/wiki_mcp/vaultfs/__init__.py`
+- Modify: `src/wiki_mcp/vaultfs/local.py` — `search_chunks` 의 SELECT 목록에 `d.layer` 추가
 - Test: `tests/mcp/test_federated_vaultfs.py`
+
+**먼저 `local.py` 를 고쳐야 한다.** 이 태스크의 검색 병합은 각 행이 라이브인지 작업층인지 알아야 하는데, `search_chunks` 의 SELECT 목록에 `layer` 가 없다 (`local.py:337-342`). 그대로 두면 `row.get("layer") == "work"` 가 영원히 거짓이 되어 **작업층 결과가 전부 버려진다.**
+
+`visible_documents` 뷰는 `SELECT d.*` 이므로 `layer` 를 이미 갖고 있다 (`shared/schema.sql:105-114`). SELECT 목록에 한 항목을 더하면 된다.
+
+```
+- "d.address, d.kind, d.title, d.category, d.original_file_name, d.tags, "
++ "d.address, d.kind, d.title, d.category, d.original_file_name, d.tags, d.layer, "
+```
+
+돌려주는 dict 에 키가 하나 늘어나는 **덧붙이는 변경**이다. 기존 소비자(`tools/search.py`)는 모르는 키를 무시한다. 그래도 dict 키를 정확히 대조하는 기존 테스트가 있을 수 있으므로, 이 변경 직후 `uv run pytest -m "not ocr"` 를 돌려 확인한다.
 
 **Interfaces:**
 - Consumes: `WikiQueryClient`·`QueryNotFound` (Task 2), `SpringVaultFS`(`_insert_live`·`_sync_page_references` 상속)·`address_from_wiki_path`·`PAGES_PREFIX` (기존)
@@ -742,7 +754,28 @@ cd ai && uv run pytest tests/mcp/test_federated_vaultfs.py -v
 
 Expected: FAIL — `ImportError: cannot import name 'FederatedVaultFS'`
 
-- [ ] **Step 3: 어댑터를 구현한다**
+- [ ] **Step 3: `search_chunks` 가 `layer` 를 돌려주게 한다**
+
+`src/wiki_mcp/vaultfs/local.py` 의 `search_chunks` SELECT 목록(`:338-341` 근처)을 고친다.
+
+```python
+        sql = (
+            "SELECT dc.content, dc.page, dc.header_breadcrumb, dc.chunk_index, "
+            "d.address, d.kind, d.title, d.category, d.original_file_name, d.tags, "
+            "d.layer, "
+            "rank AS score "
+            "FROM document_chunks dc "
+```
+
+바로 확인한다 — dict 키를 대조하는 기존 테스트가 있으면 여기서 드러난다.
+
+```bash
+cd ai && uv run pytest -m "not ocr" -q
+```
+
+Expected: 여전히 전부 통과. 깨지면 그 테스트가 정확한 키 집합을 기대하는 것이므로, 그 테스트를 `layer` 를 포함하도록 고친다 — SELECT 를 되돌리지 않는다. `layer` 없이는 이 태스크가 성립하지 않는다.
+
+- [ ] **Step 4: 어댑터를 구현한다**
 
 `src/wiki_mcp/vaultfs/federated.py`를 새로 만든다.
 
@@ -878,7 +911,21 @@ class FederatedVaultFS(SpringVaultFS):
             remote_address = address_by_wiki_id.get(backlink_id)
             if remote_address is None or remote_address in known:
                 continue
-            rows.append({"address": remote_address, "origin": "live"})
+            # 소비자가 요구하는 키를 다 채운다. `tools/search.py:174-176` 이 역링크 행마다
+            # `r["reference_type"]` 과 `r["title"]` 을 대괄호로 읽으므로, 두 키를 빼면
+            # 에이전트가 `references` 툴을 부르는 순간 KeyError 로 죽는다 — 병합·삭제
+            # 판단이 정확히 그 경로다. 원격 창구는 인용/링크를 구분해 주지 않으므로
+            # `links_to` 로 표시하고, 제목은 카탈로그에서 가져온다.
+            # 제목은 하이드레이션이 이미 SQLite 에 넣어뒀다. `super().get` 을 쓰는 이유:
+            # `self.get` 은 `_ensure_body` 를 타서 본문을 당긴다 — 역링크 목록을 그리려고
+            # 남의 페이지 본문을 전부 받아올 이유가 없다.
+            row = await super().get(scope_id, remote_address)
+            rows.append({
+                "address": remote_address,
+                "origin": "live",
+                "reference_type": "links_to",
+                "title": (row or {}).get("title"),
+            })
         return rows
 
     async def search_chunks(self, scope_id: str, query: str, limit: int,
@@ -919,7 +966,7 @@ class FederatedVaultFS(SpringVaultFS):
         return merged[:limit]
 ```
 
-- [ ] **Step 4: export 를 추가한다**
+- [ ] **Step 5: export 를 추가한다**
 
 `src/wiki_mcp/vaultfs/__init__.py`에 추가한다. `spring` 임포트 줄 바로 아래에 둔다.
 
@@ -929,7 +976,7 @@ from .federated import FederatedVaultFS  # noqa: E402,F401
 
 그리고 `__all__`에 `"FederatedVaultFS",`를 추가한다.
 
-- [ ] **Step 5: 테스트가 통과하는 것을 확인한다**
+- [ ] **Step 6: 테스트가 통과하는 것을 확인한다**
 
 ```bash
 cd ai && uv run pytest tests/mcp/test_federated_vaultfs.py -v
@@ -939,20 +986,21 @@ Expected: 5 passed
 
 `_insert_live`·`_sync_page_references`의 실제 시그니처가 다르면 `src/wiki_mcp/vaultfs/spring.py:85-99`를 보고 맞춘다. 그 파일이 같은 두 헬퍼를 쓴다.
 
-- [ ] **Step 6: 전체 테스트가 통과하는 것을 확인한다**
+- [ ] **Step 7: 전체 테스트가 통과하는 것을 확인한다**
 
 ```bash
 cd ai && uv run pytest -m "not ocr" -q
 ```
 
-Expected: 516 passed, 2 skipped
+Expected: 이 태스크의 신규 테스트만큼 늘어나고, **기존 실패는 0** 이다. 절대 총계는 앞
+태스크의 신규분에 따라 달라지므로 숫자를 맞추려 하지 말고 "기존이 깨지지 않았다" 만 본다.
 
-- [ ] **Step 7: 커밋한다**
+- [ ] **Step 8: 커밋한다**
 
 ```bash
 cd /home/ssafy/workspace/S15P11B106
 git add ai/src/wiki_mcp/vaultfs/federated.py ai/src/wiki_mcp/vaultfs/__init__.py \
-        ai/tests/mcp/test_federated_vaultfs.py
+        ai/src/wiki_mcp/vaultfs/local.py ai/tests/mcp/test_federated_vaultfs.py
 git status --short
 git commit -m "feat(ai): 창구에서 라이브 층을 당기는 FederatedVaultFS 추가"
 ```
@@ -993,6 +1041,9 @@ async def test_search_tool_renders_two_sections(federated):
     assert "작업 중" in rendered
     assert "반영된 위키" in rendered
     assert rendered.index("작업 중") < rendered.index("반영된 위키")
+    # 헤더와 건별 형식은 그대로여야 한다 — 섹션만 끼워 넣는 변경이다.
+    assert rendered.startswith("**")
+    assert "[보기](" in rendered
 ```
 
 - [ ] **Step 2: 테스트가 실패하는 것을 확인한다**
@@ -1007,47 +1058,62 @@ Expected: FAIL — `AssertionError: '작업 중' not in ...`
 
 - [ ] **Step 3: 렌더링을 나눈다**
 
-`src/wiki_mcp/tools/search.py`의 `search` 메서드에서 결과를 줄로 만드는 부분을 이렇게 감싼다. 기존 한 덩어리 렌더링을 헬퍼로 빼고 두 번 부른다.
+`src/wiki_mcp/tools/search.py:83-110` 의 `search` 를 아래로 교체하고 `_match_lines` 를 더한다.
+
+**바꾸는 것은 두 가지뿐이다** — 헤더 뒤에 섹션 구분을 넣는 것과, 건별 렌더링을 헬퍼로 뽑는 것. **필터링(glob·태그)·`record_search` 텔레메트리·빈 결과 문구·건별 출력 형식은 한 글자도 바꾸지 않는다.** 그것들을 바꾸면 기존 테스트와 측정 근거가 깨진다.
 
 ```python
-    async def search(self, query: str, pattern: str, tags: list[str] | None,
-                     limit: int) -> str:
+    async def search(self, query: str, pattern: str, tags: list[str] | None, limit: int) -> str:
         matches = await self.fs.search_chunks(
-            self.scope_id, query, limit, self._kind_filter(pattern))
+            self.scope_id, query, limit, self._kind_filter(pattern)
+        )
+        if pattern not in MATCH_ALL and ("*" in pattern or "?" in pattern):
+            matches = [m for m in matches if glob_match(m["address"], pattern)]
+        if tags:
+            wanted = {t.lower() for t in tags}
+            matches = [m for m in matches
+                       if wanted.issubset({t.lower() for t in (m.get("tags") or [])})]
+        # 질의 문자열을 남긴다 — 기본은 꺼져 있고 `--query-log` 를 준 세션에서만 쓴다
+        # (`wiki_mcp/telemetry.py`). 필터를 거친 뒤 세는 이유는 에이전트가 실제로 본 건수가
+        # 그것이기 때문이다. 0건도 남긴다 — 못 찾은 질의가 가장 중요한 신호다.
+        record_search(query, len(matches), scope_key=self.scope_key)
+
         if not matches:
-            return f"`{query}` 에 맞는 것이 없습니다."
+            return f"`{query}`에 해당하는 것이 {self.scope_key} 범위에 없다."
 
-        # origin 이 없으면 push 경로다 — 한 덩어리로 그대로 보여준다. 창구 경로에서만
-        # 나눈다 (설계 §7.1). 섞으면 에이전트가 자기 초안과 라이브를 구분하지 못한다.
-        if not any("origin" in match for match in matches):
-            return "\n".join(self._match_lines(matches, query))
+        lines = [f"**{len(matches)}건** — `{query}`:\n"]
+        # `origin` 이 없으면 과도기 push 경로다 — 지금까지처럼 한 덩어리로 보여준다.
+        # 창구 경로에서만 나눈다 (설계 §7.1). 섞으면 에이전트가 자기 초안과 라이브를
+        # 구분하지 못해 남의 페이지를 자기 것으로 착각한다.
+        if not any("origin" in m for m in matches):
+            lines.extend(self._match_lines(matches, query))
+            return "\n".join(lines)
 
-        work = [match for match in matches if match.get("origin") == "work"]
-        live = [match for match in matches if match.get("origin") != "work"]
-        lines: list[str] = []
+        work = [m for m in matches if m.get("origin") == "work"]
+        live = [m for m in matches if m.get("origin") != "work"]
         if work:
-            lines.append(f"**작업 중 ({len(work)}):** 이번 작업에서 쓴 것입니다.")
+            lines.append(f"**작업 중 ({len(work)}건)** — 이번 작업에서 쓴 것이다.\n")
             lines.extend(self._match_lines(work, query))
         if live:
-            if lines:
-                lines.append("")
-            lines.append(f"**반영된 위키 ({len(live)}):** 이미 서비스 중입니다.")
+            lines.append(f"**반영된 위키 ({len(live)}건)** — 이미 서비스 중이다.\n")
             lines.extend(self._match_lines(live, query))
         return "\n".join(lines)
 
     def _match_lines(self, matches: list[dict], query: str) -> list[str]:
-        """한 건을 한 줄로. 기존 렌더링을 그대로 옮긴 것이다."""
+        """건별 렌더링. `search` 에 있던 루프를 그대로 옮긴 것이다 — 형식 변경 없음."""
         lines = []
-        for match in matches:
-            label = match.get("title") or match["address"]
-            breadcrumb = match.get("header_breadcrumb")
-            where = f" — {breadcrumb}" if breadcrumb else ""
-            lines.append(f"- `{match['address']}` {label}{where}")
-            lines.append(f"    {_snippet(match.get('content') or '', query)}")
+        for m in matches:
+            page = f" ({m['page']}쪽)" if m.get("page") else ""
+            crumb = f"\n  {m['header_breadcrumb']}" if m.get("header_breadcrumb") else ""
+            link = deep_link(self.scope_key, m["address"])
+            lines.append(
+                f"**{m['address']}**{page} — {label(m)} [보기]({link}){crumb}\n"
+                f"```\n{_snippet(m.get('content', ''), query)}\n```\n"
+            )
         return lines
 ```
 
-기존 `search` 본문의 렌더링 코드가 위 `_match_lines`와 다르면, **기존 코드를 그대로** `_match_lines`로 옮기고 위 `search`만 새로 쓴다. 렌더링 형식을 바꾸면 기존 테스트가 깨진다.
+임포트는 그대로 쓴다 — `MATCH_ALL`·`glob_match`·`label`·`deep_link`·`record_search`·`_snippet` 이 이미 이 파일에 있다.
 
 - [ ] **Step 4: 테스트가 통과하는 것을 확인한다**
 
@@ -1571,7 +1637,8 @@ cd ai && uv run pytest tests/mcp/test_federated_gateway.py -v
 cd ai && uv run pytest -m "not ocr" -q
 ```
 
-Expected: 게이트웨이 11 passed, 전체 527 passed 2 skipped (기존 506 + 5 + 5 + 1 + 6 + 4)
+Expected: 게이트웨이 파일의 테스트 전부 통과. 전체는 이 태스크의 신규분만큼 늘어나고
+**기존 실패는 0** 이다.
 
 정확한 총계는 실제 실행값을 쓴다. **추정값을 결과로 보고하지 않는다.**
 
@@ -1899,18 +1966,22 @@ if __name__ == "__main__":
 
 - [ ] **Step 2: 코퍼스 구조를 확인하고 측정한다**
 
-```bash
-cd ai && ls experiments/corpus-ko/
-cd ai && uv run python experiments/measure_federated.py --corpus experiments/corpus-ko --scope ALL
+**코퍼스 구조가 게이트웨이가 기대하는 것과 다르다 — 확인된 사실이다.**
+
+```
+실제           experiments/corpus-ko/pages/*.md      (100장) · queries.json · README.md
+게이트웨이     <corpus>/wiki/{scopeKey}/pages/*.md   (`query_gateway.py` 의 GatewayState.load)
 ```
 
-`corpus-ko/pages/`가 `wiki/{scope}/pages/` 구조가 아니면 게이트웨이가 못 읽는다. 그러면 임시 디렉터리에 그 구조로 심볼릭 링크를 만들어 넘긴다.
+그래서 임시 디렉터리에 기대 구조로 심볼릭 링크를 만들어 넘긴다. 코퍼스 자체를 옮기지 않는다 — `evaluate_sqlite.py` 와 `INDEX.md` 의 기존 측정이 그 경로를 쓴다.
 
 ```bash
 cd ai && mkdir -p /tmp/ajt-corpus/wiki/ALL && \
   ln -sfn "$(pwd)/experiments/corpus-ko/pages" /tmp/ajt-corpus/wiki/ALL/pages && \
   uv run python experiments/measure_federated.py --corpus /tmp/ajt-corpus --scope ALL
 ```
+
+`index.md` 는 없다. 게이트웨이의 `index_markdown` 이 빈 문자열을 돌려주므로 목차 하이드레이션은 빈 채로 돈다 — 이 측정의 목적(검색 응답 크기·호출 수)에는 영향이 없다.
 
 - [ ] **Step 3: 실측값으로 상한을 정한다**
 

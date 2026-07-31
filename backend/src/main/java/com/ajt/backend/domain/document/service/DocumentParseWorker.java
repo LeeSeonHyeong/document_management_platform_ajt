@@ -65,17 +65,32 @@ public class DocumentParseWorker {
         }
         List<AiJob.DocumentParseResult> documentResults = new ArrayList<>();
         for (Long documentId : job.documentIds()) {
+            AiJob currentJob = aiJobRepository.findById(job.id()).orElse(job);
+            if (currentJob.status() == com.ajt.backend.domain.document.model.AiJobStatus.CANCELLED) {
+                break;
+            }
             Document document = documentsById.get(documentId);
             if (document == null) {
                 // 업로드 후 삭제된 문서다. 나머지 문서는 계속 처리하고 이 문서만 실패로 남긴다.
-                documentResults.add(AiJob.DocumentParseResult.failed(
+                AiJob.DocumentParseResult result = AiJob.DocumentParseResult.failed(
                         documentId,
                         "문서를 찾을 수 없습니다.",
                         null
-                ));
+                );
+                documentResults.add(result);
+                currentJob.recordResult(result);
+                aiJobRepository.save(currentJob);
                 continue;
             }
-            documentResults.add(parseDocument(job, document));
+            AiJob.DocumentParseResult result = parseDocument(job, document);
+            documentResults.add(result);
+            AiJob resultJob = aiJobRepository.findById(job.id()).orElse(job);
+            resultJob.recordResult(result);
+            aiJobRepository.save(resultJob);
+        }
+        if (aiJobRepository.findById(job.id()).orElse(job).status()
+                == com.ajt.backend.domain.document.model.AiJobStatus.CANCELLED) {
+            return;
         }
         job.finish(documentResults);
         aiJobRepository.save(job);

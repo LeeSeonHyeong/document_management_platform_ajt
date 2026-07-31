@@ -3,6 +3,7 @@ package com.ajt.backend.domain.wiki.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
@@ -11,13 +12,18 @@ import com.ajt.backend.domain.wiki.model.WikiCategory;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
+import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
+import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.ai.client.WikiTransformationRequest;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
 import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -32,13 +38,23 @@ class WikiTransformationServiceTest {
     private final WikiRepository wikiRepository = mock(WikiRepository.class);
     private final WikiCategoryRepository wikiCategoryRepository = mock(WikiCategoryRepository.class);
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
+    private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
+    private final WikiCapabilityService wikiCapabilityService = mock(WikiCapabilityService.class);
     private final WikiTransformationApplier applier = mock(WikiTransformationApplier.class);
     private final WikiTransformationService service = new WikiTransformationService(
             aiClient,
             wikiRepository,
             wikiCategoryRepository,
-            wikiFileStorage
+            wikiFileStorage,
+            wikiScopeRepository,
+            wikiCapabilityService
     );
+
+    @BeforeEach
+    void setUpCapability() {
+        given(wikiScopeRepository.findById(SCOPE_KEY)).willReturn(Optional.of(WikiScope.all()));
+        given(wikiCapabilityService.issue(eq(SCOPE_KEY), eq(0L), any())).willReturn("capability");
+    }
 
     @Test
     @DisplayName("변환 요청은 AI 응답만 반환하고 Wiki 반영을 수행하지 않는다")
@@ -86,6 +102,8 @@ class WikiTransformationServiceTest {
         assertThat(request.parsedMarkdown()).isEqualTo("# 취업 규칙");
         assertThat(request.removedParsedMarkdown()).isNull();
         assertThat(request.currentIndex()).isEqualTo(CURRENT_INDEX);
+        assertThat(request.wikiCapability()).isEqualTo("capability");
+        assertThat(request.scopeVersion()).isZero();
         assertThat(request.currentCategories())
                 .extracting(
                         WikiTransformationRequest.CurrentCategory::categoryId,
@@ -97,6 +115,7 @@ class WikiTransformationServiceTest {
             assertThat(wiki.categoryId()).isEqualTo("10");
             assertThat(wiki.title()).isEqualTo("휴가 규정");
             assertThat(wiki.summary()).isEqualTo("연차와 반차 사용 기준");
+            assertThat(wiki.wikiPath()).isEqualTo("wiki/ALL/pages/101.md");
             assertThat(wiki.contentMarkdown()).isEqualTo("# 휴가 규정\n본문");
             assertThat(wiki.documentRefs()).containsExactly("15", "18");
             assertThat(wiki.wikiRefs()).containsExactly("108");

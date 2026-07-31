@@ -107,6 +107,29 @@ public class AiJob {
         this.finishedAt = LocalDateTime.now();
     }
 
+    /**
+     * 아직 시작하지 않은 문서를 멈추라는 관리자 요청입니다. 이미 시작한 문서의 결과는
+     * {@link #recordResult(DocumentParseResult)}로 계속 누적할 수 있습니다.
+     */
+    public void cancel() {
+        if (status != AiJobStatus.WAITING && status != AiJobStatus.PROCESSING) {
+            throw new IllegalStateException("대기 또는 처리 중인 작업만 취소할 수 있습니다.");
+        }
+        status = AiJobStatus.CANCELLED;
+        finishedAt = LocalDateTime.now();
+    }
+
+    /** 현재 처리 중이던 문서의 결과를 기존 JSON 결과에 누적한다. */
+    public void recordResult(DocumentParseResult result) {
+        if (status != AiJobStatus.PROCESSING && status != AiJobStatus.CANCELLED) {
+            throw new IllegalStateException("처리 중이거나 취소된 작업에만 문서 결과를 기록할 수 있습니다.");
+        }
+        List<DocumentParseResult> updated = new java.util.ArrayList<>(documentResults());
+        updated.removeIf(existing -> existing.documentId() == result.documentId());
+        updated.add(result);
+        documentResults = List.copyOf(updated);
+    }
+
     private void requireProcessing() {
         if (status != AiJobStatus.PROCESSING) {
             throw new IllegalStateException("PROCESSING 상태의 작업만 종료할 수 있습니다.");

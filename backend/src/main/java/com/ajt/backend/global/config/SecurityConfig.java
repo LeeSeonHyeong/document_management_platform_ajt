@@ -4,6 +4,7 @@ import static org.springframework.security.config.Customizer.withDefaults;
 
 import com.ajt.backend.global.auth.AccessTokenAuthenticationFilter;
 import com.ajt.backend.global.auth.CsrfProtectionFilter;
+import com.ajt.backend.global.ai.capability.InternalApiKeyFilter;
 import com.ajt.backend.global.error.RestAccessDeniedHandler;
 import com.ajt.backend.global.error.RestAuthenticationEntryPoint;
 import org.springframework.context.annotation.Bean;
@@ -21,6 +22,7 @@ public class SecurityConfig {
             HttpSecurity http,
             AccessTokenAuthenticationFilter accessTokenAuthenticationFilter,
             CsrfProtectionFilter csrfProtectionFilter,
+            InternalApiKeyFilter internalApiKeyFilter,
             RestAuthenticationEntryPoint authenticationEntryPoint,
             RestAccessDeniedHandler accessDeniedHandler
     ) throws Exception {
@@ -40,6 +42,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/password-resets",
                                 "/api/v1/signup-departments"
                         ).permitAll()
+                        .requestMatchers("/internal/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling
@@ -47,6 +50,7 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler)
                 )
                 .addFilterBefore(accessTokenAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(internalApiKeyFilter, AccessTokenAuthenticationFilter.class)
                 .addFilterAfter(csrfProtectionFilter, AccessTokenAuthenticationFilter.class)
                 .httpBasic(withDefaults())
                 .build();

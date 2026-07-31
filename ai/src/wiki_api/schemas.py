@@ -131,12 +131,20 @@ class SelectedWiki(Strict):
     contentMarkdown: str
     documentRefs: list[str] = Field(default_factory=list)
     wikiRefs: list[str] = Field(default_factory=list)
+    # 계약 1.6.0. 기존 Wiki 에 필수다 — 본문의 내부 링크가 파일명(pageKey) 기준이라
+    # 이것 없이 pages/{wikiId}.md 로 적재하면 링크가 어느 페이지도 가리키지 못한다.
+    # Optional 로 두는 이유는 하위호환뿐이다: 이 값이 없으면 링크 관계가 빈다.
+    wikiPath: str | None = None
 
 
 class TransformRequest(Strict):
     jobId: str
     documentId: str
     scopeKey: str
+    # 계약 1.6.0. 둘 다 선택 필드다 — 없으면 selectedWikis 로 도는 과도기 경로다
+    # (`session.py._federated`). wikiCapability 는 로그·예외·telemetry 에 남기지 않는다.
+    wikiCapability: str | None = None
+    scopeVersion: int | None = None
     # removed 때는 걷어낼 원본문서가 없어질 뿐 새 원본문서 본문은 없다 — 빈 값을 허용한다.
     parsedMarkdown: str = ""
     currentIndex: str = ""
@@ -303,6 +311,14 @@ class SelectionResponse(Strict):
 class WikiBody(Strict):
     title: str
     contentMarkdown: str
+    # 계약 1.6.0 의 `wiki-edits` 요청 예시가 `currentWiki.wikiPath` 를 담는다. `Strict` 가
+    # `extra="forbid"` 라서 **받지 않으면 계약 예시를 그대로 보낸 첫 호출이 400** 이다
+    # (`CategoryRef` docstring 이 경고하는 것과 같은 실패 유형).
+    #
+    # **받아만 두고 쓰지 않는다.** 수정 요청의 주소는 `_edit_pages` 가 짓는
+    # `pages/{wikiId}.md` 이고, 이 값을 주소로 쓰는 것은 창구가 실경로가 된 뒤의 일이다
+    # (`SelectedWiki.wikiPath` 와 같은 이유 — 설계 4.2 의 확인된 결함).
+    wikiPath: str | None = None
 
 
 class EvidenceDocument(Strict):
@@ -321,6 +337,9 @@ class EditRequest(Strict):
     scopeKey: str
     instruction: str
     currentWiki: WikiBody
+    # 계약 1.6.0. 변환과 같다 — 셋이 다 있을 때만 창구 경로다.
+    wikiCapability: str | None = None
+    scopeVersion: int | None = None
     evidenceDocuments: list[EvidenceDocument] = Field(default_factory=list)
     chatHistory: list[ChatMessage] = Field(default_factory=list)
     # 계약에는 없다. 있으면 이미 있는 카테고리를 다시 만들지 않고(DR-019) 없으면 빈 목록이라

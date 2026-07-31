@@ -107,8 +107,16 @@ public class MemberService {
         Role role = parseRoleOrNull(request.role());
         AccountStatus accountStatus = parseAccountStatusOrNull(request.accountStatus());
 
+        // 수정(S15P11B106-69): 부서장 자동 해제 판단은 Member.updateByAdmin이 수행한다(FR-USR-008 v2.12).
+        //   서비스는 이 회원이 부서장으로 지정된 부서(있으면)를 조회해 넘겨주는 역할만 한다.
+        //   엔티티가 저장소에 접근하지 않으므로 담당 부서 조회는 서비스 책임이다. manager_id는 UNIQUE라
+        //   대상 부서는 최대 1건이며, 부서장이 아니면 null을 넘긴다.
+        //   ※ 부서 이동은 해제 대상이 아니다: 지정 로직(findAssignableManager)이 담당 부서 소속을 검사하지
+        //     않으므로 부서 이동은 지정 자격을 깨지 않는다(자격 판정에 소속 부서가 없음).
+        Department managedDepartment = departmentRepository.findByManager_Id(member.getId()).orElse(null);
+
         try {
-            member.updateByAdmin(department, request.name(), role, accountStatus);
+            member.updateByAdmin(department, request.name(), role, accountStatus, managedDepartment);
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, exception.getMessage());
         }

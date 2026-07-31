@@ -11,7 +11,7 @@ function DropdownButton({ children, open, warning, onClick }) {
       ref={open?.ref}
       type="button"
       onClick={onClick}
-      className={`focus-ring flex min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs ${
+      className={`focus-ring flex w-full min-w-40 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-xs ${
         warning
           ? 'border-amber-300 bg-amber-50 text-amber-600'
           : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-primary-300'
@@ -23,7 +23,7 @@ function DropdownButton({ children, open, warning, onClick }) {
   )
 }
 
-export function QueueVisibilityDropdown({ item, onApplied }) {
+export function QueueVisibilityDropdown({ item, onApplied, localOnly = false }) {
   const buttonRef = useRef(null)
   const popupRef = useRef(null)
   const expectedSelectionRef = useRef(null)
@@ -115,18 +115,20 @@ export function QueueVisibilityDropdown({ item, onApplied }) {
     setOpen(false)
     setSearch('')
 
-    updateMutation.mutate(
-      {
-        documentCategoryId: item.documentCategoryId,
-        visibilityType: nextVisibility,
-        departmentIds: allVisible ? [] : selectedIds,
-      },
-      {
-        onError: () => {
-          expectedSelectionRef.current = null
+    if (!localOnly) {
+      updateMutation.mutate(
+        {
+          documentCategoryId: item.documentCategoryId,
+          visibilityType: nextVisibility,
+          departmentIds: allVisible ? [] : selectedIds,
         },
-      },
-    )
+        {
+          onError: () => {
+            expectedSelectionRef.current = null
+          },
+        },
+      )
+    }
   }
 
   return (
@@ -224,16 +226,29 @@ function CheckOption({ label, checked, onClick }) {
   )
 }
 
-export function QueueCategorySelect({ item }) {
+export function QueueCategorySelect({ item, onApplied, localOnly = false }) {
   const { data: categories = [] } = useDocumentCategories(item.scopeKey)
   const updateMutation = useUpdateDocument(item.documentId)
+  const scopeSelected = Boolean(item.scopeKey)
   const currentCategoryMissing =
     Boolean(item.documentCategoryId) &&
-    !categories.some((category) => category.documentCategoryId === item.documentCategoryId)
+    !categories.some(
+      (category) => String(category.documentCategoryId) === String(item.documentCategoryId),
+    )
 
   function updateCategory(event) {
     const documentCategoryId = event.target.value
     if (!documentCategoryId) return
+    const category = categories.find(
+      (item) => String(item.documentCategoryId) === String(documentCategoryId),
+    )
+    if (localOnly) {
+      onApplied?.({
+        documentCategoryId,
+        documentCategoryName: category?.name ?? null,
+      })
+      return
+    }
     updateMutation.mutate({
       documentCategoryId,
       visibilityType: item.visibilityType,
@@ -242,21 +257,30 @@ export function QueueCategorySelect({ item }) {
   }
 
   return (
-    <div className="relative min-w-36">
+    <div className="relative min-w-40">
       <select
         aria-label={`${item.originalFileName} 카테고리`}
         value={item.documentCategoryId ?? ''}
         onChange={updateCategory}
-        disabled={updateMutation.isPending}
+        disabled={!scopeSelected || updateMutation.isPending}
         className={`focus-ring w-full appearance-none rounded-lg border px-3 py-2 pr-8 text-left text-xs ${
           item.documentCategoryId
             ? 'border-slate-200 bg-slate-50 text-slate-700'
-            : 'border-amber-300 bg-amber-50 text-amber-600'
+            : scopeSelected
+              ? 'border-amber-300 bg-amber-50 text-amber-600'
+              : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
         }`}
       >
-        <option value="">카테고리 선택</option>
+        <option value="">
+          {scopeSelected ? '카테고리 선택' : '공개 부서를 먼저 선택하세요'}
+        </option>
         {currentCategoryMissing && (
           <option value={item.documentCategoryId}>{item.documentCategoryName ?? '현재 카테고리'}</option>
+        )}
+        {scopeSelected && categories.length === 0 && (
+          <option value="" disabled>
+            등록된 카테고리가 없습니다
+          </option>
         )}
         {categories.map((category) => (
           <option key={category.documentCategoryId} value={category.documentCategoryId}>

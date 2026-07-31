@@ -181,6 +181,7 @@ export default function DocumentTable({
         <div className="flex justify-center">
           <QueueVisibilityDropdown
             item={doc}
+            localOnly={doc.previewOnly}
             onApplied={(changes) => onQueueMetadataChange?.(doc.documentId, changes)}
           />
         </div>
@@ -189,7 +190,13 @@ export default function DocumentTable({
     {
       key: 'documentCategoryName',
       header: '카테고리',
-      render: (doc) => <QueueCategorySelect item={doc} />,
+      render: (doc) => (
+        <QueueCategorySelect
+          item={doc}
+          localOnly={doc.previewOnly}
+          onApplied={(changes) => onQueueMetadataChange?.(doc.documentId, changes)}
+        />
+      ),
     },
     {
       key: 'status',

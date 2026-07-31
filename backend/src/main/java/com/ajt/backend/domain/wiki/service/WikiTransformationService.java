@@ -4,6 +4,8 @@ import com.ajt.backend.domain.wiki.model.Wiki;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
+import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.ai.client.WikiTransformationRequest;
@@ -12,6 +14,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Duration;
 import org.springframework.stereotype.Service;
 
 /**
@@ -27,17 +30,23 @@ public class WikiTransformationService {
     private final WikiRepository wikiRepository;
     private final WikiCategoryRepository wikiCategoryRepository;
     private final WikiFileStorage wikiFileStorage;
+    private final WikiScopeRepository wikiScopeRepository;
+    private final WikiCapabilityService wikiCapabilityService;
 
     public WikiTransformationService(
             AiClient aiClient,
             WikiRepository wikiRepository,
             WikiCategoryRepository wikiCategoryRepository,
-            WikiFileStorage wikiFileStorage
+            WikiFileStorage wikiFileStorage,
+            WikiScopeRepository wikiScopeRepository,
+            WikiCapabilityService wikiCapabilityService
     ) {
         this.aiClient = aiClient;
         this.wikiRepository = wikiRepository;
         this.wikiCategoryRepository = wikiCategoryRepository;
         this.wikiFileStorage = wikiFileStorage;
+        this.wikiScopeRepository = wikiScopeRepository;
+        this.wikiCapabilityService = wikiCapabilityService;
     }
 
     /**
@@ -54,17 +63,25 @@ public class WikiTransformationService {
             List<Long> selectedWikiIds
     ) {
         String currentIndex = currentIndex(scopeKey);
-        return aiClient.transformWiki(new WikiTransformationRequest(
-                String.valueOf(jobId),
-                String.valueOf(documentId),
-                scopeKey,
-                WikiDocumentChangeType.DOCUMENT_ADDED,
-                parsedMarkdown,
-                null,
-                currentIndex,
-                currentCategories(scopeKey),
-                selectedWikis(scopeKey, selectedWikiIds)
-        ));
+        long scopeVersion = wikiScopeRepository.findById(scopeKey).orElseThrow().scopeVersion();
+        String capability = wikiCapabilityService.issue(scopeKey, scopeVersion, Duration.ofMinutes(30));
+        try {
+            return aiClient.transformWiki(new WikiTransformationRequest(
+                    String.valueOf(jobId),
+                    String.valueOf(documentId),
+                    scopeKey,
+                    WikiDocumentChangeType.DOCUMENT_ADDED,
+                    parsedMarkdown,
+                    null,
+                    currentIndex,
+                    currentCategories(scopeKey),
+                    selectedWikis(scopeKey, selectedWikiIds),
+                    capability,
+                    scopeVersion
+            ));
+        } finally {
+            wikiCapabilityService.revoke(capability);
+        }
     }
 
     /**
@@ -107,6 +124,7 @@ public class WikiTransformationService {
                     String.valueOf(wiki.wikiCategoryId()),
                     wiki.title(),
                     wiki.summary() == null ? wiki.title() : wiki.summary(),
+                    wiki.wikiPath(),
                     contentMarkdown,
                     toStrings(wiki.documentRefs()),
                     toStrings(wiki.wikiRefs())

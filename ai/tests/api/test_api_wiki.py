@@ -170,6 +170,24 @@ def test_the_selected_wiki_is_hydrated_at_its_wiki_id_address(make_client):
     assert PAGE_ADDRESS in runtime.seen
 
 
+def test_a_selected_wiki_with_a_wiki_path_is_hydrated_there(make_client):
+    """백엔드가 `selectedWikis[].wikiPath` 를 채워 보내면 그 주소가 복원돼야 한다
+    (`_hydration_pages`, routers/wiki.py). 오늘은 백엔드가 이 필드를 안 보내
+    `None` 이 실려 위 테스트처럼 `pages/{wikiId}.md` 로 도는 게 현재 동작이고,
+    이 테스트는 필드가 채워지는 날 자동으로 옳아지는 것을 고정한다."""
+    class ListingRuntime(FakeRuntime):
+        async def arun(self, instruction, *, fs, scope_id, **_):
+            self.seen = [d["address"] for d in await fs.list_documents(scope_id)]
+            return RunResult(text="변경 없음", tool_calls={"guide": 1})
+
+    runtime = ListingRuntime()
+    selected_with_path = dict(SELECTED_PAGE, wikiPath=f"wiki/{SCOPE}/pages/legacy/comm-guide.md")
+    response = _post(make_client(runtime), request_with(selectedWikis=[selected_with_path]))
+    assert response.status_code == 200, response.json()
+    assert "pages/legacy/comm-guide.md" in runtime.seen
+    assert PAGE_ADDRESS not in runtime.seen
+
+
 def test_no_changes_is_a_200_with_empty_lists(make_client):
     """재투입에서 변경 0 은 정상 결과다 (FR-DOC-012). 실패가 아니다."""
     response = _post(make_client(FakeRuntime("noop")))

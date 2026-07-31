@@ -13,6 +13,8 @@ import static org.mockito.Mockito.never;
 
 import com.ajt.backend.domain.wiki.model.Wiki;
 import com.ajt.backend.domain.wiki.model.WikiCategory;
+import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
@@ -26,6 +28,7 @@ import com.ajt.backend.global.ai.client.WikiTransformationResponse.WikiChange;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -73,6 +76,7 @@ class WikiTransformationApplierTest {
 
     private final WikiRepository wikiRepository = mock(WikiRepository.class);
     private final WikiCategoryRepository wikiCategoryRepository = mock(WikiCategoryRepository.class);
+    private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
     private final WikiFileMutation wikiFileMutation = mock(WikiFileMutation.class);
     private final WikiSearchIndexer wikiSearchIndexer = mock(WikiSearchIndexer.class);
@@ -82,7 +86,8 @@ class WikiTransformationApplierTest {
                     wikiCategoryRepository,
                     wikiFileStorage,
                     wikiSearchIndexer,
-                    new WikiMarkdownLinkValidator()
+                    new WikiMarkdownLinkValidator(),
+                    wikiScopeRepository
             );
 
     private final List<Wiki> savedWikis = new ArrayList<>();
@@ -92,6 +97,7 @@ class WikiTransformationApplierTest {
 
     @BeforeEach
     void setUpRepositories() throws Exception {
+        given(wikiScopeRepository.findById(SCOPE_KEY)).willReturn(Optional.of(WikiScope.all()));
         given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn("# 목차");
         given(wikiFileStorage.beginMutation()).willReturn(wikiFileMutation);
         given(wikiRepository.saveAndFlush(any(Wiki.class))).willAnswer(invocation -> {
@@ -123,6 +129,18 @@ class WikiTransformationApplierTest {
             savedWikis.remove(invocation.<Wiki>getArgument(0));
             return null;
         }).given(wikiRepository).delete(any(Wiki.class));
+    }
+
+    @Test
+    @DisplayName("반영으로 Wiki 공간이 바뀌면 scopeVersion을 증가시킨다")
+    void incrementsScopeVersionAfterApplyingChanges() {
+        WikiScope scope = WikiScope.all();
+        given(wikiScopeRepository.findById(SCOPE_KEY)).willReturn(Optional.of(scope));
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(), List.of(), List.of(new IndexEntry("101", 1, "휴가", "요약"))));
+
+        assertThat(scope.scopeVersion()).isEqualTo(1L);
     }
 
     @Test

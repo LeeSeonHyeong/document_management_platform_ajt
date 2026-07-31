@@ -4,6 +4,7 @@ import com.ajt.backend.domain.document.model.AiJobStatus;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
@@ -22,6 +23,7 @@ import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.WikiEditRequest;
 import com.ajt.backend.global.ai.client.WikiEditResponse;
+import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.io.IOException;
@@ -30,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.time.Duration;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,6 +58,8 @@ public class WikiChatMessageService {
     private final AiJobRepository aiJobRepository;
     private final AiClient aiClient;
     private final WikiTransformationApplier applier;
+    private final WikiScopeRepository wikiScopeRepository;
+    private final WikiCapabilityService wikiCapabilityService;
 
     public WikiChatMessageService(
             CurrentMemberProvider currentMemberProvider,
@@ -66,7 +71,9 @@ public class WikiChatMessageService {
             DocumentFileStorage documentFileStorage,
             AiJobRepository aiJobRepository,
             AiClient aiClient,
-            WikiTransformationApplier applier
+            WikiTransformationApplier applier,
+            WikiScopeRepository wikiScopeRepository,
+            WikiCapabilityService wikiCapabilityService
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiRepository = wikiRepository;
@@ -78,6 +85,8 @@ public class WikiChatMessageService {
         this.aiJobRepository = aiJobRepository;
         this.aiClient = aiClient;
         this.applier = applier;
+        this.wikiScopeRepository = wikiScopeRepository;
+        this.wikiCapabilityService = wikiCapabilityService;
     }
 
     @Transactional(readOnly = true)
@@ -120,17 +129,25 @@ public class WikiChatMessageService {
     }
 
     private WikiEditResponse requestEdit(Wiki wiki, String instruction, List<WikiChatMessage> history) {
+        long scopeVersion = wikiScopeRepository.findById(wiki.scopeKey())
+                .orElseThrow(() -> new BusinessException(ErrorCode.WIKI_NOT_FOUND))
+                .scopeVersion();
+        String capability = wikiCapabilityService.issue(wiki.scopeKey(), scopeVersion, Duration.ofMinutes(30));
         try {
             return aiClient.editWiki(new WikiEditRequest(
                     String.valueOf(wiki.id()),
                     wiki.scopeKey(),
                     instruction,
-                    new WikiEditRequest.WikiBody(wiki.title(), requireWikiContent(wiki)),
+                    new WikiEditRequest.WikiBody(wiki.title(), wiki.wikiPath(), requireWikiContent(wiki)),
                     evidenceDocuments(wiki),
-                    chatHistory(history)
+                    chatHistory(history),
+                    capability,
+                    scopeVersion
             ));
         } catch (AiClientException exception) {
             throw new BusinessException(ErrorCode.WIKI_EDIT_FAILED);
+        } finally {
+            wikiCapabilityService.revoke(capability);
         }
     }
 

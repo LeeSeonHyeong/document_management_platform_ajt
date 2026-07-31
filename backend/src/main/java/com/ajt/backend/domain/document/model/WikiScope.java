@@ -31,6 +31,9 @@ public class WikiScope {
     @Column(name = "index_path", nullable = false, length = 500)
     private String indexPath;
 
+    @Column(name = "scope_version", nullable = false)
+    private long scopeVersion;
+
     protected WikiScope() {
     }
 
@@ -65,5 +68,13 @@ public class WikiScope {
 
     public String indexPath() {
         return indexPath;
+    }
+
+    public long scopeVersion() {
+        return scopeVersion;
+    }
+
+    public void incrementScopeVersion() {
+        scopeVersion++;
     }
 }

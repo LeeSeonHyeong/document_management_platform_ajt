@@ -114,6 +114,13 @@ public class Document {
         status = DocumentStatus.PARSING;
     }
 
+    public void cancel() {
+        if (status != DocumentStatus.UPLOADED) {
+            throw new IllegalStateException("UPLOADED 상태의 문서만 취소할 수 있습니다.");
+        }
+        status = DocumentStatus.CANCELLED;
+    }
+
     public void completeParsing(String parsedPath) {
         completeParsing(parsedPath, List.of());
     }

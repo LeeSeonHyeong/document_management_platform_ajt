@@ -121,7 +121,7 @@ def test_unexpected_exception_on_a_contract_path_keeps_the_contract_code():
 def test_failure_stage_values_are_lower_snake_case():
     assert [s.value for s in FailureStage] == [
         "context_load", "agent_start", "agent_timeout",
-        "agent_error", "lint_failed", "assemble",
+        "agent_error", "lint_failed", "assemble", "scope_changed",
     ]
 
 

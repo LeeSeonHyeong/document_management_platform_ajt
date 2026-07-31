@@ -33,6 +33,7 @@ deepagents = [
     "langchain",
     "langchain-mcp-adapters",
     "langchain-anthropic",
+    "langchain-openai",
     "python-dotenv",
 ]
 
