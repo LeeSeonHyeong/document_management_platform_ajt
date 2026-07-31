@@ -322,7 +322,10 @@ const collectionVariable = (collection, key) =>
 // 1.4.0 을 건너뛴 이유는 README 가 1.4.0, 컬렉션이 1.3.1 로 갈라져 있었기 때문이다.
 // 1.6.1 은 범위 단위 관계 조회 창구 1개 추가다 — 기존 필드·경로 무변경이라 patch 다
 // (S15P11B106-153).
-const expectedContractVersion = "1.6.1";
+// 1.6.2 는 relationChanges[] 필드 이름을 Spring 어휘(sourceWikiRef)에 맞춘 것과 그
+// action 값을 Spring 어휘(add/remove)에 맞춘 것이다 — 필드·값 이름만 바뀌고 구조는
+// 그대로라 patch 다 (S15P11B106-157).
+const expectedContractVersion = "1.6.2";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

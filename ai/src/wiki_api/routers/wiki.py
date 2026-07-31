@@ -18,7 +18,7 @@ from agent_runtime.limits import time_limit_seconds
 from ..changes import build_response
 from ..deps import make_api_key_guard, request_id
 from ..errors import FailureStage, InternalError
-from ..schemas import CategoryRef, EditRequest, EditResponse, RelationChange, \
+from ..schemas import CategoryRef, EditRequest, EditResponse, \
     SelectionRequest, SelectionResponse, TransformRequest, TransformResponse
 from ..selection import select_wikis
 from ..session import WikiSession, assert_within_ceiling
@@ -78,8 +78,7 @@ async def _assemble(session: WikiSession, *, summary: str,
     """
     try:
         return await build_response(session.fs, session.scope_id, summary=summary,
-                                    current_categories=current_categories,
-                                    live_citations=session.live_citations)
+                                    current_categories=current_categories)
     except InternalError:
         raise
     except Exception as exc:
@@ -155,9 +154,12 @@ def build_router(app: FastAPI) -> APIRouter:
             response = await _assemble(
                 session, summary=result.text.strip() or "변경이 없습니다.",
                 current_categories=_category_map(payload.currentCategories))
-            if payload.changeType == "document_removed":
-                await _append_removal_unlinks(response, session, affected,
-                                              payload.documentId)
+            # 사라진 문서를 가리키던 Wiki-원본문서 관계는 더 이상 `relationChanges` 로
+            # 걷어내지 않는다 (S15P11B106-157) — 그 관계는 애초에 `wiki_document` 타입
+            # 이었고, 이제 위키↔문서 연결은 오직 `wikiChanges[].evidence` 로만 나간다.
+            # `affected` 목록(그 문서를 인용하던 backlink)은 재조정 지시문에 이미
+            # 실려(reconcile_instruction) 에이전트가 각주를 고치므로, 고쳐진 페이지는
+            # 스스로 `wikiChanges` 항목과 갱신된 evidence 를 낸다.
             return response
 
     @router.post("/wiki-edits", response_model=EditResponse)
@@ -229,27 +231,3 @@ async def _restage_replacement(session: WikiSession, payload: TransformRequest,
     row = await session.fs.get(session.scope_id, address)
     await session.stage_source(payload.documentId, payload.parsedMarkdown,
                                (row or {}).get("original_file_name"))
-
-
-async def _append_removal_unlinks(response: TransformResponse, session: WikiSession,
-                                  affected: list[dict], document_id: str) -> None:
-    """삭제된 문서를 가리키던 관계를 걷어낸다 (DR-002).
-
-    이 관계는 문서가 사라졌다는 사실 자체에서 나온다 — 에이전트가 본문의 각주를 지웠는지와
-    별개로, 사라진 문서를 가리키는 링크는 반영 시점에 끊어야 한다.
-    """
-    # 조립 단계가 이미 낸 unlink 는 다시 내지 않는다 — 각주를 떨어뜨린 페이지는 I4 경로에서
-    # 같은 (wikiRef, documentId) 로 이미 나왔다.
-    seen: set[tuple[str, str]] = {
-        (relation.wikiRef, relation.documentId or "")
-        for relation in response.relationChanges
-        if relation.action == "unlink" and relation.type == "wiki_document"
-    }
-    for item in affected:
-        row = await session.fs.get(session.scope_id, item["address"])
-        wiki_ref = str(row["wiki_id"]) if row and row.get("wiki_id") else None
-        if not wiki_ref or (wiki_ref, document_id) in seen:
-            continue
-        seen.add((wiki_ref, document_id))
-        response.relationChanges.append(RelationChange(
-            action="unlink", type="wiki_document", wikiRef=wiki_ref, documentId=document_id))

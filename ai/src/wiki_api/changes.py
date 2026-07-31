@@ -98,30 +98,18 @@ class CategoryRefs:
         return list(self._created.values())
 
 
-async def snapshot_citations(fs, scope_id: str) -> dict[str, set[str]]:
-    """주소별 인용 원본문서 id. 에이전트가 쓰기 **전에** 찍어야 의미가 있다.
-
-    `document_references` 는 층이 없다 — 에이전트가 페이지를 쓰면 `sync_references` 가 그
-    주소의 간선을 통째로 갈아치우므로, 떨어진 각주를 사후에 알 방법이 없다 (I4).
-    """
-    snapshot: dict[str, set[str]] = {}
-    for doc in await fs.list_documents(scope_id):
-        if doc.get("kind") not in ("page", "index"):
-            continue
-        ids = {str(edge["source_id"])
-               for edge in await fs.get_forward_references(scope_id, doc["address"])
-               if edge["reference_type"] == "cites" and edge.get("source_id")}
-        if ids:
-            snapshot[doc["address"]] = ids
-    return snapshot
-
-
 async def build_response(fs, scope_id: str, *, summary: str,
                          current_categories: dict[str, str] | None = None,
-                         live_citations: dict[str, set[str]] | None = None
                          ) -> TransformResponse:
+    """Wiki-원본문서 관계(`wiki_document`)는 여기서 더 이상 relationChanges 로 내지 않는다
+    (S15P11B106-157).
+
+    Spring 은 evidence 를 `document_refs` 에 추가한다. 인용이 끊어진 항목을 걷어내는
+    경로는 Spring 에 아직 없다 (별건) — 하지만 `wikiChanges[].evidence` 가 갱신된 인용
+    목록을 그대로 실어 매 요청마다 이번 문서와의 연결을 다시 알리므로, 떨어진 각주를
+    별도 `remove` 로 알릴 필요는 없다.
+    """
     changes = await fs.pending_changes(scope_id)
-    before = live_citations or {}
 
     refs = TempRefs()
     # 먼저 참조를 전부 확정한다 — relationChanges 가 다른 변경을 가리킬 수 있다.
@@ -170,28 +158,12 @@ async def build_response(fs, scope_id: str, *, summary: str,
             evidence=evidence,
         ))
 
-        action = "unlink" if change["type"] in ("remove", "merge") else "link"
-        # 각주를 떨어뜨린 것도 관계 변경이다 (I4, DR-002). 본문만 갱신하고 관계를 남기면
-        # 근거가 사라진 Wiki-원본문서 링크가 영구히 붙어 있다. 신규 페이지는 옛 상태가
-        # 없으므로 대상이 아니다.
-        if not is_new:
-            still_cited = {str(edge["source_id"])
-                           for edge in await fs.get_forward_references(scope_id,
-                                                                      change["address"])
-                           if edge["reference_type"] == "cites" and edge.get("source_id")}
-            for document_id in sorted(before.get(change["address"], set()) - still_cited):
-                relations.append(RelationChange(action="unlink", type="wiki_document",
-                                                wikiRef=ref, documentId=document_id))
-        for item in evidence:
-            if item.documentId:
-                relations.append(RelationChange(action=action, type="wiki_document",
-                                                wikiRef=ref, documentId=item.documentId))
+        action = "remove" if change["type"] in ("remove", "merge") else "add"
+        # Wiki-원본문서 관계(`wiki_document`)는 더 이상 여기서 내지 않는다
+        # (S15P11B106-157) — `wikiChanges[].evidence` 가 같은 정보를 나르고
+        # `originDocumentId` 를 항상 포함해 evidence 가 비어도 이번 문서와의 연결이
+        # 보장된다. `relationChanges` 는 이제 위키↔위키(`wiki_wiki`) 전용이다.
         for edge in await fs.get_forward_references(scope_id, change["address"]):
-            if edge["reference_type"] == "cites":
-                if edge.get("source_id"):
-                    relations.append(RelationChange(action=action, type="wiki_document",
-                                                    wikiRef=ref, documentId=str(edge["source_id"])))
-                continue
             if edge["reference_type"] != "links_to":
                 continue
             # `get_forward_references()` 는 **대상** 문서 행을 조인해 주므로 그 주소의 컬럼
@@ -203,7 +175,7 @@ async def build_response(fs, scope_id: str, *, summary: str,
             target = refs.ref_for(_page_key(edge["address"]) or "")
             if target:
                 relations.append(RelationChange(action=action, type="wiki_wiki",
-                                                wikiRef=ref, targetWikiRef=target))
+                                                sourceWikiRef=ref, targetWikiRef=target))
 
     index_row = await fs.get(scope_id, "index.md")
     return TransformResponse(
@@ -218,8 +190,8 @@ async def build_response(fs, scope_id: str, *, summary: str,
 def _dedupe(relations: list[RelationChange]) -> list[RelationChange]:
     seen, out = set(), []
     for relation in relations:
-        key = (relation.action, relation.type, relation.wikiRef,
-               relation.documentId, relation.targetWikiRef)
+        key = (relation.action, relation.type, relation.sourceWikiRef,
+               relation.targetWikiRef)
         if key not in seen:
             seen.add(key)
             out.append(relation)

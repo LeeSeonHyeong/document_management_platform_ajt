@@ -45,6 +45,9 @@ public enum ErrorCode {
     MEMBER_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자를 찾을 수 없습니다."),
     SIGNUP_REQUEST_NOT_FOUND(HttpStatus.NOT_FOUND, "가입 신청을 찾을 수 없습니다."),
     INVALID_SIGNUP_STATUS(HttpStatus.CONFLICT, "승인 대기 상태의 신청만 처리할 수 있습니다."),
+    // 수정(S15P11B106-71): 신규 추가. 가입 승인(APPROVED)되지 않은 계정을 사용자 수정 API로 고치려는 경우의 409
+    //   코드(FR-USR-007: 관리자는 "승인된" 사용자 계정만 수정 가능. PENDING/REJECTED는 승인·거부 전용 API로만 상태 변경).
+    USER_NOT_MODIFIABLE(HttpStatus.CONFLICT, "승인된 사용자만 수정할 수 있습니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 올바르지 않습니다."),
     SIGNUP_ALREADY_PENDING(HttpStatus.CONFLICT, "이미 가입 승인 대기 중인 이메일입니다."),
     SIGNUP_ALREADY_APPROVED(HttpStatus.CONFLICT, "이미 가입 완료된 이메일입니다."),
@@ -66,6 +69,9 @@ public enum ErrorCode {
     INVALID_INQUIRY_FILTER(HttpStatus.BAD_REQUEST, "문의 조회 조건이 올바르지 않습니다."),
     INQUIRY_NOT_FOUND(HttpStatus.NOT_FOUND, "문의가 없거나 조회할 수 없습니다."),
     INQUIRY_ASSIGNEE_NOT_ELIGIBLE(HttpStatus.CONFLICT, "선택한 회원은 문의 담당자로 지정할 수 없습니다."),
+    // 수정(S15P11B106-71): 신규 추가. 미처리(PENDING) 문의 담당자를 사원 강등·비활성화하려는 경우의 409 코드
+    //   (DR-027: 미처리 문의가 남은 담당자의 비활성화 또는 사원 전환은 충돌로 거부). 문의가 담당자 없이 붕 뜨는 것을 막는다.
+    INQUIRY_ASSIGNEE_HAS_PENDING(HttpStatus.CONFLICT, "처리되지 않은 문의가 남은 담당자는 사원으로 전환하거나 비활성화할 수 없습니다."),
     INQUIRY_FORBIDDEN(HttpStatus.FORBIDDEN, "문의에 대한 권한이 없습니다."),
     INQUIRY_ANSWER_NOT_FOUND(HttpStatus.NOT_FOUND, "문의 답변이 존재하지 않습니다."),
 
