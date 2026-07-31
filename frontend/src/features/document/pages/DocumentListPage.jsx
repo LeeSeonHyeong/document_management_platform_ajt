@@ -61,11 +61,17 @@ export default function DocumentListPage() {
           accept={FILE_ACCEPT.WIKI_SOURCE}
           selectedFiles={previewUploadFiles}
           onFilesSelected={setPreviewUploadFiles}
-          onUploadComplete={async (files) => {
+          onUploadComplete={async (files, batch) => {
             const documents = await createPreviewDocuments(files, user)
             setPreviewQueueDocuments((current) => [...documents, ...current])
-            setPreviewUploadFiles([])
-            toast.success(`${files.length}개 문서가 AI 작업 대기 목록에 추가되었습니다.`)
+            if (batch.isLast) {
+              const extraCount = batch.files.length - 1
+              toast.success(
+                extraCount > 0
+                  ? `${batch.files[0].name} 외 ${extraCount}개 문서가 AI 작업 대기 목록에 추가되었습니다.`
+                  : `${batch.files[0].name} 문서가 AI 작업 대기 목록에 추가되었습니다.`,
+              )
+            }
           }}
         />
         <UploadCard
@@ -77,11 +83,17 @@ export default function DocumentListPage() {
           accept={FILE_ACCEPT.SCHEDULE}
           selectedFiles={previewScheduleFiles}
           onFilesSelected={setPreviewScheduleFiles}
-          onUploadComplete={async (files) => {
+          onUploadComplete={async (files, batch) => {
             const documents = await createPreviewDocuments(files, user)
             setPreviewQueueDocuments((current) => [...documents, ...current])
-            setPreviewScheduleFiles([])
-            toast.success(`${files.length}개 일정 파일이 AI 작업 대기 목록에 추가되었습니다.`)
+            if (batch.isLast) {
+              const extraCount = batch.files.length - 1
+              toast.success(
+                extraCount > 0
+                  ? `${batch.files[0].name} 외 ${extraCount}개 일정 파일이 AI 작업 대기 목록에 추가되었습니다.`
+                  : `${batch.files[0].name} 일정 파일이 AI 작업 대기 목록에 추가되었습니다.`,
+              )
+            }
           }}
         />
       </div>
@@ -212,19 +224,31 @@ function UploadCard({
 }) {
   const schedule = tone === 'schedule'
   const inputRef = useRef(null)
+  const onUploadCompleteRef = useRef(onUploadComplete)
   const [dragging, setDragging] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [currentIndex, setCurrentIndex] = useState(0)
   const acceptsFilesDirectly = Boolean(onFilesSelected)
-  const totalBytes = selectedFiles.reduce((sum, file) => sum + file.size, 0)
-  const loadedBytes = Math.round(totalBytes * (progress / 100))
+  const currentFile = selectedFiles[currentIndex]
+
+  useEffect(() => {
+    onUploadCompleteRef.current = onUploadComplete
+  }, [onUploadComplete])
 
   useEffect(() => {
     if (!selectedFiles.length) {
       setProgress(0)
+      setCurrentIndex(0)
       return undefined
     }
 
+    setCurrentIndex(0)
     setProgress(0)
+    return undefined
+  }, [selectedFiles])
+
+  useEffect(() => {
+    if (!selectedFiles.length || !currentFile) return undefined
     const timer = window.setInterval(() => {
       setProgress((current) => {
         if (current >= 100) {
@@ -236,13 +260,32 @@ function UploadCard({
     }, 120)
 
     return () => window.clearInterval(timer)
-  }, [selectedFiles])
+  }, [currentFile, selectedFiles.length])
 
   useEffect(() => {
-    if (progress !== 100 || !selectedFiles.length) return undefined
-    const timer = window.setTimeout(() => onUploadComplete?.(selectedFiles), 700)
-    return () => window.clearTimeout(timer)
-  }, [onUploadComplete, progress, selectedFiles])
+    if (progress !== 100 || !currentFile) return undefined
+    let cancelled = false
+    const timer = window.setTimeout(async () => {
+      const isLast = currentIndex >= selectedFiles.length - 1
+      await onUploadCompleteRef.current?.([currentFile], {
+        index: currentIndex,
+        isLast,
+        files: selectedFiles,
+      })
+      if (cancelled) return
+
+      if (isLast) {
+        onFilesSelected?.([])
+      } else {
+        setCurrentIndex((index) => index + 1)
+        setProgress(0)
+      }
+    }, 500)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [currentFile, currentIndex, onFilesSelected, progress, selectedFiles])
 
   function openFilePicker() {
     if (acceptsFilesDirectly) inputRef.current?.click()
@@ -264,6 +307,7 @@ function UploadCard({
   function cancelSelection(event) {
     event.stopPropagation()
     setProgress(0)
+    setCurrentIndex(0)
     onFilesSelected?.([])
   }
 
@@ -320,7 +364,7 @@ function UploadCard({
           if (!event.currentTarget.contains(event.relatedTarget)) setDragging(false)
         }}
         onDrop={handleDrop}
-        className={`focus-ring mt-4 flex h-40 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed transition ${
+        className={`focus-ring mt-4 flex min-h-40 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-3 transition ${
           schedule
             ? dragging
               ? 'border-emerald-500 bg-emerald-100/70 text-emerald-700'
@@ -343,37 +387,71 @@ function UploadCard({
                 </span>
                 <div>
                   <p className="text-sm font-bold text-slate-800">
-                    {progress < 100 ? '업로드 중' : '업로드 완료'}
+                    {progress < 100 ? '한 개씩 업로드 중' : '현재 파일 업로드 완료'}
                   </p>
                   <p className="text-[11px] text-slate-400">완료되면 아래 AI 작업 대기 목록에 추가됩니다</p>
                 </div>
               </div>
               <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
-                {selectedFiles.length} / {selectedFiles.length}
+                {currentIndex + 1} / {selectedFiles.length}
               </span>
             </div>
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-              <FileText className={`size-4 shrink-0 ${schedule ? 'text-emerald-600' : 'text-primary-500'}`} />
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700">
-                {selectedFiles[0].name}
-                {selectedFiles.length > 1 ? ` 외 ${selectedFiles.length - 1}건` : ''}
-              </span>
-              <span className={`text-xs font-bold ${schedule ? 'text-emerald-600' : 'text-primary-600'}`}>
-                {progress}%
-              </span>
+            <div className="mt-3 max-h-[328px] space-y-1.5 overflow-y-auto pr-1">
+              {selectedFiles.map((file, index) => {
+                const fileProgress = index < currentIndex ? 100 : index === currentIndex ? progress : 0
+                const fileLoadedBytes = Math.round(file.size * (fileProgress / 100))
+                const status =
+                  index < currentIndex || (index === currentIndex && progress === 100)
+                    ? '완료'
+                    : index === currentIndex
+                      ? '업로드 중'
+                      : '대기'
+                return (
+                  <div
+                    key={`${file.name}-${file.lastModified}-${index}`}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <FileText
+                        className={`size-4 shrink-0 ${
+                          index > currentIndex
+                            ? 'text-slate-300'
+                            : schedule
+                              ? 'text-emerald-600'
+                              : 'text-primary-500'
+                        }`}
+                      />
+                      <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700">
+                        {file.name}
+                      </span>
+                      <span
+                        className={`text-[11px] font-bold ${
+                          index > currentIndex
+                            ? 'text-slate-400'
+                            : schedule
+                              ? 'text-emerald-600'
+                              : 'text-primary-600'
+                        }`}
+                      >
+                        {status} {fileProgress > 0 && `${fileProgress}%`}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className={`h-full rounded-full transition-[width] duration-150 ${
+                          schedule ? 'bg-emerald-500' : 'bg-gradient-to-r from-blue-500 to-violet-600'
+                        }`}
+                        style={{ width: `${fileProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-1 text-right text-[10px] text-slate-400">
+                      {formatUploadBytes(fileLoadedBytes)} / {formatUploadBytes(file.size)}
+                    </p>
+                  </div>
+                )
+              })}
             </div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-              <div
-                className={`h-full rounded-full transition-[width] duration-150 ${
-                  schedule ? 'bg-emerald-500' : 'bg-gradient-to-r from-blue-500 to-violet-600'
-                }`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="mt-1.5 flex items-center justify-between text-[11px]">
-              <span className="text-slate-400">
-                {formatUploadBytes(loadedBytes)} / {formatUploadBytes(totalBytes)}
-              </span>
+            <div className="mt-1.5 flex justify-end text-[11px]">
               <button
                 type="button"
                 onClick={cancelSelection}
@@ -433,6 +511,7 @@ async function createPreviewDocuments(files, uploader) {
       fileSize: file.size,
       mimeType: file.type,
       previewContent: file.name.toLowerCase().endsWith('.md') ? await file.text() : null,
+      downloadUrl: URL.createObjectURL(file),
       documentCategoryId: null,
       documentCategoryName: null,
       visibilityType: null,
