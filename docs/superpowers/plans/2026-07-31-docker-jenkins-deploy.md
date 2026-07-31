@@ -79,7 +79,7 @@ frontend:
   image: "${FRONTEND_IMAGE:-ajt-frontend}:${IMAGE_TAG:?IMAGE_TAG is required}"
 ```
 
-백엔드는 `curl -fsS http://127.0.0.1:8080/actuator/health`, 프론트는 `wget --no-check-certificate --spider --quiet https://127.0.0.1/api/v1/health`를 사용해 healthcheck를 구성한다. 프론트는 backend가 healthy가 된 다음 시작한다. named volume은 환경변수로 분리하고 운영 env에서 다음 이름을 사용한다.
+백엔드는 `curl -fsS http://127.0.0.1:8080/api/v1/health`, 프론트는 `wget --no-check-certificate --spider --quiet https://127.0.0.1/api/v1/health`를 사용해 healthcheck를 구성한다. 전역 Actuator health는 SMTP 같은 외부 연동 상태까지 포함하므로 컨테이너 생존 판정에 사용하지 않는다. 프론트는 backend가 healthy가 된 다음 시작한다. named volume은 환경변수로 분리하고 운영 env에서 다음 이름을 사용한다.
 
 ```yaml
 volumes:

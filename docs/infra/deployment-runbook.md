@@ -248,6 +248,8 @@ docker compose \
 curl --insecure --fail --show-error https://127.0.0.1:8090/api/v1/health
 ```
 
+Docker의 backend healthcheck도 같은 `/api/v1/health`를 사용한다. `/actuator/health`는 DB뿐 아니라 SMTP 같은 외부 연동 상태까지 포함하므로 컨테이너 기동 판정에는 사용하지 않는다. 비밀번호 재설정 메일을 실제로 사용할 때는 별도로 `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`을 운영 env에 설정한다.
+
 브라우저에서 `https://i15b106.p.ssafy.io:8090`을 확인하고, 컨테이너 재시작 후 `ajt-develop-mysql-data`와 `ajt-develop-files`가 유지되는지 확인한다.
 
 검증이 끝난 뒤 feature→develop MR에 아래 결과를 기록한다.
