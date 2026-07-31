@@ -36,6 +36,22 @@ public class DocumentWikiTransformationTransactionService {
         return new WikiTransformationResult(affectedWikiIds, response.summary());
     }
 
+    /**
+     * 문서가 이 범위에서 빠진 변환 결과를 반영합니다. (FR-DOC-008 범위 변경)
+     *
+     * <p>문서 엔티티의 처리 상태는 건드리지 않는다 — 문서는 이미 새 범위로 옮겨져 그쪽 작업이
+     * 상태를 관리하고, 옛 범위 정리는 문서의 처리 상태와 무관하기 때문이다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public WikiTransformationResult applyRemovedDocument(
+            long documentId,
+            String scopeKey,
+            WikiTransformationResponse response
+    ) {
+        List<Long> affectedWikiIds = applier.applyRemovedDocument(scopeKey, documentId, response);
+        return new WikiTransformationResult(affectedWikiIds, response.summary());
+    }
+
     public record WikiTransformationResult(List<Long> affectedWikiIds, String summary) {
 
         public WikiTransformationResult {

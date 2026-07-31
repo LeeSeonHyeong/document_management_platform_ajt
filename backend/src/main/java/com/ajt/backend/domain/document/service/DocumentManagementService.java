@@ -143,7 +143,7 @@ public class DocumentManagementService {
                 document.scopeKey() + "/jobs/" + UUID.randomUUID(),
                 List.of(document.id())
         ));
-        parseJobLauncher.launch(job);
+        parseJobLauncher.launch(job, DocumentReprocessPlan.added());
 
         return new DocumentRetryResponse(
                 String.valueOf(job.id()),
@@ -223,8 +223,7 @@ public class DocumentManagementService {
         boolean scopeChanged = !oldScopeKey.equals(newScopeKey);
         ensureWikiScope(newScope);
         if (scopeChanged) {
-            // 범위가 바뀌면 기존 범위는 문서가 빠진 채 인덱스를 다시 만들어야 해 범위 전체를 재처리한다.
-            // 양쪽 범위 중 하나라도 처리 중 문서가 있으면 안전하게 재생성할 수 없어 충돌로 막는다.
+            // 양쪽 범위 중 하나라도 처리 중 문서가 있으면 같은 공간의 Wiki를 동시에 고치게 되므로 충돌로 막는다.
             ensureScopeNotProcessing(oldScopeKey);
             ensureScopeNotProcessing(newScopeKey);
         }
@@ -234,18 +233,28 @@ public class DocumentManagementService {
             AiJob job = reprocessDocument(admin.memberId(), document);
             return new DocumentUpdateResponse(String.valueOf(job.id()), job.status().name().toLowerCase(), List.of(), toDetail(document, category));
         }
+        // 파일을 옮기기 전에 옛 파싱 본문을 읽어 둔다. 걷어내기 요청의 removedParsedMarkdown은
+        // 계약의 필수 값인데, 이동 뒤에는 옛 경로에서 읽을 수 없다.
+        String removedParsedMarkdown = readParsedMarkdownQuietly(document);
         try {
             DocumentFileMutation fileMutation = documentFileStorage.moveToScope(
                     document.originalPath(), document.parsedPath(), newScopeKey, document.id());
             try {
                 document.changeCategoryScopeAndPaths(request.documentCategoryId(), newScopeKey, fileMutation.originalPath(), fileMutation.parsedPath());
-                AiJob oldJob = reprocessScope(admin.memberId(), oldScopeKey);
-                AiJob newJob = reprocessScope(admin.memberId(), newScopeKey);
+                AiJob oldJob = removeDocumentFromScope(
+                        admin.memberId(), document, oldScopeKey, removedParsedMarkdown);
+                AiJob newJob = reprocessDocument(admin.memberId(), document);
                 registerFileRollback(fileMutation);
+                List<com.ajt.backend.domain.document.api.ReprocessJobResponse> reprocessJobs = new ArrayList<>();
+                if (oldJob != null) {
+                    reprocessJobs.add(new com.ajt.backend.domain.document.api.ReprocessJobResponse(
+                            oldScopeKey, String.valueOf(oldJob.id())));
+                }
+                reprocessJobs.add(new com.ajt.backend.domain.document.api.ReprocessJobResponse(
+                        newScopeKey, String.valueOf(newJob.id())));
                 return new DocumentUpdateResponse(
                         String.valueOf(newJob.id()), newJob.status().name().toLowerCase(),
-                        List.of(new com.ajt.backend.domain.document.api.ReprocessJobResponse(oldScopeKey, String.valueOf(oldJob.id())),
-                                new com.ajt.backend.domain.document.api.ReprocessJobResponse(newScopeKey, String.valueOf(newJob.id()))),
+                        reprocessJobs,
                         toDetail(document, category));
             } catch (RuntimeException exception) {
                 rollbackFileMutation(fileMutation, exception);
@@ -253,6 +262,50 @@ public class DocumentManagementService {
             }
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
+        }
+    }
+
+    /**
+     * 옛 범위에서 이 문서를 걷어내는 재처리 작업을 만듭니다. (FR-DOC-008)
+     *
+     * <p>옛 파싱 본문이 없으면 계약의 {@code removedParsedMarkdown}을 채울 수 없어 작업을 만들지
+     * 않고 {@code null}을 돌려준다. 이 경우 옛 범위 Wiki에 이 문서를 근거로 쓴 서술이 남을 수
+     * 있으므로 경고를 남긴다. 아직 파싱되지 않은 문서이거나 파싱 파일이 유실된 경우다.
+     */
+    private AiJob removeDocumentFromScope(
+            long requesterId,
+            Document document,
+            String oldScopeKey,
+            String removedParsedMarkdown
+    ) {
+        if (removedParsedMarkdown == null || removedParsedMarkdown.isBlank()) {
+            log.warn("옛 파싱 본문이 없어 이전 범위 걷어내기를 건너뜁니다: documentId={}, scopeKey={}",
+                    document.id(), oldScopeKey);
+            return null;
+        }
+        AiJob job = aiJobRepository.save(AiJob.waiting(
+                requesterId,
+                oldScopeKey,
+                oldScopeKey + "/jobs/" + UUID.randomUUID(),
+                List.of(document.id())
+        ));
+        parseJobLauncher.launch(job, DocumentReprocessPlan.removed(document.id(), removedParsedMarkdown));
+        return job;
+    }
+
+    /**
+     * 문서의 현재 파싱 본문입니다. 파싱 전이거나 파일이 유실되면 {@code null}입니다.
+     */
+    private String readParsedMarkdownQuietly(Document document) {
+        if (document.parsedPath() == null || document.parsedPath().isBlank()) {
+            return null;
+        }
+        try {
+            return documentFileStorage.readText(document.parsedPath());
+        } catch (IOException exception) {
+            log.warn("파싱 본문을 읽지 못했습니다: documentId={}, parsedPath={}",
+                    document.id(), document.parsedPath(), exception);
+            return null;
         }
     }
 
@@ -323,7 +376,7 @@ public class DocumentManagementService {
                 document.scopeKey() + "/jobs/" + UUID.randomUUID(),
                 List.of(document.id())
         ));
-        parseJobLauncher.launch(job);
+        parseJobLauncher.launch(job, DocumentReprocessPlan.added());
         return job;
     }
 
@@ -341,7 +394,7 @@ public class DocumentManagementService {
                 scopeKey + "/jobs/" + UUID.randomUUID(),
                 documentIds
         ));
-        parseJobLauncher.launch(job);
+        parseJobLauncher.launch(job, DocumentReprocessPlan.added());
         return job;
     }
 

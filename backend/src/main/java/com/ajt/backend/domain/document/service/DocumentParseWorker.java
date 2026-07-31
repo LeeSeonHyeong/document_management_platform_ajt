@@ -52,7 +52,12 @@ public class DocumentParseWorker {
         this.transactionService = transactionService;
     }
 
+    /** 문서를 새로 반영하는 기본 실행입니다. (업로드·재시도) */
     public void parse(AiJob job) {
+        parse(job, DocumentReprocessPlan.added());
+    }
+
+    public void parse(AiJob job, DocumentReprocessPlan plan) {
         job.start();
         aiJobRepository.save(job);
         Map<Long, Document> documentsById;
@@ -82,7 +87,10 @@ public class DocumentParseWorker {
                 aiJobRepository.save(currentJob);
                 continue;
             }
-            AiJob.DocumentParseResult result = parseDocument(job, document);
+            AiJob.DocumentParseResult result =
+                    plan.changeTypeOf(documentId) == WikiDocumentChangeType.DOCUMENT_REMOVED
+                            ? removeDocument(job, document, plan.removedParsedMarkdownOf(documentId))
+                            : parseDocument(job, document);
             documentResults.add(result);
             AiJob resultJob = aiJobRepository.findById(job.id()).orElse(job);
             resultJob.recordResult(result);
@@ -147,6 +155,55 @@ public class DocumentParseWorker {
             return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
         return transformWiki(job, document, parsedMarkdown, selectedWikiIds);
+    }
+
+    /**
+     * 문서가 이 범위에서 빠진 것을 Wiki에 반영합니다. (FR-DOC-008 범위 변경)
+     *
+     * <p>파싱하지 않는다 — 원본은 이미 새 범위로 옮겨졌고 걷어내기에 필요한 옛 본문은 계획이
+     * 실어 온다. 문서 엔티티의 처리 상태도 건드리지 않는다: 같은 문서를 새 범위 작업이 이어서
+     * 처리하므로 여기서 상태를 옮기면 두 작업이 같은 문서 상태를 두고 다툰다.
+     *
+     * <p>변환 대상 범위는 문서의 현재 {@code scopeKey}가 아니라 작업의 {@code scopeKey}다.
+     * 이 작업이 실행될 때 문서 행은 이미 새 범위를 가리키고 있다.
+     */
+    private AiJob.DocumentParseResult removeDocument(
+            AiJob job,
+            Document document,
+            String removedParsedMarkdown
+    ) {
+        String scopeKey = job.scopeKey();
+        try {
+            WikiContextSelectionResponse selection = aiClient.selectWikiContext(new WikiContextSelectionRequest(
+                    String.valueOf(job.id()),
+                    String.valueOf(document.id()),
+                    scopeKey,
+                    WikiDocumentChangeType.DOCUMENT_REMOVED,
+                    null,
+                    removedParsedMarkdown,
+                    wikiTransformationService.currentIndex(scopeKey)
+            ));
+            var response = wikiTransformationService.requestForDocumentChange(
+                    job.id(),
+                    document.id(),
+                    scopeKey,
+                    WikiDocumentChangeType.DOCUMENT_REMOVED,
+                    null,
+                    removedParsedMarkdown,
+                    wikiIds(selection)
+            );
+            WikiTransformationResult result = transactionService.applyRemovedDocument(
+                    document.id(), scopeKey, response);
+            return AiJob.DocumentParseResult.succeeded(document.id(), result.summary());
+        } catch (AiClientException exception) {
+            return AiJob.DocumentParseResult.failed(
+                    document.id(),
+                    failureReason(exception),
+                    exception.failureStage()
+            );
+        } catch (RuntimeException exception) {
+            return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
+        }
     }
 
     /**

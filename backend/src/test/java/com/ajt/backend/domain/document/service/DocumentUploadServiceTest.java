@@ -84,7 +84,7 @@ class DocumentUploadServiceTest {
         assertThat(response.status()).isEqualTo("waiting");
         assertThat(response.createdAt()).isNotNull();
         verify(wikiScopeRepository).save(any(WikiScope.class));
-        verify(parseJobLauncher).launch(any(AiJob.class));
+        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test
