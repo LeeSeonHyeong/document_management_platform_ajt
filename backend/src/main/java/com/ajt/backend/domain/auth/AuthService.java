@@ -2,6 +2,7 @@ package com.ajt.backend.domain.auth;
 
 import com.ajt.backend.domain.auth.dto.AuthMessageResponse;
 import com.ajt.backend.domain.auth.dto.AuthUserResponse;
+import com.ajt.backend.domain.auth.dto.ChangePasswordRequest;
 import com.ajt.backend.domain.auth.dto.LoginRequest;
 import com.ajt.backend.domain.auth.dto.LoginResult;
 import com.ajt.backend.domain.auth.dto.PasswordResetConfirmRequest;
@@ -18,6 +19,7 @@ import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.SignupStatus;
 import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.global.auth.AccessTokenService;
+import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.auth.PasswordResetCodeStore;
 import com.ajt.backend.global.auth.PasswordResetRateLimiter;
 import com.ajt.backend.global.error.BusinessException;
@@ -99,6 +101,26 @@ public class AuthService {
                 accessTokenService.expiresInSeconds(),
                 AuthUserResponse.from(member, superAdminChecker.isSuperAdmin(member))
         );
+    }
+
+    /**
+     * FR-USR-013 로그인 상태 비밀번호 변경입니다(S15P11B106-98).
+     * 인증된 본인 계정에만 적용한다(대상 userId를 받지 않아 타인 계정 변경이 구조적으로 불가능하다).
+     * 현재 비밀번호가 일치해야 하며, 새 비밀번호가 현재와 같으면 거절하고, 새 비밀번호는 암호화해 저장한다.
+     */
+    @Transactional
+    public void changeMyPassword(AuthenticatedMember loginMember, ChangePasswordRequest request) {
+        Member member = memberRepository.findById(loginMember.memberId())
+                .orElseThrow(() -> new BusinessException(ErrorCode.MEMBER_NOT_FOUND));
+
+        if (!passwordEncoder.matches(request.currentPassword(), member.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.INVALID_CURRENT_PASSWORD);
+        }
+        if (passwordEncoder.matches(request.newPassword(), member.getPasswordHash())) {
+            throw new BusinessException(ErrorCode.NEW_PASSWORD_SAME_AS_CURRENT);
+        }
+
+        member.changePassword(passwordEncoder.encode(request.newPassword()));
     }
 
     /**

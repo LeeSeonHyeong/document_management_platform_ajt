@@ -57,6 +57,11 @@ public enum ErrorCode {
     INVALID_OR_EXPIRED_RESET_TOKEN(HttpStatus.BAD_REQUEST, "비밀번호 재설정 토큰이 올바르지 않거나 만료되었습니다."),
     // 수정: 인증번호 방식 재설정용 코드 신규 추가.
     INVALID_OR_EXPIRED_RESET_CODE(HttpStatus.BAD_REQUEST, "인증번호가 올바르지 않거나 만료되었습니다."),
+    // 수정(S15P11B106-98): 로그인 상태 비밀번호 변경 시 현재 비밀번호 불일치(400). 로그인은 되어 있으므로 401이
+    //   아니라 요청 검증 실패(400)로 다룬다.
+    INVALID_CURRENT_PASSWORD(HttpStatus.BAD_REQUEST, "현재 비밀번호가 올바르지 않습니다."),
+    // 수정(S15P11B106-98): 새 비밀번호가 현재 비밀번호와 동일한 경우(400) 거절.
+    NEW_PASSWORD_SAME_AS_CURRENT(HttpStatus.BAD_REQUEST, "새 비밀번호는 현재 비밀번호와 다르게 설정해주세요."),
     // 수정: 재설정 요청 rate limit 초과용 429 코드 신규 추가.
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."),
     CSRF_TOKEN_INVALID(HttpStatus.FORBIDDEN, "CSRF 토큰이 올바르지 않습니다."),
