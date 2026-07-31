@@ -8,4 +8,11 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
  */
 public interface AiQuestionRepository
         extends JpaRepository<AiQuestion, Long>, JpaSpecificationExecutor<AiQuestion> {
+
+    /** 후속 질문이 본인 대화인지 확인합니다. 다른 사용자의 대화는 존재를 숨긴다(계약의 404). */
+    boolean existsByMember_IdAndConversationKey(long memberId, String conversationKey);
+
+    /** 멀티턴 문맥으로 쓸 같은 대화의 질문들입니다. */
+    java.util.List<AiQuestion> findByMember_IdAndConversationKeyOrderByCreatedAtAsc(
+            long memberId, String conversationKey);
 }

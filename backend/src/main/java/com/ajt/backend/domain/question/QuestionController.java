@@ -1,9 +1,13 @@
 package com.ajt.backend.domain.question;
 
+import com.ajt.backend.domain.question.dto.QuestionAskRequest;
+import com.ajt.backend.domain.question.dto.QuestionAskResponse;
 import com.ajt.backend.domain.question.dto.QuestionHistoryResponse;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -15,9 +19,23 @@ import org.springframework.web.bind.annotation.RestController;
 public class QuestionController {
 
     private final QuestionService questionService;
+    private final QuestionAskService questionAskService;
 
-    public QuestionController(QuestionService questionService) {
+    public QuestionController(QuestionService questionService, QuestionAskService questionAskService) {
         this.questionService = questionService;
+        this.questionAskService = questionAskService;
+    }
+
+    /**
+     * POST /api/v1/questions
+     * 접근 가능한 Wiki·일정을 대상으로 AI에게 질문합니다. 답변과 출처를 함께 반환합니다.
+     */
+    @PostMapping("/api/v1/questions")
+    public QuestionAskResponse ask(
+            @AuthenticationPrincipal AuthenticatedMember loginMember,
+            @RequestBody QuestionAskRequest request
+    ) {
+        return questionAskService.ask(loginMember, request);
     }
 
     /**

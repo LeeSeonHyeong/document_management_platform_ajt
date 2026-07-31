@@ -11,4 +11,8 @@ public interface AiClient {
     WikiTransformationResponse transformWiki(WikiTransformationRequest request);
 
     WikiEditResponse editWiki(WikiEditRequest request);
+
+    AnswerContextSelectionResponse selectAnswerContext(AnswerContextSelectionRequest request);
+
+    AnswerGenerationResponse generateAnswer(AnswerGenerationRequest request);
 }

@@ -87,6 +87,19 @@ public class AiQuestion {
         return new AiQuestion(member, conversationKey, content, questionType, success, failureReason);
     }
 
+    /** 답변 생성이 성공했을 때 AI가 판단한 질문 유형과 함께 성공으로 표시합니다. */
+    public void recordSuccess(QuestionType questionType) {
+        this.questionType = questionType;
+        this.success = true;
+        this.failureReason = null;
+    }
+
+    /** 답변 생성이 실패했을 때 사유를 남깁니다. 실패 이력도 조회에 노출됩니다(FR-QNA-008). */
+    public void recordFailure(String failureReason) {
+        this.success = false;
+        this.failureReason = failureReason;
+    }
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {

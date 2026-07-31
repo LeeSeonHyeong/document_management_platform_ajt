@@ -23,6 +23,8 @@ public class RestClientAiClient implements AiClient {
     private static final String WIKI_CONTEXT_SELECTION_PATH = "/internal/v1/wiki-context-selections";
     private static final String WIKI_TRANSFORMATION_PATH = "/internal/v1/wiki-transformations";
     private static final String WIKI_EDIT_PATH = "/internal/v1/wiki-edits";
+    private static final String ANSWER_CONTEXT_SELECTION_PATH = "/internal/v1/answer-context-selections";
+    private static final String ANSWER_PATH = "/internal/v1/answers";
 
     private final RestClient restClient;
     private final RestClient scheduleExtractionRestClient;
@@ -136,6 +138,90 @@ public class RestClientAiClient implements AiClient {
         } catch (ResourceAccessException exception) {
             throw transportFailure(exception);
         }
+    }
+
+    @Override
+    public AnswerContextSelectionResponse selectAnswerContext(AnswerContextSelectionRequest request) {
+        try {
+            AnswerContextSelectionResponse response = restClient.post()
+                    .uri(ANSWER_CONTEXT_SELECTION_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
+                    .body(AnswerContextSelectionResponse.class);
+
+            return validateResponse(response);
+        } catch (ResourceAccessException exception) {
+            throw transportFailure(exception);
+        }
+    }
+
+    @Override
+    public AnswerGenerationResponse generateAnswer(AnswerGenerationRequest request) {
+        try {
+            AnswerGenerationResponse response = restClient.post()
+                    .uri(ANSWER_PATH)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(request)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
+                    .body(AnswerGenerationResponse.class);
+
+            return validateResponse(response);
+        } catch (ResourceAccessException exception) {
+            throw transportFailure(exception);
+        }
+    }
+
+    /**
+     * 문맥 선택 응답 검증입니다. 계약은 종류별 최대 5개를 정하므로 그 상한도 함께 본다.
+     */
+    private AnswerContextSelectionResponse validateResponse(AnswerContextSelectionResponse response) {
+        if (response == null
+                || isBlank(response.questionType())
+                || response.wikiIds() == null
+                || response.scheduleIds() == null
+                || response.wikiIds().size() > 5
+                || response.scheduleIds().size() > 5
+                || response.wikiIds().stream().anyMatch(this::isBlank)
+                || response.scheduleIds().stream().anyMatch(this::isBlank)) {
+            throw invalidResponse();
+        }
+        return new AnswerContextSelectionResponse(
+                response.questionType(),
+                List.copyOf(response.wikiIds()),
+                List.copyOf(response.scheduleIds()),
+                response.reason()
+        );
+    }
+
+    /**
+     * 답변 응답 검증입니다. 출처는 {@code wikiId}·{@code scheduleId} 중 정확히 한쪽만 있어야
+     * {@code answer_source}에 저장할 수 있다.
+     */
+    private AnswerGenerationResponse validateResponse(AnswerGenerationResponse response) {
+        if (response == null
+                || isBlank(response.answer())
+                || response.sources() == null
+                || response.sources().stream().anyMatch(this::isInvalid)) {
+            throw invalidResponse();
+        }
+        return new AnswerGenerationResponse(response.answer(), List.copyOf(response.sources()));
+    }
+
+    private boolean isInvalid(AnswerGenerationResponse.Source source) {
+        if (source == null || isBlank(source.title())) {
+            return true;
+        }
+        if (source.isWiki()) {
+            return isBlank(source.wikiId()) || !isBlank(source.scheduleId());
+        }
+        if (source.isSchedule()) {
+            return isBlank(source.scheduleId()) || !isBlank(source.wikiId());
+        }
+        // 계약에 없는 출처 종류다. 저장할 컬럼을 정할 수 없으므로 잘못된 응답으로 본다.
+        return true;
     }
 
     private HttpEntity<?> filePart(SourceParseRequest request) {
