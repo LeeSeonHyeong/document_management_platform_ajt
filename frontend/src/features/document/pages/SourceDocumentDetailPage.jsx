@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
 import { Badge, Button, Spinner, useToast } from '@/components/ui'
 import WikiMarkdown from '@/features/wiki/components/WikiMarkdown'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchDocumentFile } from '../api'
 import { useDocument } from '../queries'
 import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
+import DocumentReplaceDialog from '../components/DocumentReplaceDialog'
 import { readPreviewSourceDocuments, removePreviewDocument } from '../previewStorage'
 
 function formatBytes(bytes) {
@@ -46,6 +47,7 @@ export default function SourceDocumentDetailPage() {
   const { user } = useAuth()
   const [downloading, setDownloading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [replaceOpen, setReplaceOpen] = useState(false)
 
   const [previewDocument] = useState(() =>
     readPreviewSourceDocuments().find((document) => document.documentId === documentId),
@@ -153,17 +155,21 @@ export default function SourceDocumentDetailPage() {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-400">삭제하면 위키 반영이 먼저 정리되고, 완료된 뒤 원본이 삭제됩니다.</p>
           <div className="flex gap-2">
-            <Button variant="danger" onClick={() => setDeleteOpen(true)}>
-              <Trash2 className="size-4" />
-              삭제
-            </Button>
             <Button variant="primary" onClick={handleDownload} loading={downloading}>
               <Download className="size-4" />
               다운로드
             </Button>
+            <Button variant="outline" onClick={() => setReplaceOpen(true)}>
+              <ArrowLeftRight className="size-4" />
+              수정
+            </Button>
+            <Button variant="danger" onClick={() => setDeleteOpen(true)}>
+              <Trash2 className="size-4" />
+              삭제
+            </Button>
           </div>
+          <p className="text-xs text-slate-400">삭제하면 위키 반영이 먼저 정리되고, 완료된 뒤 원본이 삭제됩니다.</p>
         </div>
       </div>
 
@@ -187,7 +193,7 @@ export default function SourceDocumentDetailPage() {
             </InfoRow>
             <div className="my-2 border-t border-slate-200" />
             <InfoRow label="업로더">
-              <span className="flex items-center justify-end gap-2">
+              <span className="flex items-center gap-2">
                 <span className="flex size-6 items-center justify-center rounded-full bg-primary-600 text-[10px] font-bold text-white">
                   {(doc.previewOnly ? user?.name : doc.uploadedBy?.name)?.slice(0, 1) ?? '?'}
                 </span>
@@ -249,6 +255,15 @@ export default function SourceDocumentDetailPage() {
         onGoToList={() => {
           setDeleteOpen(false)
           navigate('/admin/documents/source')
+        }}
+      />
+      <DocumentReplaceDialog
+        open={replaceOpen}
+        document={doc}
+        onClose={() => setReplaceOpen(false)}
+        onStarted={(result) => {
+          setReplaceOpen(false)
+          if (result?.jobId) navigate(`/admin/documents/jobs/${result.jobId}/progress`)
         }}
       />
     </section>

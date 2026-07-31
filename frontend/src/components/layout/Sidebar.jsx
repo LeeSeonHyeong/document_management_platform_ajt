@@ -1,6 +1,8 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
 import { cn } from '@/shared/lib/cn'
 import { ROLES } from '@/shared/constants/enums'
+import { useAuth } from '@/hooks/useAuth'
 import { NAV_ITEMS } from './navConfig'
 import ajtLogo from '@/assets/ajt-logo.png'
 
@@ -27,7 +29,15 @@ function NavItem({ item }) {
 }
 
 export default function Sidebar({ role }) {
+  const navigate = useNavigate()
+  const { logout } = useAuth()
   const items = NAV_ITEMS[role] ?? NAV_ITEMS[ROLES.EMPLOYEE]
+
+  const handleLogout = async () => {
+    await logout()
+    navigate('/login', { replace: true })
+  }
+
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col bg-gradient-to-b from-blue-600 via-indigo-600 to-violet-600">
       <div className="flex items-center gap-2 px-5 py-5">
@@ -46,6 +56,16 @@ export default function Sidebar({ role }) {
         ))}
       </nav>
 
+      <div className="px-3 pb-4">
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="focus-ring flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <LogOut className="size-5 shrink-0" />
+          로그아웃
+        </button>
+      </div>
     </aside>
   )
 }

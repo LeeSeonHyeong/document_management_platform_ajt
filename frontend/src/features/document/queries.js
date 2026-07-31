@@ -111,10 +111,23 @@ export function useCreateDocumentCategory() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createDocumentCategory,
-    onSuccess: () => {
-      // 카테고리 관리 화면은 전체 목록(ALL)을 함께 보여주므로 특정 scopeKey 캐시만
-      // 갱신하면 새 항목이 목록에 나타나지 않는다.
-      queryClient.invalidateQueries({ queryKey: qk.documentCategories.all })
+    onSuccess: (createdCategory, variables) => {
+      // 관리 화면은 `ALL` 키를 전체 카테고리 목록으로 사용한다. 실제 API는 scopeKey가
+      // 정확히 일치하는 항목만 반환하므로, 부서 범위(D1-D2 등)로 생성한 항목은 생성
+      // 응답을 관리 화면 캐시에 직접 추가해야 즉시 목록에 유지된다.
+      queryClient.setQueryData(qk.documentCategories.list('ALL'), (current = []) => {
+        const exists = current.some(
+          (category) => category.documentCategoryId === createdCategory.documentCategoryId,
+        )
+        return exists ? current : [...current, createdCategory]
+      })
+
+      // 업로드 화면 등 실제 공개 범위별 카테고리 목록은 서버 값으로 다시 동기화한다.
+      if (variables.scopeKey !== 'ALL') {
+        queryClient.invalidateQueries({
+          queryKey: qk.documentCategories.list(variables.scopeKey),
+        })
+      }
     },
   })
 }
@@ -123,8 +136,23 @@ export function useUpdateDocumentCategory(scopeKey) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ categoryId, ...payload }) => updateDocumentCategory(categoryId, payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.documentCategories.list(scopeKey) })
+    onSuccess: (updatedCategory) => {
+      // 카테고리 관리 화면의 `ALL` 캐시는 여러 공개 범위의 카테고리를 합쳐 보여주는
+      // 화면용 목록이다. 수정 후 `ALL`을 재조회하면 실제 scopeKey가 D1-D2인 항목은
+      // 응답에서 빠지므로, 수정된 행만 응답값으로 교체한다.
+      queryClient.setQueryData(qk.documentCategories.list(scopeKey), (current = []) =>
+        current.map((category) =>
+          category.documentCategoryId === updatedCategory.documentCategoryId
+            ? { ...category, ...updatedCategory }
+            : category,
+        ),
+      )
+
+      if (scopeKey !== updatedCategory.scopeKey) {
+        queryClient.invalidateQueries({
+          queryKey: qk.documentCategories.list(updatedCategory.scopeKey),
+        })
+      }
     },
   })
 }
