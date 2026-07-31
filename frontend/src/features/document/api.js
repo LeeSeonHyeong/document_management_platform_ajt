@@ -11,7 +11,10 @@ export async function uploadDocuments({ files, documentCategoryId, visibilityTyp
   form.append('visibilityType', visibilityType)
   // 업로드 요청은 배열이 아니라 콤마로 이어붙인 문자열이다(PATCH의 departmentIds 배열과 다름).
   if (departmentIds?.length) form.append('departmentIds', departmentIds.join(','))
-  const { data } = await apiClient.post('/documents', form, { onUploadProgress })
+  const { data } = await apiClient.post('/documents', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress,
+  })
   return data
 }
 
@@ -56,7 +59,9 @@ function parseContentDispositionFileName(headers) {
 export async function replaceDocumentFile(documentId, file) {
   const form = new FormData()
   form.append('file', file)
-  const { data } = await apiClient.put(`/documents/${documentId}/file`, form)
+  const { data } = await apiClient.put(`/documents/${documentId}/file`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return data
 }
 
