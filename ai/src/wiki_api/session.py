@@ -155,10 +155,6 @@ class WikiSession:
         self._locked = False
         self.scope_id: str = ""
         self.fs: SpringVaultFS | None = None
-        # 에이전트가 돌기 전 라이브 페이지의 인용 관계. 각주를 떨어뜨린 것을 `unlink` 로
-        # 내려면 (I4) 고치기 전 상태가 필요하다 — `document_references` 는 층이 없어서
-        # 에이전트가 쓰는 순간 옛 간선이 사라진다.
-        self.live_citations: dict[str, set[str]] = {}
 
     async def __aenter__(self) -> "WikiSession":
         # 모듈 주석 참고: 임시 색인 연결이 프로세스 전역이라 세션이 겹치면 서로 덮는다.
@@ -313,10 +309,6 @@ class WikiSession:
         `error` 문장으로 돌려준다 — 그것을 안 보면 실패한 작업이 200 「변경 없음」으로 나가
         Spring 이 성공으로 기록한다 (NFR-AI-003).
         """
-        # 에이전트가 쓰기 전에 찍는다 — 각주가 사라진 것을 나중에 알 방법이 이것뿐이다 (I4).
-        from .changes import snapshot_citations
-
-        self.live_citations = await snapshot_citations(self.fs, self.scope_id)
         try:
             if hasattr(self.runtime, "arun"):
                 result = await asyncio.wait_for(
