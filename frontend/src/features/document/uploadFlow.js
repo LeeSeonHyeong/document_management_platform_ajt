@@ -28,6 +28,22 @@ export function validateWikiUpload(files) {
   return null
 }
 
+export function normalizeWikiFileSelection(fileList) {
+  return Array.from(fileList ?? [])
+}
+
+export function createWikiUploadEntries(fileList, startSequence = 0) {
+  const files = normalizeWikiFileSelection(fileList)
+  return {
+    entries: files.map((file, index) => ({
+      id: startSequence + index + 1,
+      file,
+      error: validateWikiFile(file),
+    })),
+    nextSequence: startSequence + files.length,
+  }
+}
+
 export function buildWikiUploadPayload(files, metadata, onUploadProgress) {
   return { files, ...metadata, onUploadProgress }
 }

@@ -9,7 +9,7 @@ import { useDocumentCategories, useUploadDocuments } from '../queries'
 import { buildScopeKey } from '../scope'
 import {
   buildWikiUploadPayload,
-  validateWikiFile,
+  createWikiUploadEntries,
   validateWikiUpload,
   WIKI_UPLOAD_LIMIT,
 } from '../uploadFlow'
@@ -26,6 +26,7 @@ const schema = z
   })
 
 const ACCEPT_ATTRIBUTE = WIKI_UPLOAD_LIMIT.extensions.map((extension) => `.${extension}`).join(',')
+const EMPTY_FILES = []
 
 function formatBytes(bytes) {
   const mb = bytes / (1024 * 1024)
@@ -33,7 +34,12 @@ function formatBytes(bytes) {
   return `${Math.max(1, Math.round(bytes / 1024))}KB`
 }
 
-export default function DocumentUploadModal({ open, onClose, onUploaded }) {
+export default function DocumentUploadModal({
+  open,
+  initialFiles = EMPTY_FILES,
+  onClose,
+  onUploaded,
+}) {
   const inputRef = useRef(null)
   const fileSequence = useRef(0)
   const [files, setFiles] = useState([])
@@ -66,6 +72,17 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
   const uploading = uploadMutation.isPending
 
   useEffect(() => {
+    if (!open) return
+
+    const { entries, nextSequence } = createWikiUploadEntries(initialFiles)
+    fileSequence.current = nextSequence
+    setFiles(entries)
+    setProgress(0)
+    setTransferred({ loaded: 0, total: 0 })
+    reset()
+  }, [initialFiles, open, reset])
+
+  useEffect(() => {
     setValue('documentCategoryId', '')
   }, [scopeKey, setValue])
 
@@ -80,12 +97,9 @@ export default function DocumentUploadModal({ open, onClose, onUploaded }) {
   const canSubmit = validFiles.length > 0 && !hasInvalidFile && !aggregateError && !uploading
 
   function addFiles(fileList) {
-    const added = Array.from(fileList ?? []).map((file) => ({
-      id: (fileSequence.current += 1),
-      file,
-      error: validateWikiFile(file),
-    }))
-    setFiles((current) => [...current, ...added])
+    const { entries, nextSequence } = createWikiUploadEntries(fileList, fileSequence.current)
+    fileSequence.current = nextSequence
+    setFiles((current) => [...current, ...entries])
   }
 
   function removeFile(id) {

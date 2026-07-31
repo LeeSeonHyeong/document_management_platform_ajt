@@ -10,7 +10,7 @@ import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobStartDialog from '../components/AiJobStartDialog'
 import DocumentUploadModal from '../components/DocumentUploadModal'
 import { addPreviewSourceDocuments, addPreviewSummary } from '../previewStorage'
-import { wikiUploadProgressPath } from '../uploadFlow'
+import { normalizeWikiFileSelection, wikiUploadProgressPath } from '../uploadFlow'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
@@ -26,6 +26,7 @@ export default function DocumentListPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [initialUploadFiles, setInitialUploadFiles] = useState([])
   const [previewScheduleFiles, setPreviewScheduleFiles] = useState([])
   const [previewQueueDocuments, setPreviewQueueDocuments] = useState([])
   const [removedQueueDocumentIds, setRemovedQueueDocumentIds] = useState([])
@@ -49,6 +50,11 @@ export default function DocumentListPage() {
   const allAssigned = waitingDocuments.length > 0 && readyDocuments.length === waitingDocuments.length
   const unassignedCount = waitingDocuments.filter((document) => !isAssigned(document)).length
 
+  function closeUploadModal() {
+    setUploadOpen(false)
+    setInitialUploadFiles([])
+  }
+
   return (
     <section className="space-y-5">
       <DocumentSectionTabs />
@@ -60,7 +66,11 @@ export default function DocumentListPage() {
           title="문서 파일"
           description="일반 문서, 규정, 안내문 등 다양한 문서를 업로드하세요."
           extensions={['TXT', 'MD', 'PDF', 'DOCX']}
-          onClick={() => setUploadOpen(true)}
+          accept={FILE_ACCEPT.WIKI_SOURCE}
+          onFilesChosen={(files) => {
+            setInitialUploadFiles(files)
+            setUploadOpen(true)
+          }}
         />
         <UploadCard
           tone="schedule"
@@ -166,9 +176,10 @@ export default function DocumentListPage() {
 
       <DocumentUploadModal
         open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
+        initialFiles={initialUploadFiles}
+        onClose={closeUploadModal}
         onUploaded={(result) => {
-          setUploadOpen(false)
+          closeUploadModal()
           navigate(wikiUploadProgressPath(result))
         }}
       />
@@ -216,6 +227,7 @@ function UploadCard({
   accept,
   selectedFiles = [],
   onFilesSelected,
+  onFilesChosen,
   onUploadComplete,
   onClick,
 }) {
@@ -225,7 +237,7 @@ function UploadCard({
   const [dragging, setDragging] = useState(false)
   const [progress, setProgress] = useState(0)
   const [currentIndex, setCurrentIndex] = useState(0)
-  const acceptsFilesDirectly = Boolean(onFilesSelected)
+  const acceptsFilesDirectly = Boolean(onFilesSelected || onFilesChosen)
   const currentFile = selectedFiles[currentIndex]
 
   useEffect(() => {
@@ -290,8 +302,13 @@ function UploadCard({
   }
 
   function selectFiles(fileList) {
-    const files = Array.from(fileList ?? [])
-    if (files.length) onFilesSelected?.(files)
+    const files = normalizeWikiFileSelection(fileList)
+    if (!files.length) return
+    if (onFilesChosen) {
+      onFilesChosen(files)
+      return
+    }
+    onFilesSelected?.(files)
   }
 
   function handleDrop(event) {
