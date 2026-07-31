@@ -8,6 +8,7 @@ import Pagination from '@/components/ui/Pagination'
 import SearchBar from '@/components/ui/SearchBar'
 import { ACCOUNT_STATUS, ROLES, SIGNUP_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
+import { useAuth } from '@/hooks/useAuth'
 import { fetchSignupRequests, fetchUsers } from '../api'
 import { AccountBadge, EmployeeAvatar, RoleBadge, StatCard } from '../components/MemberUi'
 
@@ -22,6 +23,8 @@ const PAGE_SIZE = 20
 
 export default function EmployeeListPage() {
   const navigate = useNavigate()
+  // 사용자 목록 조회는 모든 admin이 가능하지만, 가입 승인 관련 기능은 최고관리자 전용이다(S15P11B106-104).
+  const { isSuperAdmin } = useAuth()
   const [searchInput, setSearchInput] = useState('')
   const [keyword, setKeyword] = useState('')
   const [filter, setFilter] = useState('all')
@@ -54,6 +57,7 @@ export default function EmployeeListPage() {
   })
   // 가입 승인 대기 인원은 직원 목록이 아닌 GET /signup-requests 응답에서 받습니다.
   // totalCount가 현재 승인 처리를 기다리는 계정 수입니다.
+  // 가입 신청 API는 최고관리자 전용(부서관리자는 403)이므로 최고관리자일 때만 조회한다.
   const pendingSignupQuery = useQuery({
     queryKey: qk.signupRequests.list({ status: SIGNUP_STATUS.PENDING, page: 1, size: 1 }),
     queryFn: () =>
@@ -62,6 +66,7 @@ export default function EmployeeListPage() {
         page: 1,
         size: 1,
       }),
+    enabled: isSuperAdmin,
   })
 
   const employees = query.data?.items ?? []
@@ -117,17 +122,20 @@ export default function EmployeeListPage() {
 
   return (
     <div className="space-y-5">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* 가입 승인 대기 카드는 최고관리자만 볼 수 있어 그에 맞춰 열 수를 조정한다. */}
+      <section className={`grid gap-4 sm:grid-cols-2 ${isSuperAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-3'}`}>
         <StatCard label="전체 직원" value={totalCount} caption="현재 등록 계정" />
         <StatCard label="관리자" value={adminCount} tone="blue" caption="관리 권한 보유" />
         <StatCard label="사원" value={employeeCount} tone="slate" caption="일반 계정" />
-        <StatCard
-          label="가입 승인 대기"
-          value={pendingSignupQuery.data?.totalCount ?? 0}
-          suffix="건"
-          tone="amber"
-          caption="처리 대기 중"
-        />
+        {isSuperAdmin && (
+          <StatCard
+            label="가입 승인 대기"
+            value={pendingSignupQuery.data?.totalCount ?? 0}
+            suffix="건"
+            tone="amber"
+            caption="처리 대기 중"
+          />
+        )}
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -141,7 +149,9 @@ export default function EmployeeListPage() {
             </div>
             <p className="mt-1 text-sm text-slate-400">계정 권한과 재직 상태를 한 곳에서 관리합니다.</p>
           </div>
-          <Button onClick={() => navigate('/admin/signup-requests')}>가입 승인</Button>
+          {isSuperAdmin && (
+            <Button onClick={() => navigate('/admin/signup-requests')}>가입 승인</Button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3">
           <SearchBar

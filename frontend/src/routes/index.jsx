@@ -4,6 +4,7 @@ import AppShell from '@/components/layout/AppShell'
 import AuthLayout from '@/components/layout/AuthLayout'
 import ProtectedRoute from './guards/ProtectedRoute'
 import RoleRoute from './guards/RoleRoute'
+import SuperAdminRoute from './guards/SuperAdminRoute'
 import GuestRoute from './guards/GuestRoute'
 import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
@@ -79,7 +80,13 @@ export const router = createBrowserRouter([
               { path: 'admin/users', element: <EmployeeListPage /> },
               { path: 'admin/users/:userId', element: <EmployeeDetailPage /> },
               { path: 'admin/users/:userId/edit', element: <EmployeeEditPage /> },
-              { path: 'admin/signup-requests', element: <SignupRequestsPage /> },
+              // 가입 신청 조회/승인/거절은 최고관리자 전용(S15P11B106-104). 부서관리자는 403.
+              {
+                element: <SuperAdminRoute />,
+                children: [
+                  { path: 'admin/signup-requests', element: <SignupRequestsPage /> },
+                ],
+              },
               { path: 'admin/departments', element: <DepartmentManagementPage /> },
               { path: 'admin/inquiries', element: <InquiryManagementPage /> },
               { path: 'admin/inquiries/:inquiryId', element: <InquiryDetailPage /> },

@@ -6,6 +6,7 @@ import {
   inquiries,
   credentials,
   findUserById,
+  isSuperAdmin,
   schedules,
 } from './db'
 import { documentHandlers } from './handlers/document'
@@ -32,6 +33,19 @@ function errorBody(status, code, message, path, fieldErrors = []) {
   }
 }
 
+// 가입 신청 조회/승인/거절은 최고관리자 전용(S15P11B106-104). 최고관리자가 아니면 403을 반환하고,
+// 아니면 null을 돌려줘 핸들러가 정상 처리를 이어가게 한다.
+function denyIfNotSuperAdmin(path) {
+  const current = findUserById(currentUserId)
+  if (!current || !isSuperAdmin(current)) {
+    return HttpResponse.json(
+      errorBody(403, 'ADMIN_PERMISSION_REQUIRED', '가입 신청 관리는 최고관리자만 사용할 수 있습니다.', path),
+      { status: 403 },
+    )
+  }
+  return null
+}
+
 // 공개 API 계약에 맞춘 최소 핸들러 골격. 도메인 확장 시 여기에 추가한다.
 export const handlers = [
   http.get('/api/v1/auth/csrf', () =>
@@ -48,7 +62,8 @@ export const handlers = [
       )
     }
     currentUserId = account.userId
-    return HttpResponse.json({ expiresIn: 3600, user: findUserById(currentUserId) })
+    const user = findUserById(currentUserId)
+    return HttpResponse.json({ expiresIn: 3600, user: { ...user, isSuperAdmin: isSuperAdmin(user) } })
   }),
 
   http.post('/api/v1/auth/logout', () => {
@@ -63,7 +78,8 @@ export const handlers = [
         { status: 401 },
       )
     }
-    return HttpResponse.json(findUserById(currentUserId))
+    const me = findUserById(currentUserId)
+    return HttpResponse.json({ ...me, isSuperAdmin: isSuperAdmin(me) })
   }),
 
   http.patch('/api/v1/me/password', async ({ request }) => {
@@ -156,7 +172,7 @@ export const handlers = [
         { status: 404 },
       )
     }
-    return HttpResponse.json(employee)
+    return HttpResponse.json({ ...employee, isSuperAdmin: isSuperAdmin(employee) })
   }),
 
   http.patch('/api/v1/users/:userId', async ({ params, request }) => {
@@ -173,7 +189,7 @@ export const handlers = [
       updatedAt: new Date().toISOString(),
     })
     delete employee.departmentId
-    return HttpResponse.json(employee)
+    return HttpResponse.json({ ...employee, isSuperAdmin: isSuperAdmin(employee) })
   }),
 
   http.get('/api/v1/departments', () =>
@@ -239,6 +255,8 @@ export const handlers = [
   }),
 
   http.get('/api/v1/signup-requests', ({ request }) => {
+    const denied = denyIfNotSuperAdmin('/api/v1/signup-requests')
+    if (denied) return denied
     const url = new URL(request.url)
     const status = url.searchParams.get('status')
     const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
@@ -255,6 +273,8 @@ export const handlers = [
   }),
 
   http.post('/api/v1/signup-requests/:userId/approve', ({ params }) => {
+    const denied = denyIfNotSuperAdmin(`/api/v1/signup-requests/${params.userId}/approve`)
+    if (denied) return denied
     const signup = signupRequests.find((item) => item.userId === params.userId)
     if (!signup) return HttpResponse.json(errorBody(404, 'USER_NOT_FOUND', '가입 요청을 찾을 수 없습니다.', `/api/v1/signup-requests/${params.userId}/approve`), { status: 404 })
     const approvedAt = new Date().toISOString()
@@ -288,6 +308,8 @@ export const handlers = [
   }),
 
   http.post('/api/v1/signup-requests/:userId/reject', ({ params }) => {
+    const denied = denyIfNotSuperAdmin(`/api/v1/signup-requests/${params.userId}/reject`)
+    if (denied) return denied
     const signup = signupRequests.find((item) => item.userId === params.userId)
     if (!signup) return HttpResponse.json(errorBody(404, 'USER_NOT_FOUND', '가입 요청을 찾을 수 없습니다.', `/api/v1/signup-requests/${params.userId}/reject`), { status: 404 })
     signup.signupStatus = 'rejected'

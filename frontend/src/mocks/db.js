@@ -242,13 +242,21 @@ export const inquiries = [
 ]
 
 // 목 로그인 계정(비밀번호는 검증만 통과시키는 데모용).
+// 김민수(userId 3)는 개발팀 부서장이라 부서관리자(최고관리자 아님) UX 확인용 계정으로 둔다.
 export const credentials = {
   'employee@ajt.com': { password: 'password123!', userId: '1' },
   'admin@ajt.com': { password: 'password123!', userId: '2' },
+  'minsu.kim@ajt.co.kr': { password: 'password123!', userId: '3' },
 }
 
 export function findUserById(userId) {
   return users.find((u) => u.userId === userId) ?? null
+}
+
+// 최고관리자 여부: role=admin이면서 어떤 부서의 manager도 아닌 사용자(백엔드 SuperAdminChecker와 동일 기준).
+export function isSuperAdmin(user) {
+  if (!user || user.role !== ROLES.ADMIN) return false
+  return !departments.some((department) => department.manager?.userId === user.userId)
 }
 
 // 부서 ID 목록 → "D1-D2" 형태의 scopeKey. 중복 제거 후 오름차순 정렬한다(FR-DOC-002 정책).

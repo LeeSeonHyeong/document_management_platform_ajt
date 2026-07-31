@@ -5,7 +5,9 @@ import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
 import Spinner from '@/components/ui/Spinner'
+import { ROLES } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
+import { useAuth } from '@/hooks/useAuth'
 import { fetchUser } from '../api'
 import { AccountBadge, EmployeeAvatar, RoleBadge } from '../components/MemberUi'
 
@@ -16,12 +18,15 @@ function formatDate(value) {
 export default function EmployeeDetailPage() {
   const { userId } = useParams()
   const navigate = useNavigate()
+  const { user, isSuperAdmin } = useAuth()
   const query = useQuery({ queryKey: qk.users.detail(userId), queryFn: () => fetchUser(userId) })
 
   if (query.isLoading) return <div className="flex justify-center py-24"><Spinner /></div>
   if (!query.data) return <EmptyState title="직원 정보를 찾을 수 없습니다." />
 
   const employee = query.data
+  // 부서관리자는 사원 계정만 수정할 수 있고(본인 제외 다른 관리자 수정 불가), 최고관리자는 모두 수정 가능하다(S15P11B106-104).
+  const canEdit = isSuperAdmin || employee.role === ROLES.EMPLOYEE || employee.userId === user?.userId
   return (
     <div className="space-y-5">
       <Link to="/admin/users" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-800">
@@ -44,7 +49,9 @@ export default function EmployeeDetailPage() {
                 </p>
               </div>
             </div>
-            <Button onClick={() => navigate(`/admin/users/${userId}/edit`)}>정보 수정</Button>
+            {canEdit && (
+              <Button onClick={() => navigate(`/admin/users/${userId}/edit`)}>정보 수정</Button>
+            )}
           </div>
           <dl className="mt-5 grid gap-y-4 text-sm sm:grid-cols-[140px_1fr]">
             <dt className="text-slate-400">사용자명</dt><dd className="font-semibold">{employee.name}</dd>

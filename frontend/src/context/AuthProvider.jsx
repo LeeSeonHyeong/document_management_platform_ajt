@@ -71,6 +71,9 @@ export default function AuthProvider({ children }) {
     () => ({
       user,
       role: user?.role ?? null,
+      // 최고관리자 여부(S15P11B106-83). 사용자 관리는 role=admin 전체가 가능하지만,
+      // 가입 신청 조회/승인/거절은 이 값이 true인 최고관리자만 가능하다.
+      isSuperAdmin: Boolean(user?.isSuperAdmin),
       isAuthenticated: Boolean(user),
       initializing,
       login,
