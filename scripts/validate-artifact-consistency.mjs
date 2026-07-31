@@ -47,7 +47,7 @@ const findRequest = (requests, method, suffix) =>
 expect(requirements.includes("MySQL 8.4 LTS"), "요구사항에 MySQL 8.4 LTS가 없음");
 expect(requirements.includes("총 파일 크기는 최대 100MB"), "요구사항에 요청당 총 100MB 제한이 없음");
 expect(requirements.includes("`MIXED`"), "요구사항에 MIXED 질문 유형이 없음");
-expect(requirements.includes("answer-context-selections"), "요구사항에 2단계 자료 선택 API가 없음");
+expect(requirements.includes("답변 자료 자율 조회"), "요구사항에 답변 자료 자율 조회가 없음");
 expect(requirements.includes("wiki-context-selections"), "요구사항에 Wiki 변환 문맥 선택 API가 없음");
 expect(requirements.includes("링크 정합성"), "요구사항에 백엔드 링크 정합성 검사가 없음");
 expect(requirements.includes("`FAILED` 또는 `CANCELLED`"), "요구사항의 재처리 상태가 FAILED·CANCELLED로 통일되지 않음");
@@ -258,8 +258,16 @@ expect(publicQuestionBody.question, "공개 질문 API에 question이 없음");
 expect(!("questionType" in publicQuestionBody), "공개 질문 API가 questionType을 받고 있음");
 
 expect(
-  findRequest(internalRequests, "POST", "/internal/v1/answer-context-selections"),
-  "AI 자료 선택 API가 없음",
+  !findRequest(internalRequests, "POST", "/internal/v1/answer-context-selections"),
+  "챗봇 2단계 자료 선택 API가 아직 계약에 남아 있음 — 에이전트가 직접 조회한다",
+);
+expect(
+  findRequest(internalRequests, "GET", "/internal/v1/schedules"),
+  "일정 목록 조회 API가 없음",
+);
+expect(
+  findRequest(internalRequests, "GET", "/internal/v1/schedules/:scheduleId"),
+  "일정 상세 조회 API가 없음",
 );
 expect(
   findRequest(internalRequests, "POST", "/internal/v1/wiki-context-selections"),
@@ -309,10 +317,17 @@ expect(
   ),
   "삭제된 일정 첨부파일 API가 남아 있음",
 );
-expect(publicRequests.length === 56, `공개 API 수가 56개가 아님: ${publicRequests.length}`);
-// 기존 7개 + Wiki 조회 창구 8개. 창구는 FastAPI 가 Spring Boot 를 호출하는 반대 방향이라
-// 같은 내부 컬렉션에 있지만 baseVariable 이 backendBaseUrl 이다.
-expect(internalRequests.length === 15, `내부 API 수가 15개가 아님: ${internalRequests.length}`);
+// ⚠️ 이 값도 낡아 있었다 — 공개 API 가 58개인데 기대값이 56 이었다 (`docs/api/README.md`
+// 는 58 로 맞다). 계약 버전 상수와 같은 종류의 방치다. 공개 API 를 늘릴 때 이 줄도 올린다.
+// 59 는 S15P11B106-101 의 `POST /api/v1/ai-jobs/{jobId}/start` 신설분이다.
+expect(publicRequests.length === 59, `공개 API 수가 59개가 아님: ${publicRequests.length}`);
+// Spring → FastAPI 6개 + Wiki 조회 API 8개 + 일정 조회 API 2개. 뒤의 10개는 FastAPI 가
+// Spring Boot 를 호출하는 반대 방향이라 같은 내부 컬렉션에 있지만 baseVariable 이
+// backendBaseUrl 이다.
+//
+// 챗봇 2단계 중 answer-context-selections 가 없어져 Spring → FastAPI 가 7개에서 6개가
+// 됐고, 일정 조회 2개가 늘었다 (S15P11B106-169).
+expect(internalRequests.length === 16, `내부 API 수가 16개가 아님: ${internalRequests.length}`);
 
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
@@ -325,7 +340,16 @@ const collectionVariable = (collection, key) =>
 // 1.6.2 는 relationChanges[] 필드 이름을 Spring 어휘(sourceWikiRef)에 맞춘 것과 그
 // action 값을 Spring 어휘(add/remove)에 맞춘 것이다 — 필드·값 이름만 바뀌고 구조는
 // 그대로라 patch 다 (S15P11B106-157).
-const expectedContractVersion = "1.6.2";
+// 1.7.0 은 AI 작업 수동 시작 API 추가다 (S15P11B106-101, develop 에 먼저 들어갔다).
+// 1.8.0 은 챗봇 2단계를 하나로 합친 것이다 — answer-context-selections 삭제,
+// answers 요청에서 본문·일정 목록 제거, wikiIndexes[].wikiCapability 추가, 응답에
+// questionType 추가, 일정 조회 2개 신설. 호환되지 않는 변경이라 minor 다
+// (S15P11B106-169). 169 가 101 머지 전 develop 에서 갈라져 둘이 같은 1.7.0 을 썼고,
+// 101 이 먼저 들어갔으므로 챗봇이 1.8.0 으로 물러섰다.
+//
+// ⚠️ 이 상수가 1.6.2 에 멈춰 있었다. 그 사이 계약이 1.6.9 까지 올라갔는데 여기가 따라오지
+// 않았다 — 이 검사가 이미 실패하는 상태였다. 계약 버전을 올릴 때 이 줄도 같이 올린다.
+const expectedContractVersion = "1.8.0";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

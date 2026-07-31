@@ -2028,11 +2028,11 @@ const internalFolders = [
       }),
     }),
   ]),
-  folder("답변 생성", "질문 자동 분류·자료 선택과 선택 본문 기반 답변 생성 API", [
+  folder("답변 생성", "에이전트가 스스로 조회해 답변하는 챗봇 API. 호출은 한 번이다", [
     request({
-      name: "답변 자료 선택",
+      name: "답변 생성",
       method: "POST",
-      path: "/internal/v1/answer-context-selections",
+      path: "/internal/v1/answers",
       baseVariable: "aiBaseUrl",
       headers: [{ key: "Content-Type", value: "application/json" }],
       body: rawJson({
@@ -2047,106 +2047,40 @@ const internalFolders = [
           {
             scopeKey: "D1-D2",
             indexMarkdown: "# 사내 규정\n- [휴가 규정](pages/101.md)",
-          },
-        ],
-        scheduleSummaries: [
-          {
-            scheduleId: "31",
-            title: "8월 휴가 일정",
-            startAt: "2026-08-03T01:00:00Z",
-            endAt: "2026-08-03T03:00:00Z",
-            targetText: "개발부",
-            location: "본사",
+            wikiCapability: "{{wikiCapability}}",
           },
         ],
       }),
       description: docs({
-        summary: "질문을 Wiki·일정·혼합으로 자동 분류하고 필요한 자료 ID를 선택합니다.",
-        usage: "Spring Boot가 최종 답변용 본문을 읽기 전에 1차로 호출합니다.",
+        summary:
+          "에이전트가 목차를 보고 필요한 Wiki 본문과 일정을 직접 조회해 답변을 생성합니다.",
+        usage:
+          "Wiki·일정 챗봇 질문 처리에서 내부 호출합니다. 호출은 한 번이며 자료 선택 단계가 따로 없습니다.",
         auth: "`X-Internal-API-Key` 필요",
         requestBody: [
           "`questionId`, `conversationId`, `question`",
-          "`conversationMessages`: 같은 사용자 대화의 이전 질문·답변",
+          "`conversationMessages`: 같은 사용자 대화의 이전 질문·답변. AI가 최근 12개·4,000자로 자릅니다",
           "`wikiIndexes`: 권한 있는 공간별 scopeKey와 index.md 내용",
-          "`scheduleSummaries`: 권한 있는 일정의 ID, 제목, 기간, 대상과 장소",
+          "`wikiIndexes[].wikiCapability`: 그 범위의 Wiki 조회 API 호출에 실을 열람 허가. **범위마다 하나씩 필수로 발급합니다.** 빠진 범위는 AI가 조회할 수 없어 그 범위의 Wiki는 답변 근거가 되지 못합니다",
         ],
         policy: [
-          "questionType은 wiki, schedule 또는 mixed입니다.",
-          "이전 대화 문맥을 포함해 현재 질문의 종류와 필요한 자료를 판단합니다.",
-          "Wiki와 일정은 각각 최대 5개를 관련도 순서로 선택합니다.",
-          "본문과 원본문서는 이 단계에 전달하지 않습니다.",
+          "본문과 일정 목록을 전달하지 않습니다. 에이전트가 Wiki 조회 API와 일정 조회 API로 직접 읽습니다.",
+          "`sources`는 에이전트가 실제로 읽은 Wiki·일정 **중 답변에 사용한 것**입니다. 에이전트가 사용했다고 신고해도 실제로 읽지 않은 자료는 출처가 되지 않습니다.",
+          "`questionType`은 에이전트가 **질문 맥락을 보고 판단**합니다 (FR-QNA-002). 읽은 자료의 종류로 정하지 않습니다.",
+          "근거를 찾아봤지만 없으면 `200`에 빈 `sources`로 정보가 부족함을 안내합니다 (FR-QNA-007). 조회를 아예 시도하지 않은 실행만 `NO_WIKI_OR_SCHEDULE_WAS_READ` 실패입니다.",
+          "일정 기간은 에이전트가 질문에 맞춰 정합니다. 백엔드가 미리 고르지 않습니다.",
+          "AI는 25초 안에 응답합니다. 백엔드 읽기 타임아웃은 그보다 넉넉해야 합니다.",
+          "`wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.",
         ],
         response: [
-          "`questionType`",
-          "`wikiIds`, `scheduleIds`: 관련도 순서의 선택 ID 배열",
-          "`reason`: 선택 근거 요약",
+          "`answer`: 생성된 답변. 근거가 없으면 정보가 부족하다는 안내입니다",
+          "`sources`: 답변에 사용한 출처 배열. `type`·`wikiId` 또는 `scheduleId`·`title`. 백엔드가 `answer_source.source_title`에 제목을 저장하므로 `title`은 필수입니다",
+          "`questionType`: `wiki` | `schedule` | `mixed`. 백엔드가 `question` 테이블에 저장합니다",
         ],
         errors: [
-          "`400 Bad Request`: 질문 또는 목차·일정 요약 형식 오류",
+          "`400 Bad Request`: `INVALID_ANSWER_REQUEST`",
           "`401 Unauthorized`: 내부 API 키 오류",
-          "`500 Internal Server Error`: `ANSWER_CONTEXT_SELECTION_FAILED`",
-        ],
-      }),
-    }),
-    request({
-      name: "답변 생성",
-      method: "POST",
-      path: "/internal/v1/answers",
-      baseVariable: "aiBaseUrl",
-      headers: [{ key: "Content-Type", value: "application/json" }],
-      body: rawJson({
-        questionId: "500",
-        conversationId: "chat-123",
-        questionType: "mixed",
-        question: "연차 규정과 다음 휴가 일정을 알려줘.",
-        conversationMessages: [
-          { role: "user", content: "연차 신청 방법을 알려줘." },
-          { role: "assistant", content: "연차 신청 절차는 다음과 같습니다." },
-        ],
-        selectedWikis: [
-          {
-            wikiId: "101",
-            title: "휴가 규정",
-            contentMarkdown: "# 휴가 규정\n...",
-          },
-        ],
-        selectedSchedules: [
-          {
-            scheduleId: "31",
-            title: "8월 휴가 일정",
-            content: "개발부 휴가 일정",
-            startAt: "2026-08-03T01:00:00Z",
-            endAt: "2026-08-03T03:00:00Z",
-            targetText: "개발부",
-            location: "본사",
-          },
-        ],
-      }),
-      description: docs({
-        summary: "Spring Boot가 권한 검증한 Wiki 또는 일정으로 답변을 생성합니다.",
-        usage: "Wiki·일정 챗봇 질문 처리에서 내부 호출합니다.",
-        auth: "`X-Internal-API-Key` 필요",
-        requestBody: [
-          "`questionId`, `conversationId`, `questionType`, `question`",
-          "`conversationMessages`: 같은 사용자 대화의 이전 질문·답변",
-          "`selectedWikis`: 백엔드가 재검증하고 파일에서 읽은 Wiki 본문",
-          "`selectedWikis[].summary`: `wiki.summary`에서 채웁니다. 값이 없으면 생략할 수 있습니다.",
-          "`selectedSchedules`: 백엔드가 재검증한 일정 내용",
-        ],
-        policy: [
-          "현재 질문은 같은 conversationId의 이전 질문·답변 문맥과 함께 처리합니다.",
-          "wiki는 selectedWikis, schedule은 selectedSchedules, mixed는 두 배열을 사용합니다.",
-          "원본문서는 전달하지 않으며 Spring Boot가 최종 Wiki 출처에 하위 근거로 붙입니다.",
-          "출처는 두 개 이상 반환할 수 있습니다.",
-        ],
-        response: [
-          "`answer`: 생성된 답변",
-          "`sources`: 실제 사용한 wikiId 또는 scheduleId와 제목 배열",
-        ],
-        errors: [
-          "`400 Bad Request`: 질문 또는 컨텍스트 오류",
-          "`401 Unauthorized`: 내부 API 키 오류",
-          "`500 Internal Server Error`: `ANSWER_GENERATION_FAILED`",
+          "`500 Internal Server Error`: `NO_WIKI_OR_SCHEDULE_WAS_READ` · `WIKI_QUERY_FAILED` · `SCHEDULE_QUERY_FAILED` · `AGENT_TURN_LIMIT_REACHED` · `AGENT_TIMED_OUT` · `MODEL_CALL_FAILED` · `ANSWER_WAS_EMPTY`",
         ],
       }),
     }),
@@ -2378,6 +2312,77 @@ const internalFolders = [
             "`400 Bad Request`: 파라미터 오류",
             "`401 Unauthorized`: 내부 API 키 오류",
             "`404 Not Found`: `WIKI_CAPABILITY_EXPIRED` · `WIKI_SCOPE_NOT_FOUND` · `DOCUMENT_NOT_FOUND`. HTTP 상태는 같고 `code`로 구분합니다",
+          ],
+        }),
+      }),
+    ],
+  ),
+  folder(
+    "일정 조회 API",
+    "FastAPI가 Spring Boot에 호출하는 일정 조회. 방향이 Wiki 조회 API와 같다 — FastAPI가 호출자다. 챗봇 에이전트가 질문에 맞는 기간을 정해 직접 조회한다. 요청에 일정 목록을 싣지 않는다.",
+    [
+      request({
+        name: "일정 목록",
+        method: "GET",
+        path: "/internal/v1/schedules",
+        query: [
+          { key: "questionId", value: "500", description: "권한 판정 기준이 되는 질문 ID" },
+          { key: "from", value: "2026-08-01", description: "조회 시작일 (YYYY-MM-DD)" },
+          { key: "to", value: "2026-08-31", description: "조회 종료일 (YYYY-MM-DD)" },
+          { key: "keyword", value: "워크샵", description: "제목 부분 일치 (선택)" },
+          { key: "limit", value: "50", description: "결과 개수. 기본 50, 최대 50" },
+        ],
+        description: docs({
+          summary: "기간 안에서 질문자가 볼 수 있는 일정의 제목·시각·대상을 조회합니다.",
+          usage:
+            "챗봇 에이전트가 일정 질문에 답할 때 호출합니다. 내용(`content`)은 오지 않으므로 일정 상세를 따로 조회합니다.",
+          auth: "`X-Internal-API-Key` 필요",
+          queryParams: [
+            "`questionId`: **권한 판정의 근거입니다.** 백엔드가 이 번호로 질문한 사용자를 찾아 그 사용자가 볼 수 있는 일정만 반환합니다",
+            "`from`, `to`: 조회 기간",
+            "`keyword`: 제목 부분 일치. 한국어는 조사가 붙으므로 단어 단위가 아니라 부분 일치로 봅니다",
+            "`limit`: 최대 50. 넘겨도 50으로 자릅니다",
+          ],
+          policy: [
+            "권한은 요청에 실린 값이 아니라 `questionId`로 판정합니다. 내부 API 키는 호출자가 AI 서버임만 증명합니다.",
+            "승인된 일정만 반환합니다.",
+            "시작 시각이 가까운 순서로 채우고 `limit`을 넘으면 자릅니다.",
+            "`truncated`가 필요한 이유는 잘린 사실을 모르면 에이전트가 전부 본 것으로 단정하기 때문입니다.",
+          ],
+          response: [
+            "`items[]`: `scheduleId` · `title` · `startAt` · `endAt` · `targetText` · `location`",
+            "`truncated`: 상한에 걸려 잘렸는지",
+          ],
+          errors: [
+            "`400 Bad Request`: 파라미터 오류 (`questionId`·`from`·`to` 누락 포함)",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: `QUESTION_NOT_FOUND`",
+          ],
+        }),
+      }),
+      request({
+        name: "일정 상세",
+        method: "GET",
+        path: "/internal/v1/schedules/:scheduleId",
+        query: [
+          { key: "questionId", value: "500", description: "권한 판정 기준이 되는 질문 ID" },
+        ],
+        description: docs({
+          summary: "일정 하나의 내용까지 조회합니다.",
+          usage: "에이전트가 목록에서 고른 일정을 근거로 쓰려면 호출해야 합니다.",
+          auth: "`X-Internal-API-Key` 필요",
+          pathParams: ["`scheduleId`: 조회할 일정 ID"],
+          queryParams: ["`questionId`: 권한 판정 기준"],
+          policy: [
+            "질문자가 볼 수 없는 일정은 `SCHEDULE_NOT_FOUND`입니다. 존재 여부를 흘리지 않습니다.",
+          ],
+          response: [
+            "`scheduleId` · `title` · `content` · `startAt` · `endAt` · `targetText` · `location`",
+          ],
+          errors: [
+            "`400 Bad Request`: 파라미터 오류",
+            "`401 Unauthorized`: 내부 API 키 오류",
+            "`404 Not Found`: `QUESTION_NOT_FOUND` · `SCHEDULE_NOT_FOUND`. HTTP 상태는 같고 `code`로 구분합니다",
           ],
         }),
       }),
