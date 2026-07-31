@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.department.DepartmentRepository;
+import com.ajt.backend.domain.inquiry.Inquiry;
+import com.ajt.backend.domain.inquiry.InquiryPriority;
+import com.ajt.backend.domain.inquiry.InquiryRepository;
 import com.ajt.backend.domain.member.dto.SignupApprovalResponse;
 import com.ajt.backend.domain.member.dto.SignupRejectionResponse;
 import com.ajt.backend.domain.member.dto.UserListResponse;
@@ -29,6 +32,7 @@ class MemberServiceTest {
     private final MemberService memberService;
     private final DepartmentRepository departmentRepository;
     private final MemberRepository memberRepository;
+    private final InquiryRepository inquiryRepository;
     private final PasswordEncoder passwordEncoder;
 
 
@@ -37,11 +41,13 @@ class MemberServiceTest {
             MemberService memberService,
             DepartmentRepository departmentRepository,
             MemberRepository memberRepository,
+            InquiryRepository inquiryRepository,
             PasswordEncoder passwordEncoder
     ) {
         this.memberService = memberService;
         this.departmentRepository = departmentRepository;
         this.memberRepository = memberRepository;
+        this.inquiryRepository = inquiryRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -226,6 +232,78 @@ class MemberServiceTest {
     }
 
     @Test
+    @DisplayName("가입 승인되지 않은(PENDING) 계정은 사용자 수정 API로 수정할 수 없다(409)")
+    void updateUserRejectsNonApprovedTarget() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member pending = memberRepository.save(Member.signup(
+                department, "pending@ajt.com", "신청자", passwordEncoder.encode("password123!")));
+        AuthenticatedMember actor = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        // 승인 절차 우회 시도: PENDING 계정을 곧바로 활성 관리자로 바꾸려 함
+        UserUpdateRequest request = UserUpdateRequest.of(null, "admin", null, "active");
+
+        assertThatThrownBy(() -> memberService.updateUser(actor, pending.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.USER_NOT_MODIFIABLE);
+    }
+
+    @Test
+    @DisplayName("미처리(PENDING) 문의 담당자를 사원으로 강등하면 409로 거절한다(DR-027)")
+    void updateUserRejectsDemotingPendingInquiryAssignee() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member author = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        savePendingInquiry(author, admin);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("employee");
+
+        assertThatThrownBy(() -> memberService.updateUser(actor, admin.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INQUIRY_ASSIGNEE_HAS_PENDING);
+    }
+
+    @Test
+    @DisplayName("미처리(PENDING) 문의 담당자를 비활성화하면 409로 거절한다(DR-027)")
+    void updateUserRejectsDeactivatingPendingInquiryAssignee() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member author = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        savePendingInquiry(author, admin);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setAccountStatus("inactive");
+
+        assertThatThrownBy(() -> memberService.updateUser(actor, admin.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INQUIRY_ASSIGNEE_HAS_PENDING);
+    }
+
+    @Test
+    @DisplayName("처리 완료(DONE) 문의만 있는 담당자는 사원으로 강등할 수 있다")
+    void updateUserAllowsDemotingAssigneeWithOnlyDoneInquiry() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Member author = memberRepository.save(
+                approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        Inquiry inquiry = savePendingInquiry(author, admin);
+        inquiry.markAnswered();
+        inquiryRepository.save(inquiry);
+        AuthenticatedMember actor = new AuthenticatedMember(1L, "actor@ajt.com", Role.ADMIN);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setRole("employee");
+
+        UserResponse response = memberService.updateUser(actor, admin.getId(), request);
+
+        assertThat(response.role()).isEqualTo("employee");
+    }
+
+    @Test
     @DisplayName("가입 신청 승인은 사번을 발급하고 approved active 상태로 바꾼다")
     void approveSignupRequestActivatesMember() {
         Department department = departmentRepository.save(new Department("개발부"));
@@ -291,5 +369,10 @@ class MemberServiceTest {
                 passwordEncoder.encode("password123!"),
                 employeeNo
         );
+    }
+
+    private Inquiry savePendingInquiry(Member author, Member assignee) {
+        return inquiryRepository.save(
+                Inquiry.create(author, assignee, "문의 제목", "문의 내용", InquiryPriority.NORMAL));
     }
 }
