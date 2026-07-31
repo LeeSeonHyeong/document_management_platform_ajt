@@ -36,9 +36,11 @@ import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.document.storage.DocumentFileMutation;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.lang.reflect.Field;
+import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import java.time.Instant;
@@ -182,7 +184,7 @@ class DocumentManagementServiceTest {
         assertThat(response.status()).isEqualTo("waiting");
         assertThat(document.status().name()).isEqualTo("UPLOADED");
         assertThat(document.failureReason()).isNull();
-        verify(parseJobLauncher).launch(any(AiJob.class));
+        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test
@@ -225,7 +227,7 @@ class DocumentManagementServiceTest {
         assertThat(document.status().name()).isEqualTo("UPLOADED");
         verify(documentFileStorage).storeOriginal(any(), anyLong(), any());
         verify(documentFileStorage, never()).delete(any());
-        verify(parseJobLauncher).launch(any(AiJob.class));
+        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test
@@ -397,26 +399,26 @@ class DocumentManagementServiceTest {
         assertThat(response.document().documentId()).isEqualTo("15");
         assertThat(response.document().documentCategoryName()).isEqualTo("취업규칙");
         assertThat(document.status().name()).isEqualTo("UPLOADED");
-        verify(parseJobLauncher).launch(any(AiJob.class));
+        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
         // 같은 범위 수정은 이 문서만 증분 재처리한다(범위 전체를 훑지 않는다).
         verify(documentRepository, never()).findByScopeKey(any());
     }
 
     @Test
-    @DisplayName("공개 범위가 바뀌면 새 범위엔 이 문서만, 기존 범위엔 남은 문서로 재처리한다")
+    @DisplayName("공개 범위가 바뀌면 기존 범위는 걷어내고 새 범위에 이 문서만 반영한다")
     void updatesDocumentMetadataWithScopeChange() throws Exception {
-        Document document = uploadedDocument(); // scope "ALL"
+        Document document = parsedDocument(); // scope "ALL", parsedPath 있음
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(documentCategoryRepository.findById(4L)).willReturn(Optional.of(category(4L, "D1-D3", "사규")));
         given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 취업규칙\n본문");
         given(documentFileStorage.moveToScope(anyString(), any(), eq("D1-D3"), eq(15L))).willReturn(documentFileMutation);
         given(documentFileMutation.originalPath()).willReturn("wiki/D1-D3/sources/15/original.md");
-        given(documentFileMutation.parsedPath()).willReturn(null);
-        // 양쪽 범위 검사 뒤, 기존 범위는 문서 이동 후 재처리하면 비고 신규 범위에는 이동 문서가 포함된다.
-        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document), List.of());
-        given(documentRepository.findByScopeKey("D1-D3")).willReturn(List.of(), List.of(document));
+        given(documentFileMutation.parsedPath()).willReturn("wiki/D1-D3/sources/15/parsed.md");
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentRepository.findByScopeKey("D1-D3")).willReturn(List.of());
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -431,8 +433,57 @@ class DocumentManagementServiceTest {
         assertThat(response.document().documentCategoryName()).isEqualTo("사규");
         assertThat(document.scopeKey()).isEqualTo("D1-D3");
         assertThat(document.status().name()).isEqualTo("UPLOADED");
-        // 새 범위(문서 단위) + 기존 범위(범위 단위) → 재처리 작업 2건
-        verify(parseJobLauncher, times(2)).launch(any(AiJob.class));
+        assertThat(response.reprocessJobs()).hasSize(2);
+
+        // 기존 범위 걷어내기 + 새 범위 반영 → 재처리 작업 2건. 범위 전체를 다시 훑지 않는다.
+        ArgumentCaptor<AiJob> jobs = ArgumentCaptor.forClass(AiJob.class);
+        ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher, times(2)).launch(jobs.capture(), plans.capture());
+
+        AiJob removeJob = jobs.getAllValues().get(0);
+        DocumentReprocessPlan removePlan = plans.getAllValues().get(0);
+        assertThat(removeJob.scopeKey()).isEqualTo("ALL");
+        assertThat(removeJob.documentIds()).containsExactly(15L);
+        assertThat(removePlan.changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REMOVED);
+        // 파일을 옮기기 전에 읽은 본문이어야 한다 — 이동 뒤 옛 경로에서는 읽을 수 없다.
+        assertThat(removePlan.removedParsedMarkdownOf(15L)).isEqualTo("# 옛 취업규칙\n본문");
+
+        AiJob addJob = jobs.getAllValues().get(1);
+        assertThat(addJob.scopeKey()).isEqualTo("D1-D3");
+        assertThat(addJob.documentIds()).containsExactly(15L);
+        assertThat(plans.getAllValues().get(1).changeTypeOf(15L))
+                .isEqualTo(WikiDocumentChangeType.DOCUMENT_ADDED);
+    }
+
+    @Test
+    @DisplayName("공개 범위 변경 시 옛 파싱 본문이 없으면 걷어내기를 건너뛰고 새 범위만 반영한다")
+    void skipsRemovalWhenParsedMarkdownIsMissing() throws Exception {
+        Document document = uploadedDocument(); // parsedPath 없음(파싱 전)
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(4L)).willReturn(Optional.of(category(4L, "D1-D3", "사규")));
+        given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
+        given(documentFileStorage.moveToScope(anyString(), any(), eq("D1-D3"), eq(15L))).willReturn(documentFileMutation);
+        given(documentFileMutation.originalPath()).willReturn("wiki/D1-D3/sources/15/original.md");
+        given(documentFileMutation.parsedPath()).willReturn(null);
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentRepository.findByScopeKey("D1-D3")).willReturn(List.of());
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        DocumentUpdateResponse response = service.update(
+                15L, new DocumentMetadataUpdateRequest(4L, "department", List.of(1L, 3L)));
+
+        assertThat(response.reprocessJobs()).hasSize(1);
+        assertThat(response.reprocessJobs().get(0).scopeKey()).isEqualTo("D1-D3");
+
+        ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher, times(1)).launch(any(AiJob.class), plans.capture());
+        assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_ADDED);
     }
 
     @Test
@@ -530,7 +581,7 @@ class DocumentManagementServiceTest {
         assertThat(response.scopeKey()).isEqualTo("ALL");
         assertThat(response.status()).isEqualTo("waiting");
         verify(documentRepository).delete(document);
-        verify(parseJobLauncher).launch(any(AiJob.class));
+        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test
@@ -594,6 +645,15 @@ class DocumentManagementServiceTest {
                 "text/markdown",
                 1024L
         );
+    }
+
+    /** 파싱까지 끝난 문서입니다. 걷어내기에 필요한 옛 파싱 본문 경로를 갖습니다. */
+    private Document parsedDocument() {
+        Document document = uploadedDocument();
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/15/parsed.md", List.of());
+        document.completeProcessing(List.of());
+        return document;
     }
 
     private DocumentCategory category(long id, String name) throws Exception {

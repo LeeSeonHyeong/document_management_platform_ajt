@@ -25,6 +25,7 @@ import com.ajt.backend.global.ai.client.SourceParseResponse;
 import com.ajt.backend.global.ai.client.SourceType;
 import com.ajt.backend.global.ai.client.WikiContextSelectionRequest;
 import com.ajt.backend.global.ai.client.WikiContextSelectionResponse;
+import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.FieldErrorResponse;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -458,6 +459,55 @@ class DocumentParseWorkerTest {
                 List.<FieldErrorResponse>of(),
                 null
         );
+    }
+
+    @Test
+    @DisplayName("걷어내기 계획이면 파싱하지 않고 작업의 범위에서 문서를 제거한다")
+    void removesDocumentFromJobScopeWithoutParsing() throws Exception {
+        // 범위 변경 재처리 시점에는 문서가 이미 새 범위(D1-D3)로 옮겨져 있다.
+        Document document = document(15L, "rule.md");
+        setScopeKey(document, "D1-D3");
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
+        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
+                .willReturn(new WikiContextSelectionResponse(List.of("101"), "이 문서를 근거로 쓴 위키"));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString(), anyList()))
+                .willReturn(transformationResponse("걷어내기 완료"));
+        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
+
+        // 파싱·파일 접근이 전혀 없다 — 원본은 이미 새 범위로 옮겨졌다.
+        org.mockito.Mockito.verify(aiClient, org.mockito.Mockito.never())
+                .parseSource(any(SourceParseRequest.class));
+        org.mockito.Mockito.verify(fileStorage, org.mockito.Mockito.never())
+                .storeParsedMarkdown(anyString(), anyLong(), anyString());
+
+        // 문맥 선택·변환 모두 문서의 현재 범위가 아니라 작업의 범위를 대상으로 한다.
+        org.mockito.Mockito.verify(aiClient).selectWikiContext(org.mockito.ArgumentMatchers.argThat(
+                request -> request.scopeKey().equals("ALL")
+                        && request.changeType() == WikiDocumentChangeType.DOCUMENT_REMOVED
+                        && request.parsedMarkdown() == null
+                        && request.removedParsedMarkdown().equals("# 옛 취업규칙\n본문")));
+        org.mockito.Mockito.verify(wikiTransformationService).requestForDocumentChange(
+                eq(42L), eq(15L), eq("ALL"), eq(WikiDocumentChangeType.DOCUMENT_REMOVED),
+                eq(null), eq("# 옛 취업규칙\n본문"), eq(List.of(101L)));
+        org.mockito.Mockito.verify(transactionService).applyRemovedDocument(15L, "ALL", transformationResponse("걷어내기 완료"));
+
+        // 문서 상태는 새 범위 작업이 관리한다 — 걷어내기가 건드리지 않는다.
+        assertThat(document.status()).isEqualTo(DocumentStatus.UPLOADED);
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+    }
+
+    private void setScopeKey(Document document, String scopeKey) throws ReflectiveOperationException {
+        Field field = Document.class.getDeclaredField("scopeKey");
+        field.setAccessible(true);
+        field.set(document, scopeKey);
     }
 
     private Document document(long id, String name) throws ReflectiveOperationException {

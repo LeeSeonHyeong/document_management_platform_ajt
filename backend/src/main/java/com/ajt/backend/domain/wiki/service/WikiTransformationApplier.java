@@ -84,6 +84,34 @@ public class WikiTransformationApplier {
     }
 
     /**
+     * 원본문서가 이 범위에서 빠진 결과를 반영합니다. (FR-DOC-008 범위 변경, DR-014 삭제)
+     *
+     * <p>문서 참조를 자동으로 더하지 않는다 — 빠지는 문서를 근거로 다시 적으면 안 되기 때문이다.
+     * 반영이 끝난 뒤 이 범위에 남은 Wiki의 {@code documentRefs}에서 빠진 문서를 지운다. AI가
+     * 응답의 근거 배열에 그 문서를 실어 보내도 이 단계에서 정리된다.
+     */
+    public List<Long> applyRemovedDocument(
+            String scopeKey,
+            long documentId,
+            WikiTransformationResponse response
+    ) {
+        List<Long> affectedWikiIds = apply(
+                scopeKey,
+                null,
+                response.categoryChanges(),
+                response.wikiChanges(),
+                response.relationChanges(),
+                response.indexEntries()
+        );
+        for (Wiki wiki : wikiRepository.findAllByScopeKey(scopeKey)) {
+            if (wiki.documentRefs().contains(documentId)) {
+                wiki.removeDocumentRef(documentId);
+            }
+        }
+        return affectedWikiIds;
+    }
+
+    /**
      * 관리자 대화로 지시한 Wiki 수정 결과를 반영합니다.
      *
      * <p>변경 목록 구조는 변환 응답과 같아 같은 반영 로직을 씁니다.

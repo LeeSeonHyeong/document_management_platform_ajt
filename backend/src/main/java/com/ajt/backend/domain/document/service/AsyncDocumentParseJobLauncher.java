@@ -21,20 +21,20 @@ public class AsyncDocumentParseJobLauncher implements DocumentParseJobLauncher {
     }
 
     @Override
-    public void launch(AiJob job) {
+    public void launch(AiJob job, DocumentReprocessPlan plan) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    submit(job);
+                    submit(job, plan);
                 }
             });
             return;
         }
-        submit(job);
+        submit(job, plan);
     }
 
-    private void submit(AiJob job) {
-        documentParseExecutor.submit(() -> worker.parse(job));
+    private void submit(AiJob job, DocumentReprocessPlan plan) {
+        documentParseExecutor.submit(() -> worker.parse(job, plan));
     }
 }

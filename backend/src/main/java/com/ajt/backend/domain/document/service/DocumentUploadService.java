@@ -80,7 +80,7 @@ public class DocumentUploadService {
                     scopeKey + "/jobs/" + UUID.randomUUID(),
                     documentIds
             ));
-            parseJobLauncher.launch(job);
+            parseJobLauncher.launch(job, DocumentReprocessPlan.added());
 
             return new DocumentUploadResponse(
                     String.valueOf(job.id()),

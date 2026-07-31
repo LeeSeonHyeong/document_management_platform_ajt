@@ -144,6 +144,15 @@ public class Wiki {
         this.documentRefs = List.copyOf(merged);
     }
 
+    /**
+     * 이 범위에서 빠진 원본문서를 참조 목록에서 지웁니다. (DR-014 하드 삭제, FR-DOC-008 범위 변경)
+     */
+    public void removeDocumentRef(long documentId) {
+        this.documentRefs = documentRefs.stream()
+                .filter(documentRef -> documentRef != documentId)
+                .toList();
+    }
+
     public void addWikiRef(long targetWikiId) {
         if (targetWikiId == idValue()) {
             throw new IllegalArgumentException("Wiki는 자기 자신을 참조할 수 없습니다.");

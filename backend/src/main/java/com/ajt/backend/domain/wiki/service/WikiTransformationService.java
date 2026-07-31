@@ -62,6 +62,36 @@ public class WikiTransformationService {
             String parsedMarkdown,
             List<Long> selectedWikiIds
     ) {
+        return requestForDocumentChange(
+                jobId,
+                documentId,
+                scopeKey,
+                WikiDocumentChangeType.DOCUMENT_ADDED,
+                parsedMarkdown,
+                null,
+                selectedWikiIds
+        );
+    }
+
+    /**
+     * 문서 변경 종류에 따른 Wiki 변환을 FastAPI에 요청합니다.
+     *
+     * <p>{@code DOCUMENT_REMOVED}는 이 범위에서 문서가 빠졌다는 뜻이므로 새 파싱 본문 대신
+     * {@code removedParsedMarkdown}으로 이 문서를 근거로 쓴 Wiki를 걷어내게 한다. 계약이 이
+     * 본문을 필수로 요구하므로 호출자가 파일을 옮기거나 지우기 전에 읽어 두어야 한다.
+     *
+     * <p>{@code scopeKey}는 문서의 현재 범위가 아니라 <b>작업의 범위</b>다. 범위 변경 재처리에서
+     * 문서 행은 이미 새 범위로 옮겨져 있어, 문서 기준으로 잡으면 걷어낼 옛 범위를 찾지 못한다.
+     */
+    public WikiTransformationResponse requestForDocumentChange(
+            long jobId,
+            long documentId,
+            String scopeKey,
+            WikiDocumentChangeType changeType,
+            String parsedMarkdown,
+            String removedParsedMarkdown,
+            List<Long> selectedWikiIds
+    ) {
         String currentIndex = currentIndex(scopeKey);
         long scopeVersion = wikiScopeRepository.findById(scopeKey).orElseThrow().scopeVersion();
         String capability = wikiCapabilityService.issue(scopeKey, scopeVersion, Duration.ofMinutes(30));
@@ -70,9 +100,9 @@ public class WikiTransformationService {
                     String.valueOf(jobId),
                     String.valueOf(documentId),
                     scopeKey,
-                    WikiDocumentChangeType.DOCUMENT_ADDED,
+                    changeType,
                     parsedMarkdown,
-                    null,
+                    removedParsedMarkdown,
                     currentIndex,
                     currentCategories(scopeKey),
                     selectedWikis(scopeKey, selectedWikiIds),
