@@ -9,6 +9,7 @@ import com.ajt.backend.domain.inquiry.Inquiry;
 import com.ajt.backend.domain.inquiry.InquiryPriority;
 import com.ajt.backend.domain.inquiry.InquiryRepository;
 import com.ajt.backend.domain.member.dto.SignupApprovalResponse;
+import com.ajt.backend.domain.member.dto.SignupRequestListResponse;
 import com.ajt.backend.domain.member.dto.SignupRejectionResponse;
 import com.ajt.backend.domain.member.dto.UserListResponse;
 import com.ajt.backend.domain.member.dto.UserResponse;
@@ -325,6 +326,29 @@ class MemberServiceTest {
         assertThat(response.accountStatus()).isEqualTo("active");
         assertThat(pending.getSignupStatus()).isEqualTo(SignupStatus.APPROVED);
         assertThat(pending.getAccountStatus()).isEqualTo(AccountStatus.ACTIVE);
+    }
+
+    @Test
+    @DisplayName("가입 신청 목록은 승인 완료 항목에 발급된 사번을 담고, 대기 항목은 사번이 null이다")
+    void signupRequestListIncludesEmployeeNo() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        AuthenticatedMember actor = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+        Member pending = memberRepository.save(Member.signup(
+                department, "pending@ajt.com", "신청자", passwordEncoder.encode("password123!")));
+        memberService.approveSignupRequest(actor, pending.getId());
+
+        // 승인 완료 탭: 발급된 사번이 응답에 포함된다
+        SignupRequestListResponse approved = memberService.findSignupRequests(actor, 1, 20, "approved", "신청자");
+        assertThat(approved.items()).hasSize(1);
+        assertThat(approved.items().get(0).employeeNo()).startsWith("AJT-");
+
+        // 대기 탭: 아직 사번이 없으므로 null
+        memberRepository.save(Member.signup(
+                department, "pending2@ajt.com", "대기자", passwordEncoder.encode("password123!")));
+        SignupRequestListResponse pendingList = memberService.findSignupRequests(actor, 1, 20, "pending", "대기자");
+        assertThat(pendingList.items()).hasSize(1);
+        assertThat(pendingList.items().get(0).employeeNo()).isNull();
     }
 
     @Test

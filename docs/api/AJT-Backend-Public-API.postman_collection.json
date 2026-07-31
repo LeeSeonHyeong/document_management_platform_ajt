@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.1이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.2이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.1",
+      "value": "1.6.2",
       "type": "string"
     },
     {
@@ -1269,7 +1269,7 @@
               ],
               "variable": []
             },
-            "description": "관리자가 회원가입 신청을 상태별로 조회합니다.\n가입 승인 대기·승인·거부 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `pending`, `approved` 또는 `rejected`\n- `keyword`: 이름 또는 이메일 검색어\n\n### Request Body\n없음\n\n### 정책\n- 관리자만 조회할 수 있습니다.\n- 거부된 신청도 삭제하지 않고 목록에 보존합니다.\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 소속 부서, 가입 상태와 신청 시각\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
+            "description": "관리자가 회원가입 신청을 상태별로 조회합니다.\n가입 승인 대기·승인·거부 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `pending`, `approved` 또는 `rejected`\n- `keyword`: 이름 또는 이메일 검색어\n\n### Request Body\n없음\n\n### 정책\n- 관리자만 조회할 수 있습니다.\n- 거부된 신청도 삭제하지 않고 목록에 보존합니다.\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 사번, 소속 부서, 가입 상태와 신청 시각\n- `employeeNo`는 승인 완료 신청에만 값이 있고 대기·거부 신청은 `null`이다\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
           },
           "response": []
         },

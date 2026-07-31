@@ -491,7 +491,8 @@ const publicFolders = [
           "거부된 신청도 삭제하지 않고 목록에 보존합니다.",
         ],
         response: [
-          "`items`: 사용자 ID, 이메일, 이름, 소속 부서, 가입 상태와 신청 시각",
+          "`items`: 사용자 ID, 이메일, 이름, 사번, 소속 부서, 가입 상태와 신청 시각",
+          "`employeeNo`는 승인 완료 신청에만 값이 있고 대기·거부 신청은 `null`이다",
           "`page`, `size`, `totalCount`, `totalPages`",
         ],
         errors: [
