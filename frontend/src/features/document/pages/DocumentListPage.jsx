@@ -8,7 +8,9 @@ import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobStartDialog from '../components/AiJobStartDialog'
+import DocumentUploadModal from '../components/DocumentUploadModal'
 import { addPreviewSourceDocuments, addPreviewSummary } from '../previewStorage'
+import { wikiUploadProgressPath } from '../uploadFlow'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
@@ -23,7 +25,7 @@ export default function DocumentListPage() {
   const toast = useToast()
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [previewUploadFiles, setPreviewUploadFiles] = useState([])
+  const [uploadOpen, setUploadOpen] = useState(false)
   const [previewScheduleFiles, setPreviewScheduleFiles] = useState([])
   const [previewQueueDocuments, setPreviewQueueDocuments] = useState([])
   const [removedQueueDocumentIds, setRemovedQueueDocumentIds] = useState([])
@@ -58,21 +60,7 @@ export default function DocumentListPage() {
           title="문서 파일"
           description="일반 문서, 규정, 안내문 등 다양한 문서를 업로드하세요."
           extensions={['TXT', 'MD', 'PDF', 'DOCX']}
-          accept={FILE_ACCEPT.WIKI_SOURCE}
-          selectedFiles={previewUploadFiles}
-          onFilesSelected={setPreviewUploadFiles}
-          onUploadComplete={async (files, batch) => {
-            const documents = await createPreviewDocuments(files, user)
-            setPreviewQueueDocuments((current) => [...documents, ...current])
-            if (batch.isLast) {
-              const extraCount = batch.files.length - 1
-              toast.success(
-                extraCount > 0
-                  ? `${batch.files[0].name} 외 ${extraCount}개 문서가 AI 작업 대기 목록에 추가되었습니다.`
-                  : `${batch.files[0].name} 문서가 AI 작업 대기 목록에 추가되었습니다.`,
-              )
-            }
-          }}
+          onClick={() => setUploadOpen(true)}
         />
         <UploadCard
           tone="schedule"
@@ -175,6 +163,15 @@ export default function DocumentListPage() {
           </div>
         )}
       </div>
+
+      <DocumentUploadModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onUploaded={(result) => {
+          setUploadOpen(false)
+          navigate(wikiUploadProgressPath(result))
+        }}
+      />
 
       <AiJobStartDialog
         open={startOpen}
