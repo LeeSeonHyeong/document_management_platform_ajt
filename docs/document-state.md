@@ -51,7 +51,7 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> WAITING: 업로드 시 작업 생성 (FR-DOC-002, 202 응답)
 
-    WAITING --> PROCESSING: 전역 직렬 큐에서 순번 도달, 관리자 시작 확인 (4-4R)
+    WAITING --> PROCESSING: 관리자 시작 확인 (4-4R) → POST /ai-jobs/{jobId}/start
     PROCESSING --> COMPLETED: document_ids 전체를 순서대로 처리 완료
 
     PROCESSING --> FAILED: 서버 재시작으로 처리 중단 감지 (DR-011)
@@ -63,6 +63,8 @@ stateDiagram-v2
 ```
 
 **도메인 규칙 (반드시 반영)**
+- 업로드(`POST /documents`)는 작업을 `WAITING`으로만 만듭니다. 파싱·Wiki 변환은 관리자가 4-2R 대기 화면에서 문서별 공개 범위를 확정하고 `POST /ai-jobs/{jobId}/start`를 호출해야 시작됩니다. 시작은 `WAITING` 작업만 허용해 중복 시작을 막습니다(그 외 상태는 409).
+- 재처리(`POST /documents/{id}/retry`), 파일 교체, 삭제·공개 범위 변경으로 생기는 작업은 관리자 확인 단계가 없어 생성 즉시 시작합니다.
 - 작업 1건은 `document_ids`에 담긴 문서를 업로드 순서대로 1건씩 처리합니다(FR-AI-002·003). 동시에 두 작업이 `PROCESSING`일 수 없습니다.
 - 개별 문서 실패는 작업 전체 실패가 아닙니다. 실패한 문서만 `document.status = FAILED`로 기록하고 나머지는 계속 진행하며, 작업은 `COMPLETED`로 끝날 수 있습니다(FR-AI-008).
 - 작업 중단(`PROCESSING → CANCELLED`) 시 처리 중이던 문서는 강제 중단하지 않고 완료 후 멈춥니다. 이미 반영된 문서분은 유지하고, 남은 미처리 문서만 `document.status = CANCELLED`로 기록합니다(FR-AI-007). UI에서 "즉시 중단"으로 표현하면 안 됩니다.

@@ -10,8 +10,8 @@ function visibilityLabel(doc) {
 }
 
 // Figma 4-4R — AI 작업 시작 확인.
-// 작업은 업로드 시점에 이미 생성(waiting)되어 있으므로, 확인 시 별도 생성 없이 상위 콜백만 호출한다.
-export default function AiJobStartDialog({ open, onClose, onConfirm, documents = [] }) {
+// 작업은 업로드 시점에 waiting으로 생성되어 있고, 확인하면 상위가 POST /ai-jobs/:jobId/start 를 호출한다.
+export default function AiJobStartDialog({ open, onClose, onConfirm, documents = [], pending = false }) {
   return (
     <Modal
       open={open}
@@ -20,11 +20,16 @@ export default function AiJobStartDialog({ open, onClose, onConfirm, documents =
       size="lg"
       footer={
         <>
-          <Button variant="outline" onClick={onClose} className="min-w-16">
+          <Button variant="outline" onClick={onClose} disabled={pending} className="min-w-16">
             취소
           </Button>
-          <Button variant="primary" onClick={onConfirm} className="min-w-28 shadow-lg shadow-primary-200">
-            AI 작업 시작
+          <Button
+            variant="primary"
+            onClick={onConfirm}
+            disabled={pending}
+            className="min-w-28 shadow-lg shadow-primary-200"
+          >
+            {pending ? '시작 중…' : 'AI 작업 시작'}
           </Button>
         </>
       }

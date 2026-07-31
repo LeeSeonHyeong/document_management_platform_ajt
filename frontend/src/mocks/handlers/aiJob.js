@@ -12,11 +12,7 @@ const STAGE_SEQUENCE = ['parsing', 'wiki_transform', 'wiki_applied']
 // 폴링 요청을 받을 때마다 작업을 한 단계씩 진행시켜 최종 completed 까지 도달하게 하는 목 동작.
 // 문서는 documentResults 배열 순서(=업로드 순서)대로 한 건씩만 진행한다(FR-AI-003).
 function advanceJob(job) {
-  if (job.status === 'waiting') {
-    job.status = 'processing'
-    job.startedAt = new Date().toISOString()
-    return
-  }
+  // waiting → processing 전이는 POST /ai-jobs/:jobId/start 만 한다. 폴링은 시작된 작업만 전진시킨다.
   if (job.status !== 'processing') return
 
   const current = job.documentResults.find((r) => !TERMINAL_DOC_STATUSES.has(r.status))
@@ -58,14 +54,32 @@ export const aiJobHandlers = [
         { status: 404 },
       )
     }
-    // 대기(waiting) 작업은 첫 조회에서는 진행시키지 않는다 — 4-2R 대기 화면에서 문서 묶음을
-    // 검토할 수 있어야 하기 때문. 이후 조회(진행 화면 폴링)부터 한 단계씩 진행한다.
-    if (job.status === 'waiting' && !job._seen) {
-      job._seen = true
-    } else if (!TERMINAL_JOB_STATUSES.has(job.status)) {
+    // 대기(waiting) 작업은 폴링으로 진행되지 않는다 — 관리자가 4-2R 대기 화면에서 공개 범위를
+    // 확정하고 시작 API를 호출해야 processing으로 넘어간다.
+    if (!TERMINAL_JOB_STATUSES.has(job.status)) {
       advanceJob(job)
     }
     return HttpResponse.json(job)
+  }),
+
+  http.post('/api/v1/ai-jobs/:jobId/start', ({ params }) => {
+    const job = findAiJobById(params.jobId)
+    if (!job) {
+      return HttpResponse.json(
+        errorBody(404, 'AI_JOB_NOT_FOUND', '존재하지 않는 작업입니다.', `/api/v1/ai-jobs/${params.jobId}/start`),
+        { status: 404 },
+      )
+    }
+    // 백엔드와 같은 규칙: waiting 작업만 시작할 수 있어 중복 시작이 막힌다.
+    if (job.status !== 'waiting') {
+      return HttpResponse.json(
+        errorBody(409, 'RESOURCE_CONFLICT', '이미 시작되었거나 종료된 작업입니다.', `/api/v1/ai-jobs/${params.jobId}/start`),
+        { status: 409 },
+      )
+    }
+    job.status = 'processing'
+    job.startedAt = new Date().toISOString()
+    return HttpResponse.json({ jobId: job.jobId, status: job.status }, { status: 202 })
   }),
 
   http.post('/api/v1/ai-jobs/:jobId/cancel', ({ params }) => {

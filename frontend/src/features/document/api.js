@@ -115,6 +115,13 @@ export async function fetchAiJob(jobId) {
   return data
 }
 
+// POST /api/v1/ai-jobs/:jobId/start — 202 { jobId, status: 'processing' }
+// 업로드는 작업을 waiting으로만 만든다. 이 호출이 있어야 파싱·Wiki 변환이 시작된다.
+export async function startAiJob(jobId) {
+  const { data } = await apiClient.post(`/ai-jobs/${jobId}/start`)
+  return data
+}
+
 // POST /api/v1/ai-jobs/:jobId/cancel — 202 { jobId, status: 'cancelled' }
 export async function cancelAiJob(jobId) {
   const { data } = await apiClient.post(`/ai-jobs/${jobId}/cancel`)

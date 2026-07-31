@@ -13,6 +13,7 @@ import {
   updateDocumentCategory,
   deleteDocumentCategory,
   fetchAiJob,
+  startAiJob,
   cancelAiJob,
 } from './api'
 
@@ -173,6 +174,17 @@ export function useAiJob(jobId) {
     queryKey: qk.aiJobs.detail(jobId),
     queryFn: () => fetchAiJob(jobId),
     enabled: Boolean(jobId),
+  })
+}
+
+// 대기 화면의 "AI 작업 시작". 이 호출 전까지 백엔드는 파싱을 시작하지 않는다.
+export function useStartAiJob() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: startAiJob,
+    onSuccess: (_data, jobId) => {
+      queryClient.invalidateQueries({ queryKey: qk.aiJobs.detail(jobId) })
+    },
   })
 }
 

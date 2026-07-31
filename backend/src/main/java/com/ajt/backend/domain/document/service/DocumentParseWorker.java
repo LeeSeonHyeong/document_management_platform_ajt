@@ -58,8 +58,12 @@ public class DocumentParseWorker {
     }
 
     public void parse(AiJob job, DocumentReprocessPlan plan) {
-        job.start();
-        aiJobRepository.save(job);
+        // 관리자가 시작한 작업(AiJobStartService)은 중복 시작을 막기 위해 요청 트랜잭션에서 이미
+        // PROCESSING으로 넘어와 있다. 재처리·교체·삭제처럼 워커가 직접 여는 작업만 여기서 시작한다.
+        if (job.status() == com.ajt.backend.domain.document.model.AiJobStatus.WAITING) {
+            job.start();
+            aiJobRepository.save(job);
+        }
         Map<Long, Document> documentsById;
         try {
             documentsById = documentsById(job.documentIds());

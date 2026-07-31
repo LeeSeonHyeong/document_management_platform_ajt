@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ajt.backend.domain.document.service.AiJobQueryService;
 import com.ajt.backend.domain.document.service.AiJobCancelService;
+import com.ajt.backend.domain.document.service.AiJobStartService;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import com.ajt.backend.global.error.GlobalExceptionHandler;
@@ -25,12 +26,13 @@ class AiJobControllerTest {
 
     private final AiJobQueryService aiJobQueryService = org.mockito.Mockito.mock(AiJobQueryService.class);
     private final AiJobCancelService aiJobCancelService = org.mockito.Mockito.mock(AiJobCancelService.class);
+    private final AiJobStartService aiJobStartService = org.mockito.Mockito.mock(AiJobStartService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new AiJobController(aiJobQueryService, aiJobCancelService))
+                .standaloneSetup(new AiJobController(aiJobQueryService, aiJobCancelService, aiJobStartService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -96,6 +98,27 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.message").value("AI 작업을 찾을 수 없습니다."))
                 .andExpect(jsonPath("$.path").value("/api/v1/ai-jobs/42"))
                 .andExpect(jsonPath("$.fieldErrors", empty()));
+    }
+
+    @Test
+    @DisplayName("대기 작업 시작은 202와 processing 상태를 반환한다")
+    void acceptsAiJobStart() throws Exception {
+        given(aiJobStartService.start(42L)).willReturn(new AiJobStartResponse("42", "processing"));
+
+        mockMvc.perform(post("/api/v1/ai-jobs/{jobId}/start", 42L))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("42"))
+                .andExpect(jsonPath("$.status").value("processing"));
+    }
+
+    @Test
+    @DisplayName("이미 시작된 작업을 다시 시작하면 409 오류를 반환한다")
+    void returnsConflictForAlreadyStartedJob() throws Exception {
+        given(aiJobStartService.start(42L)).willThrow(new BusinessException(ErrorCode.RESOURCE_CONFLICT));
+
+        mockMvc.perform(post("/api/v1/ai-jobs/{jobId}/start", 42L))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RESOURCE_CONFLICT"));
     }
 
     @Test

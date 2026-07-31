@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.10이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.7.0이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.10",
+      "value": "1.7.0",
       "type": "string"
     },
     {
@@ -2511,6 +2511,140 @@
               ],
               "cookie": [],
               "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 404,\n  \"error\": \"Not Found\",\n  \"code\": \"AI_JOB_NOT_FOUND\",\n  \"message\": \"AI 작업을 찾을 수 없습니다.\",\n  \"path\": \"/api/v1/ai-jobs/:jobId\",\n  \"fieldErrors\": []\n}"
+            }
+          ]
+        },
+        {
+          "name": "AI 작업 시작",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{backendBaseUrl}}/api/v1/ai-jobs/:jobId/start",
+              "host": [
+                "{{backendBaseUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "ai-jobs",
+                ":jobId",
+                "start"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "key": "jobId",
+                  "value": "{{jobId}}",
+                  "description": "jobId 경로 변수"
+                }
+              ]
+            },
+            "description": "업로드로 만들어진 대기 작업의 파싱·Wiki 변환을 시작합니다.\n관리자 AI 작업 대기 화면의 시작 동작에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `jobId`: 시작할 AI 작업 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 업로드는 작업을 waiting으로만 만들고, 이 API를 호출해야 처리가 시작됩니다.\n- 관리자가 대기 화면에서 문서별 공개 범위를 확정한 뒤 호출합니다.\n- waiting 상태의 작업만 시작할 수 있어 같은 작업을 중복으로 시작할 수 없습니다.\n\n### Response\n- `202 Accepted`\n- `jobId`, `status`: `processing`\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 작업\n- `409 Conflict`: 이미 시작되었거나 종료된 작업"
+          },
+          "response": [
+            {
+              "name": "202 Accepted - 성공",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/api/v1/ai-jobs/:jobId/start",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai-jobs",
+                    ":jobId",
+                    "start"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "jobId",
+                      "value": "{{jobId}}",
+                      "description": "jobId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "업로드로 만들어진 대기 작업의 파싱·Wiki 변환을 시작합니다.\n관리자 AI 작업 대기 화면의 시작 동작에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `jobId`: 시작할 AI 작업 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 업로드는 작업을 waiting으로만 만들고, 이 API를 호출해야 처리가 시작됩니다.\n- 관리자가 대기 화면에서 문서별 공개 범위를 확정한 뒤 호출합니다.\n- waiting 상태의 작업만 시작할 수 있어 같은 작업을 중복으로 시작할 수 없습니다.\n\n### Response\n- `202 Accepted`\n- `jobId`, `status`: `processing`\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 작업\n- `409 Conflict`: 이미 시작되었거나 종료된 작업"
+              },
+              "status": "Accepted",
+              "code": 202,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"jobId\": \"42\",\n  \"status\": \"processing\"\n}"
+            },
+            {
+              "name": "409 Conflict - 대표 오류",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "X-XSRF-TOKEN",
+                    "value": "{{csrfToken}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{backendBaseUrl}}/api/v1/ai-jobs/:jobId/start",
+                  "host": [
+                    "{{backendBaseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "ai-jobs",
+                    ":jobId",
+                    "start"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "key": "jobId",
+                      "value": "{{jobId}}",
+                      "description": "jobId 경로 변수"
+                    }
+                  ]
+                },
+                "description": "업로드로 만들어진 대기 작업의 파싱·Wiki 변환을 시작합니다.\n관리자 AI 작업 대기 화면의 시작 동작에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `jobId`: 시작할 AI 작업 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 업로드는 작업을 waiting으로만 만들고, 이 API를 호출해야 처리가 시작됩니다.\n- 관리자가 대기 화면에서 문서별 공개 범위를 확정한 뒤 호출합니다.\n- waiting 상태의 작업만 시작할 수 있어 같은 작업을 중복으로 시작할 수 없습니다.\n\n### Response\n- `202 Accepted`\n- `jobId`, `status`: `processing`\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 작업\n- `409 Conflict`: 이미 시작되었거나 종료된 작업"
+              },
+              "status": "Conflict",
+              "code": 409,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                },
+                {
+                  "key": "X-Request-Id",
+                  "value": "01KABCDEF123456789"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 409,\n  \"error\": \"Conflict\",\n  \"code\": \"RESOURCE_CONFLICT\",\n  \"message\": \"이미 시작되었거나 종료된 작업입니다.\",\n  \"path\": \"/api/v1/ai-jobs/:jobId/start\",\n  \"fieldErrors\": []\n}"
             }
           ]
         },

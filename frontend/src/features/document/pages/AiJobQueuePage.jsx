@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button, Badge, Chip, DataTable, Spinner } from '@/components/ui'
-import { useAiJob } from '../queries'
+import { useAiJob, useStartAiJob } from '../queries'
 import { useDocumentDetails } from '../hooks/useDocumentDetails'
 import DocumentVisibilityDialog from '../components/DocumentVisibilityDialog'
 import AiJobStartDialog from '../components/AiJobStartDialog'
@@ -28,10 +28,11 @@ export default function AiJobQueuePage() {
   const [editing, setEditing] = useState(null) // 공개 범위를 수정할 document 상세
   const [startOpen, setStartOpen] = useState(false)
   const { data: job, isLoading } = useAiJob(jobId)
+  const startAiJob = useStartAiJob()
 
   // 이미 종료된 작업으로 대기 라우트에 진입하면 요약으로 보낸다(document-state.md 규칙).
-  // 처리 중(processing)에는 튕기지 않는다 — 사용자가 대기 화면에서 공개 범위를 검토·수정하는 동안
-  // 직렬 큐가 작업을 자동으로 시작(processing)할 수 있기 때문. 진행 화면 이동은 "AI 작업 시작" 버튼으로 한다.
+  // 처리 중(processing)에는 튕기지 않는다 — 다른 관리자가 먼저 시작했거나 이 화면의 시작 요청이
+  // 반영된 직후일 수 있어서다. 진행 화면 이동은 "AI 작업 시작" 버튼이 담당한다.
   useEffect(() => {
     if (job && TERMINAL_STATUSES.has(job.status)) {
       navigate(`/admin/documents/jobs/${jobId}/summary`, { replace: true })
@@ -110,10 +111,15 @@ export default function AiJobQueuePage() {
         open={startOpen}
         documents={results.map((r) => docById[r.documentId]).filter(Boolean)}
         onClose={() => setStartOpen(false)}
+        pending={startAiJob.isPending}
         onConfirm={() => {
-          // 작업은 업로드 시점에 이미 생성(waiting)돼 있으므로 진행 화면으로 이동만 한다.
-          setStartOpen(false)
-          navigate(`/admin/documents/jobs/${jobId}/progress`)
+          // 업로드는 작업을 waiting으로만 만든다. 이 호출이 파싱·Wiki 변환을 시작한다.
+          startAiJob.mutate(jobId, {
+            onSuccess: () => {
+              setStartOpen(false)
+              navigate(`/admin/documents/jobs/${jobId}/progress`)
+            },
+          })
         }}
       />
     </section>

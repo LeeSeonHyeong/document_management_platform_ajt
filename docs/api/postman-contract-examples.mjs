@@ -1,4 +1,4 @@
-export const contractVersion = "1.6.10";
+export const contractVersion = "1.7.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -256,6 +256,20 @@ const contracts = {
           reason: "파일당 최대 크기는 20MB입니다.",
         },
       ],
+    },
+  },
+  "POST /api/v1/ai-jobs/:jobId/start": {
+    success: {
+      httpStatus: 202,
+      body: {
+        jobId: "42",
+        status: "processing",
+      },
+    },
+    error: {
+      httpStatus: 409,
+      errorCode: "RESOURCE_CONFLICT",
+      message: "이미 시작되었거나 종료된 작업입니다.",
     },
   },
   "GET /api/v1/ai-jobs/:jobId": {
