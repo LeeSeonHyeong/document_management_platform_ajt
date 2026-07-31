@@ -113,14 +113,29 @@ class MemberControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/users는 부서관리자에게 403을 반환한다(최고관리자만 사용자 관리 가능)")
-    void usersRejectsDepartmentManager() throws Exception {
+    @DisplayName("GET /api/v1/users는 부서관리자에게도 목록을 반환한다(S15P11B106-104)")
+    void usersReturnsListForDepartmentManager() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        memberRepository.save(approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+
+        mockMvc.perform(get("/api/v1/users")
+                        .cookie(accessTokenCookie(manager)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalCount").value(2));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/signup-requests는 부서관리자에게 403을 반환한다(가입 신청은 최고관리자만)")
+    void signupRequestsRejectsDepartmentManager() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
 
-        mockMvc.perform(get("/api/v1/users")
+        mockMvc.perform(get("/api/v1/signup-requests")
                         .cookie(accessTokenCookie(manager)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ADMIN_PERMISSION_REQUIRED"));

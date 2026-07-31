@@ -95,7 +95,10 @@ public class MemberService {
             String keyword,
             String sort
     ) {
-        requireSuperAdmin(loginMember);
+        // 수정(S15P11B106-104): 사용자 목록 조회는 최고관리자·부서관리자 모두 접근 가능(requireAdmin으로 완화).
+        //   가입 신청 조회/승인/거절만 최고관리자 전용(requireSuperAdmin) 유지. MVP에서는 부서관리자도 전체
+        //   승인 사용자를 조회할 수 있다(부서 스코프 제한은 후속 과제).
+        requireAdmin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
         Specification<Member> specification = userSpecification(status, signupStatus, role, managerAssignable, keyword);
         // 수정: 부서장 여부를 역할(ADMIN)이 아니라 department.manager_id 지정으로 판단하도록 변경(FR-USR-006).
@@ -114,7 +117,8 @@ public class MemberService {
      */
     @Transactional(readOnly = true)
     public UserResponse findUser(AuthenticatedMember loginMember, Long userId) {
-        requireSuperAdmin(loginMember);
+        // 수정(S15P11B106-104): 사용자 단건 조회도 부서관리자 허용(requireAdmin으로 완화).
+        requireAdmin(loginMember);
         Member member = findMember(userId);
         return UserResponse.from(member, superAdminChecker.isSuperAdmin(member));
     }
@@ -125,8 +129,15 @@ public class MemberService {
      */
     @Transactional
     public UserResponse updateUser(AuthenticatedMember loginMember, Long userId, UserUpdateRequest request) {
-        requireSuperAdmin(loginMember);
+        // 수정(S15P11B106-104): 사용자 수정 진입은 부서관리자 포함 모든 ADMIN 허용(requireAdmin으로 완화).
+        //   대상 제한은 아래 세부 가드로 처리한다.
+        requireAdmin(loginMember);
         Member member = findMember(userId);
+
+        // 수정(S15P11B106-104): 가드 0 — 부서관리자(최고관리자 아님)는 사원 계정만 관리할 수 있다. 다른 관리자
+        //   계정(다른 부서관리자·최고관리자) 수정은 403으로 막는다. 자기 자신(ADMIN)은 이 가드에서 제외하고
+        //   아래 자기보호 가드(가드 3, 409)로 처리해, "부서관리자 자기 강등/비활성화"는 409로 응답한다.
+        rejectNonSuperAdminModifyingAnotherAdmin(loginMember, member);
 
         // 수정(S15P11B106-71): 가드 1 — 가입 승인(APPROVED)된 사용자만 이 API로 수정할 수 있다(FR-USR-007:
         //   "관리자는 승인된 사용자 계정을 조회·수정"). PENDING/REJECTED 계정을 여기서 ACTIVE·ADMIN으로 바꾸면
@@ -283,21 +294,31 @@ public class MemberService {
         }
     }
 
-    // 수정(S15P11B106-78): 사용자 관리 API는 모든 ADMIN이 아니라 "최고관리자"만 사용할 수 있다. 이 프로젝트는
-    //   별도 SUPER_ADMIN role을 두지 않고, 부서관리자도 Role.ADMIN을 쓴다. 부서관리자 여부는 role이 아니라
-    //   department.manager_id에 그 회원이 지정돼 있는지로 판단한다. 따라서 최고관리자 = "ADMIN이면서 어느
-    //   부서의 부서장으로도 지정되지 않은 사용자"다. 먼저 ADMIN 여부를 검사(비ADMIN·미인증은 기존과 동일한
-    //   403 ADMIN_PERMISSION_REQUIRED)하고, ADMIN이지만 부서관리자면 같은 403 코드로 거절하되 메시지로 구분한다
-    //   (에러 코드·상태는 그대로 두어 프론트/계약과의 충돌을 피한다).
+    // 수정(S15P11B106-104): 최고관리자 전용 작업(가입 신청 조회/승인/거절)에만 적용한다. 별도 SUPER_ADMIN role은
+    //   두지 않고, 부서관리자도 Role.ADMIN이다. 최고관리자 = "ADMIN이면서 어느 부서의 부서장으로도 지정되지 않은
+    //   사용자". 먼저 ADMIN 여부를 검사(비ADMIN·미인증은 403 ADMIN_PERMISSION_REQUIRED)하고, ADMIN이지만
+    //   부서관리자면 같은 403 코드로 거절하되 메시지로 구분한다(에러 코드·상태는 유지해 프론트/계약 충돌을 피한다).
+    //   (사용자 목록/상세/수정은 -104에서 requireAdmin으로 완화됐고, 이 게이트는 가입 신청 API에만 남는다.)
     private void requireSuperAdmin(AuthenticatedMember loginMember) {
         requireAdmin(loginMember);
-        // 판별 기준(role=ADMIN이면서 부서장 아님)은 SuperAdminChecker로 단일화한다. 여기선 requireAdmin을
-        // 이미 통과했으므로 isAdmin=true이고, 부서장으로 지정돼 있으면 최고관리자가 아니라 403으로 거절한다.
         if (!superAdminChecker.isSuperAdmin(loginMember.memberId(), loginMember.isAdmin())) {
             throw new BusinessException(
                     ErrorCode.ADMIN_PERMISSION_REQUIRED,
-                    "사용자 관리는 최고관리자만 사용할 수 있습니다."
+                    "가입 신청 관리는 최고관리자만 사용할 수 있습니다."
             );
+        }
+    }
+
+    // 수정(S15P11B106-104): 부서관리자(최고관리자가 아닌 ADMIN)는 사원 계정만 관리할 수 있다. 수정 대상이 다른
+    //   관리자 계정(다른 부서관리자·최고관리자)이면 403으로 막는다. 자기 자신은 여기서 제외해, 부서관리자의 자기
+    //   강등/비활성화는 자기보호 가드(rejectSelfPrivilegeRemoval, 409)로 처리되게 한다. 최고관리자 actor는 이
+    //   제한을 받지 않는다(부서관리자 강등/비활성화 가능).
+    private void rejectNonSuperAdminModifyingAnotherAdmin(AuthenticatedMember loginMember, Member target) {
+        boolean actorIsSuperAdmin =
+                superAdminChecker.isSuperAdmin(loginMember.memberId(), loginMember.isAdmin());
+        boolean targetIsSelf = target.getId().equals(loginMember.memberId());
+        if (!actorIsSuperAdmin && !targetIsSelf && target.getRole() == Role.ADMIN) {
+            throw new BusinessException(ErrorCode.DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN);
         }
     }
 
