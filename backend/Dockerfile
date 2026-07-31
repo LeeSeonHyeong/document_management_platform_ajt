@@ -13,6 +13,11 @@ RUN chmod +x gradlew && ./gradlew clean bootJar --no-daemon
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
+# Docker healthcheck가 Spring Actuator 응답을 직접 검사할 때 사용한다.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # 1단계(build) 에서 만든 jar 하나만 가져온다 (JDK·소스·gradle 캐시는 안 넘어옴)
 COPY --from=build /app/build/libs/*.jar app.jar
 

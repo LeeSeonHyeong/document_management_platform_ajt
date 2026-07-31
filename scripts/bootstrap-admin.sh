@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ADMIN_EMAIL="${1:-admin@ajt.local}"
+DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-/var/lib/jenkins/ajt-secrets/prod.env}"
+DEPLOY_STATE_DIR="${DEPLOY_STATE_DIR:-/var/lib/jenkins/ajt-deploy}"
+DEPLOY_COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.yml}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ajt-prod}"
+STATE_FILE="${DEPLOY_STATE_DIR}/current-image-tag"
+
+die_config() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 2
+}
+
+is_commit_sha() {
+  [[ "$1" =~ ^[0-9a-f]{7,40}$ ]]
+}
+
+mysql_exec() {
+  local sql="$1"
+
+  printf '%s\n' "$sql" |
+    DEPLOY_ENV_FILE="$DEPLOY_ENV_FILE" IMAGE_TAG="$IMAGE_TAG" \
+      docker compose \
+        --project-name "$COMPOSE_PROJECT_NAME" \
+        --env-file "$DEPLOY_ENV_FILE" \
+        --file "$DEPLOY_COMPOSE_FILE" \
+        exec -T mysql \
+        sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --batch --skip-column-names --default-character-set=utf8mb4 ajt'
+}
+
+if [[ ! "$ADMIN_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+  die_config "invalid admin email: $ADMIN_EMAIL"
+fi
+
+[[ -f "$DEPLOY_ENV_FILE" ]] || die_config "deploy env file not found: $DEPLOY_ENV_FILE"
+[[ -f "$DEPLOY_COMPOSE_FILE" ]] || die_config "compose file not found: $DEPLOY_COMPOSE_FILE"
+[[ -f "$STATE_FILE" ]] || die_config "deployed image state not found: $STATE_FILE"
+
+IMAGE_TAG="${IMAGE_TAG:-$(tr -d '[:space:]' < "$STATE_FILE")}"
+is_commit_sha "$IMAGE_TAG" || die_config "invalid deployed image tag: $IMAGE_TAG"
+
+command -v docker >/dev/null 2>&1 || die_config "docker command not found"
+command -v openssl >/dev/null 2>&1 || die_config "openssl command not found"
+command -v htpasswd >/dev/null 2>&1 || die_config "htpasswd command not found"
+
+existing_count="$(mysql_exec "SELECT COUNT(*) FROM member WHERE email = '${ADMIN_EMAIL}';" | tr -d '[:space:]')"
+if [[ "$existing_count" != "0" ]]; then
+  printf 'ERROR: member already exists: %s\n' "$ADMIN_EMAIL" >&2
+  exit 3
+fi
+
+admin_password="$(openssl rand -hex 16)"
+password_hash="$(htpasswd -bnBC 12 "" "$admin_password" | cut -d: -f2 | tr -d '\n')"
+[[ -n "$password_hash" ]] || die_config "failed to generate BCrypt password hash"
+
+mysql_exec "
+START TRANSACTION;
+INSERT INTO department (name)
+VALUES ('본사')
+ON DUPLICATE KEY UPDATE department_id = LAST_INSERT_ID(department_id);
+SET @department_id = LAST_INSERT_ID();
+INSERT INTO member (
+  department_id,
+  email,
+  name,
+  password_hash,
+  role,
+  signup_status,
+  account_status
+)
+VALUES (
+  @department_id,
+  '${ADMIN_EMAIL}',
+  '최고관리자',
+  '${password_hash}',
+  'ADMIN',
+  'APPROVED',
+  'ACTIVE'
+);
+COMMIT;
+" >/dev/null
+
+printf '최고관리자 생성 완료\n'
+printf '이메일: %s\n' "$ADMIN_EMAIL"
+printf '초기 비밀번호: %s\n' "$admin_password"
+printf '주의: 이 비밀번호는 다시 확인할 수 없습니다. 안전한 전달 수단에 즉시 저장하세요.\n'

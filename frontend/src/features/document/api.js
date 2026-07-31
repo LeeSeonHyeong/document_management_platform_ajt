@@ -11,12 +11,7 @@ export async function uploadDocuments({ files, documentCategoryId, visibilityTyp
   form.append('visibilityType', visibilityType)
   // 업로드 요청은 배열이 아니라 콤마로 이어붙인 문자열이다(PATCH의 departmentIds 배열과 다름).
   if (departmentIds?.length) form.append('departmentIds', departmentIds.join(','))
-  // 공유 apiClient의 기본 헤더가 application/json이라, 명시하지 않으면 axios가 FormData를
-  // JSON으로 직렬화해 파일이 소실된다. multipart를 지정해 boundary 자동 생성 경로를 탄다.
-  const { data } = await apiClient.post('/documents', form, {
-    onUploadProgress,
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  const { data } = await apiClient.post('/documents', form, { onUploadProgress })
   return data
 }
 
@@ -61,10 +56,7 @@ function parseContentDispositionFileName(headers) {
 export async function replaceDocumentFile(documentId, file) {
   const form = new FormData()
   form.append('file', file)
-  // uploadDocuments와 동일: multipart 명시로 FormData의 JSON 직렬화(파일 소실) 방지.
-  const { data } = await apiClient.put(`/documents/${documentId}/file`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  const { data } = await apiClient.put(`/documents/${documentId}/file`, form)
   return data
 }
 

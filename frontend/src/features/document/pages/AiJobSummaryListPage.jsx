@@ -44,8 +44,6 @@ export default function AiJobSummaryListPage() {
     <section className="space-y-5">
       <DocumentSectionTabs />
 
-      {/* TODO(API): AI 작업 목록 엔드포인트가 없어(GET /ai-jobs/:jobId 단건만) 작업 회차별로
-          그룹핑할 수 없다. 완료 문서를 단일 카드로 묶고 회차는 1회로 표시한다. */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
           총 <strong className="text-slate-800">{summaries.length}회 작업</strong>
