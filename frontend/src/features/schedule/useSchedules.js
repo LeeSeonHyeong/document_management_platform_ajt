@@ -22,6 +22,8 @@ export function toCalendarEvent(schedule) {
     content: schedule.content,
     status: schedule.status,
     sourceGroupKey: schedule.sourceGroupKey,
+    // S15P11B106-87: 낙관적 동시성 토큰. 수정 시 이 값을 expectedUpdatedAt으로 그대로 실어 보낸다.
+    updatedAt: schedule.updatedAt,
     raw: schedule,
   }
 }
@@ -49,6 +51,13 @@ export function useUpdateSchedule() {
   return useMutation({
     mutationFn: ({ scheduleId, ...payload }) => updateSchedule(scheduleId, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.schedules.all }),
+    // S15P11B106-87: 동시성 충돌(409)이면 다른 사용자가 먼저 저장한 것이므로, 최신 일정(=최신 토큰)을 다시
+    //   받아오도록 목록을 무효화한다. 사용자 안내 메시지는 각 폼에서 띄운다.
+    onError: (error) => {
+      if (error?.status === 409) {
+        queryClient.invalidateQueries({ queryKey: qk.schedules.all })
+      }
+    },
   })
 }
 

@@ -38,6 +38,11 @@ public class ScheduleUpdateRequest {
     private Instant endAt;
     private boolean endAtPresent;
 
+    // 수정(S15P11B106-87): 낙관적 동시성 토큰. 클라이언트가 마지막으로 조회한 일정의 updatedAt을 그대로 실어 보낸다.
+    //   보내면 서버가 현재 값과 비교해 다르면 409로 거절한다(먼저 저장한 요청이 이기고, 오래된 화면의 덮어쓰기를 막음).
+    //   프론트 배포가 백엔드보다 늦어도 기존 수정이 깨지지 않도록 선택 필드로 두며, 보낸 경우에만 검증한다.
+    private Instant expectedUpdatedAt;
+
     public String title() {
         return title;
     }
@@ -148,5 +153,14 @@ public class ScheduleUpdateRequest {
     public void setEndAt(Instant endAt) {
         this.endAt = endAt;
         this.endAtPresent = true;
+    }
+
+    public Instant expectedUpdatedAt() {
+        return expectedUpdatedAt;
+    }
+
+    @JsonProperty("expectedUpdatedAt")
+    public void setExpectedUpdatedAt(Instant expectedUpdatedAt) {
+        this.expectedUpdatedAt = expectedUpdatedAt;
     }
 }

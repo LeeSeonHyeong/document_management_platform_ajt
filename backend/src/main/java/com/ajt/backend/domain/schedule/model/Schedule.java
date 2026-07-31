@@ -14,6 +14,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -155,8 +156,10 @@ public class Schedule {
         status = ScheduleStatus.APPROVED;
     }
 
-    // TODO(동시성): @Version 낙관적 락이 없어 동시 수정 시 마지막 쓰기가 이긴다.
-    //  프로젝트 전반의 공통 정책으로 도입할지 팀과 검토 필요.
+    // 수정(S15P11B106-87): 동시 수정 시 마지막 쓰기가 이기던 문제를, DB 스키마 변경 없이 updated_at을 동시성
+    //   토큰으로 쓰는 애플리케이션 레벨 낙관적 검증으로 막는다(서비스에서 저장 직전 짧은 pessimistic 락으로
+    //   updated_at을 비교, 불일치 시 409). 토큰이 응답값==저장값==다음 조회값으로 일치하도록 updatedAt은
+    //   밀리초로 절삭해 둔다(JSON 왕복·마이크로초 절삭에 따른 오탐 방지).
     public void update(
             String title,
             String content,
@@ -219,14 +222,22 @@ public class Schedule {
 
     @PrePersist
     void prePersist() {
-        Instant now = Instant.now();
+        // 수정(S15P11B106-87): 낙관적 동시성 토큰으로 쓰므로 밀리초로 절삭해 응답·저장·재조회 값이 일치하게 한다.
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MILLIS);
         createdAt = now;
         updatedAt = now;
     }
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        // 수정(S15P11B106-87): updatedAt은 낙관적 동시성 토큰이므로 매 수정마다 반드시 증가해야 한다. 같은
+        //   밀리초 안에서 연속 저장되면 절삭값이 이전과 같아 오래된 토큰이 통과할 수 있으므로, 새 값이 기존
+        //   값보다 크지 않으면 기존 값 + 1ms로 강제해 단조 증가를 보장한다.
+        Instant next = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        if (updatedAt != null && !next.isAfter(updatedAt)) {
+            next = updatedAt.plusMillis(1);
+        }
+        updatedAt = next;
     }
 
     public Long id() {

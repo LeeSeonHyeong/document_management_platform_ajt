@@ -1367,7 +1367,10 @@ const publicFolders = [
           "사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.",
           "관리자는 draft 일정도 조회할 수 있습니다.",
         ],
-        response: ["`items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치"],
+        response: [
+          "`items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치",
+          "`items[].updatedAt`: 낙관적 동시성 토큰. 목록에서 바로 수정할 때 이 값을 수정 요청의 `expectedUpdatedAt`으로 보냅니다.",
+        ],
         errors: [
           "`400 Bad Request`: 날짜 범위 또는 필터값 오류",
           "`401 Unauthorized`: accessToken이 유효하지 않음",
@@ -1425,6 +1428,7 @@ const publicFolders = [
         ],
         response: [
           "일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태",
+          "`updatedAt`: 낙관적 동시성 토큰. 수정 화면은 이 값을 그대로 수정 요청의 `expectedUpdatedAt`으로 보냅니다.",
           "`sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null",
         ],
         errors: [
@@ -1447,6 +1451,7 @@ const publicFolders = [
         departmentIds: ["1", "2"],
         startAt: "2026-08-03T02:00:00Z",
         endAt: "2026-08-03T04:00:00Z",
+        expectedUpdatedAt: "2026-07-27T09:00:00Z",
       }),
       description: docs({
         summary: "일정 정보를 수정합니다.",
@@ -1455,17 +1460,22 @@ const publicFolders = [
         requestBody: [
           "`title`, `content`, `targetText`, `location`",
           "`visibilityType`, `departmentIds`, `startAt`, `endAt`",
+          "`expectedUpdatedAt`(선택): 마지막으로 조회한 일정의 `updatedAt`을 그대로 보냅니다. 값이 현재와 다르면 409로 거절합니다(오래된 화면의 덮어쓰기 방지). 프론트는 조회 응답의 `updatedAt`을 그대로 실어 보내고, 409가 오면 최신 일정을 재조회합니다.",
         ],
         policy: [
           "전달하지 않은 필드는 유지합니다.",
           "사원은 본인 개인 일정만 수정할 수 있습니다.",
+          "동시 수정 시 먼저 저장한 요청이 이깁니다. 나중 요청이 오래된 `expectedUpdatedAt`으로 덮어쓰려 하면 409로 거절합니다(수정 화면 진입부터 락을 잡지 않는 낙관적 방식).",
         ],
-        response: ["수정된 일정 전체 정보"],
+        response: [
+          "수정된 일정 전체 정보",
+          "`updatedAt`: 수정 성공 후 증가된 최신 동시성 토큰. 이어서 수정하려면 이 값을 다음 요청의 `expectedUpdatedAt`으로 보냅니다.",
+        ],
         errors: [
           "`400 Bad Request`: 날짜 또는 공개 범위 오류",
           "`403 Forbidden`: 수정 권한 없음",
           "`404 Not Found`: 존재하지 않는 일정",
-          "`409 Conflict`: 수정할 수 없는 상태",
+          "`409 Conflict`: 다른 사용자가 먼저 수정한 일정(동시성 충돌, `SCHEDULE_VERSION_CONFLICT`)",
         ],
       }),
     }),
