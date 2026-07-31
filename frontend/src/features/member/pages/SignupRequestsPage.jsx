@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import DataTable from '@/components/ui/DataTable'
 import EmptyState from '@/components/ui/EmptyState'
+import Pagination from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui'
 import { SIGNUP_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
@@ -16,6 +17,8 @@ const STATUS_TABS = [
   { value: SIGNUP_STATUS.APPROVED, label: '승인 완료' },
   { value: SIGNUP_STATUS.REJECTED, label: '거부' },
 ]
+
+const PAGE_SIZE = 20
 
 function formatRequestedAt(value) {
   if (!value) return '-'
@@ -29,9 +32,17 @@ function formatRequestedAt(value) {
 
 export default function SignupRequestsPage() {
   const [status, setStatus] = useState(SIGNUP_STATUS.PENDING)
+  const [page, setPage] = useState(1)
   const queryClient = useQueryClient()
   const toast = useToast()
-  const params = { page: 1, size: 100, status }
+
+  // 상태 탭을 바꾸면 목록이 달라지므로 첫 페이지부터 다시 본다.
+  const handleStatus = (value) => {
+    setStatus(value)
+    setPage(1)
+  }
+
+  const params = { page, size: PAGE_SIZE, status }
   const query = useQuery({ queryKey: qk.signupRequests.list(params), queryFn: () => fetchSignupRequests(params) })
   // 상태별 totalCount를 각각 받아 상단 카드와 상태 탭의 숫자에 함께 사용합니다.
   const countQueries = useQueries({
@@ -108,7 +119,7 @@ export default function SignupRequestsPage() {
                 key={tab.value}
                 size="sm"
                 variant={status === tab.value ? 'secondary' : 'outline'}
-                onClick={() => setStatus(tab.value)}
+                onClick={() => handleStatus(tab.value)}
               >
                 {tab.label} {statusCounts[tab.value]}
               </Button>
@@ -116,6 +127,11 @@ export default function SignupRequestsPage() {
           </div>
         </div>
         <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={items} rowKey="userId" loading={query.isLoading} emptyState={<EmptyState title="가입 요청이 없습니다." />} />
+        {(query.data?.totalPages ?? 1) > 1 && (
+          <div className="border-t border-slate-100 px-5 py-4">
+            <Pagination page={query.data.page} totalPages={query.data.totalPages} onChange={setPage} />
+          </div>
+        )}
       </section>
     </div>
   )
