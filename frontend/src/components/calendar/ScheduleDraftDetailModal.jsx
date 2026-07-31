@@ -130,11 +130,19 @@ export default function ScheduleDraftDetailModal({ open, onClose, draft, departm
     }
     try {
       // 검수 중 수정한 내용이 있으면 승인 전에 먼저 저장한다.
-      if (isDirty) await updateMutation.mutateAsync({ scheduleId: draft.id, ...payload })
+      // S15P11B106-87: 마지막으로 본 초안의 updatedAt을 expectedUpdatedAt으로 보내 동시 수정 충돌을 막는다.
+      if (isDirty) {
+        await updateMutation.mutateAsync({ scheduleId: draft.id, expectedUpdatedAt: draft.updatedAt, ...payload })
+      }
       await approveMutation.mutateAsync(draft.id)
       toast.success('일정을 승인했어요', '이제 대상 사원의 달력에 표시됩니다.')
       onClose?.()
     } catch (err) {
+      if (err?.status === 409) {
+        toast.error('다른 사용자가 먼저 수정한 일정입니다.', '새로고침 후 다시 시도해주세요.')
+        onClose?.()
+        return
+      }
       applyFieldErrors(err, setError, { fallbackField: 'root' })
     }
   }

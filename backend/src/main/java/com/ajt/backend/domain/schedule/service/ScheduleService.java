@@ -148,9 +148,18 @@ public class ScheduleService {
     @Transactional
     public ScheduleDetailResponse update(AuthenticatedMember loginMember, long scheduleId, ScheduleUpdateRequest request) {
         requireAuthenticated(loginMember);
-        Schedule schedule = scheduleRepository.findById(scheduleId)
+        // 수정(S15P11B106-87): 저장 직전 짧은 쓰기 락으로 읽어 동시 수정을 직렬화한다(화면 진입부터 잡지 않음).
+        Schedule schedule = scheduleRepository.findByIdForUpdate(scheduleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
         requireCanModify(loginMember, schedule);
+
+        // 수정(S15P11B106-87): 클라이언트가 마지막으로 조회한 updatedAt(expectedUpdatedAt)을 보냈으면, 락으로 읽은
+        //   현재 값과 비교해 다르면 409로 거절한다(먼저 저장한 요청이 이기고 오래된 화면의 덮어쓰기를 막음).
+        //   토큰을 보내지 않은 요청은 기존과 동일하게 처리한다(프론트 배포 지연 대비 하위 호환).
+        if (request.expectedUpdatedAt() != null
+                && !request.expectedUpdatedAt().equals(schedule.updatedAt())) {
+            throw new BusinessException(ErrorCode.SCHEDULE_VERSION_CONFLICT);
+        }
 
         ScheduleVisibility newVisibility = request.visibilityTypePresent()
                 ? parseVisibility(request.visibilityType())
@@ -173,8 +182,9 @@ public class ScheduleService {
             throw new BusinessException(ErrorCode.INVALID_SCHEDULE, exception.getMessage());
         }
         schedule.replaceDepartments(newDepartments);
-        // TODO(계약 확인): 수정 응답의 저장 예시가 계약에 없어 상세(ScheduleDetailResponse) 형태로 반환한다.
-        //  Postman 계약에 수정 응답 예시가 추가되면 형태를 맞출 것.
+        // 수정(S15P11B106-87): flush로 @PreUpdate를 즉시 실행해 updatedAt(동시성 토큰)을 갱신한 뒤 응답을 만든다.
+        //   그래야 수정 성공 응답의 updatedAt이 실제 저장값과 같아, 프론트가 그 값을 다음 수정 요청에 그대로 쓸 수 있다.
+        scheduleRepository.flush();
         // 수정: 원본문서 노출 여부로 관리자 여부를 전달(update·approve는 관리자 경로).
         return ScheduleDetailResponse.from(schedule, loginMember.isAdmin());
     }

@@ -90,7 +90,8 @@ export default function ScheduleFormModal({ open, onClose, initial, defaultDate 
     }
     try {
       if (isEdit) {
-        await updateMutation.mutateAsync({ scheduleId: initial.id, ...payload })
+        // S15P11B106-87: 마지막으로 본 일정의 updatedAt을 expectedUpdatedAt으로 보내 동시 수정 충돌을 막는다.
+        await updateMutation.mutateAsync({ scheduleId: initial.id, expectedUpdatedAt: initial.updatedAt, ...payload })
         toast.success('일정을 수정했어요')
       } else {
         await createMutation.mutateAsync(payload)
@@ -98,6 +99,11 @@ export default function ScheduleFormModal({ open, onClose, initial, defaultDate 
       }
       onClose?.()
     } catch (err) {
+      if (err?.status === 409) {
+        toast.error('다른 사용자가 먼저 수정한 일정입니다.', '새로고침 후 다시 시도해주세요.')
+        onClose?.()
+        return
+      }
       applyFieldErrors(err, setError, { fallbackField: 'root' })
     }
   }

@@ -335,6 +335,73 @@ class ScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("수정: 최신 version(updatedAt)을 보내면 성공하고 응답에 최신 version이 담긴다(S15P11B106-87)")
+    void updateWithMatchingTokenSucceeds() {
+        Member employee = memberRepository.save(employee(departmentRepository.save(new Department("개발부"))));
+        Schedule schedule = scheduleRepository.save(Schedule.create(
+                employee.getId(), "기존 제목", "기존", null, null,
+                ScheduleVisibility.PERSONAL, START, END));
+        java.time.Instant token = schedule.updatedAt();
+        ScheduleUpdateRequest request = new ScheduleUpdateRequest();
+        request.setTitle("수정된 제목");
+        request.setExpectedUpdatedAt(token);
+
+        ScheduleDetailResponse response = scheduleService.update(authOf(employee), schedule.id(), request);
+
+        assertThat(response.title()).isEqualTo("수정된 제목");
+        assertThat(response.updatedAt()).isNotNull();
+        assertThat(response.updatedAt()).isAfterOrEqualTo(token);
+    }
+
+    @Test
+    @DisplayName("수정: 오래된 version(updatedAt)으로 수정하면 409로 거절한다(S15P11B106-87)")
+    void updateWithStaleTokenReturnsConflict() {
+        Member employee = memberRepository.save(employee(departmentRepository.save(new Department("개발부"))));
+        Schedule schedule = scheduleRepository.save(Schedule.create(
+                employee.getId(), "기존 제목", "기존", null, null,
+                ScheduleVisibility.PERSONAL, START, END));
+        ScheduleUpdateRequest request = new ScheduleUpdateRequest();
+        request.setTitle("오래된 화면에서 저장");
+        // 클라이언트가 들고 있던 version이 현재 값보다 과거라면(=사이에 누군가 저장) 덮어쓰기를 막는다.
+        request.setExpectedUpdatedAt(schedule.updatedAt().minusSeconds(60));
+
+        assertThatThrownBy(() -> scheduleService.update(authOf(employee), schedule.id(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SCHEDULE_VERSION_CONFLICT);
+    }
+
+    @Test
+    @DisplayName("수정: 같은 version으로 두 번 저장하면(같은 ms여도) 먼저가 이기고 나중은 409다(S15P11B106-87)")
+    void firstSaveWinsSecondStaleSaveConflicts() {
+        Member employee = memberRepository.save(employee(departmentRepository.save(new Department("개발부"))));
+        Schedule schedule = scheduleRepository.save(Schedule.create(
+                employee.getId(), "기존 제목", "기존", null, null,
+                ScheduleVisibility.PERSONAL, START, END));
+        java.time.Instant sharedToken = schedule.updatedAt();
+        // P1 수정: @PreUpdate가 updatedAt을 단조 증가시키므로, 두 저장이 같은 밀리초 안에서 일어나도 토큰이 반드시
+        //   올라간다. 따라서 슬립 없이도 나중의 오래된 토큰 저장은 막힌다.
+
+        // A(먼저): 최신 토큰으로 저장 성공 → version이 올라간다
+        ScheduleUpdateRequest first = new ScheduleUpdateRequest();
+        first.setTitle("A가 먼저 저장");
+        first.setExpectedUpdatedAt(sharedToken);
+        scheduleService.update(authOf(employee), schedule.id(), first);
+
+        // B(나중, 오래된 화면): 같은(이제는 오래된) 토큰으로 저장 시도 → 409
+        ScheduleUpdateRequest second = new ScheduleUpdateRequest();
+        second.setTitle("B가 오래된 화면으로 저장");
+        second.setExpectedUpdatedAt(sharedToken);
+
+        assertThatThrownBy(() -> scheduleService.update(authOf(employee), schedule.id(), second))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SCHEDULE_VERSION_CONFLICT);
+        // 먼저 저장한 A의 내용이 유지된다
+        assertThat(scheduleRepository.findById(schedule.id()).orElseThrow().title()).isEqualTo("A가 먼저 저장");
+    }
+
+    @Test
     @DisplayName("수정: 사원이 남의 personal 일정을 수정하려 하면 존재를 숨기기 위해 404다")
     void updateOthersScheduleRejected() {
         Department dev = departmentRepository.save(new Department("개발부"));

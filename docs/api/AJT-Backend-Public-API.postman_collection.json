@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.9이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.6.10이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -15,7 +15,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.6.9",
+      "value": "1.6.10",
       "type": "string"
     },
     {
@@ -3670,7 +3670,7 @@
               ],
               "variable": []
             },
-            "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+            "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n- `items[].updatedAt`: 낙관적 동시성 토큰. 목록에서 바로 수정할 때 이 값을 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
           },
           "response": [
             {
@@ -3715,7 +3715,7 @@
                   ],
                   "variable": []
                 },
-                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n- `items[].updatedAt`: 낙관적 동시성 토큰. 목록에서 바로 수정할 때 이 값을 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "OK",
               "code": 200,
@@ -3731,7 +3731,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"items\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"프로젝트 회의\",\n      \"content\": \"주간 진행 상황 공유\",\n      \"targetText\": \"개발부\",\n      \"location\": \"3층 회의실\",\n      \"visibilityType\": \"department\",\n      \"departmentIds\": [\n        \"1\"\n      ],\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"status\": \"approved\"\n    }\n  ]\n}"
+              "body": "{\n  \"items\": [\n    {\n      \"scheduleId\": \"31\",\n      \"title\": \"프로젝트 회의\",\n      \"content\": \"주간 진행 상황 공유\",\n      \"targetText\": \"개발부\",\n      \"location\": \"3층 회의실\",\n      \"visibilityType\": \"department\",\n      \"departmentIds\": [\n        \"1\"\n      ],\n      \"startAt\": \"2026-08-03T01:00:00Z\",\n      \"endAt\": \"2026-08-03T03:00:00Z\",\n      \"status\": \"approved\",\n      \"updatedAt\": \"2026-07-27T09:00:00Z\"\n    }\n  ]\n}"
             },
             {
               "name": "400 Bad Request - 대표 오류",
@@ -3775,7 +3775,7 @@
                   ],
                   "variable": []
                 },
-                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "기간과 공개 범위에 맞는 일정 목록을 조회합니다.\n달력과 관리자 일정 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `startDate`, `endDate`: 조회 기간, 최대 1년\n- `status`: 관리자의 `draft` 또는 `approved` 필터\n- `visibilityType`: `all`, `department`, `personal`\n- `departmentId`: 부서 일정 필터\n\n### Request Body\n없음\n\n### 정책\n- 사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.\n- 관리자는 draft 일정도 조회할 수 있습니다.\n\n### Response\n- `items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치\n- `items[].updatedAt`: 낙관적 동시성 토큰. 목록에서 바로 수정할 때 이 값을 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n\n### Error\n- `400 Bad Request`: 날짜 범위 또는 필터값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "Bad Request",
               "code": 400,
@@ -3969,7 +3969,7 @@
                 }
               ]
             },
-            "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
+            "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `updatedAt`: 낙관적 동시성 토큰. 수정 화면은 이 값을 그대로 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
           },
           "response": [
             {
@@ -3997,7 +3997,7 @@
                     }
                   ]
                 },
-                "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
+                "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `updatedAt`: 낙관적 동시성 토큰. 수정 화면은 이 값을 그대로 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
               },
               "status": "OK",
               "code": 200,
@@ -4013,7 +4013,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"scheduleId\": \"31\",\n  \"title\": \"프로젝트 회의\",\n  \"content\": \"주간 진행 상황 공유\",\n  \"targetText\": \"개발부\",\n  \"location\": \"3층 회의실\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\"\n  ],\n  \"startAt\": \"2026-08-03T01:00:00Z\",\n  \"endAt\": \"2026-08-03T03:00:00Z\",\n  \"status\": \"approved\"\n}"
+              "body": "{\n  \"scheduleId\": \"31\",\n  \"title\": \"프로젝트 회의\",\n  \"content\": \"주간 진행 상황 공유\",\n  \"targetText\": \"개발부\",\n  \"location\": \"3층 회의실\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\"\n  ],\n  \"startAt\": \"2026-08-03T01:00:00Z\",\n  \"endAt\": \"2026-08-03T03:00:00Z\",\n  \"status\": \"approved\",\n  \"updatedAt\": \"2026-07-27T09:00:00Z\"\n}"
             },
             {
               "name": "200 OK - 관리자 응답",
@@ -4040,7 +4040,7 @@
                     }
                   ]
                 },
-                "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
+                "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `updatedAt`: 낙관적 동시성 토큰. 수정 화면은 이 값을 그대로 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
               },
               "status": "OK",
               "code": 200,
@@ -4056,7 +4056,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"scheduleId\": \"31\",\n  \"title\": \"프로젝트 회의\",\n  \"content\": \"주간 진행 상황 공유\",\n  \"targetText\": \"개발부\",\n  \"location\": \"3층 회의실\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\"\n  ],\n  \"startAt\": \"2026-08-03T01:00:00Z\",\n  \"endAt\": \"2026-08-03T03:00:00Z\",\n  \"status\": \"approved\",\n  \"sourceDocument\": {\n    \"originalFileName\": \"8월일정.xlsx\",\n    \"sourceFileUrl\": \"/api/v1/schedules/31/source-file\"\n  }\n}"
+              "body": "{\n  \"scheduleId\": \"31\",\n  \"title\": \"프로젝트 회의\",\n  \"content\": \"주간 진행 상황 공유\",\n  \"targetText\": \"개발부\",\n  \"location\": \"3층 회의실\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\"\n  ],\n  \"startAt\": \"2026-08-03T01:00:00Z\",\n  \"endAt\": \"2026-08-03T03:00:00Z\",\n  \"status\": \"approved\",\n  \"updatedAt\": \"2026-07-27T09:00:00Z\",\n  \"sourceDocument\": {\n    \"originalFileName\": \"8월일정.xlsx\",\n    \"sourceFileUrl\": \"/api/v1/schedules/31/source-file\"\n  }\n}"
             },
             {
               "name": "404 Not Found - 대표 오류",
@@ -4083,7 +4083,7 @@
                     }
                   ]
                 },
-                "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
+                "description": "권한에 맞는 일정 상세를 조회합니다.\n일정 상세와 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 조회할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 사원 응답에는 원본문서·파싱 파일·파일 경로·sourceGroupKey를 포함하지 않습니다.\n- 관리자 응답에서 문서 추출 일정은 sourceDocument를 제공하고 수동·개인 일정은 null로 반환합니다.\n\n### Response\n- 일정 제목, 내용, 대상, 장소, 공개 범위, 기간과 상태\n- `updatedAt`: 낙관적 동시성 토큰. 수정 화면은 이 값을 그대로 수정 요청의 `expectedUpdatedAt`으로 보냅니다.\n- `sourceDocument`: 관리자에게만 제공하는 원본 파일명과 원본문서 조회 URL. 수동·개인 일정이면 null\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 일정이 없거나 접근 권한이 없음"
               },
               "status": "Not Found",
               "code": 404,
@@ -4137,10 +4137,10 @@
                 }
               ]
             },
-            "description": "일정 정보를 수정합니다.\n일정 수정과 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 수정할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n- `title`, `content`, `targetText`, `location`\n- `visibilityType`, `departmentIds`, `startAt`, `endAt`\n\n### 정책\n- 전달하지 않은 필드는 유지합니다.\n- 사원은 본인 개인 일정만 수정할 수 있습니다.\n\n### Response\n- 수정된 일정 전체 정보\n\n### Error\n- `400 Bad Request`: 날짜 또는 공개 범위 오류\n- `403 Forbidden`: 수정 권한 없음\n- `404 Not Found`: 존재하지 않는 일정\n- `409 Conflict`: 수정할 수 없는 상태",
+            "description": "일정 정보를 수정합니다.\n일정 수정과 draft 검수 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `scheduleId`: 수정할 일정 ID\n\n### Query Params\n없음\n\n### Request Body\n- `title`, `content`, `targetText`, `location`\n- `visibilityType`, `departmentIds`, `startAt`, `endAt`\n- `expectedUpdatedAt`(선택): 마지막으로 조회한 일정의 `updatedAt`을 그대로 보냅니다. 값이 현재와 다르면 409로 거절합니다(오래된 화면의 덮어쓰기 방지). 프론트는 조회 응답의 `updatedAt`을 그대로 실어 보내고, 409가 오면 최신 일정을 재조회합니다.\n\n### 정책\n- 전달하지 않은 필드는 유지합니다.\n- 사원은 본인 개인 일정만 수정할 수 있습니다.\n- 동시 수정 시 먼저 저장한 요청이 이깁니다. 나중 요청이 오래된 `expectedUpdatedAt`으로 덮어쓰려 하면 409로 거절합니다(수정 화면 진입부터 락을 잡지 않는 낙관적 방식).\n\n### Response\n- 수정된 일정 전체 정보\n- `updatedAt`: 수정 성공 후 증가된 최신 동시성 토큰. 이어서 수정하려면 이 값을 다음 요청의 `expectedUpdatedAt`으로 보냅니다.\n\n### Error\n- `400 Bad Request`: 날짜 또는 공개 범위 오류\n- `403 Forbidden`: 수정 권한 없음\n- `404 Not Found`: 존재하지 않는 일정\n- `409 Conflict`: 다른 사용자가 먼저 수정한 일정(동시성 충돌, `SCHEDULE_VERSION_CONFLICT`)",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"수정된 회의\",\n  \"content\": \"수정된 회의 내용\",\n  \"targetText\": \"개발팀\",\n  \"location\": \"4층 회의실\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\",\n    \"2\"\n  ],\n  \"startAt\": \"2026-08-03T02:00:00Z\",\n  \"endAt\": \"2026-08-03T04:00:00Z\"\n}",
+              "raw": "{\n  \"title\": \"수정된 회의\",\n  \"content\": \"수정된 회의 내용\",\n  \"targetText\": \"개발팀\",\n  \"location\": \"4층 회의실\",\n  \"visibilityType\": \"department\",\n  \"departmentIds\": [\n    \"1\",\n    \"2\"\n  ],\n  \"startAt\": \"2026-08-03T02:00:00Z\",\n  \"endAt\": \"2026-08-03T04:00:00Z\",\n  \"expectedUpdatedAt\": \"2026-07-27T09:00:00Z\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -75,6 +75,9 @@ public enum ErrorCode {
     INVALID_SCHEDULE_RANGE(HttpStatus.BAD_REQUEST, "일정 조회 기간이 올바르지 않습니다."),
     INVALID_SCHEDULE_STATUS(HttpStatus.CONFLICT, "일정 상태를 확인해주세요."),
     INVALID_SCHEDULE_SOURCE(HttpStatus.BAD_REQUEST, "일정 원본문서 형식 또는 공개 범위가 올바르지 않습니다."),
+    // 수정(S15P11B106-87): 낙관적 동시성 충돌. 다른 사용자가 먼저 수정해 요청의 expectedUpdatedAt이 현재 값과
+    //   다른 경우의 409. 나중 저장이 오래된 화면 데이터로 덮어쓰는 것을 막는다.
+    SCHEDULE_VERSION_CONFLICT(HttpStatus.CONFLICT, "다른 사용자가 먼저 수정한 일정입니다. 새로고침 후 다시 시도해주세요."),
 
     INVALID_INQUIRY(HttpStatus.BAD_REQUEST, "문의 입력값 또는 이미지 파일을 확인해주세요."),
     INVALID_INQUIRY_FILTER(HttpStatus.BAD_REQUEST, "문의 조회 조건이 올바르지 않습니다."),
