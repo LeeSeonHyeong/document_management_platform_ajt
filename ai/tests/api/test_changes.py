@@ -65,6 +65,77 @@ def test_index_entry_without_a_summary():
     assert entries[0].summary is None
 
 
+def test_index_entries_come_from_a_table_the_agent_wrote():
+    """에이전트는 목차를 표로 쓴다 — 저장된 측정 8건이 전부 표였다.
+
+    표 행은 `| 주제 | [제목](주소) | 요약 |` 모양이고 링크가 첫 칸이 아니다. 제목은
+    링크 글자를 쓴다 (목록 형식과 같은 규칙). 요약은 링크 없는 뒤쪽 칸이다.
+    """
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    refs.for_new_page("7b91e0c2")
+
+    entries = parse_index_entries(
+        "## 핵심 내용\n\n"
+        "| 주제 | 페이지 | 요약 |\n"
+        "|------|--------|------|\n"
+        "| 회의 | [회의 운영](pages/a3f2c1d4.md) | 정례 회의 운영 기준 |\n"
+        "| 휴가 | [휴가 규정](pages/7b91e0c2.md) | 연차와 반차 |\n",
+        refs,
+    )
+
+    assert [(e.wikiRef, e.order, e.title, e.summary) for e in entries] == [
+        ("101", 1, "회의 운영", "정례 회의 운영 기준"),
+        ("wiki-temp-1", 2, "휴가 규정", "연차와 반차"),
+    ]
+
+
+def test_table_row_without_a_summary_cell():
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    entries = parse_index_entries("| [회의 운영](pages/a3f2c1d4.md) |\n", refs)
+    assert [(e.title, e.summary) for e in entries] == [("회의 운영", None)]
+
+
+def test_bullet_link_wrapped_in_bold():
+    """`- **[제목](주소)** — 요약` 도 목차 줄이다. 실제 측정에서 나온 세 번째 형식이다."""
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    entries = parse_index_entries(
+        "- **[회의 운영](pages/a3f2c1d4.md)** — 정례 회의 운영 기준\n", refs)
+    assert [(e.title, e.summary) for e in entries] == [
+        ("회의 운영", "정례 회의 운영 기준"),
+    ]
+
+
+def test_change_log_bullet_has_no_summary():
+    """「최근 변경」 줄은 요약이 아니다 — 구분선(—) 없이 서술만 이어진다."""
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+    entries = parse_index_entries(
+        "- 2026-07-27: [회의 운영](pages/a3f2c1d4.md) 신규 생성 (원본: `01.md`)\n", refs)
+    assert [(e.title, e.summary) for e in entries] == [("회의 운영", None)]
+
+
+def test_same_page_listed_twice_becomes_one_entry():
+    """「핵심 내용」 표와 「최근 변경」 목록에 같은 페이지가 함께 나온다.
+
+    Spring 이 같은 페이지를 목차에 두 번 받으면 안 된다. 먼저 나온 것을 남긴다.
+    """
+    refs = TempRefs()
+    refs.bind_existing("a3f2c1d4", "101")
+
+    entries = parse_index_entries(
+        "| 회의 | [회의 운영](pages/a3f2c1d4.md) | 정례 회의 운영 기준 |\n"
+        "- [회의 운영](pages/a3f2c1d4.md) — 나중에 나온 설명\n",
+        refs,
+    )
+
+    assert [(e.wikiRef, e.order, e.summary) for e in entries] == [
+        ("101", 1, "정례 회의 운영 기준"),
+    ]
+
+
 def test_index_entries_skip_links_to_unknown_pages():
     """목차가 없는 페이지를 가리키면 Spring 이 매달린 참조를 받는다."""
     entries = parse_index_entries("- [없음](pages/deadbeef.md) — 설명\n", TempRefs())

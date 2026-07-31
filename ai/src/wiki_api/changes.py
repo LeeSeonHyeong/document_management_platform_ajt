@@ -15,7 +15,16 @@ import re
 from .schemas import (CategoryChange, Evidence, IndexEntry, RelationChange,
                       TransformResponse, WikiChange)
 
-_PAGE_LINK = re.compile(r"^\s*[-*]\s*\[([^\]]+)\]\(([^)]+?\.md)\)\s*(?:[-–—]\s*(.+))?$")
+# 목록 줄. 링크 앞뒤에 강조(`**`)나 날짜 같은 군더더기가 붙어도 읽는다 — 실제 목차에
+# `- **[제목](주소)** — 요약` 과 `- 2026-07-27: [제목](주소) 신규 생성` 이 둘 다 나온다.
+_BULLET = re.compile(r"^\s*[-*]\s+(?P<rest>.*\[[^\]]+\]\([^)]+?\.md\).*)$")
+# 요약은 구분선(—) 뒤에만 있다. 「최근 변경」 서술을 요약으로 착각하지 않기 위한 조건이다.
+_BULLET_SUMMARY = re.compile(r"\)\s*\**\s*[-–—]\s*(?P<summary>.+)$")
+# 링크 하나. 표 칸과 목록 줄에서 같이 쓴다 — 목차를 표로 쓴 경우가 훨씬 많다
+# (저장된 측정 8건 중 7건이 표였다).
+_CELL_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+?\.md)\)")
+# 표 구분선(`|---|:--:|`). 링크가 없으니 어차피 걸리지 않지만 의도를 적어 둔다.
+_TABLE_RULE = re.compile(r"^[\s|:-]+$")
 
 
 def _page_key(address: str) -> str | None:
@@ -44,23 +53,64 @@ class TempRefs:
         return self._existing.get(page_key) or self._new.get(page_key)
 
 
+def _parse_bullet(line: str) -> tuple[str, str, str | None] | None:
+    """목록 줄에서 `(제목, 주소, 요약)`. 링크가 없으면 `None`."""
+    bullet = _BULLET.match(line)
+    if not bullet:
+        return None
+    rest = bullet.group("rest")
+    link = _CELL_LINK.search(rest)
+    if not link:
+        return None
+    title, target = link.groups()
+    tail = rest[link.end():]
+    summary = _BULLET_SUMMARY.match(f"){tail}")
+    return title, target, summary.group("summary") if summary else None
+
+
+def _parse_table_row(line: str) -> tuple[str, str, str | None] | None:
+    """표 행에서 `(제목, 주소, 요약)`. 링크가 없으면 `None`.
+
+    링크는 첫 칸에 없다 — 실제 목차는 `| 주제 | [제목](주소) | 요약 |` 모양이다. 제목은
+    링크 글자를 쓰고(목록 형식과 같은 규칙) 요약은 링크 뒤의 링크 없는 칸이다.
+    """
+    if not line.lstrip().startswith("|") or _TABLE_RULE.match(line):
+        return None
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    for position, cell in enumerate(cells):
+        match = _CELL_LINK.search(cell)
+        if not match:
+            continue
+        title, target = match.groups()
+        summary = next((later for later in cells[position + 1:]
+                        if later and not _CELL_LINK.search(later)), None)
+        return title, target, summary
+    return None
+
+
 def parse_index_entries(index_markdown: str, refs: TempRefs) -> list[IndexEntry]:
     """에이전트가 쓴 목차 마크다운에서 구조를 뽑는다.
 
+    목록 줄과 표 행을 모두 읽는다. **형식을 지침이 못 박지 않아 실행마다 갈린다** —
+    표만 읽거나 목록만 읽으면 목차가 통째로 사라진다 (S15P11B106-165).
+
     계약이 `indexEntries` 배열을 요구한다. 없는 페이지를 가리키는 줄은 버린다 — Spring 에
-    매달린 참조를 넘기면 반영 시점에 깨진다.
+    매달린 참조를 넘기면 반영 시점에 깨진다. 같은 페이지가 「핵심 내용」과 「최근 변경」에
+    함께 나오므로 먼저 나온 것만 남긴다.
     """
     entries: list[IndexEntry] = []
+    seen: set[str] = set()
     for line in index_markdown.splitlines():
-        match = _PAGE_LINK.match(line)
-        if not match:
+        parsed = _parse_bullet(line) or _parse_table_row(line)
+        if parsed is None:
             continue
-        title, target, summary = match.groups()
+        title, target, summary = parsed
         target_address = f"pages/{target.split('/')[-1]}"
         key = _page_key(target_address)
         ref = refs.ref_for(key) if key else None
-        if not ref:
+        if not ref or ref in seen:
             continue
+        seen.add(ref)
         entries.append(IndexEntry(wikiRef=ref, order=len(entries) + 1,
                                   title=title.strip(),
                                   summary=(summary or "").strip() or None))
