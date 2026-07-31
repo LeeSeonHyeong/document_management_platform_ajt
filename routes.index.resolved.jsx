@@ -9,20 +9,11 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SignupPage from '@/pages/auth/SignupPage'
 import PasswordFindPage from '@/pages/auth/PasswordFindPage'
 import PasswordResetPage from '@/pages/auth/PasswordResetPage'
+import HomePage from '@/pages/home/HomePage'
 import AdminPage from '@/pages/AdminPage'
 import AdminSchedulePage from '@/pages/admin/AdminSchedulePage'
 import ForbiddenPage from '@/pages/ForbiddenPage'
 import NotFoundPage from '@/pages/NotFoundPage'
-import DocumentListPage from '@/features/document/pages/DocumentListPage'
-import SourceDocumentListPage from '@/features/document/pages/SourceDocumentListPage'
-import SourceDocumentDetailPage from '@/features/document/pages/SourceDocumentDetailPage'
-import AiJobQueuePage from '@/features/document/pages/AiJobQueuePage'
-import AiJobProgressPage from '@/features/document/pages/AiJobProgressPage'
-import AiJobSummaryPage from '@/features/document/pages/AiJobSummaryPage'
-import AiJobSummaryListPage from '@/features/document/pages/AiJobSummaryListPage'
-import PreviewSummaryDetailPage from '@/features/document/pages/PreviewSummaryDetailPage'
-import DocumentCategoryPage from '@/features/document/pages/DocumentCategoryPage'
-import WikiPage from '@/features/wiki/pages/WikiPage'
 import EmployeeListPage from '@/features/member/pages/EmployeeListPage'
 import EmployeeDetailPage from '@/features/member/pages/EmployeeDetailPage'
 import EmployeeEditPage from '@/features/member/pages/EmployeeEditPage'
@@ -33,7 +24,6 @@ import InquiryDetailPage from '@/features/inquiry/pages/InquiryDetailPage'
 import EmployeeInquiriesPage from '@/features/inquiry/pages/EmployeeInquiriesPage'
 import CreateInquiryPage from '@/features/inquiry/pages/CreateInquiryPage'
 import MyProfilePage from '@/features/me/pages/MyProfilePage'
-import RoleHomePage from './RoleHomePage'
 
 // 라우트 레벨 접근 제어:
 //  - GuestRoute:     비로그인 전용(로그인 화면)
@@ -60,10 +50,7 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { index: true, element: <RoleHomePage /> },
-          // Wiki 열람은 관리자·사원 공통(6R/S2). ADMIN 전용 블록 밖에 둔다.
-          { path: 'wiki', element: <WikiPage /> },
-          { path: 'wiki/:wikiId', element: <WikiPage /> },
+          { index: true, element: <HomePage /> },
           { path: 'me', element: <MyProfilePage /> },
           {
             element: <RoleRoute allowedRoles={[ROLES.EMPLOYEE]} />,
@@ -84,15 +71,6 @@ export const router = createBrowserRouter([
               { path: 'admin/inquiries', element: <InquiryManagementPage /> },
               { path: 'admin/inquiries/:inquiryId', element: <InquiryDetailPage /> },
               { path: 'admin/schedules', element: <AdminSchedulePage /> },
-              { path: 'admin/documents', element: <DocumentListPage /> },
-              { path: 'admin/documents/source', element: <SourceDocumentListPage /> },
-              { path: 'admin/documents/source/:documentId', element: <SourceDocumentDetailPage /> },
-              { path: 'admin/documents/jobs/:jobId', element: <AiJobQueuePage /> },
-              { path: 'admin/documents/jobs/:jobId/progress', element: <AiJobProgressPage /> },
-              { path: 'admin/documents/jobs/:jobId/summary', element: <AiJobSummaryPage /> },
-              { path: 'admin/documents/summaries', element: <AiJobSummaryListPage /> },
-              { path: 'admin/documents/summaries/:summaryId', element: <PreviewSummaryDetailPage /> },
-              { path: 'admin/documents/categories', element: <DocumentCategoryPage /> },
             ],
           },
         ],
