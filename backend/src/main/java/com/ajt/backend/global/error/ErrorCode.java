@@ -82,6 +82,9 @@ public enum ErrorCode {
     INQUIRY_ASSIGNEE_HAS_PENDING(HttpStatus.CONFLICT, "처리되지 않은 문의가 남은 담당자는 사원으로 전환하거나 비활성화할 수 없습니다."),
     INQUIRY_FORBIDDEN(HttpStatus.FORBIDDEN, "문의에 대한 권한이 없습니다."),
     INQUIRY_ANSWER_NOT_FOUND(HttpStatus.NOT_FOUND, "문의 답변이 존재하지 않습니다."),
+    // 수정(S15P11B106-105): 신규 추가. 두 담당자가 거의 동시에 같은 문의에 답변을 등록해 inquiry_id UNIQUE 제약에
+    //   걸린 경우의 409 코드. 서버 오류가 아니라 "이미 답변이 등록됨" 업무 충돌이다.
+    INQUIRY_ANSWER_ALREADY_EXISTS(HttpStatus.CONFLICT, "이미 답변이 등록된 문의입니다."),
 
     // 수정: 신규 추가. 질문 이력 조회의 필터·페이지값 오류(400).
     INVALID_QUESTION_FILTER(HttpStatus.BAD_REQUEST, "질문 이력 조회 조건이 올바르지 않습니다.");

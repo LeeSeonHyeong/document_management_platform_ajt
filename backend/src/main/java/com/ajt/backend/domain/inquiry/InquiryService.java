@@ -33,6 +33,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.core.io.Resource;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -217,8 +218,10 @@ public class InquiryService {
         Inquiry inquiry = findInquiry(inquiryId);
         requireAssignee(loginMember, inquiry);
 
-        // TODO(개선): 동시 PUT 요청이 겹치면 inquiry_id UNIQUE 제약에서 한쪽이 500이 될 수 있다.
-        //  트래픽이 커지면 낙관적 락 또는 제약 위반 재시도로 멱등성을 보강한다.
+        // 수정(S15P11B106-105): 답변은 문의당 1건(inquiry_id UNIQUE)이라, 두 담당자가 거의 동시에 답변을 등록하면
+        //   둘 다 "답변 없음"으로 판단해 각각 INSERT를 시도하고 나중 요청이 UNIQUE 제약에 걸린다. 이 INSERT는 커밋
+        //   시점에 flush되므로 예전에는 이 try 밖(커밋 중)에서 터져 500처럼 보였다. save 직후 flush로 충돌을 이
+        //   메서드 안에서 확정적으로 드러내, 서버 오류가 아니라 "이미 답변이 등록됨" 업무 충돌(409)로 변환한다.
         InquiryReply reply;
         try {
             reply = inquiryReplyRepository.findByInquiryId(inquiryId)
@@ -228,8 +231,13 @@ public class InquiryService {
                     })
                     .orElseGet(() -> inquiryReplyRepository.save(
                             InquiryReply.create(inquiryId, inquiry.getAssignee(), content)));
+            inquiryReplyRepository.flush();
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.INVALID_INQUIRY, exception.getMessage());
+        } catch (DataIntegrityViolationException exception) {
+            // 동시 등록으로 다른 담당자가 먼저 답변을 저장해 inquiry_id UNIQUE 제약에 걸린 경우로 한정한다.
+            // (이 흐름에서 발생하는 무결성 위반은 중복 답변뿐이다.)
+            throw new BusinessException(ErrorCode.INQUIRY_ANSWER_ALREADY_EXISTS);
         }
         inquiry.markAnswered();
         return InquiryAnswerResponse.from(reply);

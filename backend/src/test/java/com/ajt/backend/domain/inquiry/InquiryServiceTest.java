@@ -256,6 +256,22 @@ class InquiryServiceTest {
     }
 
     @Test
+    @DisplayName("이미 답변이 있으면 같은 담당자의 재등록은 충돌 없이 내용을 교체한다(정상 수정 흐름)")
+    void upsertAnswerReplacesExistingAnswer() {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        InquiryResponse created = inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        long inquiryId = Long.parseLong(created.inquiryId());
+        inquiryService.upsertAnswer(login(assignee), inquiryId, "첫 답변");
+
+        InquiryAnswerResponse updated = inquiryService.upsertAnswer(login(assignee), inquiryId, "수정된 답변");
+
+        assertThat(updated.content()).isEqualTo("수정된 답변");
+        assertThat(inquiryRepository.findById(inquiryId).orElseThrow().getStatus()).isEqualTo(InquiryStatus.DONE);
+    }
+
+    @Test
     @DisplayName("답변 작성은 지정 담당자가 아니면 403으로 거부한다")
     void upsertAnswerRejectsNonAssignee() {
         // 다른 관리자가 답변을 시도하면 담당자가 아니므로 막혀야 한다.
