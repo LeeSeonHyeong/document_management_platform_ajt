@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '@/shared/api/queryKeys'
 import {
   uploadDocuments,
+  uploadScheduleSource,
   fetchDocuments,
   fetchDocument,
   updateDocument,
@@ -38,6 +39,16 @@ export function useUploadDocuments() {
     mutationFn: uploadDocuments,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.documents.all })
+    },
+  })
+}
+
+export function useUploadScheduleSource() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: uploadScheduleSource,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.schedules.all })
     },
   })
 }

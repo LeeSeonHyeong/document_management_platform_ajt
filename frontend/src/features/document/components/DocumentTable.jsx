@@ -65,12 +65,14 @@ export default function DocumentTable({
     key: 'originalFileName',
     header: '파일명',
     render: (doc) => (
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3 overflow-hidden">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
           <FileText className="size-4" />
         </span>
-        <div className="min-w-0">
-          <p className="truncate font-semibold text-slate-800">{doc.originalFileName}</p>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <p className="block truncate font-semibold text-slate-800" title={doc.originalFileName}>
+            {doc.originalFileName}
+          </p>
           <p className="text-xs text-slate-400">{formatFileSize(doc.fileSize)}</p>
         </div>
       </div>
@@ -164,10 +166,16 @@ export default function DocumentTable({
   ]
 
   const queueColumns = [
-    fileColumn,
+    {
+      ...fileColumn,
+      className: 'w-[30%] max-w-0',
+      headerClassName: 'w-[30%]',
+    },
     {
       key: 'type',
       header: '종류',
+      className: 'w-[10%]',
+      headerClassName: 'w-[10%]',
       render: (doc) => (
         <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
           {getDocumentType(doc)}
@@ -177,6 +185,8 @@ export default function DocumentTable({
     {
       key: 'visibility',
       header: '공개 부서',
+      className: 'w-[22%]',
+      headerClassName: 'w-[22%]',
       render: (doc) => (
         <div className="flex justify-center">
           <QueueVisibilityDropdown
@@ -190,6 +200,8 @@ export default function DocumentTable({
     {
       key: 'documentCategoryName',
       header: '카테고리',
+      className: 'w-[22%]',
+      headerClassName: 'w-[22%]',
       render: (doc) => (
         <QueueCategorySelect
           item={doc}
@@ -201,9 +213,24 @@ export default function DocumentTable({
     {
       key: 'status',
       header: '상태',
-      render: (doc) => <Badge tone="success">{STATUS_LABEL[doc.status] ?? '업로드 완료'}</Badge>,
+      className: 'w-[11%]',
+      headerClassName: 'w-[11%]',
+      render: (doc) => (
+        <Badge tone="success" className="whitespace-nowrap">
+          {STATUS_LABEL[doc.status] ?? '업로드 완료'}
+        </Badge>
+      ),
     },
-    ...(renderAction ? [{ key: 'actions', header: '', align: 'right', render: renderAction }] : []),
+    ...(renderAction
+      ? [{
+          key: 'actions',
+          header: '',
+          align: 'right',
+          className: 'w-[5%]',
+          headerClassName: 'w-[5%]',
+          render: renderAction,
+        }]
+      : []),
   ]
 
   const baseColumns =
@@ -223,6 +250,7 @@ export default function DocumentTable({
       onRowClick={onRowClick}
       emptyState={emptyState}
       headerAlign="center"
+      tableClassName={variant === 'queue' ? 'table-fixed' : undefined}
     />
   )
 }

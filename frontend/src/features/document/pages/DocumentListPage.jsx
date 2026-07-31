@@ -4,15 +4,18 @@ import { Upload, FileText, CalendarDays, X, AlertTriangle, Check } from 'lucide-
 import { Button, EmptyState, useToast } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { FILE_ACCEPT } from '@/shared/constants/enums'
-import { useDocuments } from '../queries'
+import { useStartAiJob, useUploadDocuments, useUploadScheduleSource } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobStartDialog from '../components/AiJobStartDialog'
-import { addPreviewSourceDocuments, addPreviewSummary } from '../previewStorage'
+import { addPreviewSummary } from '../previewStorage'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
 function isAssigned(document) {
+  if (document.uploadKind === 'schedule') {
+    return document.visibilityType === 'all' || (document.departments ?? []).length > 0
+  }
   return (
     Boolean(document.documentCategoryId) &&
     (document.visibilityType === 'all' || (document.departments ?? []).length > 0)
@@ -26,23 +29,21 @@ export default function DocumentListPage() {
   const [previewUploadFiles, setPreviewUploadFiles] = useState([])
   const [previewScheduleFiles, setPreviewScheduleFiles] = useState([])
   const [previewQueueDocuments, setPreviewQueueDocuments] = useState([])
-  const [removedQueueDocumentIds, setRemovedQueueDocumentIds] = useState([])
   const [startOpen, setStartOpen] = useState(false)
   const [queueMetadata, setQueueMetadata] = useState({})
-  const { data, isLoading } = useDocuments({ page: 1, size: 20 })
-  // AI 작업 대기에는 아직 처리가 시작되지 않은 uploaded 문서만 둔다.
-  // processing/completed/failed/cancelled 원본은 원본 문서 탭에서만 관리한다.
-  const serverWaitingDocuments = (data?.items ?? []).filter(
-    (document) =>
-      document.status === 'uploaded' &&
-      !removedQueueDocumentIds.includes(document.documentId),
-  )
-  const waitingDocuments = [...previewQueueDocuments, ...serverWaitingDocuments].map(
-    (document) => ({
-      ...document,
-      ...queueMetadata[document.documentId],
-    }),
-  )
+  const uploadDocumentsMutation = useUploadDocuments()
+  const uploadScheduleMutation = useUploadScheduleSource()
+  const startAiJobMutation = useStartAiJob()
+  const isStarting =
+    uploadDocumentsMutation.isPending ||
+    uploadScheduleMutation.isPending ||
+    startAiJobMutation.isPending
+  // 업로드 카드에서 완료된 로컬 파일은 document.status=UPLOADED에 대응하는 대기 행으로 표시한다.
+  // 필수 메타데이터 확정 후 POST /documents가 WAITING 작업을 만들고, /start가 실제 처리를 시작한다.
+  const waitingDocuments = previewQueueDocuments.map((document) => ({
+    ...document,
+    ...queueMetadata[document.documentId],
+  }))
   const readyDocuments = waitingDocuments.filter(isAssigned)
   const allAssigned = waitingDocuments.length > 0 && readyDocuments.length === waitingDocuments.length
   const unassignedCount = waitingDocuments.filter((document) => !isAssigned(document)).length
@@ -62,7 +63,7 @@ export default function DocumentListPage() {
           selectedFiles={previewUploadFiles}
           onFilesSelected={setPreviewUploadFiles}
           onUploadComplete={async (files, batch) => {
-            const documents = await createPreviewDocuments(files, user)
+            const documents = await createPreviewDocuments(files, user, 'document')
             setPreviewQueueDocuments((current) => [...documents, ...current])
             if (batch.isLast) {
               const extraCount = batch.files.length - 1
@@ -84,7 +85,7 @@ export default function DocumentListPage() {
           selectedFiles={previewScheduleFiles}
           onFilesSelected={setPreviewScheduleFiles}
           onUploadComplete={async (files, batch) => {
-            const documents = await createPreviewDocuments(files, user)
+            const documents = await createPreviewDocuments(files, user, 'schedule')
             setPreviewQueueDocuments((current) => [...documents, ...current])
             if (batch.isLast) {
               const extraCount = batch.files.length - 1
@@ -121,7 +122,7 @@ export default function DocumentListPage() {
         <DocumentTable
           variant="queue"
           documents={waitingDocuments}
-          loading={isLoading}
+          loading={false}
           onQueueMetadataChange={(documentId, changes) =>
             setQueueMetadata((current) => ({
               ...current,
@@ -134,13 +135,9 @@ export default function DocumentListPage() {
               aria-label={`${doc.originalFileName} 대기 목록에서 삭제`}
               onClick={(event) => {
                 event.stopPropagation()
-                if (doc.previewOnly) {
-                  setPreviewQueueDocuments((current) =>
-                    current.filter((document) => document.documentId !== doc.documentId),
-                  )
-                } else {
-                  setRemovedQueueDocumentIds((current) => [...current, doc.documentId])
-                }
+                setPreviewQueueDocuments((current) =>
+                  current.filter((document) => document.documentId !== doc.documentId),
+                )
               }}
               className="focus-ring flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500"
             >
@@ -179,31 +176,68 @@ export default function DocumentListPage() {
       <AiJobStartDialog
         open={startOpen}
         documents={readyDocuments}
-        onClose={() => setStartOpen(false)}
-        onConfirm={() => {
-          setStartOpen(false)
-          addPreviewSummary(readyDocuments)
-          const previewDocuments = readyDocuments
-            .filter((document) => document.previewOnly)
-            .map((document) => ({
-              ...document,
-              status: 'completed',
-              previewOnly: true,
-            }))
-          if (previewDocuments.length) addPreviewSourceDocuments(previewDocuments)
+        pending={isStarting}
+        onClose={() => {
+          if (!isStarting) setStartOpen(false)
+        }}
+        onConfirm={async () => {
+          const localDocuments = readyDocuments.filter(
+            (document) => document.previewOnly && document.sourceFile,
+          )
+          const documentGroups = groupDocumentUploads(
+            localDocuments.filter((document) => document.uploadKind !== 'schedule'),
+          )
+          const scheduleDocuments = localDocuments.filter(
+            (document) => document.uploadKind === 'schedule',
+          )
+          const uploadedIds = new Set()
 
-          setPreviewQueueDocuments([])
-          setRemovedQueueDocumentIds((current) => [
-            ...new Set([
-              ...current,
-              ...readyDocuments
-                .filter((document) => !document.previewOnly)
-                .map((document) => document.documentId),
-            ]),
-          ])
-          setQueueMetadata({})
-          toast.success(`${readyDocuments.length}개 파일의 AI 작업을 시작했습니다.`)
-          navigate('/admin/documents/source')
+          try {
+            for (const group of documentGroups) {
+              const result = await uploadDocumentsMutation.mutateAsync({
+                files: group.documents.map((document) => document.sourceFile),
+                documentCategoryId: group.documentCategoryId,
+                visibilityType: group.visibilityType,
+                departmentIds: group.departmentIds,
+              })
+              await startAiJobMutation.mutateAsync(result.jobId)
+              group.documents.forEach((document) => uploadedIds.add(document.documentId))
+            }
+
+            for (const document of scheduleDocuments) {
+              await uploadScheduleMutation.mutateAsync({
+                file: document.sourceFile,
+                visibilityType: document.visibilityType,
+                departmentIds: getDepartmentIds(document),
+              })
+              uploadedIds.add(document.documentId)
+            }
+
+            // API 요청은 공개 범위·카테고리별로 여러 작업이 될 수 있지만,
+            // 요약 목록은 관리자가 누른 "AI 작업 시작" 1회를 한 묶음으로 표시한다.
+            addPreviewSummary(readyDocuments)
+            setStartOpen(false)
+            toast.success(`${uploadedIds.size}개 파일의 AI 작업을 시작했습니다.`)
+
+            navigate('/admin/documents/source')
+          } catch (error) {
+            const message =
+              error?.response?.data?.message ??
+              error?.response?.data?.error?.message ??
+              '파일 업로드에 실패했습니다. 입력값과 서버 연결을 확인해주세요.'
+            toast.error(message)
+          } finally {
+            if (uploadedIds.size > 0) {
+              setPreviewQueueDocuments((current) =>
+                current.filter((document) => !uploadedIds.has(document.documentId)),
+              )
+              setQueueMetadata((current) => {
+                const next = { ...current }
+                uploadedIds.forEach((documentId) => delete next[documentId])
+                return next
+              })
+            }
+          }
         }}
       />
     </section>
@@ -500,7 +534,7 @@ function formatUploadBytes(bytes) {
   return `${bytes} B`
 }
 
-async function createPreviewDocuments(files, uploader) {
+async function createPreviewDocuments(files, uploader, uploadKind) {
   const createdAt = new Date().toISOString()
   const batchId = Date.now()
 
@@ -510,6 +544,8 @@ async function createPreviewDocuments(files, uploader) {
       originalFileName: file.name,
       fileSize: file.size,
       mimeType: file.type,
+      sourceFile: file,
+      uploadKind,
       previewContent: file.name.toLowerCase().endsWith('.md') ? await file.text() : null,
       downloadUrl: URL.createObjectURL(file),
       documentCategoryId: null,
@@ -524,4 +560,38 @@ async function createPreviewDocuments(files, uploader) {
       previewOnly: true,
     })),
   )
+}
+
+function getDepartmentIds(document) {
+  return (document.departments ?? [])
+    .map((department) => department.departmentId ?? department.id)
+    .filter(Boolean)
+}
+
+function groupDocumentUploads(documents) {
+  const groups = new Map()
+
+  documents.forEach((document) => {
+    const departmentIds = getDepartmentIds(document).sort((a, b) =>
+      String(a).localeCompare(String(b)),
+    )
+    const key = JSON.stringify([
+      document.documentCategoryId,
+      document.visibilityType,
+      departmentIds,
+    ])
+    const existing = groups.get(key)
+    if (existing) {
+      existing.documents.push(document)
+      return
+    }
+    groups.set(key, {
+      documents: [document],
+      documentCategoryId: document.documentCategoryId,
+      visibilityType: document.visibilityType,
+      departmentIds,
+    })
+  })
+
+  return [...groups.values()]
 }
