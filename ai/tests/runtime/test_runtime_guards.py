@@ -10,7 +10,7 @@ the DeepAgents path too, and these pin it without needing DeepAgents installed.
 import pytest
 
 from agent_runtime.base import FAST
-from agent_runtime.guards import bypassed_server
+from agent_runtime.guards import bypassed_server, wrote_without_reading
 from agent_runtime.claude_code import CALL_TIMEOUT_SECONDS as CLI_TIMEOUT
 from agent_runtime.deep_agents import (
     CALL_TIMEOUT_SECONDS,
@@ -113,6 +113,24 @@ def test_no_changes_is_not_a_bypass():
 def test_an_empty_tool_log_is_inconclusive_not_a_failure():
     """Counting can be off. Calling that a bypass would fail every such run."""
     assert bypassed_server(CHANGE, {}) is False
+
+
+# ----- the blind-write detector ---------------------------------------------
+
+
+def test_write_only_run_is_blind():
+    """읽기 툴 0회는 현재 위키를 못 본 채 쓴 것이다."""
+    assert wrote_without_reading({"guide": 1, "create": 3}) is True
+
+
+def test_reading_either_tool_clears_the_gate():
+    assert wrote_without_reading({"read": 1, "create": 1}) is False
+    assert wrote_without_reading({"search": 1, "create": 1}) is False
+
+
+def test_empty_log_is_not_a_verdict():
+    """툴 호출을 세지 못한 런타임은 판단 불가다 — bypassed_server 와 같은 규칙."""
+    assert wrote_without_reading({}) is False
 
 
 def test_load_runtime_passes_model_settings_to_deepagents():

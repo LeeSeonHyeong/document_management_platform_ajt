@@ -153,8 +153,9 @@ def test_every_endpoint_has_its_own_failure_code():
     `INTERNAL_SERVER_ERROR` 로 떨어져 계약 밖 코드가 된다."""
     from wiki_api.errors import _FAILURE_CODES, failure_code_for
 
-    assert failure_code_for("/internal/v1/wiki-context-selections") == \
-        "WIKI_CONTEXT_SELECTION_FAILED"
+    # `/internal/v1/wiki-context-selections` 는 없다 — S15P11B106-175 가 1단계 문맥
+    # 선택을 지웠다. 없는 경로의 코드는 죽은 분기이고, Spring 이 그 이름으로 분기를
+    # 짜면 영원히 오지 않는 값을 기다린다.
     assert failure_code_for("/internal/v1/wiki-transformations") == \
         "WIKI_TRANSFORMATION_FAILED"
     assert failure_code_for("/internal/v1/wiki-edits") == "WIKI_EDIT_FAILED"

@@ -8,7 +8,7 @@
   * `relationChanges` 의 스키마를 채운다 — 계약 예시가 빈 배열뿐이다
   * `wikiChanges[].wikiPath` 를 더한다 — DR-016 저장 컬럼이자, 신규 페이지 사이의 본문
     링크를 Spring 이 실제 `wikiId` 로 치환하려면 `pageKey` ↔ 변경의 대응이 필요하다
-  * `TransformRequest.changeType` / `SelectionRequest.changeType` / `removedParsedMarkdown`
+  * `TransformRequest.changeType` / `removedParsedMarkdown`
     — **계약 미반영**. `docs/FastAPI명세서.json` 에는 없는 필드다. v1.1.0 적응 설계
     (`docs/superpowers/specs/2026-07-28-ai-server-v1.1-adaptation.md` §1)가 "changeType이
     변환 요청에도 실린다는 가정으로 짓는다 (회신에 명기, 뒤집히면 필드 이동만)"라고 적어둔
@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import (AliasChoices, BaseModel, ConfigDict, Field, ValidationError,
+from pydantic import (BaseModel, ConfigDict, Field, ValidationError,
                       model_validator)
 from pydantic_core import InitErrorDetails, PydanticCustomError
 
@@ -35,43 +35,17 @@ class Strict(BaseModel):
 
 # ---- 요청 크기 상한 (D7) ----------------------------------------------------
 #
-# `FR-WIKI-002` 가 v2.9 에서 "최대 5개 선택" 을 없앴다. Spring 이 범위 위키를 전량 실어
-# 보낼 수 있게 되었고 여기에 상한이 없어 AI 코드 변경 없이 그대로 받는다.
+# **개수로 막지 않는다.** `FR-WIKI-002` 가 v2.9 에서 "선택 개수 상한은 두지 않는다" 를
+# 명시했으므로 개수 상한은 요구사항 위반이다. 실제 자원 한계인 바이트로 막는다 — 요청
+# 본문은 파싱되어 메모리에 올라가고, 임시 디스크에 파일로 쓰인다.
 #
-# **개수로 막지 않는다.** 같은 개정이 "선택 개수 상한은 두지 않는다" 를 명시했으므로 개수
-# 상한은 요구사항 위반이다. 실제 자원 한계인 바이트로 막는다 — 요청 본문은 파싱되어
-# 메모리에 올라가고, 하이드레이션이 임시 디스크에 파일로 쓴다.
-#
-# **측정한 것과 계산한 것을 구분해 적는다.** 아래 상한은 관측된 한계가 아니라 관측값에서
-# 나눗셈으로 고른 자리다 — 사내 위키가 실제로 몇 장까지 커지는지는 아직 모른다.
-#
-# 측정:
-#
-#   * 위키 페이지 — 평균 9,734B · 중앙 8,177B · 최대 26,924B
-#     출처는 `experiments/` 의 생성 결과 44장이고 원본 코퍼스가 **영어**다.
-#   * 한국어 페이지 — 평균 7,946자. **내가 만든 합성 코퍼스 100장**이고 사내 문서가 아니다.
-#   * 하이드레이션 — 100장에 712ms (7.1ms/장)
-#   * 에이전트 루프 — 문서 1건에 126~894초
-#
-# 계산: 한국어 3바이트/자를 곱해 페이지당 약 23KB, 총량 상한을 그것으로 나눠 약 1,400장.
-# 실제 위키가 1,400장인 것도, 그만큼을 돌려 본 것도 아니다.
-#
-# 문맥 준비가 실행 시간의 0.1~0.7% 라서 **속도는 결정 변수가 아니다.** 상한의 목적은
-# 메모리·임시 디스크 소진을 막는 것뿐이므로 관측 규모를 훨씬 넘는 자리에 둔다.
-#
-# 상한을 올려야 할 근거가 생기면 `INDEX.md` 에 그 측정을 남기고 여기를 고친다. 상한을
-# 내리려면 회귀 테스트(`tests/api/test_request_size_limits.py`)의 통과 조건을 먼저 본다.
+# **재는 대상이 하나로 줄었다** (S15P11B106-175). 위키 본문 총량(`MAX_REQUEST_CONTEXT_BYTES`)
+# 과 위키 한 장(`MAX_WIKI_CONTENT_BYTES`)의 상한이 여기 있었는데, 요청이 위키를 싣지
+# 않게 되면서 둘 다 잴 것이 없어졌다 — 라이브 위키는 조회 API 가 준다. 남은 것은 이 요청이
+# 실제로 실어 오는 원본문서 파싱 본문뿐이다.
 
-# 한 요청이 실어 올 수 있는 문맥 총량. 위 계산으로 한국어 페이지 약 1,400장 규모다.
-# 그만큼이면 하이드레이션이 10초인데 에이전트 루프가 최소 126초라 무의미한 비용이다.
-MAX_REQUEST_CONTEXT_BYTES = 32 * 1024 * 1024
-
-# 위키 한 장의 본문. 관측 최대 페이지(26,924B)의 약 78배다. 이보다 큰 한 장은 위키가
-# 아니라 결함이다 — 하이드레이션·청킹·각주 원문 대조가 전부 이 한 장에 매달린다.
-MAX_WIKI_CONTENT_BYTES = 2 * 1024 * 1024
-
-# 원본문서 파싱 본문 하나. 위키보다 크게 잡는다 — `FR-DOC-002` 가 파일당 20MB 를
-# 허용하므로 파싱 결과가 위키 한 장보다 클 수 있다. 관측 최대는 31,514B 였다.
+# 원본문서 파싱 본문 하나. `FR-DOC-002` 가 파일당 20MB 를 허용하므로 파싱 결과가 클 수
+# 있다. 관측 최대는 31,514B 였다 — 관측 규모를 훨씬 넘는 자리에 둔다.
 MAX_DOCUMENT_MARKDOWN_BYTES = 8 * 1024 * 1024
 
 
@@ -97,59 +71,27 @@ def _too_large(loc: tuple, what: str, actual: int, limit: int) -> InitErrorDetai
         input=actual)
 
 
-class CategoryRef(Strict):
-    """현재 카테고리 1건.
-
-    **철자가 두 가지다.** v1.1.0 계약(`docs/FastAPI명세서.json` 의 변환 요청 예시)은
-    `categoryId` 로 쓰고, 우리 응답·기존 픽스처·`docs/erdTable.sql`(`wiki_category_id`)은
-    `wikiCategoryId` 로 쓴다. `extra="forbid"` 라서 둘 중 하나만 받으면 **계약 예시를 그대로
-    보낸 첫 실호출이 400** 이다. 둘 다 받는다 — 내부 이름은 `wikiCategoryId` 하나로 두고
-    (`populate_by_name=True` 라 기존 코드·픽스처는 그대로), 계약 철자는 별칭으로 받는다.
-
-    협의 목록: 어느 철자가 정본인지 확정되면 별칭을 지운다.
-    """
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    wikiCategoryId: str = Field(
-        validation_alias=AliasChoices("categoryId", "wikiCategoryId"))
-    name: str
-    description: str | None = None
-
+# `CategoryRef`(요청의 `currentCategories[]` 1건)는 S15P11B106-175 가 지웠다. 요청이
+# 카테고리를 실어 보내지 않으므로 — 하이드레이션이
+# `GET /wiki-spaces/{scopeKey}/categories` 로 직접 읽는다 — 받을 모양 자체가 없다.
+# 그 클래스가 안고 있던 `categoryId`/`wikiCategoryId` 철자 협의도 함께 사라졌다:
+# 조회 API 응답은 `wikiCategoryId` 한 가지다.
 
 ChangeType = Literal["document_added", "document_removed", "document_replaced"]
-
-
-class SelectedWiki(Strict):
-    """1단계 선택(`wiki-context-selections`)이 고른 위키 1건 — 2단계 변환에 라이브 층 대신
-    실어 보낸다 (설계 §2). Spring 이 되묻지 않도록 필요한 필드를 전부 담는다."""
-
-    wikiId: str
-    categoryId: str | None = None
-    title: str
-    summary: str | None = None
-    contentMarkdown: str
-    documentRefs: list[str] = Field(default_factory=list)
-    wikiRefs: list[str] = Field(default_factory=list)
-    # 계약 1.6.0. 기존 Wiki 에 필수다 — 본문의 내부 링크가 파일명(pageKey) 기준이라
-    # 이것 없이 pages/{wikiId}.md 로 적재하면 링크가 어느 페이지도 가리키지 못한다.
-    # Optional 로 두는 이유는 하위호환뿐이다: 이 값이 없으면 링크 관계가 빈다.
-    wikiPath: str | None = None
 
 
 class TransformRequest(Strict):
     jobId: str
     documentId: str
     scopeKey: str
-    # 계약 1.6.0. 둘 다 선택 필드다 — 없으면 selectedWikis 로 도는 과도기 경로다
-    # (`session.py._federated`). wikiCapability 는 로그·예외·telemetry 에 남기지 않는다.
-    wikiCapability: str | None = None
-    scopeVersion: int | None = None
+    # 계약 1.6.0 에 선택 필드로 들어왔고 S15P11B106-175 에서 필수가 됐다. 요청이 위키
+    # 본문을 싣지 않으므로 이것이 없으면 에이전트가 볼 위키가 아예 없다 — 선택으로
+    # 두면 빠진 요청이 빈 문맥으로 돌아 라이브를 덮는다.
+    # **로그·예외·telemetry 에 남기지 않는다.**
+    wikiCapability: str
+    scopeVersion: int
     # removed 때는 걷어낼 원본문서가 없어질 뿐 새 원본문서 본문은 없다 — 빈 값을 허용한다.
     parsedMarkdown: str = ""
-    currentIndex: str = ""
-    currentCategories: list[CategoryRef] = Field(default_factory=list)
-    selectedWikis: list[SelectedWiki] = Field(default_factory=list)
     changeType: ChangeType = "document_added"
     removedParsedMarkdown: str | None = None
 
@@ -157,17 +99,17 @@ class TransformRequest(Strict):
     def _the_request_must_be_actionable(self) -> "TransformRequest":
         """`changeType` 이 요구하는 재료가 실제로 왔는가.
 
-        세 가지를 막는다 — 전부 「조용한 200」을 막기 위한 것이다. 재료가 없으면 에이전트가
+        두 가지를 막는다 — 전부 「조용한 200」을 막기 위한 것이다. 재료가 없으면 에이전트가
         할 일이 없고, 변경 0으로 끝난 성공 응답은 Spring 의 `document_results` 에 「성공」으로
         남아 사라진 입력을 감춘다:
 
           * 삭제·교체에 옛 본문이 없다 — 각주 backlink 도 못 찾고 인용 원문 대조도 못 한다
           * 추가에 새 본문이 없다 (I2) — `parsedMarkdown` 을 선택적으로 만든 것은 removed 를
             위한 완화였고 added 에까지 번지면 안 된다
-          * 삭제에 인용 위키가 없다 (I3) — 회신 #3 이 "removed 때 Spring 이 인용 위키를 직접
-            보낸다"고 요구했으므로 빈 `selectedWikis` 로 removed 를 부르는 것 자체가 계약
-            위반이다. 인용 위키가 진짜 0인 삭제는 합법이지만, 그때는 **변환을 부르지 않고
-            원본문서만 지우면 된다** — 메시지에 그 대안을 적어 준다
+          * 삭제에 인용 위키가 없다 — **여기서 막지 않는다.** 요청이 위키를 싣지
+            않으므로 접수 시점에 알 수 없고, 하이드레이션이 카탈로그를 받은 뒤
+            판정한다 (`session._assert_the_scope_has_wikis_if_it_must`,
+            S15P11B106-175)
 
         라우터가 아니라 모델에서 막는 이유는 `fieldErrors` 다: 어느 필드가 문제인지 적어 줘야
         Spring 이 사람에게 번역할 수 있다 (API_컨벤션 6.2).
@@ -193,28 +135,17 @@ class TransformRequest(Strict):
                     "본문이 없으면 변환할 원본문서가 없습니다."),
                 loc=("parsedMarkdown",),
                 input=self.parsedMarkdown))
-        if self.changeType == "document_removed" and not self.selectedWikis:
-            errors.append(InitErrorDetails(
-                type=PydanticCustomError(
-                    "selected_wikis_required",
-                    "changeType이 document_removed이면 selectedWikis에 이 원본문서를 인용한 "
-                    "위키를 실어 보내야 합니다 — 인용 위키가 없으면 변환 호출 없이 "
-                    "원본문서 삭제만 하면 됩니다."),
-                loc=("selectedWikis",),
-                input=self.selectedWikis))
         if errors:
             raise ValidationError.from_exception_data("TransformRequest", errors)
         return self
 
     @model_validator(mode="after")
     def _the_request_must_fit(self) -> "TransformRequest":
-        """D7. 문맥 총량과 개별 본문에 바이트 상한을 건다.
+        """D7. 원본문서 본문 각각에 바이트 상한을 건다.
 
-        **개수는 세지 않는다** — `FR-WIKI-002` 가 개수 상한을 금지한다. 작은 위키 1,000장은
-        통과해야 하고 큰 위키 20장은 막혀야 한다.
-
-        개별 검사를 총량 검사와 따로 두는 이유는 진단이다. 총량만 보면 "32MB 를 넘었다"
-        까지만 알 수 있고, 한 장이 비정상인 경우와 정상 위키가 많은 경우를 구별할 수 없다.
+        위키 본문(`selectedWikis`)은 S15P11B106-175 로 요청에서 사라졌다 — 라이브 위키는
+        하이드레이션이 조회 API 로 읽어 오므로 여기서 잴 것은 이 요청이 실제로 실어 오는
+        `parsedMarkdown`·`removedParsedMarkdown` 뿐이다.
         """
         errors: list[InitErrorDetails] = []
 
@@ -224,107 +155,14 @@ class TransformRequest(Strict):
             if size > limit:
                 errors.append(_too_large((name,), "원본문서 본문", size, limit))
 
-        total = 0
-        for i, wiki in enumerate(self.selectedWikis):
-            size = _utf8_size(wiki.contentMarkdown)
-            if size > MAX_WIKI_CONTENT_BYTES:
-                errors.append(_too_large(("selectedWikis", i, "contentMarkdown"),
-                                         f"위키 {wiki.wikiId} 의 본문", size,
-                                         MAX_WIKI_CONTENT_BYTES))
-            total += size + _utf8_size(wiki.title) + _utf8_size(wiki.summary)
-        if total > MAX_REQUEST_CONTEXT_BYTES:
-            errors.append(_too_large(("selectedWikis",), "selectedWikis 문맥 총량",
-                                     total, MAX_REQUEST_CONTEXT_BYTES))
-
         if errors:
             raise ValidationError.from_exception_data("TransformRequest", errors)
         return self
 
 
-class SelectionRequest(Strict):
-    """1단계 — 목차만 보고 이번 변환에 관련된 위키를 최대 5개 고른다 (설계 §5)."""
-
-    jobId: str
-    documentId: str
-    scopeKey: str
-    currentIndex: str
-    parsedMarkdown: str = ""
-    changeType: ChangeType = "document_added"
-    removedParsedMarkdown: str | None = None
-
-    @model_validator(mode="after")
-    def _markdown_matches_change_type(self) -> "SelectionRequest":
-        """어느 본문이 필요한지는 `changeType` 이 정한다 (계약 v1.3.0).
-
-        제거에는 새 문서가 없고, 추가에는 이전 문서가 없다. 둘 다 무조건 요구하면 계약대로
-        보낸 첫 호출이 400 이다. `TransformRequest` 와 같은 이유로 라우터가 아니라 모델에서
-        막는다 — 어느 필드가 문제인지 `fieldErrors` 에 적어야 한다 (API_컨벤션 6.2).
-        """
-        errors: list[InitErrorDetails] = []
-        if self.changeType != "document_removed" and not self.parsedMarkdown.strip():
-            errors.append(InitErrorDetails(
-                type=PydanticCustomError(
-                    "parsed_markdown_required",
-                    "changeType이 {change_type}이면 parsedMarkdown이 필요합니다.",
-                    {"change_type": self.changeType}),
-                loc=("parsedMarkdown",),
-                input=self.parsedMarkdown))
-        if self.changeType != "document_added" and \
-                not (self.removedParsedMarkdown or "").strip():
-            errors.append(InitErrorDetails(
-                type=PydanticCustomError(
-                    "removed_markdown_required",
-                    "changeType이 {change_type}이면 removedParsedMarkdown이 필요합니다 — "
-                    "무엇이 사라지는지 모르면 어느 위키가 걸리는지 고를 수 없습니다.",
-                    {"change_type": self.changeType}),
-                loc=("removedParsedMarkdown",),
-                input=self.removedParsedMarkdown))
-        if errors:
-            raise ValidationError.from_exception_data("SelectionRequest", errors)
-        return self
-
-    @model_validator(mode="after")
-    def _the_request_must_fit(self) -> "SelectionRequest":
-        """D7. 1단계도 같은 문을 쓴다 — 본문 두 개가 `TransformRequest` 와 같은 출처에서
-        온다. 여기만 열려 있으면 상한이 없는 것과 같다."""
-        errors: list[InitErrorDetails] = []
-        for name in ("parsedMarkdown", "removedParsedMarkdown"):
-            size = _utf8_size(getattr(self, name))
-            if size > MAX_DOCUMENT_MARKDOWN_BYTES:
-                errors.append(_too_large((name,), "원본문서 본문", size,
-                                         MAX_DOCUMENT_MARKDOWN_BYTES))
-        if errors:
-            raise ValidationError.from_exception_data("SelectionRequest", errors)
-        return self
-
-
-class SelectionResponse(Strict):
-    wikiIds: list[str]
-    reason: str
-
-
 # `ReconcileRequest`(옛 `wiki-reconciliations`)는 여기 없다 — v1.1.0 계약이 그 엔드포인트를
 # 없애고 `TransformRequest.changeType` 분기로 흡수했다 (설계 §1). 삭제·교체 요청은
 # `changeType` + `removedParsedMarkdown` 으로 온다.
-
-
-class WikiBody(Strict):
-    title: str
-    contentMarkdown: str
-    # 계약 1.6.0 의 `wiki-edits` 요청 예시가 `currentWiki.wikiPath` 를 담는다. `Strict` 가
-    # `extra="forbid"` 라서 **받지 않으면 계약 예시를 그대로 보낸 첫 호출이 400** 이다
-    # (`CategoryRef` docstring 이 경고하는 것과 같은 실패 유형).
-    #
-    # **받아만 두고 쓰지 않는다.** 수정 요청의 주소는 `_edit_pages` 가 짓는
-    # `pages/{wikiId}.md` 이고, 이 값을 주소로 쓰는 것은 창구가 실경로가 된 뒤의 일이다
-    # (`SelectedWiki.wikiPath` 와 같은 이유 — 설계 4.2 의 확인된 결함).
-    wikiPath: str | None = None
-
-
-class EvidenceDocument(Strict):
-    documentId: str
-    originalFileName: str
-    parsedMarkdown: str
 
 
 class ChatMessage(Strict):
@@ -336,47 +174,10 @@ class EditRequest(Strict):
     wikiId: str
     scopeKey: str
     instruction: str
-    currentWiki: WikiBody
-    # 계약 1.6.0. 변환과 같다 — 셋이 다 있을 때만 창구 경로다.
-    wikiCapability: str | None = None
-    scopeVersion: int | None = None
-    evidenceDocuments: list[EvidenceDocument] = Field(default_factory=list)
+    # 계약 1.6.0. 변환과 같다 — S15P11B106-175 에서 필수가 됐다.
+    wikiCapability: str
+    scopeVersion: int
     chatHistory: list[ChatMessage] = Field(default_factory=list)
-    # 계약에는 없다. 있으면 이미 있는 카테고리를 다시 만들지 않고(DR-019) 없으면 빈 목록이라
-    # 예전과 같이 동작한다 — 수정 지시가 카테고리를 바꾸는 경우에만 의미가 있다.
-    currentCategories: list[CategoryRef] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def _the_request_must_fit(self) -> "EditRequest":
-        """D7. 관리자 수정도 같은 상한을 받는다 — 같은 세션·같은 임시 디스크를 쓴다.
-
-        `evidenceDocuments` 는 위키가 아니라 원본문서라서 개별 상한이 더 크다. 총량은
-        같은 값을 공유한다 — 막으려는 것이 요청 하나가 쓰는 자원이지 그 안의 구성이 아니다.
-        """
-        errors: list[InitErrorDetails] = []
-
-        size = _utf8_size(self.currentWiki.contentMarkdown)
-        if size > MAX_WIKI_CONTENT_BYTES:
-            errors.append(_too_large(("currentWiki", "contentMarkdown"),
-                                     "수정 대상 위키의 본문", size,
-                                     MAX_WIKI_CONTENT_BYTES))
-
-        total = size
-        for i, doc in enumerate(self.evidenceDocuments):
-            doc_size = _utf8_size(doc.parsedMarkdown)
-            if doc_size > MAX_DOCUMENT_MARKDOWN_BYTES:
-                errors.append(_too_large(
-                    ("evidenceDocuments", i, "parsedMarkdown"),
-                    f"근거 문서 {doc.documentId} 의 본문", doc_size,
-                    MAX_DOCUMENT_MARKDOWN_BYTES))
-            total += doc_size
-        if total > MAX_REQUEST_CONTEXT_BYTES:
-            errors.append(_too_large(("evidenceDocuments",), "수정 요청 문맥 총량",
-                                     total, MAX_REQUEST_CONTEXT_BYTES))
-
-        if errors:
-            raise ValidationError.from_exception_data("EditRequest", errors)
-        return self
 
 
 class Evidence(Strict):

@@ -6,8 +6,8 @@
 얇게 유지한다. 여기서 하는 일은 런타임 선택과 uvicorn 기동뿐이고, 요청 처리 규칙은 전부
 `wiki_api/` 안에 있다.
 
-    uv run python -m wiki_api.serve --port 8000              # claude-code (기본)
-    uv run python -m wiki_api.serve --runtime deepagents --model anthropic:claude-opus-4-6
+    uv run python -m wiki_api.serve --port 8000              # deepagents (기본)
+    uv run python -m wiki_api.serve --runtime claude-code --model claude-opus-4-6
 
 `--internal-api-key` 를 안 주면 `INTERNAL_API_KEY` 환경변수를 쓴다. 둘 다 없으면 모든 요청이
 401 이다 (`wiki_api/deps.py` — 빈 키는 어떤 값과도 일치하지 않는다).
@@ -23,25 +23,27 @@
 일어나므로 `.env` 파일의 `AI_RUNTIME` 값은 거기 도달하기 전에 이미 무시됐다 — 이 티켓이
 고치려는 것과 같은 함정이다. 그래서 파서 기본값은 절대 환경을 읽지 않는다.
 
-## 기본 런타임이 `claude-code` 인 이유와 그 위험
+## 기본 런타임이 `deepagents` 인 이유
 
-**배포는 `claude-code` 가 아니다.** 서버에 `claude` CLI 도 로그인 세션도 없다. 그런데 기본값이
-그것이라 `--runtime` 을 잊으면 기동은 성공하고 **첫 변환 요청에서 실패한다** — 그 사이 올라온
-문서가 전부 실패로 기록된다.
+S15P11B106-175 가 요청 본문으로 위키를 받는 push 경로를 지웠다. 그 뒤로 위키 엔드포인트
+(`wiki-transformations`·`wiki-edits`)는 도구가 이 프로세스 안에서 도는 런타임에서만
+성립한다 — `claude-code` 는 `claude` CLI 를 하위 프로세스로 띄우고 그 MCP 서버가 다른
+프로세스에 있어 조회 API 본문이 에이전트에 닿지 않는다
+(`wiki_api/session.py._assert_runtime_can_use_the_gateway`). 기본값이 `claude-code` 였을 때는
+`--runtime` 을 잊으면 기동은 성공하고 **첫 위키 요청에서 거절됐다** — 그래서 기본값을
+`deepagents` 로 뒤집었다 (`wiki_api/settings.py`).
 
-기본값을 지금 뒤집지 않는 이유는 API 키다. `deepagents` 는 키가 있어야 돌고, 없으면 로컬
-개발과 측정이 전부 멈춘다. 키가 확보되면 기본값을 바꾼다.
+`claude-code` 는 로컬에서 명시할 때만 뜬다 (`--runtime claude-code` 또는
+`AI_RUNTIME=claude-code`). 로그인 세션으로 과금하고 API 키가 없어도 되지만, 그 상태에서는
+챗봇(`/answers`)·파싱(`/source-parses`)만 되고 위키 엔드포인트는 위 이유로 거절된다.
 
-그때까지 두 가지로 조용한 실패를 막는다.
-
-  * **`AI_RUNTIME` 환경변수**로 기본값을 정할 수 있다. 배포는 명령줄을 고치지 않고 그것만
-    설정하면 된다. 명령줄이 환경변수를 이긴다 — 측정할 때 남은 환경변수가 결과를 바꾸면
-    어느 런타임으로 쟀는지 모르게 된다.
+  * **`AI_RUNTIME` 환경변수**로 기본값을 바꿀 수 있다. 명령줄이 환경변수를 이긴다 — 측정할
+    때 남은 환경변수가 결과를 바꾸면 어느 런타임으로 쟀는지 모르게 된다.
   * **`claude-code` 로 뜰 때 CLI 가 PATH 에 있는지 기동 시점에 확인한다.** 없으면 기동을
-    실패시킨다. 첫 요청까지 기다리지 않는다.
+    실패시킨다. 첫 요청까지 기다리지 않는다 (`assert_runtime_is_usable`).
 
-계약 v1.1.0 은 push 방식이다 — Spring 이 선택·변환 요청 본문에 위키 본문과 목차를 실어
-보내므로, 이 서버가 Spring 을 되물어 읽는 경로는 없다.
+계약 v1.1.0 부터는 pull 방식이다 — 이 서버가 Spring 의 Wiki 조회 API 를 불러 라이브 층을
+채운다. Spring 이 선택·변환 요청 본문에 위키 본문과 목차를 실어 보내던 push 경로는 없다.
 """
 
 from __future__ import annotations
@@ -71,7 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--runtime", default=None, choices=RUNTIMES,
-                        help="기본은 claude-code. 배포는 deepagents 다 "
+                        help="기본은 deepagents (배포). claude-code 는 로컬 전용이고 "
+                             "위키 엔드포인트를 못 쓴다 "
                              "(AI_RUNTIME 환경변수나 .env 로도 정할 수 있다)")
     parser.add_argument("--model", default=None,
                         help="정확한 이름을 쓴다 (anthropic:claude-opus-4-6). "
@@ -79,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--internal-api-key", default=None,
                         help="기본은 INTERNAL_API_KEY (환경변수 또는 .env)")
     parser.add_argument("--backend-base-url", default=None,
-                        help="Spring 의 Wiki 조회 창구 주소 (기본은 BACKEND_BASE_URL)")
+                        help="Spring 의 Wiki 조회 API 주소 (기본은 BACKEND_BASE_URL)")
     parser.add_argument("--log-level", default="info")
     return parser
 
@@ -142,6 +145,24 @@ def assert_runtime_is_usable(runtime_name: str) -> None:
             "배포에서는 --runtime deepagents 또는 AI_RUNTIME=deepagents 를 쓴다.")
 
 
+def assert_backend_base_url_is_set(settings: ServerSettings) -> None:
+    """Wiki 조회 API 주소가 없으면 기동하지 않는다 (설계 4.3).
+
+    S15P11B106-175 부터 요청이 위키 본문을 싣지 않는다. 주소가 없으면 하이드레이션이
+    아무것도 받지 못하고, 에이전트가 빈 위키를 보고 "내용이 없다"고 판단해 라이브를
+    덮는다. 설정 하나로 나는 사고이므로 기동 시점에 막는다.
+
+    `assert_runtime_is_usable` 이 같은 이유로 있다 — 첫 요청에서 알게 되는 구성 오류는
+    기동에서 알려 준다.
+    """
+    if (settings.backend_base_url or "").strip():
+        return
+    raise SystemExit(
+        "BACKEND_BASE_URL 이 비어 있다 — Wiki 조회 API 주소가 없으면 위키 변환이 "
+        "빈 문맥으로 돌아 라이브 Wiki 를 덮는다. 환경변수 BACKEND_BASE_URL 또는 "
+        "src/.env 에 Spring 주소를 넣고 다시 띄운다 (예: http://backend:8080).")
+
+
 def check_model_credentials(settings: ServerSettings) -> None:
     """모델의 제공자와 자격증명이 맞는지 기동 시점에 본다.
 
@@ -168,6 +189,7 @@ def check_model_credentials(settings: ServerSettings) -> None:
 
 def build_app(settings: ServerSettings):
     assert_runtime_is_usable(settings.runtime)
+    assert_backend_base_url_is_set(settings)
     check_model_credentials(settings)
     app = create_app(api_key=settings.internal_api_key,
                      backend_base_url=settings.backend_base_url)

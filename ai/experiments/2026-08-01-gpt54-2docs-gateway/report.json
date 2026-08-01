@@ -1,0 +1,1006 @@
+{
+  "scope": "ALL",
+  "runtime": "via-api",
+  "model": null,
+  "order": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "documents": [
+    {
+      "seq": 1,
+      "jobId": "9001",
+      "documentId": "101",
+      "document": "01-training.md",
+      "path": "wiki/ALL/sources/101/parsed/content.md",
+      "viaApi": true,
+      "toolCalls": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "turns": 0,
+      "costUsd": 0.0,
+      "error": null,
+      "reply": "반영 결과:\n\n- 새 위키 페이지 생성: [교육 및 도서 지원](pages/112ac6733781.md)\n- 목차 갱신: `index.md`\n\n처리 내용:\n- 원본문서 `sources/101/parsed/content.md`를 읽어 도서 지원, 연간 교육 예산, 컨퍼런스 활동 지원 내용을 정리했다.\n- 기존 위키가 없는 범위라 겹치는 페이지 검색 후 새 페이지를 만들었다.\n- `index.md`에 원본문서 현황, 핵심 내용, 최근 변경을 반영했다.\n- `lint`에서 인용문 1건 오류를 수정했고, 재검사 후 `error 0`으로 통과했다.",
+      "changes": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "evidence": []
+        },
+        {
+          "type": "create",
+          "address": "pages/112ac6733781.md",
+          "wikiPath": "wiki/ALL/pages/112ac6733781.md",
+          "title": "교육 및 도서 지원",
+          "category": "개념",
+          "tags": [],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "1",
+              "location": "Books",
+              "quote": "As a general rule, spending up to $50/month on books is fine and requires no extra permission.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "10",
+              "location": "Training budget",
+              "quote": "We have an annual training budget for every team member, regardless of seniority.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "11",
+              "location": "Training budget",
+              "quote": "You do not need approval to spend your budget, but you might want to speak to your manager first, in case they have some useful feedback or pointers to a better idea.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "12",
+              "location": "Training budget",
+              "quote": "We strongly encourage all non-technical team members to take some kind of entry level programming course",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "13",
+              "location": "Training budget",
+              "quote": "it's part of our 'you're the driver' culture that everyone can at least understand very basic concepts around software development.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "14",
+              "location": "Conferences",
+              "quote": "You can use your training budget for time spent talking at conferences and user groups, including coaching others.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "15",
+              "location": "Conferences",
+              "quote": "If you think you need more than that talk to your manager in the first instance.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "16",
+              "location": "Training budget",
+              "quote": "If possible, please share your learnings with the team afterwards!",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "2",
+              "location": "Training budget",
+              "quote": "The budget can be used for relevant courses, training, formal qualifications, or attending conferences.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "3",
+              "location": "Conferences",
+              "quote": "It is expected that you would spend up to half a day a month on these activities. Like the training budget, this isn't a hard limit.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "4",
+              "location": "Training budget",
+              "quote": "if you want to spend in excess of this, request an increase to your budget in Brex and it should usually be granted.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "5",
+              "location": "Books",
+              "quote": "*Everyone* at PostHog is eligible to buy books to help you in your job.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "6",
+              "location": "Books",
+              "quote": "You can use your books budget towards audiobooks and podcasts as well, if you prefer.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "7",
+              "location": "Books",
+              "quote": "Books do not have to be tied directly to your area, and they only need be loosely relevant to your work.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "8",
+              "location": "Books",
+              "quote": "For example, biographies of leaders can help a manager to learn, and can in fact be more valuable than a tactical book on management. Likewise, if you're an engineer, a book on design can also be particularly valuable for you to read.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "9",
+              "location": "Books",
+              "quote": "Additionally, we host a monthly book club called BookHog, and the budget can be used for those books as well.",
+              "page": null
+            }
+          ]
+        }
+      ],
+      "committed": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "evidence": [],
+          "wikiId": "3001",
+          "committed": true
+        },
+        {
+          "type": "create",
+          "address": "pages/112ac6733781.md",
+          "wikiPath": "wiki/ALL/pages/112ac6733781.md",
+          "title": "교육 및 도서 지원",
+          "category": "개념",
+          "tags": [],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "1",
+              "location": "Books",
+              "quote": "As a general rule, spending up to $50/month on books is fine and requires no extra permission.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "10",
+              "location": "Training budget",
+              "quote": "We have an annual training budget for every team member, regardless of seniority.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "11",
+              "location": "Training budget",
+              "quote": "You do not need approval to spend your budget, but you might want to speak to your manager first, in case they have some useful feedback or pointers to a better idea.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "12",
+              "location": "Training budget",
+              "quote": "We strongly encourage all non-technical team members to take some kind of entry level programming course",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "13",
+              "location": "Training budget",
+              "quote": "it's part of our 'you're the driver' culture that everyone can at least understand very basic concepts around software development.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "14",
+              "location": "Conferences",
+              "quote": "You can use your training budget for time spent talking at conferences and user groups, including coaching others.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "15",
+              "location": "Conferences",
+              "quote": "If you think you need more than that talk to your manager in the first instance.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "16",
+              "location": "Training budget",
+              "quote": "If possible, please share your learnings with the team afterwards!",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "2",
+              "location": "Training budget",
+              "quote": "The budget can be used for relevant courses, training, formal qualifications, or attending conferences.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "3",
+              "location": "Conferences",
+              "quote": "It is expected that you would spend up to half a day a month on these activities. Like the training budget, this isn't a hard limit.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "4",
+              "location": "Training budget",
+              "quote": "if you want to spend in excess of this, request an increase to your budget in Brex and it should usually be granted.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "5",
+              "location": "Books",
+              "quote": "*Everyone* at PostHog is eligible to buy books to help you in your job.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "6",
+              "location": "Books",
+              "quote": "You can use your books budget towards audiobooks and podcasts as well, if you prefer.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "7",
+              "location": "Books",
+              "quote": "Books do not have to be tied directly to your area, and they only need be loosely relevant to your work.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "8",
+              "location": "Books",
+              "quote": "For example, biographies of leaders can help a manager to learn, and can in fact be more valuable than a tactical book on management. Likewise, if you're an engineer, a book on design can also be particularly valuable for you to read.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "9",
+              "location": "Books",
+              "quote": "Additionally, we host a monthly book club called BookHog, and the budget can be used for those books as well.",
+              "page": null
+            }
+          ],
+          "wikiId": "3002",
+          "committed": true
+        }
+      ],
+      "response": {
+        "summary": "반영 결과:\n\n- 새 위키 페이지 생성: [교육 및 도서 지원](pages/112ac6733781.md)\n- 목차 갱신: `index.md`\n\n처리 내용:\n- 원본문서 `sources/101/parsed/content.md`를 읽어 도서 지원, 연간 교육 예산, 컨퍼런스 활동 지원 내용을 정리했다.\n- 기존 위키가 없는 범위라 겹치는 페이지 검색 후 새 페이지를 만들었다.\n- `index.md`에 원본문서 현황, 핵심 내용, 최근 변경을 반영했다.\n- `lint`에서 인용문 1건 오류를 수정했고, 재검사 후 `error 0`으로 통과했다.",
+        "categoryChanges": [
+          {
+            "action": "create",
+            "tempCategoryId": "category-temp-1",
+            "wikiCategoryId": null,
+            "name": "개념",
+            "description": null
+          }
+        ],
+        "wikiChanges": [
+          {
+            "action": "create",
+            "tempWikiId": "wiki-temp-1",
+            "wikiId": null,
+            "wikiPath": "wiki/ALL/pages/112ac6733781.md",
+            "title": "교육 및 도서 지원",
+            "contentMarkdown": "---\ntitle: 교육 및 도서 지원\ndescription: 업무 관련 도서 구입, 연간 교육 예산, 컨퍼런스 활동 지원 기준을 정리한다.\ndate: 2026-08-01\ntags: [교육, 도서, 복지]\ncategory: 개념\n---\n\n업무 역량 향상을 위한 도서 구입과 교육비 사용 기준을 정리한다. 도서는 월별 가이드라인 안에서 별도 승인 없이 구매할 수 있고[^1], 교육 예산은 연간 기준으로 과정·자격·컨퍼런스 등에 사용할 수 있다[^2]. 발표·코칭 등 컨퍼런스 활동에 쓰는 시간도 지원 대상이다[^3].\n\n## 지원 항목\n\n| 항목 | 사용 대상 | 기본 기준 | 승인 여부 |\n| --- | --- | --- | --- |\n| 도서 | 업무 관련 서적, 오디오북, 팟캐스트 | 월 최대 50달러 정도 권장 | 추가 승인 불필요[^1] |\n| 교육 예산 | 과정, 트레이닝, 자격, 컨퍼런스 | 연간 1000달러 | 추가 승인 불필요[^2] |\n| 예산 초과 사용 | 교육 예산 초과분 | Brex에서 증액 요청 | 보통 승인[^4] |\n| 컨퍼런스 활동 시간 | 발표, 유저그룹 발표, 코칭 | 월 최대 반나절 정도 권장 | 초과 시 매니저 상담[^3] |\n\n## 도서 지원\n\n모든 구성원은 업무에 도움이 되는 도서를 구매할 수 있다[^5]. 일반적인 기준으로 월 50달러까지는 별도 허가 없이 사용할 수 있으며[^1], 오디오북과 팟캐스트에도 같은 예산을 적용할 수 있다[^6].\n\n도서는 현재 맡은 역할과 직접적으로 연결되지 않아도 되며, 업무와 느슨하게 관련만 있어도 된다[^7]. 예를 들어 관리자는 리더 전기에서 배울 수 있고, 엔지니어는 디자인 관련 서적에서도 가치를 얻을 수 있다[^8]. 월간 북클럽인 BookHog에서 읽는 책에도 이 예산을 사용할 수 있다[^9].\n\n## 교육 예산\n\n모든 팀원에게 직급과 무관하게 연간 교육 예산이 제공된다[^10]. 이 예산은 관련 과정, 트레이닝, 공식 자격, 컨퍼런스 참석에 사용할 수 있다[^2]. 기본적으로 사전 승인은 필요 없지만, 더 나은 선택지에 대한 피드백을 얻기 위해 매니저와 먼저 상의할 수 있다[^11].\n\n비기술 직군 구성원은 입문 수준의 프로그래밍 과정을 수강하는 것이 강하게 권장된다[^12]. 이는 모든 구성원이 소프트웨어 개발의 매우 기초적인 개념은 이해해야 한다는 문화적 기대를 반영한다[^13].\n\n```mermaid\ngraph LR\n    A[도서 구입 또는 교육 선택] --> B[기본 예산 범위 확인]\n    B --> C[바로 사용]\n    B --> D[초과 사용 필요]\n    D --> E[Brex에서 증액 요청]\n    E --> F[필요 시 매니저와 상의]\n```\n\n## 컨퍼런스와 학습 공유\n\n교육 예산은 컨퍼런스나 유저그룹에서 발표하거나 다른 사람을 코칭하는 데 쓰는 시간에도 사용할 수 있다[^14]. 이러한 활동에는 월 최대 반나절 정도를 쓰는 것이 기대되지만, 이는 엄격한 상한은 아니다[^3]. 더 많은 시간이 필요하면 우선 매니저와 상의한다[^15].\n\n가능하다면 교육이나 행사에서 배운 내용을 이후 팀과 공유하는 것이 권장된다[^16].\n\n[^1]: document-101, Books — \"As a general rule, spending up to $50/month on books is fine and requires no extra permission.\"\n[^2]: document-101, Training budget — \"The budget can be used for relevant courses, training, formal qualifications, or attending conferences.\"\n[^3]: document-101, Conferences — \"It is expected that you would spend up to half a day a month on these activities. Like the training budget, this isn't a hard limit.\"\n[^4]: document-101, Training budget — \"if you want to spend in excess of this, request an increase to your budget in Brex and it should usually be granted.\"\n[^5]: document-101, Books — \"*Everyone* at PostHog is eligible to buy books to help you in your job.\"\n[^6]: document-101, Books — \"You can use your books budget towards audiobooks and podcasts as well, if you prefer.\"\n[^7]: document-101, Books — \"Books do not have to be tied directly to your area, and they only need be loosely relevant to your work.\"\n[^8]: document-101, Books — \"For example, biographies of leaders can help a manager to learn, and can in fact be more valuable than a tactical book on management. Likewise, if you're an engineer, a book on design can also be particularly valuable for you to read.\"\n[^9]: document-101, Books — \"Additionally, we host a monthly book club called BookHog, and the budget can be used for those books as well.\"\n[^10]: document-101, Training budget — \"We have an annual training budget for every team member, regardless of seniority.\"\n[^11]: document-101, Training budget — \"You do not need approval to spend your budget, but you might want to speak to your manager first, in case they have some useful feedback or pointers to a better idea.\"\n[^12]: document-101, Training budget — \"We strongly encourage all non-technical team members to take some kind of entry level programming course\"\n[^13]: document-101, Training budget — \"it's part of our 'you're the driver' culture that everyone can at least understand very basic concepts around software development.\"\n[^14]: document-101, Conferences — \"You can use your training budget for time spent talking at conferences and user groups, including coaching others.\"\n[^15]: document-101, Conferences — \"If you think you need more than that talk to your manager in the first instance.\"\n[^16]: document-101, Training budget — \"If possible, please share your learnings with the team afterwards!\"\n",
+            "wikiCategoryRef": "category-temp-1",
+            "mergedIntoRef": null,
+            "evidence": [
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "1",
+                "location": "Books",
+                "quote": "As a general rule, spending up to $50/month on books is fine and requires no extra permission.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "10",
+                "location": "Training budget",
+                "quote": "We have an annual training budget for every team member, regardless of seniority.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "11",
+                "location": "Training budget",
+                "quote": "You do not need approval to spend your budget, but you might want to speak to your manager first, in case they have some useful feedback or pointers to a better idea.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "12",
+                "location": "Training budget",
+                "quote": "We strongly encourage all non-technical team members to take some kind of entry level programming course",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "13",
+                "location": "Training budget",
+                "quote": "it's part of our 'you're the driver' culture that everyone can at least understand very basic concepts around software development.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "14",
+                "location": "Conferences",
+                "quote": "You can use your training budget for time spent talking at conferences and user groups, including coaching others.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "15",
+                "location": "Conferences",
+                "quote": "If you think you need more than that talk to your manager in the first instance.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "16",
+                "location": "Training budget",
+                "quote": "If possible, please share your learnings with the team afterwards!",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "2",
+                "location": "Training budget",
+                "quote": "The budget can be used for relevant courses, training, formal qualifications, or attending conferences.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "3",
+                "location": "Conferences",
+                "quote": "It is expected that you would spend up to half a day a month on these activities. Like the training budget, this isn't a hard limit.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "4",
+                "location": "Training budget",
+                "quote": "if you want to spend in excess of this, request an increase to your budget in Brex and it should usually be granted.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "5",
+                "location": "Books",
+                "quote": "*Everyone* at PostHog is eligible to buy books to help you in your job.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "6",
+                "location": "Books",
+                "quote": "You can use your books budget towards audiobooks and podcasts as well, if you prefer.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "7",
+                "location": "Books",
+                "quote": "Books do not have to be tied directly to your area, and they only need be loosely relevant to your work.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "8",
+                "location": "Books",
+                "quote": "For example, biographies of leaders can help a manager to learn, and can in fact be more valuable than a tactical book on management. Likewise, if you're an engineer, a book on design can also be particularly valuable for you to read.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "9",
+                "location": "Books",
+                "quote": "Additionally, we host a monthly book club called BookHog, and the budget can be used for those books as well.",
+                "page": null
+              }
+            ]
+          }
+        ],
+        "relationChanges": [],
+        "indexEntries": [
+          {
+            "wikiRef": "wiki-temp-1",
+            "order": 1,
+            "title": "교육 및 도서 지원",
+            "summary": "도서 구매, 연간 교육 예산, 컨퍼런스 활동 지원 기준을 정리했다."
+          }
+        ]
+      },
+      "relationChanges": [],
+      "categoryChanges": [
+        {
+          "action": "create",
+          "tempCategoryId": "category-temp-1",
+          "wikiCategoryId": null,
+          "name": "개념",
+          "description": null
+        }
+      ],
+      "elapsedSeconds": 21.9,
+      "lint": "**lint 통과** — ALL 범위, 3건 검사.",
+      "outcome": "committed"
+    },
+    {
+      "seq": 2,
+      "jobId": "9002",
+      "documentId": "102",
+      "document": "02-side-gigs.md",
+      "path": "wiki/ALL/sources/102/parsed/content.md",
+      "viaApi": true,
+      "toolCalls": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "turns": 0,
+      "costUsd": 0.0,
+      "error": null,
+      "reply": "반영 결과:\n\n- 새 페이지 생성: [사이드 프로젝트와 외부 수익 활동](pages/998573ac5235.md)\n- 목차 갱신: `index.md`\n\n처리 내용 요약:\n- 원본문서 `sources/102/parsed/content.md`를 읽음\n- 기존 위키 목록과 검색 결과를 확인하고 후보 페이지 본문까지 읽어 중복 여부를 검토함\n- 기존 `교육 및 도서 지원` 페이지는 주제가 달라 별도 신규 페이지로 반영함\n- `index.md`에 핵심 내용과 최근 변경을 추가함\n- `lint` 실행 결과 `error 0`으로 통과함\n\n최종 lint:\n- `pages/998573ac5235.md` — 통과",
+      "changes": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "wikiId": "3001",
+          "evidence": []
+        },
+        {
+          "type": "create",
+          "address": "pages/998573ac5235.md",
+          "wikiPath": "wiki/ALL/pages/998573ac5235.md",
+          "title": "사이드 프로젝트와 외부 수익 활동",
+          "category": "개념",
+          "tags": [],
+          "evidence": [
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "1",
+              "location": "Managing time",
+              "quote": "The key distinction to something being a side gig, and thus it being appropriate, is its impact on your work and the amount of time involved.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "10",
+              "location": "Intellectual property",
+              "quote": "As a rule, anything from PostHog that is explicitly MIT-licensed is fine to use, anything else is not.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "11",
+              "location": "Projects that start at PostHog",
+              "quote": "If you want to develop these projects further on the side, you will need explicit permission.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "12",
+              "location": "Getting signoff",
+              "quote": "We ask you to please just check in with the relevant Exec team member for your team (ie. James, Tim, or Charles) to get their confirmation before going ahead with any side gigs.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "13",
+              "location": "Getting signoff",
+              "quote": "If your side gig existed before you joined PostHog, this will usually be covered as part of the onboarding process.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "14",
+              "location": "Projects that start at PostHog",
+              "quote": "If you are ever worried about this, please talk to Fraser and he can help you figure out the best solution here, especially if what you are working on directly competes with something PostHog has built or is on our roadmap.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "15",
+              "location": "Managing time",
+              "quote": "side gigs (whether paid or unpaid) are totally fine. We don't think that's possible beyond a certain level of time/energy commitment to them, but we are very happy for you to spend a little time on them each week.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "2",
+              "location": "Managing time",
+              "quote": "A few hours a month on a paid side gig is acceptable. In any case, side gigs should by default be something you work on in your personal time, and they should not impact the work you do at PostHog.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "3",
+              "location": "Intellectual property",
+              "quote": "Side projects built on your own time using your own resources do not require permission, review or approval from PostHog.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "4",
+              "location": "Projects that start at PostHog",
+              "quote": "If a project is born from work you have done inside PostHog – that is, using work time, PostHog code, PostHog data, or other PostHog tools and infrastructure – these projects belong to PostHog and should live in PostHog repos.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "5",
+              "location": "title",
+              "quote": "These side gigs may sometimes earn you money.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "6",
+              "location": "title",
+              "quote": "We are not ok with this being your main focus and PostHog being just a paycheck.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "7",
+              "location": "Managing time",
+              "quote": "In a few cases, you may want your side gig to become your full time work one day. That is ok - please just let us know, so we can create a plan.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "8",
+              "location": "Intellectual property",
+              "quote": "Just to reassure you, PostHog won't try to claim ownership of any intellectual property (IP) you create in your personal time, e.g. if you are contributing to another open source project as a hobby.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "9",
+              "location": "Intellectual property",
+              "quote": "However, you need to be _really_ careful that you do not introduce any of PostHog's non-open source IP into any project that you work on - this can cause serious legal headaches.",
+              "page": null
+            }
+          ]
+        }
+      ],
+      "committed": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "wikiId": "3001",
+          "evidence": [],
+          "committed": true
+        },
+        {
+          "type": "create",
+          "address": "pages/998573ac5235.md",
+          "wikiPath": "wiki/ALL/pages/998573ac5235.md",
+          "title": "사이드 프로젝트와 외부 수익 활동",
+          "category": "개념",
+          "tags": [],
+          "evidence": [
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "1",
+              "location": "Managing time",
+              "quote": "The key distinction to something being a side gig, and thus it being appropriate, is its impact on your work and the amount of time involved.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "10",
+              "location": "Intellectual property",
+              "quote": "As a rule, anything from PostHog that is explicitly MIT-licensed is fine to use, anything else is not.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "11",
+              "location": "Projects that start at PostHog",
+              "quote": "If you want to develop these projects further on the side, you will need explicit permission.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "12",
+              "location": "Getting signoff",
+              "quote": "We ask you to please just check in with the relevant Exec team member for your team (ie. James, Tim, or Charles) to get their confirmation before going ahead with any side gigs.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "13",
+              "location": "Getting signoff",
+              "quote": "If your side gig existed before you joined PostHog, this will usually be covered as part of the onboarding process.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "14",
+              "location": "Projects that start at PostHog",
+              "quote": "If you are ever worried about this, please talk to Fraser and he can help you figure out the best solution here, especially if what you are working on directly competes with something PostHog has built or is on our roadmap.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "15",
+              "location": "Managing time",
+              "quote": "side gigs (whether paid or unpaid) are totally fine. We don't think that's possible beyond a certain level of time/energy commitment to them, but we are very happy for you to spend a little time on them each week.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "2",
+              "location": "Managing time",
+              "quote": "A few hours a month on a paid side gig is acceptable. In any case, side gigs should by default be something you work on in your personal time, and they should not impact the work you do at PostHog.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "3",
+              "location": "Intellectual property",
+              "quote": "Side projects built on your own time using your own resources do not require permission, review or approval from PostHog.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "4",
+              "location": "Projects that start at PostHog",
+              "quote": "If a project is born from work you have done inside PostHog – that is, using work time, PostHog code, PostHog data, or other PostHog tools and infrastructure – these projects belong to PostHog and should live in PostHog repos.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "5",
+              "location": "title",
+              "quote": "These side gigs may sometimes earn you money.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "6",
+              "location": "title",
+              "quote": "We are not ok with this being your main focus and PostHog being just a paycheck.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "7",
+              "location": "Managing time",
+              "quote": "In a few cases, you may want your side gig to become your full time work one day. That is ok - please just let us know, so we can create a plan.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "8",
+              "location": "Intellectual property",
+              "quote": "Just to reassure you, PostHog won't try to claim ownership of any intellectual property (IP) you create in your personal time, e.g. if you are contributing to another open source project as a hobby.",
+              "page": null
+            },
+            {
+              "documentId": "102",
+              "documentName": "document-102",
+              "footnote": "9",
+              "location": "Intellectual property",
+              "quote": "However, you need to be _really_ careful that you do not introduce any of PostHog's non-open source IP into any project that you work on - this can cause serious legal headaches.",
+              "page": null
+            }
+          ],
+          "wikiId": "3003",
+          "committed": true
+        }
+      ],
+      "response": {
+        "summary": "반영 결과:\n\n- 새 페이지 생성: [사이드 프로젝트와 외부 수익 활동](pages/998573ac5235.md)\n- 목차 갱신: `index.md`\n\n처리 내용 요약:\n- 원본문서 `sources/102/parsed/content.md`를 읽음\n- 기존 위키 목록과 검색 결과를 확인하고 후보 페이지 본문까지 읽어 중복 여부를 검토함\n- 기존 `교육 및 도서 지원` 페이지는 주제가 달라 별도 신규 페이지로 반영함\n- `index.md`에 핵심 내용과 최근 변경을 추가함\n- `lint` 실행 결과 `error 0`으로 통과함\n\n최종 lint:\n- `pages/998573ac5235.md` — 통과",
+        "categoryChanges": [
+          {
+            "action": "create",
+            "tempCategoryId": "category-temp-1",
+            "wikiCategoryId": null,
+            "name": "개념",
+            "description": null
+          }
+        ],
+        "wikiChanges": [
+          {
+            "action": "create",
+            "tempWikiId": "wiki-temp-1",
+            "wikiId": null,
+            "wikiPath": "wiki/ALL/pages/998573ac5235.md",
+            "title": "사이드 프로젝트와 외부 수익 활동",
+            "contentMarkdown": "---\ntitle: 사이드 프로젝트와 외부 수익 활동\ndescription: 개인 시간의 사이드 프로젝트, 외부 수익 활동, 지식재산권, 사전 확인 절차를 정리한다.\ndate: 2026-08-01\ntags: [사이드 프로젝트, 지식재산, 승인]\ncategory: 개념\n---\n\n개인 시간에 하는 사이드 프로젝트와 외부 수익 활동은 허용되지만, PostHog에서의 업무가 주된 집중 대상이어야 하며 업무 시간과 성과에 영향을 주지 않아야 한다[^1][^2]. 또한 개인 시간에 만든 결과물의 지식재산권은 원칙적으로 개인에게 남지만, 회사 내부 자원에서 출발한 프로젝트는 회사 소유로 본다[^3][^4].\n\n## 허용 기준\n\n사이드 프로젝트는 개인적인 열정이나 취미의 연장선에서 수행하는 활동을 뜻하며, 수익이 발생해도 허용될 수 있다[^5]. 다만 회사는 이런 활동이 본업을 대체하는 수준의 주된 관심사가 되는 것은 허용하지 않으며, 현재는 파트타임 근무도 제공하지 않는다[^6].\n\n| 항목 | 기준 | 의미 |\n| --- | --- | --- |\n| 활동 시간 | 월 몇 시간 수준은 허용 | 개인 시간 위주로 수행해야 함[^2] |\n| 업무 영향 | 업무 수행에 영향 없어야 함 | 회사 업무 품질과 집중 유지[^2] |\n| 본업 우선순위 | 회사가 주된 동기여야 함 | 부업이 주업이 되어서는 안 됨[^6] |\n| 근무 형태 | 파트타임 불가 | 회사가 부수적 급여원이 되는 형태는 허용하지 않음[^6] |\n\n## 시간 관리와 장기 계획\n\n유급이든 무급이든 사이드 프로젝트는 기본적으로 개인 시간에 진행해야 하며, 회사 업무에 영향을 주지 않아야 한다[^2]. 장기적으로 해당 프로젝트를 풀타임 일로 키우고 싶다면, 회사에 미리 알려 함께 계획을 세우는 것이 권장된다[^7].\n\n```mermaid\ngraph TD\n    A[사이드 프로젝트 구상] --> B[개인 시간에 수행 가능한지 확인]\n    B --> C[업무 영향 없음]\n    C --> D[진행 가능]\n    C --> E[영향 있음]\n    E --> F[조정 또는 중단]\n    D --> G[장기적으로 본업화 희망 시 회사에 공유]\n```\n\n## 지식재산권과 회사 자원 사용\n\n개인 시간과 개인 자원으로 만든 프로젝트는 회사의 허가·검토·승인이 필요하지 않으며, 회사는 그 지식재산권을 주장하지 않는다[^3]. 예를 들어 취미로 다른 오픈소스 프로젝트에 기여하는 것은 가능하다[^8].\n\n하지만 비공개 회사 지식재산을 외부 프로젝트에 섞지 않도록 각별히 주의해야 한다[^9]. 명시적으로 MIT 라이선스인 회사 자산은 사용할 수 있지만, 그 외 자산은 사용할 수 없다[^10].\n\n회사의 업무 시간, 코드, 데이터, 도구, 인프라를 사용해 시작된 프로젝트는 회사 소유이며 회사 저장소에 있어야 한다[^4]. 이런 프로젝트를 개인적으로 계속 개발하려면 명시적 허가가 필요하다[^11].\n\n## 사전 확인과 상담\n\n사이드 프로젝트를 시작하기 전에는 소속 팀의 관련 Exec 팀 구성원에게 먼저 확인을 받아야 한다[^12]. 입사 전에 이미 존재하던 사이드 프로젝트는 일반적으로 온보딩 과정에서 함께 다뤄진다[^13].\n\n회사가 이미 만든 것 또는 로드맵에 있는 것과 직접 경쟁할 가능성이 있는 작업이라면 Fraser와 상의해 최선의 처리 방식을 정하는 것이 권장된다[^14].\n\n> **참고:** 업무 시간 내 학습·발표·코칭처럼 회사가 공식 지원하는 활동은 [교육 및 도서 지원](pages/112ac6733781.md) 참고.[^15]\n\n[^1]: document-102, Managing time — \"The key distinction to something being a side gig, and thus it being appropriate, is its impact on your work and the amount of time involved.\"\n[^2]: document-102, Managing time — \"A few hours a month on a paid side gig is acceptable. In any case, side gigs should by default be something you work on in your personal time, and they should not impact the work you do at PostHog.\"\n[^3]: document-102, Intellectual property — \"Side projects built on your own time using your own resources do not require permission, review or approval from PostHog.\"\n[^4]: document-102, Projects that start at PostHog — \"If a project is born from work you have done inside PostHog – that is, using work time, PostHog code, PostHog data, or other PostHog tools and infrastructure – these projects belong to PostHog and should live in PostHog repos.\"\n[^5]: document-102, title — \"These side gigs may sometimes earn you money.\"\n[^6]: document-102, title — \"We are not ok with this being your main focus and PostHog being just a paycheck.\" / \"For this reason, we also currently don't offer part time work as an option at PostHog.\"\n[^7]: document-102, Managing time — \"In a few cases, you may want your side gig to become your full time work one day. That is ok - please just let us know, so we can create a plan.\"\n[^8]: document-102, Intellectual property — \"Just to reassure you, PostHog won't try to claim ownership of any intellectual property (IP) you create in your personal time, e.g. if you are contributing to another open source project as a hobby.\"\n[^9]: document-102, Intellectual property — \"However, you need to be _really_ careful that you do not introduce any of PostHog's non-open source IP into any project that you work on - this can cause serious legal headaches.\"\n[^10]: document-102, Intellectual property — \"As a rule, anything from PostHog that is explicitly MIT-licensed is fine to use, anything else is not.\"\n[^11]: document-102, Projects that start at PostHog — \"If you want to develop these projects further on the side, you will need explicit permission.\"\n[^12]: document-102, Getting signoff — \"We ask you to please just check in with the relevant Exec team member for your team (ie. James, Tim, or Charles) to get their confirmation before going ahead with any side gigs.\"\n[^13]: document-102, Getting signoff — \"If your side gig existed before you joined PostHog, this will usually be covered as part of the onboarding process.\"\n[^14]: document-102, Projects that start at PostHog — \"If you are ever worried about this, please talk to Fraser and he can help you figure out the best solution here, especially if what you are working on directly competes with something PostHog has built or is on our roadmap.\"\n[^15]: document-102, Managing time — \"side gigs (whether paid or unpaid) are totally fine. We don't think that's possible beyond a certain level of time/energy commitment to them, but we are very happy for you to spend a little time on them each week.\"\n",
+            "wikiCategoryRef": "category-temp-1",
+            "mergedIntoRef": null,
+            "evidence": [
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "1",
+                "location": "Managing time",
+                "quote": "The key distinction to something being a side gig, and thus it being appropriate, is its impact on your work and the amount of time involved.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "10",
+                "location": "Intellectual property",
+                "quote": "As a rule, anything from PostHog that is explicitly MIT-licensed is fine to use, anything else is not.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "11",
+                "location": "Projects that start at PostHog",
+                "quote": "If you want to develop these projects further on the side, you will need explicit permission.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "12",
+                "location": "Getting signoff",
+                "quote": "We ask you to please just check in with the relevant Exec team member for your team (ie. James, Tim, or Charles) to get their confirmation before going ahead with any side gigs.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "13",
+                "location": "Getting signoff",
+                "quote": "If your side gig existed before you joined PostHog, this will usually be covered as part of the onboarding process.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "14",
+                "location": "Projects that start at PostHog",
+                "quote": "If you are ever worried about this, please talk to Fraser and he can help you figure out the best solution here, especially if what you are working on directly competes with something PostHog has built or is on our roadmap.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "15",
+                "location": "Managing time",
+                "quote": "side gigs (whether paid or unpaid) are totally fine. We don't think that's possible beyond a certain level of time/energy commitment to them, but we are very happy for you to spend a little time on them each week.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "2",
+                "location": "Managing time",
+                "quote": "A few hours a month on a paid side gig is acceptable. In any case, side gigs should by default be something you work on in your personal time, and they should not impact the work you do at PostHog.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "3",
+                "location": "Intellectual property",
+                "quote": "Side projects built on your own time using your own resources do not require permission, review or approval from PostHog.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "4",
+                "location": "Projects that start at PostHog",
+                "quote": "If a project is born from work you have done inside PostHog – that is, using work time, PostHog code, PostHog data, or other PostHog tools and infrastructure – these projects belong to PostHog and should live in PostHog repos.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "5",
+                "location": "title",
+                "quote": "These side gigs may sometimes earn you money.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "6",
+                "location": "title",
+                "quote": "We are not ok with this being your main focus and PostHog being just a paycheck.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "7",
+                "location": "Managing time",
+                "quote": "In a few cases, you may want your side gig to become your full time work one day. That is ok - please just let us know, so we can create a plan.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "8",
+                "location": "Intellectual property",
+                "quote": "Just to reassure you, PostHog won't try to claim ownership of any intellectual property (IP) you create in your personal time, e.g. if you are contributing to another open source project as a hobby.",
+                "page": null
+              },
+              {
+                "documentId": "102",
+                "documentName": "document-102",
+                "footnote": "9",
+                "location": "Intellectual property",
+                "quote": "However, you need to be _really_ careful that you do not introduce any of PostHog's non-open source IP into any project that you work on - this can cause serious legal headaches.",
+                "page": null
+              }
+            ]
+          }
+        ],
+        "relationChanges": [
+          {
+            "action": "add",
+            "type": "wiki_wiki",
+            "sourceWikiRef": "wiki-temp-1",
+            "targetWikiRef": "1"
+          }
+        ],
+        "indexEntries": [
+          {
+            "wikiRef": "1",
+            "order": 1,
+            "title": "교육 및 도서 지원",
+            "summary": "도서 구매, 연간 교육 예산, 컨퍼런스 활동 지원 기준을 정리했다."
+          },
+          {
+            "wikiRef": "wiki-temp-1",
+            "order": 2,
+            "title": "사이드 프로젝트와 외부 수익 활동",
+            "summary": "개인 시간의 부업 허용 범위, 지식재산권, 사전 확인 절차를 정리했다."
+          }
+        ]
+      },
+      "relationChanges": [
+        {
+          "action": "add",
+          "type": "wiki_wiki",
+          "sourceWikiRef": "wiki-temp-1",
+          "targetWikiRef": "1"
+        }
+      ],
+      "categoryChanges": [
+        {
+          "action": "create",
+          "tempCategoryId": "category-temp-1",
+          "wikiCategoryId": null,
+          "name": "개념",
+          "description": null
+        }
+      ],
+      "elapsedSeconds": 25.1,
+      "lint": "**lint 통과** — ALL 범위, 5건 검사.",
+      "outcome": "committed"
+    }
+  ]
+}

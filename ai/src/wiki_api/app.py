@@ -27,9 +27,9 @@ def create_app(*, api_key: str | None = None,
     app = FastAPI(title="AJT FastAPI Internal API", version="1.0.0",
                   docs_url=None, redoc_url=None)
     app.state.api_key = api_key or ""
-    # Wiki 조회 창구(계약 1.6.0)의 백엔드 주소. **없으면 창구 경로를 쓰지 않는다** —
-    # 요청이 `wikiCapability` 를 실어 와도 주소가 없으면 push 로 돈다
-    # (`session.py._federated`). 백엔드가 창구를 배포하기 전의 기본 상태가 이것이다.
+    # Wiki 조회 API(계약 1.6.0)의 백엔드 주소. **없으면 위키 요청이 통째로 실패한다** —
+    # push 대체 경로가 S15P11B106-175 에서 사라져 라이브 위키를 읽을 다른 길이 없다.
+    # 그래서 `serve.py` 가 기동 시점에 이 값을 요구한다.
     app.state.backend_base_url = backend_base_url or ""
 
     install_error_handlers(app)

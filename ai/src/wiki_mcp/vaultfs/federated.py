@@ -1,14 +1,14 @@
-"""라이브 층을 Spring 창구에서 당겨오는 VaultFS — FR-WIKI-002 의 목표 형태.
+"""라이브 층을 Spring Wiki 조회 API 에서 당겨오는 VaultFS — FR-WIKI-002 의 목표 형태.
 
 `spring.py`(push)와 나란한 세 번째 구현체다. 포트(`base.py`)와 툴 10개는 이 파일을
 모른다. 바뀌는 것은 라이브 층의 출처뿐이다.
 
 **카탈로그와 본문을 가른다** (설계 §3.3). `open()` 은 목록·목차만 채운다. 본문은
 `get()` 이 처음 요구할 때 당긴다. push 경로가 본문을 한 번에 받아야 했던 이유는
-검색이 AI 안의 청크 FTS 로 돌기 때문이었는데, 여기서는 검색이 창구로 나가므로 그
+검색이 AI 안의 청크 FTS 로 돌기 때문이었는데, 여기서는 검색이 조회 API 로 나가므로 그
 제약이 없다.
 
-**검색은 두 곳에서 온다.** 창구는 반영이 완료된 라이브만 색인한다(DR-029). 작업 중에
+**검색은 두 곳에서 온다.** 조회 API 는 반영이 완료된 라이브만 색인한다(DR-029). 작업 중에
 에이전트가 쓴 페이지는 백엔드가 모르므로 내부 색인에서 찾아 합친다. 섞지 않고
 `origin` 으로 구분해 돌려준다 — 에이전트가 "내가 방금 쓴 것"과 "원래 있던 것"을
 구분하지 못하면 남의 페이지를 자기 초안으로 착각한다 (설계 §7.1).
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .base import VaultError
+from .base import SOURCES_PREFIX, VaultError
 from .local import INDEX_ADDRESS, PAGES_PREFIX, LocalVaultFS
 from .query_client import QueryNotFound, ScopeChangedError, WikiQueryClient
 from .spring import SpringVaultFS, address_from_wiki_path
@@ -33,7 +33,7 @@ from .spring import SpringVaultFS, address_from_wiki_path
 # 여기 남기는 이유는 하나다: **어댑터를 툴 밖에서 직접 부르는 호출자에 대한 2차 방어선.**
 # 포트 표면(`base.py`)의 `search_chunks` 는 누구나 임의의 `limit` 으로 부를 수 있다.
 #
-# 20 으로 두는 근거 (`experiments/measure_federated.py`, INDEX.md 「창구 어댑터 검색 응답」):
+# 20 으로 두는 근거 (`experiments/measure_federated.py`, INDEX.md 「조회 API 어댑터 검색 응답」):
 # 위키 100장 + 작업층 초안 12장에서 작업층 검색 응답이 무제한으로 최대 7행 · 25,674자,
 # 초안 40장(12문서 작업의 3배 규모)에서 최대 13행 · 73,116자였다. 행당 3~5천자다.
 # **측정이 보여준 것은 "자를 필요가 없었다"(13행 ≤ 20)이지 "잘라서 막았다"가 아니다.**
@@ -60,6 +60,18 @@ class _Catalog:
         # "하이드레이션이 없었다"와 "하이드레이션했는데 페이지가 0건이다"는 다르다.
         # 앞의 것은 오류(fail-closed), 뒤의 것은 정상(첫 작업의 빈 위키)이다.
         self.hydrated = False
+
+        # 범위 관계를 뒤집은 표 셋. 하이드레이션 1회로 다 채운다 (설계 §3).
+        #
+        # 조회 API 는 정방향 간선만 준다("소비자가 뒤집어 구합니다"). 방향을 여기서 정해
+        # 두면 소비자 셋(역링크·삭제 재조정·근거 문서)이 각자 뒤집지 않는다.
+        #
+        # 주소를 키로 쓴다 — wikiId 를 키로 두면 소비자마다 카탈로그로 되돌려야 한다.
+        # 카탈로그에 없는 wikiId 는 버린다: 다른 범위이거나 목록 조회와 관계 조회
+        # 사이에 지워진 것이고, 어느 쪽이든 이 작업이 손댈 수 없는 페이지다.
+        self.wiki_backlinks: dict[str, set[str]] = {}
+        self.wikis_by_document: dict[str, list[str]] = {}
+        self.document_ids_by_address: dict[str, list[str]] = {}
 
 
 # **인스턴스가 아니라 프로세스가 상태를 가진다.** `open()` 은 `scope_id` 만 돌려주고
@@ -99,6 +111,16 @@ class FederatedVaultFS(SpringVaultFS):
     def categories(self) -> list[dict]:
         """하이드레이션이 채운다. 카테고리 툴이 읽는다."""
         return self._catalog.categories
+
+    @property
+    def page_count(self) -> int:
+        """하이드레이션이 받은 라이브 위키 장수.
+
+        `list_documents` 를 세지 않는다 — 그쪽은 작업 층에 새로 쓴 페이지와 원본문서를
+        같이 세므로, 「원래 위키가 몇 장이었나」를 묻는 게이트(설계 §4.1)가 실행 중에
+        답이 바뀐다.
+        """
+        return len(self._catalog.wiki_id_by_address)
 
     @classmethod
     async def open(cls, root: Path | str, scope_key: str, job_id: str | None, *,
@@ -148,6 +170,9 @@ class FederatedVaultFS(SpringVaultFS):
             await self._insert_live(
                 scope_id, address, "", wiki_id=wiki_id,
                 title=page.get("title"), category=page.get("categoryName"))
+        # 범위 관계 1회. 페이지 루프 뒤에 둔다 — 뒤집으려면 wikiId↔주소 표가 먼저
+        # 다 있어야 한다.
+        await self._invert_scope_relations()
         index_markdown = await self._client.index_markdown()
         await self._insert_live(scope_id, INDEX_ADDRESS, index_markdown,
                                title="위키 목차", category="목차")
@@ -163,6 +188,38 @@ class FederatedVaultFS(SpringVaultFS):
         # 않지만, 라이브 행을 넣는 경로가 stale 을 켜는 일이 생기면 이 한 줄이 막는다.
         await self._clear_staleness(scope_id)
         self._catalog.hydrated = True
+
+    async def _invert_scope_relations(self) -> None:
+        """범위 전체 간선을 받아 주소 기준 양방향 표로 뒤집는다 (설계 §3).
+
+        이 한 번의 조회가 셋을 공급한다 — `merge`·`delete` 의 역링크, 삭제·교체
+        재조정의 인용 위키, `wiki-edits` 의 근거 문서. 예전에는 첫 번째를 위해
+        페이지마다 `/wikis/{id}/relations` 를 불렀고 그 호출은 캐시가 없었다.
+        """
+        catalog = self._catalog
+        by_id = catalog.address_by_wiki_id
+        for item in await self._client.scope_relations():
+            address = by_id.get(item.get("wikiId"))
+            if address is None:
+                # 다른 범위이거나 목록 조회 뒤에 지워졌다. 이 작업이 못 만지는
+                # 페이지이므로 간선도 의미가 없다.
+                continue
+            for target_id in item.get("wikiRefs") or []:
+                target = by_id.get(target_id)
+                if target is None:
+                    continue
+                catalog.wiki_backlinks.setdefault(target, set()).add(address)
+            document_ids = [str(d) for d in (item.get("documentRefs") or [])]
+            if document_ids:
+                catalog.document_ids_by_address[address] = document_ids
+            for document_id in document_ids:
+                catalog.wikis_by_document.setdefault(document_id, []).append(address)
+        # 카탈로그 등장 순서로 맞춘다. 조회 API 응답 순서에 기대면 재조정 지시문의
+        # 항목 순서가 호출마다 흔들려 측정 대조가 깨진다.
+        order = {address: n for n, address
+                 in enumerate(catalog.wiki_id_by_address)}
+        for addresses in catalog.wikis_by_document.values():
+            addresses.sort(key=lambda a: order.get(a, len(order)))
 
     async def _ensure_body(self, scope_id: str, address: str) -> None:
         """이 주소의 본문을 아직 안 당겼으면 당겨 채운다."""
@@ -229,14 +286,14 @@ class FederatedVaultFS(SpringVaultFS):
         return await super().get(scope_id, address)
 
     def _indexes_live_locally(self, kind: str) -> bool:
-        """**위키 페이지는 안 넣는다.** 라이브 검색은 창구가 한다 (S15P11B106-154).
+        """**위키 페이지는 안 넣는다.** 라이브 검색은 조회 API 가 한다 (S15P11B106-154).
 
         같은 본문을 내부 색인에도 넣으면 두 가지가 깨진다. 하나는 중복이라
         `search_chunks` 가 매번 걸러내야 하는 것이고, 다른 하나가 실제 손해다 — 부모 SQL
         (`local.py`)의 `LIMIT` 이 층을 몰라서 라이브 청크가 순위대로 그 자리를 채우고
         에이전트가 방금 쓴 초안이 검색에서 사라진다 (실측 5행 → 3행).
 
-        원본문서(`sources/**`)와 목차는 그대로 넣는다. 창구가 검색해 주지 않는다 —
+        원본문서(`sources/**`)와 목차는 그대로 넣는다. 조회 API 가 검색해 주지 않는다 —
         삭제된 문서 재조정에서 `stage_source` 가 넣는 본문이 여기에 있다.
         """
         return kind != "page"
@@ -250,57 +307,65 @@ class FederatedVaultFS(SpringVaultFS):
         return await super().get(scope_id, address)
 
     async def get_backlinks(self, scope_id: str, address: str) -> list[dict]:
-        """내부 그래프 + 원격 관계 창구를 합친다.
+        """내부 그래프 + 하이드레이션이 받아둔 범위 관계를 합친다.
 
         **지연 적재의 사각지대를 메우는 곳이다** (설계 9.6). 내부 그래프는 본문을
         당긴 페이지만 안다. 제거·병합은 범위 전체의 역링크를 알아야 하는데, 안 읽은
         페이지의 링크를 놓치면 남의 링크를 조용히 끊는다.
 
-        원격 응답은 `wikiId` 로 오므로 카탈로그의 역방향 표로 주소를 되돌린다.
-        카탈로그에 없는 `wikiId` 는 건너뛴다 — 다른 범위이거나 이번 요청이 모르는
-        페이지다.
+        예전에는 여기서 `/wikis/{wikiId}/relations` 를 불렀다. 그 호출은 캐시가 없어
+        **부를 때마다 1회**였고 조회 예산의 가장 큰 항이었다. 이제 하이드레이션이 범위
+        전체를 한 번에 받아 뒤집어 두므로(S15P11B106-175) 여기서 나가는 조회가 없다.
         """
         rows = await super().get_backlinks(scope_id, address)
-        catalog = self._catalog
-        wiki_id = catalog.wiki_id_by_address.get(address)
-        if wiki_id is None:
-            return rows
-
         known = {row["address"] for row in rows}
-        try:
-            remote = await self._client.relations(wiki_id)
-        except QueryNotFound:
-            # 그 사이 지워졌다. 내부 그래프만으로 답한다 — 제거 대상 자체가
-            # 사라진 것이므로 여기서 중단할 이유는 없다.
-            return rows
-
-        for backlink_id in remote.get("backlinks", []):
-            remote_address = catalog.address_by_wiki_id.get(backlink_id)
-            if remote_address is None or remote_address in known:
+        for remote_address in sorted(self._catalog.wiki_backlinks.get(address, ())):
+            if remote_address in known:
                 continue
             # 소비자가 대괄호로 읽는 키를 다 채운다. tools/references.py:142-143 ·
             # tools/search.py:175-176 · tools/write.py:331-332 이 각각
             # reference_type · title · kind 를 KeyError 없이 요구한다. `KeyError` 는
             # `VaultError` 가 아니라 툴의 `except VaultError` 에도 안 걸린다.
-            # 제목은 하이드레이션이 이미 SQLite 에 넣어뒀다. `super().get` 을 쓰는 이유:
-            # `self.get` 은 `_ensure_body` 를 타서 본문을 당긴다 — 역링크 목록을 그리려고
-            # 남의 페이지 본문을 전부 받아올 이유가 없다.
+            # `super().get` 을 쓰는 이유: `self.get` 은 `_ensure_body` 를 타서 본문을
+            # 당긴다 — 역링크 목록을 그리려고 남의 본문을 받을 이유가 없다.
             row = await super().get(scope_id, remote_address)
             rows.append({
                 "address": remote_address,
                 "title": (row or {}).get("title"),
                 "kind": "page",
-                # 창구는 인용/링크를 구분해 주지 않는다(계약의 backlinks 는 wikiId 배열).
-                # 인용 간선은 각주 기반이라 그 페이지를 읽으면 내부 그래프에 어차피 잡히므로
-                # 원격 행은 links_to 로 표시한다. 계약에 없는 값이라 MR 협의 항목으로 올린다.
+                # 조회 API 는 인용/링크를 구분해 주지 않는다(계약의 wikiRefs 는 ID 배열).
+                # 인용 간선은 각주 기반이라 그 페이지를 읽으면 내부 그래프에 어차피
+                # 잡히므로 원격 행은 links_to 로 표시한다. 계약에 없는 값이라 MR
+                # 협의 항목으로 올린다.
                 "reference_type": "links_to",
                 "origin": "live",
             })
         return rows
 
+    async def get_citation_backlinks(self, scope_id: str, address: str) -> list[dict]:
+        """원본문서를 인용한 위키의 본문을 먼저 당기고 부모에게 넘긴다 (설계 §3.1).
+
+        부모(`SpringVaultFS`)는 로컬 `document_references` 표를 읽는다. 그 표는 본문을
+        당긴 페이지만 담고, 조회 API 는 본문을 지연 적재하므로(S15P11B106-151) 하이드레이션
+        직후에는 비어 있다 — 그대로 두면 삭제·교체 재조정 지시문이 비고 사라진 문서를
+        가리키는 각주가 위키에 그대로 남는다.
+
+        **범위 전체를 당기지 않는다.** 하이드레이션이 받아둔 `documentRefs` 를 뒤집어
+        인용한 위키만 당긴다. 100장 중 2장이 인용했으면 본문 조회는 2회다.
+
+        **대조는 부모가 한다.** 여기서 당긴 본문은 `_ensure_body` 가 `sync_references`
+        를 태워 실제 각주만 표에 넣는다. 관계 표가 낡아 인용하지 않는 위키가 섞여 와도
+        각주가 없으면 부모의 SELECT 가 그 행을 내지 않는다.
+        """
+        if address.startswith(SOURCES_PREFIX):
+            document_id = address[len(SOURCES_PREFIX):].split("/", 1)[0]
+            for citing in self._catalog.wikis_by_document.get(document_id, ()):
+                await self._ensure_body(scope_id, citing)
+        return await super().get_citation_backlinks(scope_id, address)
+
     async def search_chunks(self, scope_id: str, query: str, limit: int,
                             kind_filter: str | None = None) -> list[dict]:
-        """창구(라이브) + 내부 색인(작업층). 섞지 않고 origin 을 붙인다.
+        """조회 API(라이브) + 내부 색인(작업층). 섞지 않고 origin 을 붙인다.
 
         **층별 몫으로 자른다.** 작업층을 앞에 다 놓고 잘라내면 이번 작업에서 쓴 청크가
         `limit` 을 채우는 순간 라이브가 한 건도 안 나온다 — 검색이 존재하는 이유(기존
@@ -316,8 +381,8 @@ class FederatedVaultFS(SpringVaultFS):
         작업층 5행이던 것이 라이브 본문 적재 뒤 3행이 됐다 (이 저장소 하네스
         `--phases d`. 별도 합성 코퍼스에서 5행 → 0행 관측도 있었다).
 
-        고침은 층 인자 추가가 아니라 **애초에 안 넣는 것**이다 — 창구 모드의 라이브
-        검색은 창구가 하므로 내부 색인의 라이브 위키 행은 중복일 뿐이었다.
+        고침은 층 인자 추가가 아니라 **애초에 안 넣는 것**이다 — 조회 API 모드의 라이브
+        검색은 조회 API 가 하므로 내부 색인의 라이브 위키 행은 중복일 뿐이었다.
         `_indexes_live_locally` 를 본다. 수치의 정본은 INDEX.md.
         """
         work_rows = await super().search_chunks(
@@ -325,7 +390,7 @@ class FederatedVaultFS(SpringVaultFS):
         work_addresses = set()
         work: list[dict] = []
         for row in work_rows:
-            # 라이브 행은 창구가 준다. 위키 페이지는 이제 내부 색인에 안 들어가지만
+            # 라이브 행은 조회 API 가 준다. 위키 페이지는 이제 내부 색인에 안 들어가지만
             # (`_indexes_live_locally`) 원본문서·목차의 라이브 행은 들어간다 — 그것을
             # 작업층으로 세면 안 되므로 층으로 거른다.
             if row.get("layer") == "work":

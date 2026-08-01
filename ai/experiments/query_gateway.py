@@ -1,6 +1,6 @@
-"""가짜 조회 창구 — 계약의 「Wiki 조회 창구」 8개와 「일정 조회 API」 2개를 흉내 낸다.
+"""가짜 조회 API — 계약의 「Wiki 조회 API」 8개와 「일정 조회 API」 2개를 흉내 낸다.
 
-**이 파일은 폐기 대상이다.** 백엔드가 창구를 만들면 사라진다. `src/` 아래 어느
+**이 파일은 폐기 대상이다.** 백엔드가 실제 조회 API 를 만들면 사라진다. `src/` 아래 어느
 파일도 이것을 임포트하지 않는다.
 
 증명하는 것과 못 하는 것을 구분해 둔다. 이 게이트웨이는 **우리 주문서에 앞뒤가
@@ -13,7 +13,7 @@
 검색은 2글자 부분문자열 포함으로 한다. MySQL `ngram_token_size=2` 와 같은 낟알이라
 한국어 조사를 뚫는다 — 실측 근거는 `experiments/INDEX.md`.
 
-404 본문의 `code` 는 어디서나 `WIKI_NOT_FOUND` 하나로 고정돼 있다. 계약은 창구별로
+404 본문의 `code` 는 어디서나 `WIKI_NOT_FOUND` 하나로 고정돼 있다. 계약은 조회 API 별로
 `WIKI_SCOPE_NOT_FOUND`·`DOCUMENT_NOT_FOUND` 등을 구분하지만, 이 게이트웨이는 그
 구분을 재현하지 않는다 — 클라이언트가 `WIKI_CAPABILITY_EXPIRED` 만 특별 취급하고
 나머지는 전부 하나로 묶어 처리하기 때문에 어댑터 동작에는 영향이 없다. 하지만 이
@@ -65,6 +65,18 @@ class GatewayState:
     # 도구가 「결과가 없습니다」를 낸다.
     schedules: dict[str, dict] = field(default_factory=dict)
 
+    @property
+    def sources_dir(self) -> Path:
+        """원본문서 디렉터리. 두 자리를 다 본다.
+
+        `LocalVaultFS` 가 만든 트리는 `wiki/{scope}/sources/{documentId}/` 다
+        (`backend_sim.py` 가 그 트리에 반영한다). 손으로 만든 코퍼스는 루트에 `sources/`
+        를 두기도 한다. 앞의 것을 먼저 보고 없으면 뒤를 쓴다 — 못 찾으면 `documentRefs`
+        가 조용히 빈 배열이 되고, 「이 위키가 어느 원본문서에서 나왔나」가 사라진다.
+        """
+        scoped = self.corpus / "wiki" / self.scope_key / "sources"
+        return scoped if scoped.is_dir() else self.corpus / "sources"
+
     def load(self) -> None:
         base = self.corpus / "wiki" / self.scope_key
         self.pages = {}
@@ -110,6 +122,12 @@ def build_gateway(corpus: Path, *, scope_key: str, capability: str,
     app.state.gateway = state
 
     def guard(request: Request, scope_key_param: str | None) -> bool:
+        # **요청마다 트리를 다시 읽는다.** 측정은 문서를 한 건씩 넣고, 앞 문서로 만든
+        # 위키가 반영된 뒤에 다음 문서가 돈다 (`backend_sim.py`, FR-AI-003). 기동 시점에
+        # 한 번만 읽으면 두 번째 문서가 늘 「위키 0장」을 보고, 그러면 겹침 검색도
+        # 읽기 게이트도 성립하지 않아 측정이 기준선보다 쉬운 문제를 푼 값이 된다.
+        # 진짜 백엔드는 DB 를 보므로 이런 갱신 지점이 따로 없다.
+        state.load()
         if request.headers.get("X-Internal-API-Key") != state.api_key:
             return False
         if request.headers.get("X-Wiki-Capability") != state.capability:
@@ -185,13 +203,37 @@ def build_gateway(corpus: Path, *, scope_key: str, capability: str,
         return envelope({"items": [{"wikiCategoryId": "9", "name": "기본",
                                     "wikiCount": len(state.pages)}]})
 
+    @app.get("/internal/v1/wiki-spaces/{scope_key}/relations")
+    async def scope_relations(request: Request, scope_key: str):
+        """범위 전체 간선. 역방향은 싣지 않는다 (계약 정책).
+
+        `documentRefs` 는 본문에 원본문서 디렉터리 이름이 등장하는지로 도출한다.
+        각주가 파일명으로 문서를 가리키므로(`tools/references.py`) 실제 백엔드의
+        `wiki.document_refs` 와 같은 집합이 나온다.
+        """
+        if not guard(request, scope_key):
+            return _not_found()
+        sources = [path.name for path
+                   in sorted(state.sources_dir.glob("*"))
+                   if path.is_dir()]
+        items = []
+        for page in state.pages.values():
+            body = page["_body"]
+            items.append({
+                "wikiId": page["wikiId"],
+                "wikiRefs": [other["wikiId"] for other in state.pages.values()
+                             if other["wikiId"] != page["wikiId"]
+                             and Path(other["wikiPath"]).name in body],
+                "documentRefs": [name for name in sources if name in body],
+            })
+        return envelope({"items": items})
+
     @app.get("/internal/v1/documents/{document_id}/parsed")
     async def document_parsed(request: Request, document_id: str,
                               scopeKey: str):
         if not guard(request, scopeKey):
             return _not_found()
-        path = (state.corpus / "sources" / document_id / "parsed" /
-                "content.md")
+        path = state.sources_dir / document_id / "parsed" / "content.md"
         if not path.exists():
             return _not_found()
         # 파싱본에는 scopeVersion 을 싣지 않는다 — 위키 스냅샷과 무관하다.

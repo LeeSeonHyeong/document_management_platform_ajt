@@ -1,20 +1,24 @@
-"""라이브 층을 Spring 이 준 dict 로 채운다 (v1.1.0 — push).
+"""`SpringVaultFS` — 라이브 층을 밖에서 채워 넣는 2단 SQLite 저장 계층.
 
-2단 SQLite(`local.py`)는 그대로 쓴다. 바뀌는 것은 라이브 층의 출처뿐이다 — HTTP 왕복
-대신 `open()` 이 받는 `pages`(SelectedWiki 모양의 dict 목록)와 `index_markdown`. 그래서
-툴 10개·프롬프트·`lint` 가 이 파일의 존재를 모른다.
+**하이드레이션은 이제 이 클래스의 일이 아니다** (S15P11B106-175). `open()` 이
+`pages`·`index_markdown` 을 받아 요청이 실어 온 위키로 라이브 층을 채우던 경로가
+사라졌고, 지금 라이브 층을 채우는 것은 Wiki 조회 API(`FederatedVaultFS.open`)뿐이다.
+
+그런데도 이 파일이 남아 있는 이유는 **그 아래 저장 계층이 그대로**여서다 —
+`FederatedVaultFS` 가 이 클래스를 상속하므로 청크 색인·참조 그래프·staleness·작업 층
+분리는 조회 API 경로에서도 여기 것이 돈다. 라이브 행을 넣는 일은 테스트 헬퍼
+(`tests/mcp/hydration.open_with_pages`)가 대신한다.
 
 가장 중요한 확인은 `search` 다. 본문이 색인되지 않으면 에이전트가 기존 페이지를 못 찾고
 전부 새로 만든다 — 옛 spike 의 조각화(13/26)가 재발한다.
-
-`open()`의 `client` 위치 인자 하위호환은 Task 4 에서 지웠다 — `api/session.py`가 이제
-`pages=`로만 호출한다.
 """
 
 import pytest
 
 from wiki_mcp.vaultfs import LocalVaultFS
 from wiki_mcp.vaultfs.spring import SpringVaultFS, address_from_wiki_path
+
+from .hydration import open_with_pages
 
 SCOPE = "D1-D2"
 JOB_ID = "42"
@@ -42,10 +46,26 @@ SOURCE_MD = "# 회의 운영\n\n## 2장 정례 회의\n\n주간 회의는 30분�
 
 @pytest.fixture
 async def spring_vault(tmp_path):
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=[PAGE], index_markdown=INDEX_MD)
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, [PAGE], INDEX_MD)
     yield scope_id, SpringVaultFS(SCOPE, JOB_ID)
     await LocalVaultFS.close()
+
+
+async def test_open_does_not_hydrate_anything(tmp_path):
+    """`open()` 은 색인만 연다. 라이브 층을 채우는 인자는 사라졌다 (S15P11B106-175).
+
+    남겨두면 요청이 위키를 실어 보내는 두 번째 경로가 되살아난다."""
+    import inspect
+
+    assert set(inspect.signature(SpringVaultFS.open).parameters) == {
+        "root", "scope_key", "job_id"}
+    assert not hasattr(SpringVaultFS, "_hydrate_from_pages")
+
+    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID)
+    try:
+        assert await SpringVaultFS(SCOPE, JOB_ID).list_documents(scope_id) == []
+    finally:
+        await LocalVaultFS.close()
 
 
 def test_address_comes_from_wiki_path():
@@ -75,12 +95,12 @@ async def test_open_hydrates_the_index(spring_vault):
     assert "커뮤니케이션 가이드" in row["content"]
 
 
-async def test_open_hydrates_a_page_without_wiki_path_using_the_default_address(tmp_path):
-    """selectedWikis 에는 `wikiPath` 가 없다(설계 §3) — `pages/{wikiId}.md` 로 떨어져야
-    한다. `wikiId` 가 이미 있으므로 유일함이 보장된다."""
+async def test_a_page_without_wiki_path_lands_on_the_default_address(tmp_path):
+    """조회 API 목록에 `wikiPath` 가 없으면 `pages/{wikiId}.md` 로 떨어져야 한다 (설계 §3).
+    `wikiId` 가 이미 있으므로 유일함이 보장된다."""
     page_without_path = {k: v for k, v in PAGE.items() if k != "wikiPath"}
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=[page_without_path], index_markdown=INDEX_MD)
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, [page_without_path],
+                                     INDEX_MD)
     try:
         fs = SpringVaultFS(SCOPE, JOB_ID)
         row = await fs.get(scope_id, "pages/101.md")
@@ -108,19 +128,17 @@ CITED_PAGE = dict(PAGE, contentMarkdown=(
 ))
 
 
-async def test_hydrate_builds_the_citation_graph_without_an_explicit_sync(tmp_path):
-    """`_hydrate_from_pages` 는 문서 행만 넣고 각주는 파싱하지 않았다 — `write`를 거친
-    페이지만 `sync_references`가 불렸다. 그래서 손대지 않은 하이드레이션 페이지는
-    orphan-page 로 잘못 잡히고, `write.py`의 `_impact`·`references.py`의
-    `backlinks_summary` 가 조용히 빈 결과를 냈다. 이 테스트는 `open()`(과, 같은 문서를
-    싣는 `stage_source`) 만 부르고 `sync_references`를 직접 부르지 않는다 — 그래프가
-    그 두 호출만으로 채워져야 한다."""
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=[CITED_PAGE], index_markdown=INDEX_MD)
+async def test_staging_a_source_builds_the_citation_graph_without_an_explicit_sync(tmp_path):
+    """라이브 행을 넣기만 하면 각주가 그래프에 안 들어가던 시절이 있었다 — `write`를 거친
+    페이지만 `sync_references`가 불렸다. 그래서 손대지 않은 라이브 페이지는 orphan-page
+    로 잘못 잡히고, `write.py`의 `_impact`·`references.py`의 `backlinks_summary` 가
+    조용히 빈 결과를 냈다. 이 테스트는 `stage_source` 만 부르고 `sync_references`를 직접
+    부르지 않는다 — 그래프가 그것만으로 채워져야 한다."""
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, [CITED_PAGE], INDEX_MD)
     fs = SpringVaultFS(SCOPE, JOB_ID)
     try:
-        # 하이드레이션 시점에는 각주가 가리키는 원본문서(회의운영.pdf)가 아직 라이브에
-        # 없다 — `pages` 만 채운다. 트랜스폼 경로가 늘 그렇듯, 대상 문서를 얹으면
+        # 라이브 층을 채운 시점에는 각주가 가리키는 원본문서(회의운영.pdf)가 아직 없다 —
+        # 위키 페이지만 들어간다. 트랜스폼 경로가 늘 그렇듯, 대상 문서를 얹으면
         # (`stage_source`) 그 문서를 인용하던 기존 페이지도 이어져야 한다.
         await fs.stage_source(scope_id, "15", SOURCE_MD, "회의운영.pdf")
 
@@ -152,16 +170,16 @@ LINKING_PAGE = {
 }
 
 
-async def test_a_fresh_hydrate_reports_zero_stale_pages(tmp_path):
-    """하이드레이션은 한 순간의 스냅샷이다 — t0 에는 아무것도 stale 일 수 없다.
+async def test_a_freshly_filled_live_layer_reports_zero_stale_pages(tmp_path):
+    """라이브 층을 채운 순간은 한 순간의 스냅샷이다 — t0 에는 아무것도 stale 일 수 없다.
 
     `_sync_page_references` 가 부르는 `sync_references` 는 `propagate_staleness` 도
     함께 부른다. 그 부작용이 하이드레이션 도중에도 그대로 발동하면, B 가 A 를 링크한
     것만으로 (아직 아무도 안 고쳤는데) A 가 stale 로 잡힌다 — `updated_at`과
     `stale_since`가 몇 마이크로초 차이로 `find_stale_pages`의 조건을 만족해 버린다.
     """
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=[PAGE, LINKING_PAGE], index_markdown=INDEX_MD)
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, [PAGE, LINKING_PAGE],
+                                     INDEX_MD)
     try:
         stale = await SpringVaultFS(SCOPE, JOB_ID).find_stale_pages(scope_id)
         assert stale == [], f"방금 하이드레이션했을 뿐인데 stale 로 잡혔다: {stale}"
@@ -203,7 +221,7 @@ async def test_writes_still_land_in_the_work_layer(spring_vault):
 
 
 async def test_editing_a_hydrated_page_is_an_update_not_a_create(spring_vault):
-    """되받은 페이지를 고치면 update 로 잡혀야 한다. wikiId 가 따라붙는다."""
+    """라이브 페이지를 고치면 update 로 잡혀야 한다. wikiId 가 따라붙는다."""
     scope_id, fs = spring_vault
     await fs.write(scope_id, "pages/a3f2c1d4.md",
                    "---\ntitle: 커뮤니케이션 가이드\n---\n\n고친 본문", title="커뮤니케이션 가이드")
@@ -214,7 +232,7 @@ async def test_editing_a_hydrated_page_is_an_update_not_a_create(spring_vault):
 
 
 async def test_editing_into_a_tiny_body_stays_searchable(spring_vault):
-    """페이지는 히드레이션 때 검색되게 만들었어도, 같은 job 안에서 아주 짧은 본문으로
+    """페이지는 라이브 층에 들어갈 때 검색되게 만들었어도, 같은 job 안에서 아주 짧은 본문으로
     수정되면 `write()`가 직접 `chunk_text`를 호출한다 — 그 경로에는 폴백이 없으면
     이 태스크가 막으려던 실패(FTS 0건)가 수정 경로에서 재발한다."""
     scope_id, fs = spring_vault

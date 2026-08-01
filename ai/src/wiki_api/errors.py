@@ -75,8 +75,9 @@ _VALIDATION_CODES = {
         "INVALID_WIKI_TRANSFORMATION_REQUEST", "Wiki 변환 요청 구조가 올바르지 않습니다."),
     "/internal/v1/wiki-edits": (
         "INVALID_WIKI_EDIT_REQUEST", "Wiki 수정 지시 또는 문맥이 올바르지 않습니다."),
-    "/internal/v1/wiki-context-selections": (
-        "INVALID_WIKI_CONTEXT_SELECTION_REQUEST", "Wiki 문맥 선택 요청 구조가 올바르지 않습니다."),
+    # `/internal/v1/wiki-context-selections` 는 없다 — S15P11B106-175 가 위키 변환을
+    # 단일 호출로 합치면서 1단계 문맥 선택을 지웠다. 이 표에 다시 넣지 않는다 — 없는
+    # 경로로 온 요청은 어차피 라우팅에서 404 이지, 400 검증 실패로 올 일이 없다.
     "/internal/v1/source-parses": (
         "INVALID_SOURCE_PARSE_REQUEST", "파싱 요청 파일 또는 메타데이터가 올바르지 않습니다."),
     "/internal/v1/schedule-extractions": (
@@ -93,7 +94,9 @@ _VALIDATION_CODES = {
 # 예상 못한 예외에 붙일 코드. 경로별 실패 코드를 그대로 쓴다 — Spring 이 `code` 로 분기하고
 # `document_results` 에 기록하므로, 같은 엔드포인트의 실패가 두 이름으로 나오면 안 된다.
 _FAILURE_CODES = {
-    "/internal/v1/wiki-context-selections": "WIKI_CONTEXT_SELECTION_FAILED",
+    # `/internal/v1/wiki-context-selections` 는 없다 — S15P11B106-175 가 위키 변환을
+    # 단일 호출로 합치면서 1단계 문맥 선택을 지웠다. 남겨두면 아무도 도달하지 않는 코드를
+    # Spring 이 분기에 적어 넣는다 (M1).
     "/internal/v1/wiki-transformations": "WIKI_TRANSFORMATION_FAILED",
     "/internal/v1/wiki-edits": "WIKI_EDIT_FAILED",
     "/internal/v1/source-parses": "DOCUMENT_PARSE_FAILED",

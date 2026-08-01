@@ -58,7 +58,7 @@ def test_build_app_takes_settings_and_injects_the_runtime():
     from wiki_api.settings import ServerSettings
 
     settings = ServerSettings(runtime="claude-code", model="claude-opus-4-6",
-                              internal_api_key="k")
+                              internal_api_key="k", backend_base_url="http://localhost:8080")
     app = serve.build_app(settings)
 
     assert app.state.runtime.name == "claude-code"
@@ -121,7 +121,8 @@ def test_the_deepagents_runtime_does_not_need_the_cli(monkeypatch):
         return type("R", (), {"name": name, "model": model})()
 
     monkeypatch.setattr(serve, "load_runtime", fake_load)
-    settings = ServerSettings(runtime="deepagents", internal_api_key="k")
+    settings = ServerSettings(runtime="deepagents", internal_api_key="k",
+                              backend_base_url="http://localhost:8080")
     serve.build_app(settings)
     assert called["name"] == "deepagents"
 
@@ -132,7 +133,7 @@ def test_the_cli_check_passes_when_the_cli_is_present(monkeypatch):
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = ServerSettings(runtime="claude-code", model="claude-opus-4-6",
-                              internal_api_key="k")
+                              internal_api_key="k", backend_base_url="http://localhost:8080")
     app = serve.build_app(settings)
     assert app.state.runtime.name == "claude-code"
 
@@ -150,7 +151,7 @@ def test_claude_code_starts_fine_even_with_an_anthropic_key_and_model_prefix(mon
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-not-be-used")
     settings = ServerSettings(runtime="claude-code", model="anthropic:claude-opus-4-6",
-                              internal_api_key="k")
+                              internal_api_key="k", backend_base_url="http://localhost:8080")
 
     app = serve.build_app(settings)
 
@@ -181,7 +182,8 @@ def test_claude_code_warns_on_stderr_when_a_model_key_is_configured_but_unused(
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = _isolated_settings(
         monkeypatch, tmp_path, runtime="claude-code", model="anthropic:claude-opus-4-6",
-        internal_api_key="k", anthropic_api_key="sk-configured")
+        internal_api_key="k", anthropic_api_key="sk-configured",
+        backend_base_url="http://localhost:8080")
 
     serve.build_app(settings)
 
@@ -196,7 +198,8 @@ def test_claude_code_stays_quiet_when_no_model_key_is_configured(monkeypatch, ca
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = _isolated_settings(monkeypatch, tmp_path, runtime="claude-code",
-                                  internal_api_key="k")
+                                  internal_api_key="k",
+                                  backend_base_url="http://localhost:8080")
 
     serve.build_app(settings)
 
@@ -281,6 +284,29 @@ def test_startup_passes_when_the_credential_is_there():
     check_model_credentials(settings)   # 예외가 없으면 통과
 
 
+# ----- 조회 API 주소 검사 -------------------------------------------------------
+
+
+def test_missing_backend_base_url_stops_startup():
+    """조회 API 주소 없이 뜨면 첫 요청이 빈 위키로 라이브를 덮는다 — 기동을 막는다."""
+    from wiki_api.serve import assert_backend_base_url_is_set
+    from wiki_api.settings import ServerSettings
+
+    settings = ServerSettings(internal_api_key="k", backend_base_url="")
+    with pytest.raises(SystemExit) as caught:
+        assert_backend_base_url_is_set(settings)
+    assert "BACKEND_BASE_URL" in str(caught.value)
+
+
+def test_present_backend_base_url_passes():
+    from wiki_api.serve import assert_backend_base_url_is_set
+    from wiki_api.settings import ServerSettings
+
+    settings = ServerSettings(internal_api_key="k",
+                              backend_base_url="http://backend:8080")
+    assert assert_backend_base_url_is_set(settings) is None
+
+
 # ----- 기동 한 줄에 일정 추출 어댑터를 적는다 -----------------------------------
 
 
@@ -291,7 +317,10 @@ def test_the_startup_banner_names_the_schedule_adapter(monkeypatch):
     from wiki_api.settings import ServerSettings
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
-    settings = ServerSettings(runtime="claude-code", internal_api_key="k")
+    # `backend_base_url` 을 준다 — S15P11B106-175 부터 `build_app` 이 그 값 없이는
+    # 기동을 거부한다 (위키 변환이 빈 문맥으로 돌아 라이브를 덮는 것을 막는다).
+    settings = ServerSettings(runtime="claude-code", internal_api_key="k",
+                              backend_base_url="http://localhost:8080")
     app = serve.build_app(settings)
 
     banner = serve.startup_banner(app, settings, host="0.0.0.0", port=8000)
@@ -307,7 +336,8 @@ def test_the_startup_banner_never_echoes_the_api_key(monkeypatch, tmp_path):
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = _isolated_settings(
         monkeypatch, tmp_path, runtime="claude-code", internal_api_key="k",
-        schedule_provider="anthropic", anthropic_api_key="sk-super-secret-value")
+        schedule_provider="anthropic", anthropic_api_key="sk-super-secret-value",
+        backend_base_url="http://localhost:8080")
     app = serve.build_app(settings)
 
     banner = serve.startup_banner(app, settings, host="0.0.0.0", port=8000)
