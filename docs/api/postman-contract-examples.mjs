@@ -1,4 +1,4 @@
-export const contractVersion = "1.8.0";
+export const contractVersion = "1.9.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -611,21 +611,6 @@ const contracts = {
       httpStatus: 400,
       errorCode: "INVALID_SOURCE_PARSE_REQUEST",
       message: "파싱 요청 파일 또는 메타데이터가 올바르지 않습니다.",
-    },
-  },
-  "POST /internal/v1/wiki-context-selections": {
-    success: {
-      httpStatus: 200,
-      body: {
-        wikiIds: ["101", "108"],
-        reason: "새 취업 규칙의 휴가·복무 항목과 관련된 현재 Wiki입니다.",
-      },
-    },
-    error: {
-      httpStatus: 400,
-      errorCode: "INVALID_WIKI_CONTEXT_SELECTION_REQUEST",
-      message: "Wiki 문맥 선택 요청 구조가 올바르지 않습니다.",
-      failureStage: "context_load",
     },
   },
   "POST /internal/v1/wiki-transformations": {
