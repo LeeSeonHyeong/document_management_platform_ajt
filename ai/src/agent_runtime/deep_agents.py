@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 from wiki_mcp.telemetry import read_counts
+from wiki_mcp.vaultfs.query_client import ScopeChangedError
 
 from .base import DEFAULT_COMPLETE_TIMEOUT, FAST, QUALITY, CompletionResult, RunResult
 
@@ -122,9 +123,8 @@ class DeepAgentsRuntime:
 
     name = "deepagents"
 
-    # `_server_config` 가 MCP 서버를 별도 프로세스로 띄운다 — 창구 모드에서 쓸 수 없는
-    # 이유와 기본값은 `base.py::spawns_mcp_server` 에 있다.
-    spawns_mcp_server = True
+    # `run()` 은 `_server_config` 로 MCP 서버를 별도 프로세스에 띄우고, `arun()` 은 도구를
+    # 이 프로세스에서 만든다. 창구 모드는 후자로만 성립한다 (`base.py::runs_tools_in_process`).
 
     def __init__(self, model: str = "anthropic:claude-opus-4-6", *,
                  fast_model: str | None = None, quality_model: str | None = None,
@@ -359,6 +359,89 @@ class DeepAgentsRuntime:
             structured = structured.model_dump()
         return text, calls, structured, hit_limit
 
+    async def arun(self, instruction: str, *, fs, scope_id: str, root: Path,
+                   scope_key: str, job_id: str,
+                   timeout: int | None = None) -> RunResult:
+        """MCP 하위 프로세스 없이 위키를 고친다 (S15P11B106-152).
+
+        `run` 과 같은 일을 하되 도구를 `wiki_agent_tools` 로 이 프로세스 안에서 만든다.
+        그래야 창구 모드(`FederatedVaultFS`)가 성립한다 — 열람 허가값과 중단 신호가
+        프로세스 경계를 못 넘는다 (설계 §3.7, `wiki_tools.py` 헤더).
+
+        **호출자의 루프에서 돈다.** `arun_with_tools` 와 같은 이유다: 요청마다
+        `asyncio.run` 을 돌리면 모델 클라이언트의 연결 풀이 닫힌 루프에 묶여 두 번째
+        요청부터 전부 죽는다 (2026-07-31 Spring 실연동에서 확인).
+
+        `scope_id` 는 받아 두고 쓰지 않는다 — 도구가 `scope` 인자로 자기 것을 해석한다.
+        세션이 넘기는 인자 모양(`session.py::run_agent`)을 그대로 받는다.
+        """
+        from deepagents import (
+            GeneralPurposeSubagentProfile,
+            HarnessProfile,
+            create_deep_agent,
+            register_harness_profile,
+        )
+
+        from .wiki_tools import wiki_agent_tools
+
+        limit = timeout or CALL_TIMEOUT_SECONDS
+        started = time.monotonic()
+        # 도구 호출 수를 우리가 센다. MCP 경로는 서버 측 로그(`read_counts`)로 셌는데
+        # 여기는 서버가 없다. 그리고 상한 예외로 끝난 실행도 수는 남아야 한다.
+        counts: dict = {}
+        specs = wiki_agent_tools(fs, scope_key)
+        verify_mcp_tools({spec.name for spec in specs})
+        tools = langchain_tools(specs, counts)
+
+        register_harness_profile(
+            self.model,
+            HarnessProfile(
+                excluded_tools=EXCLUDED_BUILTIN_TOOLS,
+                general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+            ),
+        )
+        agent = create_deep_agent(
+            model=self._chat_model(limit),
+            tools=tools,
+            subagents=[],
+            system_prompt="사내 위키 편집 에이전트다. `guide` 도구를 먼저 불러 작업 방식을 확인한다.",
+        )
+
+        def elapsed() -> float:
+            return round(time.monotonic() - started, 1)
+
+        try:
+            result = await asyncio.wait_for(
+                agent.ainvoke(
+                    {"messages": [{"role": "user", "content": instruction}]},
+                    {"recursion_limit": MAX_TURNS * 2},
+                ),
+                timeout=limit,
+            )
+        except (TimeoutError, asyncio.TimeoutError):
+            # 작업 공간에 쓰인 것은 남지만 작업이 성공을 보고하지 않았으므로 백엔드가
+            # 버린다 (DR-009). `run` 과 같은 규약 — 예외가 아니라 `error` 문장이다.
+            return RunResult(text="", tool_calls=counts, elapsed_seconds=elapsed(),
+                             error=f"{limit}초 안에 끝나지 않았다 (NFR-PERF-002)")
+        except ScopeChangedError:
+            # 범위 변경은 재시도로 풀린다. 세션이 다른 단계로 기록해야 하므로 삼키지
+            # 않는다 (`session.py::run_agent` 의 분기).
+            raise
+        except Exception as exc:
+            last = max(counts, key=counts.get) if counts else "시작 전"
+            return RunResult(
+                text="", tool_calls=counts, elapsed_seconds=elapsed(),
+                error=f"{type(exc).__name__} (마지막 도달 단계: {last}): {exc}")
+
+        messages = result.get("messages") or []
+        text = str(getattr(messages[-1], "content", "")) if messages else ""
+        usage = _usage(messages)
+        return RunResult(
+            text=text, tool_calls=counts,
+            input_tokens=int(usage.get("input_tokens", 0) or 0),
+            output_tokens=int(usage.get("output_tokens", 0) or 0),
+            turns=_turns(messages), elapsed_seconds=elapsed())
+
     async def _run(self, instruction: str, root: Path, scope_key: str,
                    job_id: str, tool_log: Path,
                    limit: int = CALL_TIMEOUT_SECONDS) -> tuple[str, dict, int]:
@@ -419,21 +502,38 @@ def langchain_tools(tools: list, counter: dict | None = None) -> list:
 
     `counter` 를 주면 **호출될 때마다 이름별로 센다.** 그래프 상태에서 세지 않는 이유는
     상한 예외로 끝난 실행에서는 그 상태를 받지 못하기 때문이다.
+
+    `call` 이 코루틴 함수면 `coroutine=` 으로 넘긴다. sync 자리에 넣으면 LangChain 이
+    코루틴 객체를 그대로 도구 결과로 삼아 모델이 `<coroutine object ...>` 를 읽는다 —
+    도구가 아무 일도 안 하고 성공한 것처럼 보인다. 위키 편집 도구가 전부 async 다
+    (S15P11B106-152).
     """
+    import inspect
+
     from langchain_core.tools import StructuredTool
 
     def wrap(tool):
+        if inspect.iscoroutinefunction(tool.call):
+            if counter is None:
+                return {"coroutine": tool.call}
+
+            async def acalled(**kwargs):
+                counter[tool.name] = counter.get(tool.name, 0) + 1
+                return await tool.call(**kwargs)
+
+            return {"coroutine": acalled}
+
         if counter is None:
-            return tool.call
+            return {"func": tool.call}
 
         def called(**kwargs):
             counter[tool.name] = counter.get(tool.name, 0) + 1
             return tool.call(**kwargs)
 
-        return called
+        return {"func": called}
 
     return [StructuredTool.from_function(
-        func=wrap(tool), name=tool.name, description=tool.description,
+        **wrap(tool), name=tool.name, description=tool.description,
         args_schema=tool.input_schema) for tool in tools]
 
 

@@ -20,7 +20,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from agent_runtime.base import spawns_mcp_server
+from agent_runtime.base import runs_tools_in_process
 from agent_runtime.limits import exceeds_ceiling
 from wiki_mcp.vaultfs import (INDEX_ADDRESS, FederatedVaultFS, LocalVaultFS,
                               SpringVaultFS)
@@ -216,15 +216,11 @@ class WikiSession:
                     and self.backend_base_url)
 
     def _assert_runtime_can_use_the_gateway(self) -> None:
-        """창구 모드는 in-process 런타임에서만 성립한다 — 아니면 **받지 않는다.**
+        """창구 모드는 도구가 이 프로세스 안에서 도는 런타임에서만 성립한다.
 
-        **표시가 없는 런타임도 거절한다** (`agent_runtime.spawns_mcp_server` 의 기본값이
-        `True` 다). 앞으로 서버를 띄우는 런타임이 늘면서 상수를 잊는 쪽이, 그것을 조용히
-        통과시키는 것보다 훨씬 흔하다 — 그리고 통과의 결과는 데이터 손실 방향이다.
-
-        배송 런타임 둘(`claude-code`·`deepagents`)은 MCP 서버를 별도 프로세스로 띄우고,
-        그 프로세스의 `fs_factory`(`wiki_mcp/local_server.py:83`)는 `LocalVaultFS` 를
-        만든다. 창구 클라이언트가 그쪽에 없으므로 두 가지가 동시에 깨진다:
+        별도 프로세스의 MCP 서버는 `fs_factory`(`wiki_mcp/local_server.py`)가
+        `LocalVaultFS` 를 만든다. 창구 클라이언트가 그쪽에 없으므로 두 가지가 동시에
+        깨진다:
 
           * **본문이 없다.** 창구 하이드레이션은 카탈로그만 채우고 본문은 `get()` 이
             요구할 때 당기는데, 그 `get()` 은 이쪽 프로세스에만 있다. 에이전트는 제목만
@@ -232,11 +228,11 @@ class WikiSession:
           * **중단 신호가 없다.** 범위 변경을 프로세스 밖으로 넘길 길이 없다
             (`_raise_if_scope_changed` 의 한계 항목)
 
-        조용히 빈 위키를 만드는 것보다 접수 시점에 거절하는 쪽이 낫다. 이 가드를 걷어내는
-        조건은 `local_server` 가 창구 모드를 알고 `FederatedVaultFS` 를 만드는 것이다 —
-        무엇이 필요한지는 task-7 보고서에 적었다.
+        판정은 `arun` 유무다 (`runs_tools_in_process`). `deepagents` 가 그것을 구현하면서
+        (S15P11B106-152) 배송 경로가 열렸고, `claude-code` 는 CLI 하위 프로세스라
+        구현할 수 없으므로 계속 거절된다. 거절이 조용히 빈 위키를 만드는 것보다 낫다.
         """
-        if self._federated() and spawns_mcp_server(self.runtime):
+        if self._federated() and not runs_tools_in_process(self.runtime):
             raise InternalError(
                 self.error_code,
                 "이 서버 구성에서는 Wiki 조회 창구를 쓸 수 없습니다 — 에이전트 런타임이 "

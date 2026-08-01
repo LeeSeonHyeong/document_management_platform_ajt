@@ -27,8 +27,10 @@ BODIES = {
 class FakeClient:
     """WikiQueryClient 와 같은 표면만 흉내 낸다."""
 
-    def __init__(self, *, scope_key="D1-D2"):
+    def __init__(self, *, scope_key="D1-D2", bodies=None):
         self.scope_key = scope_key
+        # 본문을 갈아끼울 수 있게 한다 — 링크가 있는 본문으로 fan-out 을 재현한다.
+        self.bodies = dict(bodies or BODIES)
         self.scope_version = 47
         self.body_fetches = 0
         self.searched: list[str] = []
@@ -55,12 +57,12 @@ class FakeClient:
         return [{"wikiCategoryId": "9", "name": "휴가 및 근태", "wikiCount": 1}]
 
     async def page_content(self, wiki_id):
-        if wiki_id not in BODIES:
+        if wiki_id not in self.bodies:
             raise QueryNotFound(wiki_id)
         self.body_fetches += 1
         page = next(p for p in PAGES if p["wikiId"] == wiki_id)
         return {"scopeVersion": 47, "wikiId": wiki_id, "title": page["title"],
-                "wikiPath": page["wikiPath"], "contentMarkdown": BODIES[wiki_id],
+                "wikiPath": page["wikiPath"], "contentMarkdown": self.bodies[wiki_id],
                 "contentHash": page["contentHash"]}
 
     async def search(self, query, limit=10):
@@ -316,3 +318,131 @@ async def test_work_search_rows_are_capped(federated, monkeypatch):
     assert len(work_rows) <= 2
     # 상한이 없으면 5행이 그대로 나온다 — 실제로 잘렸는지 확인한다.
     assert work_rows
+
+
+# ---- 지연 적재 fan-out (S15P11B106-151) ------------------------------------
+
+LINKED_BODIES = {
+    # 101 이 108 을 링크한다. 108 의 본문은 이 테스트에서 필요 없다 —
+    # 참조 그래프는 「그 주소가 이 공간에 있나」만 알면 된다.
+    "101": "---\ntitle: 휴가 규정\n---\n\n자세한 것은 [보안 규정](b7e1f2a9.md) 참고.\n",
+    "108": "---\ntitle: 보안 규정\n---\n\n장비 반출은 사전 승인이 필요하다.\n",
+}
+
+
+async def test_reading_one_page_does_not_pull_the_pages_it_links_to(tmp_path):
+    """**본문 1장을 읽는 데 링크 대상의 본문까지 당기면 안 된다.**
+
+    `build_edges` 가 링크마다 `fs.get` 을 부르는데, 조회 API 경로에서 그 `get` 이
+    본문 조회를 태운다. 사슬로 이어진 위키 100장이면 `read` 한 번이 조회 100회가 된다
+    (2026-07-31 실측). `build_edges` 는 반환값의 `address` 만 쓴다 — 본문이 필요 없다.
+    """
+    client = FakeClient(bodies=LINKED_BODIES)
+    scope_id = await FederatedVaultFS.open(tmp_path, "D1-D2", "job-1", client=client)
+    fs = FederatedVaultFS("D1-D2", "job-1", client)
+    try:
+        await fs.get(scope_id, "pages/a3f2c1d4.md")
+
+        # 읽은 그 한 장만 당긴다. 링크 대상(108)은 당기지 않는다.
+        assert client.body_fetches == 1
+        # 그런데도 간선은 만들어져야 한다 — 링크를 아예 못 알아봐서 0회인 것과 구분한다.
+        forward = await fs.get_forward_references(scope_id, "pages/a3f2c1d4.md")
+        assert [row["address"] for row in forward] == ["pages/b7e1f2a9.md"]
+    finally:
+        await LocalVaultFS.close()
+
+
+async def test_a_link_cycle_does_not_recurse(tmp_path):
+    """A→B, B→A 에서 `RecursionError` 가 나지 않는다.
+
+    예전에는 `hydrated_bodies` 가드가 그 고리를 끊었다. 이제는 구조적으로 없어야 한다 —
+    가드를 비워도 돌아야 확인이 된다 (설계 5.3).
+    """
+    cycle = {
+        "101": "---\ntitle: 휴가 규정\n---\n\n[보안 규정](b7e1f2a9.md)\n",
+        "108": "---\ntitle: 보안 규정\n---\n\n[휴가 규정](a3f2c1d4.md)\n",
+    }
+    client = FakeClient(bodies=cycle)
+    scope_id = await FederatedVaultFS.open(tmp_path, "D1-D2", "job-1", client=client)
+    fs = FederatedVaultFS("D1-D2", "job-1", client)
+    try:
+        await fs.get(scope_id, "pages/a3f2c1d4.md")
+        fs._catalog.hydrated_bodies.clear()      # 가드를 걷어내도 돌아야 한다
+        await fs.get(scope_id, "pages/a3f2c1d4.md")
+
+        assert client.body_fetches == 2          # 가드를 지웠으니 두 번 받는다
+    finally:
+        await LocalVaultFS.close()
+
+
+# ---- 라이브 본문을 내부 색인에 넣지 않는다 (S15P11B106-154) -------------------
+
+
+async def test_a_loaded_live_body_is_not_put_in_the_local_index(federated):
+    """창구 모드의 라이브 검색은 창구가 한다. 같은 본문을 내부 색인에도 넣으면
+    층을 모르는 부모 `LIMIT` 이 그 행으로 채워져 작업층 초안이 밀려난다.
+    """
+    fs, scope_id, _ = federated
+
+    await fs.get(scope_id, "pages/a3f2c1d4.md")     # 본문을 당긴다
+
+    rows = await LocalVaultFS.search_chunks(fs, scope_id, "이월할", 10, None)
+    assert rows == []
+
+
+async def test_a_loaded_live_body_does_not_push_out_work_drafts(federated):
+    """같은 것을 결과 쪽에서 본다 — 초안 5장을 쓰고 라이브를 당겨도 5행 그대로."""
+    fs, scope_id, _ = federated
+
+    for n in range(5):
+        address = await fs.allocate_page(scope_id)
+        await fs.write(scope_id, address,
+                       f"---\ntitle: 연차 초안 {n}\n---\n\n연차 관련 초안 {n}.\n",
+                       title=f"연차 초안 {n}")
+
+    before = await LocalVaultFS.search_chunks(fs, scope_id, "연차", 5, None)
+    await fs.get(scope_id, "pages/a3f2c1d4.md")
+    after = await LocalVaultFS.search_chunks(fs, scope_id, "연차", 5, None)
+
+    assert len([r for r in before if r["layer"] == "work"]) == 5
+    assert len([r for r in after if r["layer"] == "work"]) == 5
+
+
+async def test_staged_sources_are_still_indexed_locally(federated):
+    """창구는 원본문서를 검색해 주지 않는다 — 그쪽 색인까지 끄면 안 된다."""
+    fs, scope_id, _ = federated
+
+    await fs.stage_source(scope_id, "77", "삭제된 문서의 본문. 출장비 정산 기준.",
+                          original_file_name="출장비.docx")
+
+    rows = await LocalVaultFS.search_chunks(fs, scope_id, "출장비", 10, None)
+    assert [r["address"] for r in rows] == ["sources/77/parsed/content.md"]
+
+
+async def test_hydration_records_the_index_links(federated):
+    """목차의 링크는 하이드레이션에서 그래프에 들어간다.
+
+    예전에는 스코프 전체를 훑는 재동기화에 딸려 왔다. 그것을 걷어냈으므로 (설계 4.1)
+    명시적으로 넣지 않으면 목차 링크가 조용히 사라진다.
+    """
+    fs, scope_id, _ = federated
+
+    forward = await fs.get_forward_references(scope_id, INDEX_ADDRESS)
+
+    assert [row["address"] for row in forward] == ["pages/a3f2c1d4.md"]
+
+
+async def test_resolve_address_never_loads_a_body(tmp_path):
+    """주소 해석은 존재 확인이다. 본문 적재를 유발하지 않는다."""
+    client = FakeClient()
+    scope_id = await FederatedVaultFS.open(tmp_path, "D1-D2", "job-1", client=client)
+    fs = FederatedVaultFS("D1-D2", "job-1", client)
+    try:
+        found = await fs.resolve_address(scope_id, "pages/a3f2c1d4.md")
+        missing = await fs.resolve_address(scope_id, "pages/nope.md")
+
+        assert found is not None and found["address"] == "pages/a3f2c1d4.md"
+        assert missing is None
+        assert client.body_fetches == 0
+    finally:
+        await LocalVaultFS.close()

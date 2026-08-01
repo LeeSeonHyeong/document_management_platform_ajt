@@ -55,3 +55,107 @@ def test_deepagents_wraps_agent_tools_for_langchain():
 
     assert [t.name for t in wrapped] == ["echo"]
     assert wrapped[0].invoke({"text": "안녕"}) == "들었다: 안녕"
+
+
+async def test_an_async_tool_is_wrapped_as_a_coroutine():
+    """위키 편집 도구는 저장소를 만지므로 async 다 (S15P11B106-152).
+
+    sync 로 감싸면 `call` 이 코루틴 객체를 돌려주고 모델은 그것을 문자열로 찍는다 —
+    도구가 조용히 아무 일도 안 한 것처럼 보인다.
+    """
+    from agent_runtime.deep_agents import langchain_tools
+
+    async def call(text: str) -> str:
+        return f"들었다: {text}"
+
+    tool = AgentTool(name="echo", description="", call=call,
+                     input_schema={"type": "object",
+                                   "properties": {"text": {"type": "string"}},
+                                   "required": ["text"]})
+
+    wrapped = langchain_tools([tool])[0]
+
+    assert await wrapped.ainvoke({"text": "안녕"}) == "들었다: 안녕"
+
+
+async def test_an_async_tool_is_counted_too():
+    """턴 상한 예외로 끝난 실행도 호출 수를 남겨야 한다 — 세는 곳이 여기다."""
+    from agent_runtime.deep_agents import langchain_tools
+
+    async def call() -> str:
+        return "ok"
+
+    counter: dict = {}
+    tool = AgentTool(name="ping", description="", call=call,
+                     input_schema={"type": "object", "properties": {}})
+
+    await langchain_tools([tool], counter)[0].ainvoke({})
+
+    assert counter == {"ping": 1}
+
+
+# ---- MCP 없이 도는 위키 편집 실행 (S15P11B106-152) --------------------------
+
+
+async def test_arun_edits_the_vault_without_spawning_a_server(tmp_path):
+    """자동 실행이 하위 프로세스 없이 위키를 고친다.
+
+    창구 모드(`FederatedVaultFS`)가 열리는 조건이다 — 열람 허가값과 중단 신호가
+    프로세스 경계를 못 넘어서 지금까지 접수 시점에 거절돼 있었다 (설계 §3.7).
+    """
+    from langchain_core.messages import AIMessage
+
+    from agent_runtime.deep_agents import DeepAgentsRuntime
+    from tests.fake_models import ScriptedChatModel
+    from wiki_mcp.vaultfs import LocalVaultFS
+
+    scope_id = await LocalVaultFS.open(tmp_path, "D1", "job-1")
+    fs = LocalVaultFS("D1", "job-1")
+    try:
+        writing = AIMessage(content="", tool_calls=[{
+            "name": "create", "id": "1", "type": "tool_call",
+            "args": {"scope": "D1", "title": "재택근무 규정", "category": "근무",
+                     "tags": ["근태"], "content": "재택근무는 주 2일까지 가능하다.\n"}}])
+        model = ScriptedChatModel(messages=iter([writing, AIMessage(content="끝")]))
+        runtime = DeepAgentsRuntime(model="openai:gpt-4o-mini", chat_model=model)
+
+        run = await runtime.arun("문서를 위키로 만들어라", fs=fs, scope_id=scope_id,
+                                 root=tmp_path, scope_key="D1", job_id="job-1")
+
+        assert run.error is None
+        assert run.tool_calls == {"create": 1}
+        changes = await fs.pending_changes(scope_id)
+        assert [c["type"] for c in changes] == ["create"]
+    finally:
+        await LocalVaultFS.close()
+
+
+async def test_arun_reports_the_time_limit_as_its_own_failure(tmp_path):
+    """상한 초과는 예외가 아니라 `error` 문장이다 — `run` 과 같은 규약."""
+    import asyncio
+
+    from langchain_core.messages import AIMessage
+
+    from agent_runtime.deep_agents import DeepAgentsRuntime
+    from tests.fake_models import ScriptedChatModel
+    from wiki_mcp.vaultfs import LocalVaultFS
+
+    scope_id = await LocalVaultFS.open(tmp_path, "D1", "job-1")
+    fs = LocalVaultFS("D1", "job-1")
+
+    class SlowModel(ScriptedChatModel):
+        async def _agenerate(self, *args, **kwargs):
+            await asyncio.sleep(5)
+            raise AssertionError("여기까지 오면 안 된다")
+
+    try:
+        model = SlowModel(messages=iter([AIMessage(content="끝")]))
+        runtime = DeepAgentsRuntime(model="openai:gpt-4o-mini", chat_model=model)
+
+        run = await runtime.arun("문서를 위키로 만들어라", fs=fs, scope_id=scope_id,
+                                 root=tmp_path, scope_key="D1", job_id="job-1",
+                                 timeout=1)
+
+        assert run.error and "1초" in run.error
+    finally:
+        await LocalVaultFS.close()

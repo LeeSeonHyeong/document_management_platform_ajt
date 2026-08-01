@@ -50,6 +50,22 @@ class VaultFS(ABC):
     @abstractmethod
     async def get(self, scope_id: str, address: str) -> dict | None: ...
 
+    async def resolve_address(self, scope_id: str, address: str) -> dict | None:
+        """이 주소가 이 공간에 있으면 그 행을, 없으면 `None`.
+
+        **존재 확인 전용이다. 본문 적재를 유발하지 않는다** — 돌려주는 dict 의 `content`
+        는 비어 있을 수 있다. 본문이 필요하면 `get` 을 쓴다.
+
+        `get` 과 나눈 이유는 조회 API 경로 때문이다 (S15P11B106-151). 참조 그래프를 만드는
+        `build_edges` 는 링크마다 대상의 **주소만** 확인하는데 그것을 `get` 으로 하면
+        `FederatedVaultFS` 가 본문을 한 장씩 당긴다. 사슬로 이어진 위키 100장에서 `read`
+        한 번이 조회 100회가 됐다 (2026-07-31 실측).
+
+        기본 구현은 `get` 위임이다 — 본문이 이미 로컬에 있는 구현체는 이것으로 맞다.
+        본문을 원격에서 당기는 구현체만 재정의한다.
+        """
+        return await self.get(scope_id, address)
+
     @abstractmethod
     async def find_source(self, scope_id: str, name: str) -> dict | None:
         """Resolve a source by original filename, document id, or address.

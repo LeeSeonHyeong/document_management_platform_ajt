@@ -1,0 +1,35 @@
+{
+  "slug": "2026-08-01-gpt54-2docs-mcp",
+  "startedAt": "2026-08-01T13:36:20",
+  "runtime": "deepagents",
+  "model": "openai:gpt-5.4",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "02-side-gigs.md"
+  ],
+  "purpose": "배송 경로 전환 전 기준선 — deepagents 를 MCP 하위 프로세스로",
+  "dryRun": false,
+  "effort": null,
+  "code": {
+    "guideChars": 4549,
+    "guideSha": "b5444b72e5a4",
+    "schemaSha": "471515caf0ae",
+    "instructionSha": "b73c4ed0b020",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "cliVersion": "2.1.220 (Claude Code)",
+  "settingSources": "",
+  "finishedAt": "2026-08-01T13:37:56"
+}

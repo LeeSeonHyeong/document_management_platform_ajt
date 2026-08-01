@@ -250,9 +250,21 @@ class SpringVaultFS(LocalVaultFS):
                  json.dumps(tags, ensure_ascii=False), content, date_str,
                  json.dumps(metadata, ensure_ascii=False) if metadata else None),
             )
-        await store_chunks(db, doc_id, self._chunks_for_index(content))
+        chunks = (self._chunks_for_index(content)
+                  if self._indexes_live_locally(kind) else [])
+        # 빈 목록으로도 부른다 — `store_chunks` 가 먼저 지운다. 안 부르면 이 행이 예전에
+        # 색인됐을 때 그 청크가 남는다.
+        await store_chunks(db, doc_id, chunks)
         await db.commit()
         return doc_id
+
+    def _indexes_live_locally(self, kind: str) -> bool:
+        """이 종류의 라이브 본문을 내부 청크 색인에 넣나.
+
+        push 방식에서는 전부 넣는다 — 검색할 곳이 여기뿐이다. 창구 모드는 다르다
+        (`FederatedVaultFS` 가 재정의한다).
+        """
+        return True
 
     @staticmethod
     def _chunks_for_index(content: str) -> list[Chunk]:
