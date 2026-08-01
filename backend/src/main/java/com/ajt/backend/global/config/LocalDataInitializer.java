@@ -97,6 +97,11 @@ public class LocalDataInitializer {
             Member hrAdmin = createAdmin(memberRepository, passwordEncoder, hr, "hr.admin@ajt.com", "정인사", "AJT-2026-0007");
             createEmployee(memberRepository, passwordEncoder, hr, "hr.emp@ajt.com", "강인사", "AJT-2026-0008");
 
+            // 최고관리자(super-admin): role=ADMIN 이지만 어떤 부서의 manager로도 지정하지 않는다.
+            // SuperAdminChecker는 "ADMIN + 어느 부서 manager도 아님"을 최고관리자로 판정하므로,
+            // 아래 계정을 assignManager(...)에 절대 넣지 말 것. (넣으면 부서관리자로 강등되어 최고관리자가 다시 0명이 된다)
+            createAdmin(memberRepository, passwordEncoder, dev, "superadmin@ajt.com", "최고관리자", "AJT-2026-9999");
+
             // 3) 부서장 지정 (각 부서 admin을 자기 부서의 관리자로 — 부서장 표시 테스트용)
             assignManager(departmentRepository, dev, devAdmin);
             assignManager(departmentRepository, planning, planningAdmin);

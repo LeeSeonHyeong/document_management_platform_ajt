@@ -2390,6 +2390,471 @@ const internalFolders = [
   ),
 ];
 
+// ============================================================
+// S15P11B106-101 테스트 안정화 후처리 (2/7~6/7)
+//   계약 컬렉션은 59개 요청 그대로 유지한다(요청을 추가하지 않는다 → validator 통과).
+//   역할별 로그인/CSRF는 "요청 추가" 대신 컬렉션 레벨 pre-request 스크립트(pm.sendRequest)로 처리하고,
+//   CSRF 저장·동적 ID 캡처·상태코드 검증은 각 요청의 test 스크립트로 붙인다.
+//   (JSON을 직접 수정하지 않고 항상 이 생성기에서 재생성한다)
+// ============================================================
+let publicCollectionEvent = [];
+(function stabilizeForLocalTesting() {
+  const PW = "password123!";
+  const emailByRole = {
+    super: "superadmin@ajt.com",
+    deptAdmin: "planning.admin@ajt.com",
+    employee: "employee@ajt.com",
+  };
+
+  const testEvent = (lines) => ({
+    listen: "test",
+    script: { type: "text/javascript", exec: lines },
+  });
+  const addTest = (item, lines) => {
+    item.event = item.event || [];
+    item.event.push(testEvent(lines));
+  };
+  const expectStatus = (item, codes) =>
+    addTest(item, [
+      `pm.test(${JSON.stringify(item.name)} + ' 상태 ' + pm.response.code + ' (기대 ' + ${JSON.stringify(codes.join("/"))} + ')', function () {`,
+      `  pm.expect(${JSON.stringify(codes)}).to.include(pm.response.code);`,
+      "});",
+    ]);
+
+  const csrfSaveLines = [
+    "let token = '';",
+    "try { const sc = (pm.response.headers.get('Set-Cookie')) || ''; const m = String(sc).match(/XSRF-TOKEN=([^;]+)/); if (m) token = m[1]; } catch (e) {}",
+    "if (!token) { try { token = pm.cookies.get('XSRF-TOKEN') || ''; } catch (e) {} }",
+    "if (token) { pm.environment.set('csrfToken', token); pm.collectionVariables.set('csrfToken', token); }",
+    "pm.test('CSRF 토큰 확보', function () { pm.expect(token, 'XSRF-TOKEN').to.be.a('string').and.to.have.length.above(0); });",
+  ];
+
+  const findFolder = (name) => publicFolders.find((f) => f.name === name);
+  const findReq = (folder, name) =>
+    folder ? folder.item.find((i) => i.name === name) : undefined;
+  const cap = (item, lines) => item && addTest(item, lines);
+  const setFormValue = (item, key, value) => {
+    const fd = item?.request?.body?.formdata;
+    const field = fd && fd.find((f) => f.key === key);
+    if (field) field.value = value;
+  };
+  const setFormFile = (item, key, src) => {
+    const fd = item?.request?.body?.formdata;
+    const field = fd && fd.find((f) => f.key === key);
+    if (field) {
+      field.type = "file";
+      field.src = src;
+      field.disabled = false; // 계약 예시에서 선택 항목(disabled)이면 Newman이 건너뛰므로 활성화
+      delete field.value;
+    }
+  };
+  const setPath = (item, path) => {
+    if (item) item.request.url = urlObject("backendBaseUrl", path);
+  };
+  const setUrl = (item, path, query = []) => {
+    if (item) item.request.url = urlObject("backendBaseUrl", path, query);
+  };
+  const setJsonBody = (item, obj) => {
+    if (item) item.request.body = rawJson(obj);
+  };
+  const setJsonField = (item, patch) => {
+    const body = item?.request?.body;
+    if (!body || body.mode !== "raw") return;
+    let obj;
+    try {
+      obj = JSON.parse(body.raw);
+    } catch {
+      return;
+    }
+    Object.assign(obj, patch);
+    item.request.body = rawJson(obj);
+  };
+  const reorder = (folder, orderedNames) => {
+    if (!folder) return;
+    const byName = new Map(folder.item.map((i) => [i.name, i]));
+    const picked = [];
+    for (const n of orderedNames) {
+      if (byName.has(n)) {
+        picked.push(byName.get(n));
+        byName.delete(n);
+      }
+    }
+    folder.item = [...picked, ...byName.values()];
+  };
+
+  const authFolder = findFolder("인증");
+  const userFolder = findFolder("사용자");
+  const deptFolder = findFolder("부서");
+  const catFolder = findFolder("문서 카테고리");
+  const docFolder = findFolder("문서 및 AI 작업");
+  const wikiFolder = findFolder("Wiki 및 질문");
+  const schFolder = findFolder("일정");
+  const inqFolder = findFolder("문의");
+
+  // ---- 2/7: 기존 "CSRF 토큰 발급" 요청 test 스크립트로 토큰 저장 ----
+  addTest(findReq(authFolder, "CSRF 토큰 발급"), csrfSaveLines);
+
+  // ---- 계약 예시 본문이 로컬 시드/구현과 충돌하지 않도록 안전값 오버라이드 ----
+  // 회원가입: 매 실행 새 이메일 → 항상 202 성공(“이미 있어도 성공”이 아니라 실제 성공 확인)
+  setJsonField(findReq(authFolder, "회원가입"), {
+    email: "qa_{{$timestamp}}@ajt.com",
+    password: PW,
+    name: "QA가입테스트",
+    departmentId: "1",
+  });
+  // 질문: 첫 질문은 conversationId 없이 보낸다(있으면 404). 후속 질문에서만 서버가 준 값을 재사용.
+  setJsonBody(findReq(wikiFolder, "Wiki 또는 일정 질문"), {
+    question: "연차는 언제까지 신청해야 하나요?",
+  });
+  // 부서 생성/수정: 시드의 "개발부" 대신 매 실행 고유 이름 → 생성 성공 → departmentId 캡처
+  setJsonField(findReq(deptFolder, "부서 생성"), {
+    name: "QA임시부서_{{$timestamp}}",
+    managerId: null,
+  });
+  setJsonField(findReq(deptFolder, "부서 수정"), {
+    name: "QA임시부서_수정_{{$timestamp}}",
+    managerId: null,
+  });
+  // 문서 카테고리 생성: 존재가 확실한 ALL 스코프 + 고유 이름
+  setJsonField(findReq(catFolder, "문서 카테고리 생성"), {
+    scopeKey: "ALL",
+    name: "QA임시분류_{{$timestamp}}",
+    description: "자동 테스트용 임시 분류",
+  });
+  // 문서 메타수정: 업로드한 ALL 스코프 문서에 맞춰 정합한 값으로
+  setJsonField(findReq(docFolder, "Wiki 원본문서 메타데이터 수정"), {
+    documentCategoryId: "{{allCategoryId}}",
+    visibilityType: "all",
+    departmentIds: [],
+  });
+  // 일정 수정: 사원이 자기 개인 일정을 유효하게 수정 + 캡처한 updatedAt으로 409 회피
+  setJsonField(findReq(schFolder, "일정 수정"), {
+    title: "수정된 개인 일정",
+    content: "수정된 내용",
+    targetText: "본인",
+    location: "자택",
+    visibilityType: "personal",
+    departmentIds: [],
+    startAt: "2026-08-03T02:00:00Z",
+    endAt: "2026-08-03T04:00:00Z",
+    expectedUpdatedAt: "{{scheduleUpdatedAt}}",
+  });
+
+  // ---- 4/7: 동적 ID 캡처 + 고정 ID 경로를 동적 변수로 ----
+  cap(findReq(userFolder, "사용자 목록 조회"), [
+    "const j = pm.response.json();",
+    "const emp = (j.items || []).find(u => u.role === 'employee' && u.signupStatus === 'approved');",
+    "if (emp) pm.environment.set('userId', String(emp.userId));",
+  ]);
+  cap(findReq(userFolder, "가입 신청 목록 조회"), [
+    "const j = pm.response.json();",
+    "const items = j.items || [];",
+    "if (items[0]) pm.environment.set('signupApproveId', String(items[0].userId));",
+    "if (items[1]) pm.environment.set('signupRejectId', String(items[1].userId));",
+  ]);
+  setPath(findReq(userFolder, "가입 신청 승인"), "/api/v1/signup-requests/:signupApproveId/approve");
+  setPath(findReq(userFolder, "가입 신청 거부"), "/api/v1/signup-requests/:signupRejectId/reject");
+
+  cap(findReq(deptFolder, "부서 생성"), [
+    "const j = pm.response.json();",
+    "if (j && (j.departmentId || j.id)) pm.environment.set('departmentId', String(j.departmentId || j.id));",
+  ]);
+
+  // 계약 예시의 scopeKey=D1-D2는 시드에 없는 스코프라 404가 난다. 존재가 확실한 ALL로 조회해
+  // 실제 카테고리를 캡처(문서 업로드가 all 스코프이므로 ALL 카테고리가 필요).
+  setUrl(findReq(catFolder, "문서 카테고리 목록 조회"), "/api/v1/document-categories", [
+    { key: "scopeKey", value: "ALL" },
+  ]);
+  setUrl(findReq(wikiFolder, "Wiki 카테고리 목록 조회"), "/api/v1/wiki-categories", [
+    { key: "scopeKey", value: "ALL" },
+  ]);
+  cap(findReq(catFolder, "문서 카테고리 목록 조회"), [
+    "const j = pm.response.json();",
+    "const c = (j.items || [])[0];",
+    "if (c) pm.environment.set('allCategoryId', String(c.categoryId || c.id));",
+  ]);
+  cap(findReq(catFolder, "문서 카테고리 생성"), [
+    "const j = pm.response.json();",
+    "if (j && (j.categoryId || j.id)) pm.environment.set('categoryId', String(j.categoryId || j.id));",
+  ]);
+
+  const docUpload = findReq(docFolder, "Wiki 원본문서 업로드");
+  setFormValue(docUpload, "documentCategoryId", "{{allCategoryId}}");
+  setFormValue(docUpload, "visibilityType", "all");
+  setFormValue(docUpload, "departmentIds", "");
+  setFormFile(docUpload, "files", "testfiles/sample-wiki.md");
+  cap(docUpload, [
+    "const j = pm.response.json();",
+    "if (j && j.jobId) pm.environment.set('jobId', String(j.jobId));",
+    "const docId = j && ((j.documentIds && j.documentIds[0]) || j.documentId || j.id);",
+    "if (docId) pm.environment.set('documentId', String(docId));",
+  ]);
+  setFormFile(findReq(docFolder, "Wiki 원본문서 파일 교체"), "file", "testfiles/sample-wiki.md");
+
+  cap(findReq(wikiFolder, "Wiki 목록 조회"), [
+    "const j = pm.response.json();",
+    "const w = (j.items || [])[0];",
+    "if (w) pm.environment.set('wikiId', String(w.wikiId || w.id));",
+  ]);
+
+  const schSource = findReq(schFolder, "일정 원본문서 업로드");
+  setFormValue(schSource, "departmentIds", "1");
+  setFormFile(schSource, "file", "testfiles/sample-schedule.csv");
+  cap(findReq(schFolder, "수동 또는 개인 일정 생성"), [
+    "const j = pm.response.json();",
+    "if (j && (j.scheduleId || j.id)) pm.environment.set('scheduleId', String(j.scheduleId || j.id));",
+    "if (j && j.updatedAt) pm.environment.set('scheduleUpdatedAt', String(j.updatedAt));",
+  ]);
+  cap(findReq(schFolder, "일정 목록 조회"), [
+    "const j = pm.response.json();",
+    "const d = (j.items || []).find(s => s.status === 'draft');",
+    "if (d) pm.environment.set('draftScheduleId', String(d.scheduleId || d.id));",
+  ]);
+  // 생성 응답엔 updatedAt이 없으므로 상세 조회에서 캡처 → 일정 수정의 낙관적 락(expectedUpdatedAt)에 사용
+  cap(findReq(schFolder, "일정 상세 조회"), [
+    "const j = pm.response.json();",
+    "if (j && j.updatedAt) pm.environment.set('scheduleUpdatedAt', String(j.updatedAt));",
+  ]);
+  setPath(findReq(schFolder, "일정 draft 승인"), "/api/v1/schedules/:draftScheduleId/approve");
+  // 원본문서 조회는 관리자 API + AI 추출 일정(draft) 대상 → 최고관리자 세션·draft ID로 조회
+  setPath(findReq(schFolder, "일정 원본문서 조회"), "/api/v1/schedules/:draftScheduleId/source-file");
+
+  cap(findReq(inqFolder, "문의 담당자 후보 조회"), [
+    "const j = pm.response.json();",
+    "const items = j.items || [];",
+    "const a = items.find(x => x.name === '김기획') || items[0];",
+    "if (a) pm.environment.set('assigneeId', String(a.assigneeId || a.id));",
+  ]);
+  const inqCreate = findReq(inqFolder, "문의 등록");
+  setFormValue(inqCreate, "assigneeId", "{{assigneeId}}");
+  setFormFile(inqCreate, "attachments", "testfiles/sample-image.png");
+  cap(inqCreate, [
+    "const j = pm.response.json();",
+    "if (j && (j.inquiryId || j.id)) pm.environment.set('inquiryId', String(j.inquiryId || j.id));",
+  ]);
+  cap(findReq(inqFolder, "문의 상세 조회"), [
+    "const j = pm.response.json();",
+    "const at = (j.attachments || [])[0];",
+    "if (at) pm.environment.set('attachmentId', String(at.attachmentId || at.id));",
+  ]);
+
+  // ---- 6/7: 폴더 내부 실행 순서(파괴적 요청 뒤로) + 로그아웃은 컬렉션 맨 끝 ----
+  reorder(authFolder, [
+    "CSRF 토큰 발급",
+    "회원가입용 부서 목록 조회",
+    "회원가입",
+    "로그인",
+    "비밀번호 재설정 메일 요청",
+    "비밀번호 재설정 인증번호 확인",
+    "비밀번호 재설정",
+    "로그아웃", // 인증 폴더 맨 끝
+  ]);
+  reorder(docFolder, [
+    "Wiki 원본문서 업로드",
+    "Wiki 원본문서 목록 조회",
+    "Wiki 원본문서 상세 조회",
+    "Wiki 원본문서 메타데이터 수정",
+    "Wiki 원본문서 다운로드",
+    "Wiki 원본문서 파일 교체",
+    "AI 작업 상태 조회",
+    "AI 작업 시작",
+    "AI 작업 중단",
+    "실패 문서 재처리",
+    "Wiki 원본문서 삭제",
+  ]);
+  reorder(schFolder, [
+    "일정 원본문서 업로드",
+    "일정 목록 조회",
+    "수동 또는 개인 일정 생성",
+    "일정 상세 조회",
+    "일정 수정",
+    "일정 원본문서 조회",
+    "일정 draft 승인",
+    "일정 삭제 또는 draft 거부",
+  ]);
+  reorder(inqFolder, [
+    "문의 담당자 후보 조회",
+    "문의 등록",
+    "문의 목록 조회",
+    "문의 상세 조회",
+    "문의 첨부 이미지 다운로드",
+    "문의 답변 작성 또는 수정",
+    "문의 답변 삭제",
+    "문의 삭제",
+  ]);
+  // 인증(로그아웃 포함) 폴더를 컬렉션 맨 끝으로 → 로그아웃이 전체에서 마지막에 실행
+  const authIdx = publicFolders.findIndex((f) => f.name === "인증");
+  if (authIdx >= 0) publicFolders.push(publicFolders.splice(authIdx, 1)[0]);
+
+  // ---- 3/7: 요청을 추가하지 않고, 컬렉션 레벨 pre-request로 역할 로그인 + CSRF ----
+  //   요청 이름 → 필요한 역할. 매핑된 요청 실행 전에 해당 역할로 로그인하고 CSRF 토큰을 확보한다.
+  //   같은 역할이 이어지면 재로그인하지 않는다(__sessionRole 가드).
+  const roleByName = {
+    // 인증(공개 요청은 매핑하지 않음). 로그아웃만 세션 필요.
+    "로그아웃": "employee",
+    // 사용자·가입승인: 최고관리자 전용
+    "내 정보 조회": "super",
+    "내 비밀번호 변경": "super",
+    "사용자 목록 조회": "super",
+    "사용자 단건 조회": "super",
+    "사용자 정보 및 상태 수정": "super",
+    "가입 신청 목록 조회": "super",
+    "가입 신청 승인": "super",
+    "가입 신청 거부": "super",
+    // 부서·카테고리·문서: 관리 작업(최고관리자로 안정 실행)
+    "부서 목록 조회": "super",
+    "부서 생성": "super",
+    "부서 수정": "super",
+    "부서 삭제": "super",
+    "문서 카테고리 목록 조회": "super",
+    "문서 카테고리 생성": "super",
+    "문서 카테고리 수정": "super",
+    "문서 카테고리 삭제": "super",
+    "Wiki 원본문서 업로드": "super",
+    "Wiki 원본문서 목록 조회": "super",
+    "Wiki 원본문서 상세 조회": "super",
+    "Wiki 원본문서 메타데이터 수정": "super",
+    "Wiki 원본문서 다운로드": "super",
+    "Wiki 원본문서 파일 교체": "super",
+    "AI 작업 상태 조회": "super",
+    "AI 작업 시작": "super",
+    "AI 작업 중단": "super",
+    "실패 문서 재처리": "super",
+    "Wiki 원본문서 삭제": "super",
+    // Wiki 조회/관리자 대화: 관리자, 질문/이력: 사원
+    "Wiki 공간 목록 조회": "super",
+    "Wiki 카테고리 목록 조회": "super",
+    "Wiki 목록 조회": "super",
+    "Wiki 상세 조회": "super",
+    "Wiki 관리자 대화 조회": "super",
+    "Wiki 수정 대화 전송": "super",
+    "Wiki 또는 일정 질문": "employee",
+    "내 질문 이력 조회": "employee",
+    // 일정: 원본 업로드/승인은 관리자, 개인 일정 CRUD는 사원
+    "일정 원본문서 업로드": "super",
+    "일정 목록 조회": "employee",
+    "수동 또는 개인 일정 생성": "employee",
+    "일정 상세 조회": "employee",
+    "일정 수정": "employee",
+    "일정 원본문서 조회": "super",
+    "일정 draft 승인": "super",
+    "일정 삭제 또는 draft 거부": "employee",
+    // 문의: 등록·조회는 사원, 답변은 부서관리자
+    "문의 담당자 후보 조회": "employee",
+    "문의 등록": "employee",
+    "문의 목록 조회": "employee",
+    "문의 상세 조회": "employee",
+    "문의 첨부 이미지 다운로드": "employee",
+    "문의 답변 작성 또는 수정": "deptAdmin",
+    "문의 답변 삭제": "deptAdmin",
+    "문의 삭제": "employee",
+  };
+
+  const preLines = [
+    "const emailByRole = " + JSON.stringify(emailByRole) + ";",
+    "const roleByName = " + JSON.stringify(roleByName) + ";",
+    "const role = roleByName[pm.info.requestName];",
+    "if (role) {",
+    "  const base = pm.environment.get('backendBaseUrl') || pm.collectionVariables.get('backendBaseUrl') || 'http://localhost:8080';",
+    "  const saveCsrf = function () {",
+    "    pm.sendRequest({ url: base + '/api/v1/auth/csrf', method: 'GET' }, function (e, res) {",
+    "      let token = '';",
+    "      try { const sc = (res && res.headers && res.headers.get('Set-Cookie')) || ''; const m = String(sc).match(/XSRF-TOKEN=([^;]+)/); if (m) token = m[1]; } catch (x) {}",
+    "      if (!token) { try { token = pm.cookies.get('XSRF-TOKEN') || ''; } catch (x) {} }",
+    "      if (token) { pm.environment.set('csrfToken', token); pm.collectionVariables.set('csrfToken', token); }",
+    "    });",
+    "  };",
+    "  if (pm.environment.get('__sessionRole') !== role) {",
+    "    pm.sendRequest({ url: base + '/api/v1/auth/login', method: 'POST', header: { 'Content-Type': 'application/json' }, body: { mode: 'raw', raw: JSON.stringify({ email: emailByRole[role], password: '" + PW + "' }) } }, function (err, res) {",
+    "      pm.environment.set('__sessionRole', role);",
+    "      saveCsrf();",
+    "    });",
+    "  } else {",
+    "    saveCsrf();",
+    "  }",
+    "}",
+  ];
+  publicCollectionEvent = [
+    { listen: "prerequest", script: { type: "text/javascript", exec: preLines } },
+  ];
+
+  // ---- 기대 상태코드 검증 (실패를 숨기지 않도록 정밀 지정). AI 미가동은 503만 허용 ----
+  const EXPECT = {
+    // 인증
+    "CSRF 토큰 발급": [200],
+    "회원가입용 부서 목록 조회": [200],
+    "회원가입": [202], // 동적 이메일 → 항상 신규 성공
+    "로그인": [200],
+    "비밀번호 재설정 메일 요청": [200], // 7/7: SMTP 미설정에도 200
+    "비밀번호 재설정 인증번호 확인": [400],
+    "비밀번호 재설정": [400],
+    "로그아웃": [200, 204],
+    // 사용자
+    "내 정보 조회": [200],
+    "내 비밀번호 변경": [400], // 현재 비번 불일치 검증
+    "사용자 목록 조회": [200],
+    "사용자 단건 조회": [200],
+    "사용자 정보 및 상태 수정": [200],
+    "가입 신청 목록 조회": [200],
+    "가입 신청 승인": [200, 409],
+    "가입 신청 거부": [200, 409],
+    // 부서
+    "부서 목록 조회": [200],
+    "부서 생성": [200, 201],
+    "부서 수정": [200],
+    "부서 삭제": [200, 204],
+    // 문서 카테고리
+    "문서 카테고리 목록 조회": [200],
+    "문서 카테고리 생성": [200, 201],
+    "문서 카테고리 수정": [200],
+    "문서 카테고리 삭제": [200, 204],
+    // 문서 및 AI 작업 (업로드/시작 등은 비동기 202 접수 — 실제 변환 실패는 job 상태로 확인)
+    "Wiki 원본문서 업로드": [201, 202],
+    "Wiki 원본문서 목록 조회": [200],
+    "Wiki 원본문서 상세 조회": [200],
+    "Wiki 원본문서 메타데이터 수정": [200, 202],
+    "Wiki 원본문서 다운로드": [200],
+    "Wiki 원본문서 파일 교체": [200, 202],
+    "AI 작업 상태 조회": [200],
+    "AI 작업 시작": [202, 409],
+    "AI 작업 중단": [200, 202, 409],
+    "실패 문서 재처리": [200, 202, 409],
+    "Wiki 원본문서 삭제": [200, 202, 204],
+    // Wiki 및 질문 (AI 미가동 시 503만 정상 — 500이면 실패로 노출: 이슈 B/C)
+    "Wiki 공간 목록 조회": [200],
+    "Wiki 카테고리 목록 조회": [200],
+    "Wiki 목록 조회": [200],
+    "Wiki 상세 조회": [200],
+    "Wiki 관리자 대화 조회": [200],
+    "Wiki 수정 대화 전송": [200, 201, 202, 503],
+    "Wiki 또는 일정 질문": [200, 503],
+    "내 질문 이력 조회": [200],
+    // 일정 (원본 업로드는 AI 추출 동기 — 미가동 시 503만 허용)
+    "일정 원본문서 업로드": [201, 503],
+    "일정 목록 조회": [200],
+    "수동 또는 개인 일정 생성": [200, 201],
+    "일정 상세 조회": [200],
+    "일정 수정": [200],
+    "일정 원본문서 조회": [200, 404], // 수동 생성 일정엔 원본 없음(정상 404)
+    "일정 draft 승인": [200, 409],
+    "일정 삭제 또는 draft 거부": [200, 204],
+    // 문의
+    "문의 담당자 후보 조회": [200],
+    "문의 등록": [200, 201],
+    "문의 목록 조회": [200],
+    "문의 상세 조회": [200],
+    "문의 첨부 이미지 다운로드": [200],
+    "문의 답변 작성 또는 수정": [200, 201],
+    "문의 답변 삭제": [200, 204],
+    "문의 삭제": [200, 204],
+  };
+  for (const f of publicFolders) {
+    for (const it of f.item) {
+      if (it.request && EXPECT[it.name]) expectStatus(it, EXPECT[it.name]);
+    }
+  }
+})();
+
 const publicCollection = {
   info: {
     name: "AJT Backend Public API",
@@ -2398,6 +2863,7 @@ const publicCollection = {
     schema: collectionSchema,
   },
   auth: cookieAuth,
+  event: publicCollectionEvent,
   variable: [
     { key: "backendBaseUrl", value: "http://localhost:8080", type: "string" },
     { key: "contractVersion", value: contractVersion, type: "string" },
@@ -2407,10 +2873,16 @@ const publicCollection = {
     { key: "documentId", value: "1", type: "string" },
     { key: "jobId", value: "1", type: "string" },
     { key: "wikiId", value: "1", type: "string" },
-    { key: "conversationId", value: "chat-123", type: "string" },
     { key: "scheduleId", value: "1", type: "string" },
     { key: "inquiryId", value: "1", type: "string" },
     { key: "attachmentId", value: "1", type: "string" },
+    // S15P11B106-101: 실행 중 응답에서 채워지는 동적 ID (고정 ID 제거)
+    { key: "csrfToken", value: "", type: "string" },
+    { key: "allCategoryId", value: "1", type: "string" },
+    { key: "signupApproveId", value: "9", type: "string" },
+    { key: "signupRejectId", value: "10", type: "string" },
+    { key: "draftScheduleId", value: "4", type: "string" },
+    { key: "assigneeId", value: "3", type: "string" },
   ],
   item: publicFolders,
 };
@@ -2455,6 +2927,21 @@ const environment = {
       type: "secret",
       enabled: true,
     },
+    // S15P11B106-101: 실행 중 응답에서 채워지는 동적 ID
+    { key: "userId", value: "1", type: "default", enabled: true },
+    { key: "departmentId", value: "1", type: "default", enabled: true },
+    { key: "categoryId", value: "1", type: "default", enabled: true },
+    { key: "allCategoryId", value: "1", type: "default", enabled: true },
+    { key: "documentId", value: "1", type: "default", enabled: true },
+    { key: "jobId", value: "1", type: "default", enabled: true },
+    { key: "wikiId", value: "1", type: "default", enabled: true },
+    { key: "scheduleId", value: "1", type: "default", enabled: true },
+    { key: "draftScheduleId", value: "4", type: "default", enabled: true },
+    { key: "inquiryId", value: "1", type: "default", enabled: true },
+    { key: "attachmentId", value: "1", type: "default", enabled: true },
+    { key: "assigneeId", value: "3", type: "default", enabled: true },
+    { key: "signupApproveId", value: "9", type: "default", enabled: true },
+    { key: "signupRejectId", value: "10", type: "default", enabled: true },
     {
       // Wiki 조회 창구의 요청 단위 열람 허가. Spring Boot가 변환·수정 요청 시작에
       // 발급하므로 사람이 채우는 값이 아니다. Postman 에서 창구를 직접 호출해 볼 때만

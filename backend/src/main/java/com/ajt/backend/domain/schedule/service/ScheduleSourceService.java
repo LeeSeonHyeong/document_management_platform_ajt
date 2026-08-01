@@ -7,6 +7,7 @@ import com.ajt.backend.domain.schedule.model.ScheduleVisibility;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.domain.schedule.storage.ScheduleSourceFileStorage;
 import com.ajt.backend.global.ai.client.AiClient;
+import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.ScheduleExtractionRequest;
 import com.ajt.backend.global.ai.client.ScheduleExtractionResponse;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
@@ -98,15 +99,19 @@ public class ScheduleSourceService {
     }
 
     private String parseSource(String sourceGroupKey, String originalPath, MultipartFile file) {
-        SourceParseResponse response = aiClient.parseSource(new SourceParseRequest(
-                UUID.randomUUID().toString(),
-                SourceType.SCHEDULE,
-                sourceGroupKey,
-                sourceFileStorage.load(originalPath),
-                file.getOriginalFilename(),
-                file.getContentType()
-        ));
-        return response.parsedMarkdown();
+        try {
+            SourceParseResponse response = aiClient.parseSource(new SourceParseRequest(
+                    UUID.randomUUID().toString(),
+                    SourceType.SCHEDULE,
+                    sourceGroupKey,
+                    sourceFileStorage.load(originalPath),
+                    file.getOriginalFilename(),
+                    file.getContentType()
+            ));
+            return response.parsedMarkdown();
+        } catch (AiClientException exception) {
+            throw mapAiFailure(exception);
+        }
     }
 
     private List<ScheduleExtractionResponse.ExtractedSchedule> extractSchedules(
@@ -115,13 +120,31 @@ public class ScheduleSourceService {
             ScheduleVisibility visibility,
             List<Long> departmentIds
     ) {
-        ScheduleExtractionResponse response = aiClient.extractSchedules(new ScheduleExtractionRequest(
-                sourceGroupKey,
-                parsedMarkdown,
-                visibility.apiValue(),
-                departmentIds.stream().map(String::valueOf).toList()
-        ));
-        return response.schedules();
+        try {
+            ScheduleExtractionResponse response = aiClient.extractSchedules(new ScheduleExtractionRequest(
+                    sourceGroupKey,
+                    parsedMarkdown,
+                    visibility.apiValue(),
+                    departmentIds.stream().map(String::valueOf).toList()
+            ));
+            return response.schedules();
+        } catch (AiClientException exception) {
+            throw mapAiFailure(exception);
+        }
+    }
+
+    /**
+     * AI 파싱·일정 추출 호출 실패를 사용자 응답으로 매핑합니다(S15P11B106-101).
+     *
+     * <p>AI 서버 미가동/연결 실패·타임아웃은 일시적 이용 불가이므로 503(AI_SERVER_UNAVAILABLE)으로
+     * 내린다. AI가 응답했으나 처리에 실패한 경우는 원래 예외를 그대로 두어 기존 500(서버 오류)으로
+     * 수렴시킨다 — "연결 불가"와 "AI 처리 실패"를 구분한다.
+     */
+    private RuntimeException mapAiFailure(AiClientException exception) {
+        if (exception.failureType().isServerUnavailable()) {
+            return new BusinessException(ErrorCode.AI_SERVER_UNAVAILABLE);
+        }
+        return exception;
     }
 
     /**
