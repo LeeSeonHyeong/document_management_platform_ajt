@@ -20,7 +20,6 @@ public class RestClientAiClient implements AiClient {
 
     private static final String SOURCE_PARSE_PATH = "/internal/v1/source-parses";
     private static final String SCHEDULE_EXTRACTION_PATH = "/internal/v1/schedule-extractions";
-    private static final String WIKI_CONTEXT_SELECTION_PATH = "/internal/v1/wiki-context-selections";
     private static final String WIKI_TRANSFORMATION_PATH = "/internal/v1/wiki-transformations";
     private static final String WIKI_EDIT_PATH = "/internal/v1/wiki-edits";
     private static final String ANSWER_PATH = "/internal/v1/answers";
@@ -81,23 +80,6 @@ public class RestClientAiClient implements AiClient {
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
                     .body(ScheduleExtractionResponse.class);
-
-            return validateResponse(response);
-        } catch (ResourceAccessException exception) {
-            throw transportFailure(exception);
-        }
-    }
-
-    @Override
-    public WikiContextSelectionResponse selectWikiContext(WikiContextSelectionRequest request) {
-        try {
-            WikiContextSelectionResponse response = restClient.post()
-                    .uri(WIKI_CONTEXT_SELECTION_PATH)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .retrieve()
-                    .onStatus(HttpStatusCode::isError, this::throwMappedHttpError)
-                    .body(WikiContextSelectionResponse.class);
 
             return validateResponse(response);
         } catch (ResourceAccessException exception) {
@@ -266,24 +248,6 @@ public class RestClientAiClient implements AiClient {
                 List.<FieldErrorResponse>of(),
                 null
         );
-    }
-
-    private WikiContextSelectionResponse validateResponse(WikiContextSelectionResponse response) {
-        if (response == null
-                || response.wikiIds() == null
-                || response.wikiIds().size() > 5
-                || response.wikiIds().stream().anyMatch(this::isBlank)
-                || response.reason() == null) {
-            throw new AiClientException(
-                    AiClientFailureType.INVALID_RESPONSE,
-                    200,
-                    null,
-                    null,
-                    List.<FieldErrorResponse>of(),
-                    null
-            );
-        }
-        return new WikiContextSelectionResponse(List.copyOf(response.wikiIds()), response.reason());
     }
 
     private WikiTransformationResponse validateResponse(WikiTransformationResponse response) {

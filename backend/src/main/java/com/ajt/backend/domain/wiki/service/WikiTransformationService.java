@@ -1,50 +1,34 @@
 package com.ajt.backend.domain.wiki.service;
 
-import com.ajt.backend.domain.wiki.model.Wiki;
-import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
-import com.ajt.backend.domain.wiki.repository.WikiRepository;
-import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.ai.client.WikiTransformationRequest;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.util.ArrayList;
-import java.util.List;
 import java.time.Duration;
 import org.springframework.stereotype.Service;
 
 /**
  * FastAPI Wiki 변환 API(POST /internal/v1/wiki-transformations) 호출과 결과 반영을 담당합니다.
  *
- * <p>문맥 선택 API가 고른 Wiki ID는 Spring Boot가 같은 공간에 실제로 있는지 다시 확인한 뒤 본문까지 읽어 전달합니다.
- * 다른 scopeKey의 Wiki는 계약상 전달하지 않습니다.
+ * <p>수정(S15P11B106-174): <b>문맥을 밀어 보내지 않는다.</b> 현재 목차·카테고리와 선택된 Wiki
+ * 본문을 싣던 것을 걷어냈다 — 에이전트가 Wiki 조회 API로 직접 읽는다. 이 서비스가 보내는 것은
+ * 작업 번호·파싱 본문과 <b>조회 권한</b>(허가값·범위 버전)뿐이다.
  */
 @Service
 public class WikiTransformationService {
 
     private final AiClient aiClient;
-    private final WikiRepository wikiRepository;
-    private final WikiCategoryRepository wikiCategoryRepository;
-    private final WikiFileStorage wikiFileStorage;
     private final WikiScopeRepository wikiScopeRepository;
     private final WikiCapabilityService wikiCapabilityService;
 
     public WikiTransformationService(
             AiClient aiClient,
-            WikiRepository wikiRepository,
-            WikiCategoryRepository wikiCategoryRepository,
-            WikiFileStorage wikiFileStorage,
             WikiScopeRepository wikiScopeRepository,
             WikiCapabilityService wikiCapabilityService
     ) {
         this.aiClient = aiClient;
-        this.wikiRepository = wikiRepository;
-        this.wikiCategoryRepository = wikiCategoryRepository;
-        this.wikiFileStorage = wikiFileStorage;
         this.wikiScopeRepository = wikiScopeRepository;
         this.wikiCapabilityService = wikiCapabilityService;
     }
@@ -59,8 +43,7 @@ public class WikiTransformationService {
             long jobId,
             long documentId,
             String scopeKey,
-            String parsedMarkdown,
-            List<Long> selectedWikiIds
+            String parsedMarkdown
     ) {
         return requestForDocumentChange(
                 jobId,
@@ -68,8 +51,7 @@ public class WikiTransformationService {
                 scopeKey,
                 WikiDocumentChangeType.DOCUMENT_ADDED,
                 parsedMarkdown,
-                null,
-                selectedWikiIds
+                null
         );
     }
 
@@ -89,10 +71,8 @@ public class WikiTransformationService {
             String scopeKey,
             WikiDocumentChangeType changeType,
             String parsedMarkdown,
-            String removedParsedMarkdown,
-            List<Long> selectedWikiIds
+            String removedParsedMarkdown
     ) {
-        String currentIndex = currentIndex(scopeKey);
         long scopeVersion = wikiScopeRepository.findById(scopeKey).orElseThrow().scopeVersion();
         String capability = wikiCapabilityService.issue(scopeKey, scopeVersion, Duration.ofMinutes(30));
         try {
@@ -103,9 +83,6 @@ public class WikiTransformationService {
                     changeType,
                     parsedMarkdown,
                     removedParsedMarkdown,
-                    currentIndex,
-                    currentCategories(scopeKey),
-                    selectedWikis(scopeKey, selectedWikiIds),
                     capability,
                     scopeVersion
             ));
@@ -114,67 +91,4 @@ public class WikiTransformationService {
         }
     }
 
-    /**
-     * 공간의 현재 목차입니다. 목차가 아직 없는 새 공간이면 빈 목차를 돌려줍니다.
-     */
-    public String currentIndex(String scopeKey) {
-        try {
-            return wikiFileStorage.readIndex(scopeKey);
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
-        }
-    }
-
-    private List<WikiTransformationRequest.CurrentCategory> currentCategories(String scopeKey) {
-        return wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(scopeKey)
-                .stream()
-                .map(category -> new WikiTransformationRequest.CurrentCategory(
-                        String.valueOf(category.id()),
-                        category.name()
-                ))
-                .toList();
-    }
-
-    private List<WikiTransformationRequest.SelectedWiki> selectedWikis(
-            String scopeKey,
-            List<Long> selectedWikiIds
-    ) {
-        if (selectedWikiIds.isEmpty()) {
-            return List.of();
-        }
-        List<WikiTransformationRequest.SelectedWiki> selectedWikis = new ArrayList<>();
-        for (Wiki wiki : wikiRepository.findAllByScopeKeyAndIdIn(scopeKey, selectedWikiIds)) {
-            String contentMarkdown = readWikiMarkdown(wiki.wikiPath());
-            if (contentMarkdown.isBlank()) {
-                // 본문 파일이 비었으면 계약의 필수 필드를 채울 수 없으므로 문맥에서 제외한다.
-                continue;
-            }
-            selectedWikis.add(new WikiTransformationRequest.SelectedWiki(
-                    String.valueOf(wiki.id()),
-                    String.valueOf(wiki.wikiCategoryId()),
-                    wiki.title(),
-                    wiki.summary() == null ? wiki.title() : wiki.summary(),
-                    wiki.wikiPath(),
-                    contentMarkdown,
-                    toStrings(wiki.documentRefs()),
-                    toStrings(wiki.wikiRefs())
-            ));
-        }
-        return selectedWikis;
-    }
-
-    private String readWikiMarkdown(String wikiPath) {
-        if (wikiPath == null || wikiPath.isBlank()) {
-            return "";
-        }
-        try {
-            return wikiFileStorage.readWikiMarkdown(wikiPath);
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
-        }
-    }
-
-    private static List<String> toStrings(List<Long> ids) {
-        return ids.stream().map(String::valueOf).toList();
-    }
 }
