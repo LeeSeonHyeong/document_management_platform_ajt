@@ -286,11 +286,11 @@ expect(
   "가입 요청 목록 API가 없음",
 );
 expect(
-  findRequest(publicRequests, "POST", "/api/v1/signup-requests/:userId/approve"),
+  findRequest(publicRequests, "POST", "/api/v1/signup-requests/:signupApproveId/approve"),
   "가입 승인 API가 없음",
 );
 expect(
-  findRequest(publicRequests, "POST", "/api/v1/signup-requests/:userId/reject"),
+  findRequest(publicRequests, "POST", "/api/v1/signup-requests/:signupRejectId/reject"),
   "가입 거부 API가 없음",
 );
 expect(
@@ -306,7 +306,7 @@ expect(
   "문의 담당자 후보 API가 없음",
 );
 expect(
-  findRequest(publicRequests, "GET", "/api/v1/schedules/:scheduleId/source-file"),
+  findRequest(publicRequests, "GET", "/api/v1/schedules/:draftScheduleId/source-file"),
   "관리자 일정 원본문서 API가 없음",
 );
 expect(
@@ -367,7 +367,7 @@ const p0PublicEndpoints = [
   ["GET", "/api/v1/signup-departments"],
   ["GET", "/api/v1/me"],
   ["GET", "/api/v1/users"],
-  ["POST", "/api/v1/signup-requests/:userId/approve"],
+  ["POST", "/api/v1/signup-requests/:signupApproveId/approve"],
   ["GET", "/api/v1/departments"],
   ["POST", "/api/v1/documents"],
   ["GET", "/api/v1/ai-jobs/:jobId"],
@@ -510,7 +510,9 @@ expect(
   "Wiki 변환 성공 Saved Example에 evidence가 없음",
 );
 
-expect(publicQuestionBody.conversationId, "질문 API에 conversationId가 없음");
+// conversationId는 "필드 존재"로 검사한다. 첫 질문은 null로 보내야 하므로(값이 있으면 404)
+// 값 truthiness가 아니라 키 존재 여부로 판정한다.
+expect("conversationId" in publicQuestionBody, "질문 API에 conversationId가 없음");
 
 const passwordResetRequest = findRequest(
   publicRequests,

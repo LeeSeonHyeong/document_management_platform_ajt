@@ -2502,8 +2502,10 @@ let publicCollectionEvent = [];
     name: "QA가입테스트",
     departmentId: "1",
   });
-  // 질문: 첫 질문은 conversationId 없이 보낸다(있으면 404). 후속 질문에서만 서버가 준 값을 재사용.
+  // 질문: 첫 질문은 conversationId를 null로 보낸다(가짜 문자열이면 404). null은 서버가 새 대화로
+  // 처리하므로 첫 질문에서 안전하고, 계약 검사도 필드 존재로 통과한다. 후속 질문에서만 서버가 준 값 재사용.
   setJsonBody(findReq(wikiFolder, "Wiki 또는 일정 질문"), {
+    conversationId: null,
     question: "연차는 언제까지 신청해야 하나요?",
   });
   // 부서 생성/수정: 시드의 "개발부" 대신 매 실행 고유 이름 → 생성 성공 → departmentId 캡처
