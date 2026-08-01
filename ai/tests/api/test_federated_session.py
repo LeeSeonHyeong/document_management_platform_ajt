@@ -60,12 +60,10 @@ def make_handler(*, version=47, content=200, list_version=None):
 
 
 class InProcessRuntime:
-    """MCP 서버를 띄우지 않는 런타임 자리. **표시를 명시적으로 끈다** —
-    `agent_runtime.spawns_mcp_server` 의 기본이 `True`(띄운다) 라서, 끄지 않으면
-    창구 요청이 거절된다."""
+    """도구를 이 프로세스에서 도는 런타임 자리. 창구 모드가 성립하는 조건은 `arun` 이
+    있는 것이다 (`agent_runtime.runs_tools_in_process`)."""
 
     name = "in-process"
-    spawns_mcp_server = False
 
     async def arun(self, instruction, *, fs, scope_id, **_):
         return RunResult(text="아무것도 하지 않았다")
@@ -285,8 +283,7 @@ async def test_gateway_is_refused_for_subprocess_runtimes():
     받으면 제목만 있는 빈 페이지로 라이브를 덮는다.
     """
     class SpawningRuntime:
-        name = "spawning"
-        spawns_mcp_server = True
+        name = "spawning"          # `arun` 이 없다 — 도구가 하위 프로세스에 있다
 
     session = federated_session(SpawningRuntime())
 
@@ -303,7 +300,6 @@ async def test_push_path_is_untouched_for_subprocess_runtimes():
 
     class SpawningRuntime:
         name = "spawning"
-        spawns_mcp_server = True
 
     async with WikiSession(scope_key=SCOPE, job_id="job-1", pages=[],
                            runtime=SpawningRuntime()) as session:
@@ -311,44 +307,31 @@ async def test_push_path_is_untouched_for_subprocess_runtimes():
     await LocalVaultFS.close()
 
 
-async def test_a_runtime_without_the_marker_is_refused():
-    """**표시를 잊은 런타임도 거절한다.** 기본값이 fail-open 이면 앞으로 추가되는 런타임이
-    상수를 안 붙인 채 창구 요청을 통과시키고, 그 결과는 데이터 손실 방향이다."""
-    class UnmarkedRuntime:
-        name = "unmarked"
+def test_the_judgement_defaults_to_refusing():
+    """판정 함수의 기본을 고정한다 — 뒤집히면 가드가 조용히 통과한다.
 
-        async def arun(self, instruction, **_):
-            return RunResult(text="")
+    불리언 마커가 아니라 `arun` 유무로 보는 이유: 마커는 붙이는 것을 잊을 수 있는데
+    `arun` 은 `fs`(살아 있는 객체)를 받는 시그니처라 하위 프로세스 런타임이 애초에
+    구현할 수 없다 (S15P11B106-152).
+    """
+    from agent_runtime import runs_tools_in_process
 
-    assert not hasattr(UnmarkedRuntime, "spawns_mcp_server")
-    session = federated_session(UnmarkedRuntime())
-
-    with pytest.raises(InternalError) as caught:
-        await session.__aenter__()
-
-    assert caught.value.failure_stage is FailureStage.CONTEXT_LOAD
+    assert runs_tools_in_process(object()) is False
+    assert runs_tools_in_process(InProcessRuntime()) is True
 
 
-def test_the_marker_defaults_to_spawning():
-    """판정 함수의 기본값 자체를 고정한다 — 뒤집히면 가드가 조용히 통과한다."""
-    from agent_runtime import spawns_mcp_server
-
-    assert spawns_mcp_server(object()) is True
-    assert spawns_mcp_server(InProcessRuntime()) is False
-
-
-def test_shipping_runtimes_declare_that_they_spawn_a_server():
-    """가드가 의존하는 표시가 실제 런타임 클래스에 있는지 본다 — 이름을 지우면
-    기본값이 받아 주지만(`True`), 성질을 명시해 둔 것이 사라진 것은 알아야 한다."""
+def test_only_the_deepagents_runtime_can_use_the_gateway():
+    """배송 런타임 둘 중 어느 쪽이 창구를 쓸 수 있는지 고정한다."""
+    from agent_runtime import runs_tools_in_process
     from agent_runtime.claude_code import ClaudeCodeRuntime
 
-    assert ClaudeCodeRuntime.spawns_mcp_server is True
+    assert runs_tools_in_process(ClaudeCodeRuntime(model="claude-opus-4-6")) is False
     # deepagents 는 선택 의존성이라 임포트가 실패할 수 있다 — 소스 문자열로 본다.
     import inspect
 
     from agent_runtime import deep_agents
 
-    assert "spawns_mcp_server = True" in inspect.getsource(deep_agents)
+    assert "async def arun(" in inspect.getsource(deep_agents)
 
 
 # ---- 라우터 배선 ------------------------------------------------------------

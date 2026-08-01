@@ -110,7 +110,9 @@ async def build_edges(fs: VaultFS, scope_id: str, source_address: str,
 
     seen = set()
     for address in parse_wiki_links(content):
-        target = await fs.get(scope_id, address)
+        # 주소가 실재하는지만 본다. `fs.get` 을 쓰면 안 된다 — 원격 구현체에서 링크
+        # 대상마다 본문 조회가 나가 사슬로 이어진 위키 전체를 당긴다 (S15P11B106-151).
+        target = await fs.resolve_address(scope_id, address)
         if not target or target["address"] == source_address or target["address"] in seen:
             continue
         seen.add(target["address"])

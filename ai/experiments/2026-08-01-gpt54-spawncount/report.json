@@ -1,0 +1,161 @@
+{
+  "scope": "ALL",
+  "runtime": "deepagents",
+  "transport": "mcp",
+  "model": "openai:gpt-5.4",
+  "effort": null,
+  "order": [
+    "01-training.md"
+  ],
+  "documents": [
+    {
+      "seq": 1,
+      "jobId": "9001",
+      "documentId": "101",
+      "document": "01-training.md",
+      "elapsedSeconds": 49.1,
+      "toolCalls": {
+        "guide": 1,
+        "read": 3,
+        "search": 3,
+        "create": 1,
+        "edit": 2,
+        "lint": 2
+      },
+      "inputTokens": 75109,
+      "outputTokens": 1926,
+      "turns": 10,
+      "costUsd": 0.0,
+      "error": null,
+      "reply": "반영 결과:\n\n- 새 위키 페이지 생성: `pages/0ccf8795884b.md`\n  - 제목: **교육 및 도서 지원**\n- `index.md` 갱신 완료\n- `lint` 오류 수정 후 재실행했고, 최종 **error 0**으로 통과했다\n\n처리한 내용 요약:\n- 원본문서 `sources/101/parsed/content.md`를 읽음\n- 기존 위키/카테고리 확인\n- 겹치는 페이지 검색 후 후보 없음 확인\n- 교육 예산, 도서 구입, 컨퍼런스 활동을 묶어 새 페이지 생성\n- 목차에 원본문서 현황, 핵심 내용, 최근 변경 반영\n- 각주 인용문 1건 오류를 수정하고 lint 재실행\n\n최종 상태:\n- 원본문서 1건 반영 완료\n- 위키 페이지 1건 생성 완료\n- 검증 완료",
+      "changes": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "1",
+              "location": "Training budget",
+              "quote": "We have an annual training budget for every team member, regardless of seniority.",
+              "page": null
+            }
+          ]
+        },
+        {
+          "type": "create",
+          "address": "pages/0ccf8795884b.md",
+          "wikiPath": "wiki/ALL/pages/0ccf8795884b.md",
+          "title": "교육 및 도서 지원",
+          "category": "개념",
+          "tags": [
+            "교육",
+            "도서",
+            "복지"
+          ],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "1",
+              "location": "Books",
+              "quote": "You may buy a couple of books a month without asking for permission. As a general rule, spending up to $50/month on books is fine and requires no extra permission. You can use your books budget towards audiobooks and podcasts as well, if you prefer.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "2",
+              "location": "Training budget",
+              "quote": "We have an annual training budget for every team member, regardless of seniority.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "3",
+              "location": "Conferences",
+              "quote": "It is expected that you would spend up to half a day a month on these activities. Like the training budget, this isn't a hard limit. If you think you need more than that talk to your manager in the first instance.",
+              "page": null
+            }
+          ]
+        }
+      ],
+      "lint": "**lint 통과** — ALL 범위, 3건 검사.",
+      "outcome": "committed",
+      "committed": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "1",
+              "location": "Training budget",
+              "quote": "We have an annual training budget for every team member, regardless of seniority.",
+              "page": null
+            }
+          ],
+          "wikiId": "3001",
+          "committed": true
+        },
+        {
+          "type": "create",
+          "address": "pages/0ccf8795884b.md",
+          "wikiPath": "wiki/ALL/pages/0ccf8795884b.md",
+          "title": "교육 및 도서 지원",
+          "category": "개념",
+          "tags": [
+            "교육",
+            "도서",
+            "복지"
+          ],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "1",
+              "location": "Books",
+              "quote": "You may buy a couple of books a month without asking for permission. As a general rule, spending up to $50/month on books is fine and requires no extra permission. You can use your books budget towards audiobooks and podcasts as well, if you prefer.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "2",
+              "location": "Training budget",
+              "quote": "We have an annual training budget for every team member, regardless of seniority.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "01-training.md",
+              "footnote": "3",
+              "location": "Conferences",
+              "quote": "It is expected that you would spend up to half a day a month on these activities. Like the training budget, this isn't a hard limit. If you think you need more than that talk to your manager in the first instance.",
+              "page": null
+            }
+          ],
+          "wikiId": "3002",
+          "committed": true
+        }
+      ]
+    }
+  ]
+}

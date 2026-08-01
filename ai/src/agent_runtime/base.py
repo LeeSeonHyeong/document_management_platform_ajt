@@ -89,9 +89,6 @@ class Runtime(Protocol):
     """An agent runtime wired to one MCP server."""
 
     name: str
-    # MCP 서버를 별도 프로세스로 띄우는가. **선언하지 않으면 띄우는 것으로 본다** —
-    # 판정은 `spawns_mcp_server()` 이고 그 함수 docstring 이 이유를 적는다.
-    spawns_mcp_server: bool
 
     def run(self, instruction: str, *, root: Path, scope_key: str,
             job_id: str, timeout: int | None = None) -> RunResult: ...
@@ -130,20 +127,22 @@ class Runtime(Protocol):
     # **재시도를 켜지 않는다.** 실패 1건이 조용히 2~3배 청구된다.
 
 
-def spawns_mcp_server(runtime) -> bool:
-    """이 런타임이 MCP 서버를 **별도 프로세스**로 띄우는가.
+def runs_tools_in_process(runtime) -> bool:
+    """이 런타임이 도구를 이 프로세스 안에서 도는가.
 
-    **기본이 `True` 다 — 표시를 잊은 런타임은 안전한 쪽(거절)으로 떨어진다.** 뒤집으면
-    조용히 통과하고, 그 조합의 결과는 데이터 손실 방향이다: 창구 모드에서 별도 프로세스의
-    `fs_factory`(`wiki_mcp/local_server.py`)는 `LocalVaultFS` 라 본문이 빈 페이지를
-    에이전트에게 보이고, 에이전트는 "내용이 없다" 고 판단해 라이브를 덮는다.
-    범위 변경 중단 신호도 프로세스 밖으로 나올 길이 없다.
+    창구 모드(`FederatedVaultFS`)가 성립하는 조건이다. 별도 프로세스의 MCP 서버는
+    `fs_factory`(`wiki_mcp/local_server.py`)가 `LocalVaultFS` 라 본문이 빈 페이지를
+    에이전트에게 보이고, 에이전트는 "내용이 없다" 고 판단해 라이브를 덮는다. 범위 변경
+    중단 신호도 프로세스 밖으로 나올 길이 없다.
 
-    그래서 in-process 런타임(테스트의 `arun` 계열)이 `spawns_mcp_server = False` 를
-    **명시적으로** 끈다. 판정하는 곳은 `wiki_api/session.py`
-    `_assert_runtime_can_use_the_gateway` 한 곳이다.
+    판정을 `arun` 유무로 한다. 예전에는 `spawns_mcp_server` 불리언 마커였는데, 마커는
+    **붙이는 것을 잊을 수 있고** 그 기본값 하나에 데이터 손실이 걸려 있었다. `arun` 은
+    시그니처가 `fs`(살아 있는 파이썬 객체)를 받는다 — 하위 프로세스로는 애초에 받을 수
+    없는 인자라 **구조가 보증한다.** 마커를 지운 이유가 이것이다 (S15P11B106-152).
+
+    판정하는 곳은 `wiki_api/session.py` `_assert_runtime_can_use_the_gateway` 한 곳이다.
     """
-    return bool(getattr(runtime, "spawns_mcp_server", True))
+    return callable(getattr(runtime, "arun", None))
 
 
 def ingest_instruction(document_address: str, scope_key: str) -> str:

@@ -1,7 +1,7 @@
-from .base import RunResult, Runtime, ingest_instruction, spawns_mcp_server
+from .base import RunResult, Runtime, ingest_instruction, runs_tools_in_process
 from .claude_code import ClaudeCodeRuntime
 
-__all__ = ["Runtime", "RunResult", "ingest_instruction", "spawns_mcp_server",
+__all__ = ["Runtime", "RunResult", "ingest_instruction", "runs_tools_in_process",
            "ClaudeCodeRuntime", "load_runtime"]
 
 

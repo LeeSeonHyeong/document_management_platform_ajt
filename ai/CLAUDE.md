@@ -2,6 +2,10 @@
 
 공통 규칙(Git·REST API 컨벤션, 요구사항, ERD)은 루트 `../docs/`가 기준이다. 루트 `CLAUDE.md` 참조.
 
+문서는 두 곳으로 나뉜다. **여러 분야가 함께 보는 것은 `../docs/`**(공통 문서, 수정은 담당자),
+**`ai/` 안에서만 알면 되는 구현·설계는 `ai/docs/`**(AI 관할). 이 파일에서 `../docs/` 접두어가
+붙은 경로는 공통 문서, 접두어 없는 `docs/`는 `ai/docs/`를 뜻한다.
+
 ## 담당 범위
 
 **손대는 곳이 두 군데다** (2026-07-31 확대):
@@ -22,7 +26,7 @@
 코드는 챗봇 흐름이어도 백엔드 담당자에게 알린다 — 그쪽에 사용자 인증·트랜잭션·저장이 얽혀
 있고, 같은 파일을 둘이 고치면 MR 이 충돌한다.
 
-`frontend/`, `docs/`, 루트 파일, 그 밖의 백엔드는 담당자가 따로 있다.
+`frontend/`, `../docs/`, 루트 파일, 그 밖의 백엔드는 담당자가 따로 있다.
 동작 확인을 위해 **읽는 것은 자유지만 수정·생성은 하지 않는다.**
 
 ### 확인 절차 — 범위 안이어도 먼저 제시한다
@@ -47,11 +51,11 @@
 
 ## 작업 수칙
 
-- **브랜치·커밋·MR 전에 `../docs/conventions/git-convention.md`를 읽는다.** Jira 티켓 먼저, 브랜치는 그 번호로. 티켓은 백로그에서 먼저 찾는다 — 없으면 대개 기존 티켓의 일부다.
+- **브랜치·커밋·MR 전에 `../docs/conventions/git-convention.md`를 읽는다.** 원격이 GitLab 이라 MR 이라고 쓰지만, 컨벤션 문서의 "Pull Request"와 같은 것이다. Jira 티켓 먼저, 브랜치는 그 번호로. 티켓은 백로그에서 먼저 찾는다 — 없으면 대개 기존 티켓의 일부다.
 - **계약이 정본이다**: `../docs/api/AJT-FastAPI-Internal-API.postman_collection.json`. 컨벤션과 겹치면 계약 기준. 계약에 없는 상황(오류 코드 이름 등)은 임의로 정하지 않고 팀에 공유한다 — 정했다면 MR 본문에 협의 항목으로 명시한다.
 - 각 엔드포인트가 낼 수 있는 상태는 계약이 정한 400·401·500뿐이다. 그 밖의 상태를 내면 Spring 분기에서 `UNEXPECTED_STATUS`로 뭉개진다.
 - stage 는 **고친 경로를 하나하나 명시한다.** `git add -A`, `git add .` 를 쓰지 않는다. 커밋 전 `git status` 로 담당 범위 밖 변경(프론트·문서·공개 API 서비스)이 섞이지 않았는지 확인한다. 백엔드와 `ai/` 는 커밋을 나눈다.
-- `.env*`는 커밋하지 않는다 (`src/.env.example`만). 실제 파일은 `src/.env` — `wiki_mcp/config.py` 가 그 경로를 읽는다.
+- `.env*`는 커밋하지 않는다 (`src/.env.example`만). 실제 파일은 `src/.env` — `src/wiki_mcp/config.py` 가 그 경로를 읽는다.
 
 ## 스택과 명령
 
@@ -60,12 +64,15 @@ Python 3.12+, [uv](https://docs.astral.sh/uv/).
 ```bash
 cd ai
 uv sync
+cp src/.env.example src/.env                # 최초 1회. 없으면 APP_URL 이 기본값으로 돈다
 uv run pytest -m "not ocr"                  # OCR 제외 (CI 후보)
 uv run pytest                               # 전체 — 로컬 Tesseract(eng) 필요
 INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000   # 서버 기동 (claude-code)
 uv sync --extra deepagents                                         # 배포 런타임 설치
 AI_RUNTIME=deepagents INTERNAL_API_KEY=... uv run python -m wiki_api.serve   # 배포 형태
 ```
+
+`uv` 가 없으면 `curl -LsSf https://astral.sh/uv/install.sh | sh` 로 설치한다 (`~/.local/bin`).
 
 ## 구조와 경계
 
@@ -80,22 +87,24 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
 | `agent_runtime` | 에이전트 실행 — claude-code(지금)·deepagents(배포) 런타임, 시간 상한. **기본값이 `claude-code` 라 배포에서 `AI_RUNTIME=deepagents` 를 안 주면 기동은 되고 첫 요청에서 실패한다** — `serve.py` 가 CLI 부재를 기동 시점에 막지만 근본 해결은 키 확보 후 기본값 전환이다 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |
-| `viewer/` | 위키 참조 그래프 뷰어 (개발 도구). 데이터는 `python -m wiki_mcp.graph_api --root <저장소> --scope ALL` 로 띄운다 |
+| `viewer/` | 위키 참조 그래프 뷰어 (개발 도구). 데이터는 `uv run python -m wiki_mcp.graph_api --root <저장소> --scope ALL` 로 띄운다 |
 | `experiments/` | 측정 기록 — `INDEX.md` 가 수치의 정본. 실험별로 `report.json`(문서→위키 변경 매핑 포함)·`data/wiki/`(생성된 위키 전문)·`graph.json`(각주 단위 인용 그래프)이 있어 "어떤 원본에서 어떤 위키가 나왔나"를 추적할 수 있다 |
 
 패키지마다 먼저 읽을 파일. 각 파일 상단 docstring 이 그 파일의 정본 설명이다.
+**소스는 src 레이아웃이다** — 위 표의 패키지는 모두 `ai/src/` 아래에 있고, 아래 경로도 `ai/` 기준이다.
 
 | 파일 | 무엇을 알려주나 |
 | --- | --- |
-| `wiki_api/session.py` | 요청 1건의 생애 — 임시 루트 개설·하이드레이션·에이전트 실행·폐기. v1.1.0 부터 Spring 에 되묻지 않는다 |
-| `wiki_api/changes.py` | 작업 층 diff → 계약 응답. **계약 모양을 아는 유일한 곳.** `pageKey` ↔ `tempWikiId` 매핑 |
-| `wiki_api/deps.py` | 내부 API 키 검증과 `requestId` 재사용. 사용자 권한 검증은 여기서 하지 않는다 |
-| `wiki_mcp/config.py` | `src/.env` 에서 읽는 설정 — `WORKSPACE_PATH`·`APP_URL` 뿐 |
-| `wiki_mcp/local_server.py` | stdio MCP 서버. 프로세스 1개 = 스코프 1개 = 작업 1개 (구조적 스코프 격리) |
-| `wiki_mcp/telemetry.py` | 서버 측 툴 호출 집계. "search 를 안 불렀다"와 "부르고 안 읽었다"를 구분하는 근거. `--query-log` 로 검색어도 남길 수 있다 — **개인정보가 실리므로 기본은 끈다** |
-| `wiki_mcp/services/chunker.py` | ~512토큰 청크·~128토큰 겹침, 헤더 경로 보존. **한국어 검색은 `search_tokens`/`search_query` 짝이다** — 색인·질의 양쪽에 같은 2글자 분해를 걸어야 한다. 한쪽만 하면 아무것도 안 맞는다. 근거 수치는 그 docstring |
-| `wiki_mcp/shared/schema.sql` | 파생 색인 스키마. `vaultfs/rebuild.py` 로 언제든 재생성 |
-| `document_parser/normalize.py` | 줄바꿈·공백 정규화 헬퍼 |
+| `src/wiki_api/session.py` | 요청 1건의 생애 — 임시 루트 개설·하이드레이션·에이전트 실행·폐기. v1.1.0 부터 Spring 에 되묻지 않는다 |
+| `src/wiki_api/changes.py` | 작업 층 diff → 계약 응답. **계약 모양을 아는 유일한 곳.** `pageKey` ↔ `tempWikiId` 매핑 |
+| `src/wiki_api/deps.py` | 내부 API 키 검증과 `requestId` 재사용. 사용자 권한 검증은 여기서 하지 않는다 |
+| `src/wiki_api/errors.py` | 계약이 허용한 상태(400·401·500)로 좁히는 곳. FastAPI 의 422 를 400 으로 바꾼다 |
+| `src/wiki_mcp/config.py` | `src/.env` 에서 읽는 설정 — `APP_URL` 뿐이다 (`tools/helpers.py`). 저장소 루트는 프로세스마다 달라야 하므로 환경변수가 아니라 CLI `--root` 로 준다 |
+| `src/wiki_mcp/local_server.py` | stdio MCP 서버. 프로세스 1개 = 스코프 1개 = 작업 1개 (구조적 스코프 격리) |
+| `src/wiki_mcp/telemetry.py` | 서버 측 툴 호출 집계. "search 를 안 불렀다"와 "부르고 안 읽었다"를 구분하는 근거. `--query-log` 로 검색어도 남길 수 있다 — **개인정보가 실리므로 기본은 끈다** |
+| `src/wiki_mcp/services/chunker.py` | ~512토큰 청크·~128토큰 겹침, 헤더 경로 보존. **한국어 검색은 `search_tokens`/`search_query` 짝이다** — 색인·질의 양쪽에 같은 2글자 분해를 걸어야 한다. 한쪽만 하면 아무것도 안 맞는다. 근거 수치는 그 docstring |
+| `src/wiki_mcp/shared/schema.sql` | 파생 색인 스키마. `src/wiki_mcp/vaultfs/rebuild.py` 로 언제든 재생성 |
+| `src/document_parser/normalize.py` | 줄바꿈·공백 정규화 헬퍼 |
 
 - **AI 서버는 DB·서비스 파일에 접근하지 않는다.** 요청 본문이 실어 온 것만 처리하고 변경안을 반환한다. 저장·확정은 Spring.
 - **라이브 위키는 에이전트에게 읽기 전용.** 모든 쓰기는 작업 공간(`work/{jobId}/output/`)으로 가고, 반영 전 `lint`를 통과해야 한다.
@@ -112,4 +121,4 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 
 ## 설계 이력
 
-`docs/superpowers/plans/`, `docs/superpowers/specs/` (AI 전용 설계 문서)
+`ai/docs/superpowers/plans/`, `ai/docs/superpowers/specs/` (AI 전용 설계 문서 — 공통 `../docs/` 아니다)

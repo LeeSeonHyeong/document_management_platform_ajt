@@ -148,9 +148,16 @@ class FederatedVaultFS(SpringVaultFS):
             await self._insert_live(
                 scope_id, address, "", wiki_id=wiki_id,
                 title=page.get("title"), category=page.get("categoryName"))
-        await self._insert_live(scope_id, INDEX_ADDRESS,
-                               await self._client.index_markdown(),
+        index_markdown = await self._client.index_markdown()
+        await self._insert_live(scope_id, INDEX_ADDRESS, index_markdown,
                                title="위키 목차", category="목차")
+        # 목차의 링크만 여기서 그래프에 넣는다. 하이드레이션 시점에 본문이 있는 문서가
+        # 목차뿐이고, 페이지 본문의 링크는 그 페이지를 당길 때 `_ensure_body` 가 넣는다.
+        # 예전에는 `_sync_page_references` 가 전체를 훑어 이것이 딸려 왔다 — 그것을
+        # 걷어냈으므로 (S15P11B106-151) 명시해야 목차 링크가 사라지지 않는다.
+        from wiki_mcp.tools.references import sync_references
+
+        await sync_references(self, scope_id, INDEX_ADDRESS, index_markdown)
         # 하이드레이션은 한 순간의 스냅샷이다 — t0 에는 아무것도 stale 일 수 없다
         # (`spring.py:100-104` 와 같은 이유). 지금은 여기서 참조 그래프를 만들지
         # 않지만, 라이브 행을 넣는 경로가 stale 을 켜는 일이 생기면 이 한 줄이 막는다.
@@ -167,20 +174,14 @@ class FederatedVaultFS(SpringVaultFS):
             raise VaultError(
                 f"`{self.scope_key}` 범위의 카탈로그가 없다 — "
                 "FederatedVaultFS.open() 이 먼저 불려야 한다")
-        # **캐시가 아니라 재귀 차단이다. 걷어내면 무한 재귀가 난다.**
-        # 왕복 한 번을 아끼는 최적화처럼 보이지만, 아래 `_sync_page_references` 가
-        # 이 함수로 되돌아오는 고리를 끊는 것이 본래 역할이다.
+        # 같은 본문을 두 번 받지 않는다. 조회 왕복 한 번을 아낀다.
         #
-        #   _ensure_body → _sync_page_references (spring.py:106-120, 스코프의 모든
-        #   라이브 문서를 다시 훑는다) → build_edges → 위키 링크마다 fs.get
-        #   (references.py:112-118) → FederatedVaultFS.get → _ensure_body
-        #
-        # 순환 링크(A→B, B→A)가 있으면 A 재적재가 전체 재동기화를, 그것이 B 재적재를,
-        # 다시 A 를 부른다. 이 한 줄이 두 번째 진입을 여기서 끝낸다.
-        #
-        # 근거: 이 두 줄을 죽이는 뮤턴트를 돌려 확인했다 (2026-07-30). 검증 6항목 중
-        # 3개가 깨지고 check6 의 실패는 `RecursionError` 다 — "본문을 두 번 받았다"가
-        # 아니라 재귀로 먼저 죽는다. 기록은 설계 9.2.1.
+        # 원래는 캐시가 아니라 재귀 차단이었다 — `_sync_page_references` 가 스코프 전체를
+        # 훑고 그 안의 `build_edges` 가 링크마다 `fs.get` 을 불러 이 함수로 되돌아왔고,
+        # 순환 링크(A→B, B→A)가 있으면 이 한 줄이 없을 때 `RecursionError` 로 죽었다
+        # (2026-07-30 뮤턴트 검증, 설계 9.2.1). S15P11B106-151 에서 그 고리 자체를
+        # 끊었다 — 아래 동기화는 이 한 장만 보고, `build_edges` 는 본문을 안 당기는
+        # `resolve_address` 를 쓴다. 재귀는 이제 구조적으로 없고 여기는 캐시로 남는다.
         if address in catalog.hydrated_bodies:
             return
         # 카탈로그는 있는데 이 주소가 위키 페이지가 아닌 경우(index.md·sources/*)는
@@ -209,9 +210,14 @@ class FederatedVaultFS(SpringVaultFS):
             wiki_id=wiki_id, title=body.get("title"),
             category=catalog.category_by_address.get(address))
         catalog.hydrated_bodies.add(address)
-        # 인용 그래프는 본문이 있어야 만들어진다. 페이지 하나씩 당기므로
-        # 그때그때 다시 훑는다.
-        await self._sync_page_references(scope_id)
+        # 인용 그래프는 본문이 있어야 만들어진다. **방금 받은 이 한 장만** 다시 쓴다 —
+        # `_sync_page_references` 는 스코프의 라이브 문서를 전부 훑어 본문 한 장 당길
+        # 때마다 O(n) 이 되고, 하이드레이션 직후에는 나머지 n-1 장의 본문이 어차피 비어
+        # 있어 다시 훑어봐야 새로 나올 간선이 없다 (S15P11B106-151).
+        from wiki_mcp.tools.references import sync_references
+
+        await sync_references(self, scope_id, address,
+                              body.get("contentMarkdown") or "")
         # `_sync_page_references` 가 `propagate_staleness` 를 태운다. 지연 적재는
         # 컨텍스트를 처음 채우는 것일 뿐 페이지가 실제로 바뀐 게 아니므로 되돌린다
         # (`spring.py:122-130`). 안 지우면 페이지 하나 읽은 직후 index.md 가
@@ -220,6 +226,27 @@ class FederatedVaultFS(SpringVaultFS):
 
     async def get(self, scope_id: str, address: str) -> dict | None:
         await self._ensure_body(scope_id, address)
+        return await super().get(scope_id, address)
+
+    def _indexes_live_locally(self, kind: str) -> bool:
+        """**위키 페이지는 안 넣는다.** 라이브 검색은 창구가 한다 (S15P11B106-154).
+
+        같은 본문을 내부 색인에도 넣으면 두 가지가 깨진다. 하나는 중복이라
+        `search_chunks` 가 매번 걸러내야 하는 것이고, 다른 하나가 실제 손해다 — 부모 SQL
+        (`local.py`)의 `LIMIT` 이 층을 몰라서 라이브 청크가 순위대로 그 자리를 채우고
+        에이전트가 방금 쓴 초안이 검색에서 사라진다 (실측 5행 → 3행).
+
+        원본문서(`sources/**`)와 목차는 그대로 넣는다. 창구가 검색해 주지 않는다 —
+        삭제된 문서 재조정에서 `stage_source` 가 넣는 본문이 여기에 있다.
+        """
+        return kind != "page"
+
+    async def resolve_address(self, scope_id: str, address: str) -> dict | None:
+        """**본문을 당기지 않는다.** 카탈로그가 이미 주소를 다 갖고 있다.
+
+        기본 구현(`get` 위임)을 쓰면 안 되는 유일한 구현체다 — 그 `get` 이
+        `_ensure_body` 를 타서 조회 API 를 부른다 (S15P11B106-151).
+        """
         return await super().get(scope_id, address)
 
     async def get_backlinks(self, scope_id: str, address: str) -> list[dict]:
@@ -282,33 +309,25 @@ class FederatedVaultFS(SpringVaultFS):
         작업층은 `MAX_WORK_SEARCH_ROWS` 로 한 번 더 좁힌다 — 툴 경로에서는 걸릴 수 없는
         2차 방어선이다. 이유는 그 상수의 주석에 있다.
 
-        **확인된 결함**: 아래 `min()` 은 부모의 `LIMIT` 에 걸리는데 부모 SQL 은 층을
-        모른다 (`local.py` 의 `search_chunks`, WHERE 에 layer 조건이 없다). 그래서 라이브
-        행이 `LIMIT` 을 채우면 작업층 행이 이 뒤의 필터에서 사라진다.
+        **예전 결함과 그 고침** (S15P11B106-154): 아래 `min()` 은 부모의 `LIMIT` 에
+        걸리는데 부모 SQL 은 층을 모른다 (`local.py` 의 `search_chunks`, WHERE 에 layer
+        조건이 없다). 라이브 위키 본문이 내부 색인에 있으면 그 행이 순위대로 `LIMIT` 을
+        채워 작업층 행이 이 뒤의 필터에서 사라졌다 — 초안 5장을 쓴 직후 `limit=5` 에
+        작업층 5행이던 것이 라이브 본문 적재 뒤 3행이 됐다 (이 저장소 하네스
+        `--phases d`. 별도 합성 코퍼스에서 5행 → 0행 관측도 있었다).
 
-        작업층 초안 5장을 쓴 직후 `limit=5` 에 색인이 작업층 5행을 준다. 라이브 본문이
-        색인되면 줄어든다 — **출처를 갈라 적는다.**
-
-          * 이 저장소의 하네스 (`experiments/measure_federated.py --phases d`): 5행 → 3행.
-            본문 1건만 적재해도(`--link-density 0`) 3행이고 100건을 적재해도
-            (`--link-density 1 --pages 100`) 3행이다.
-          * 별도 합성 코퍼스(리뷰어 관측): 5행 → 0행. 이 하네스로는 재현되지 않는다.
-
-        크기는 FTS 순위에 달렸고 적재량에 단조 비례하지 않는다. 기제는 같다 — 부모 SQL 이
-        층을 모르고 `LIMIT` 을 걸어 라이브 청크가 순위대로 그 자리를 채운다.
-        수치의 정본은 INDEX.md 「창구 어댑터 검색 응답」이다.
-
-        고치려면 포트 표면(`base.py`)의 `search_chunks` 에 층 인자가 필요하다 — 후속
-        티켓 후보이고 이 파일 안에서 우회하지 않는다.
+        고침은 층 인자 추가가 아니라 **애초에 안 넣는 것**이다 — 창구 모드의 라이브
+        검색은 창구가 하므로 내부 색인의 라이브 위키 행은 중복일 뿐이었다.
+        `_indexes_live_locally` 를 본다. 수치의 정본은 INDEX.md.
         """
         work_rows = await super().search_chunks(
             scope_id, query, min(limit, MAX_WORK_SEARCH_ROWS), kind_filter)
         work_addresses = set()
         work: list[dict] = []
         for row in work_rows:
-            # 라이브 행은 창구가 준다. 내부 색인의 라이브 행도 `_ensure_body` 가 본문을
-            # 당긴 뒤에는 청크 색인에 들어가 검색에 걸리므로(`spring.py` 의 `_insert_live`)
-            # 여기서 걸러내야 중복이 되지 않는다.
+            # 라이브 행은 창구가 준다. 위키 페이지는 이제 내부 색인에 안 들어가지만
+            # (`_indexes_live_locally`) 원본문서·목차의 라이브 행은 들어간다 — 그것을
+            # 작업층으로 세면 안 되므로 층으로 거른다.
             if row.get("layer") == "work":
                 work_addresses.add(row["address"])
                 work.append({**row, "origin": "work"})

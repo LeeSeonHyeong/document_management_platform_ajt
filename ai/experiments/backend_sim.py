@@ -148,7 +148,8 @@ def dry_run_warning(dry_run: bool, from_experiment: str | None) -> str | None:
 
 async def _ingest_one(root: Path, scope_key: str, seq: int, source: Path,
                       runtime, sequence: WikiIdSequence,
-                      dry_run: bool = False) -> dict:
+                      dry_run: bool = False,
+                      transport: str = "mcp") -> dict:
     job_id = f"{9000 + seq}"
     document_id = str(100 + seq)
 
@@ -161,16 +162,27 @@ async def _ingest_one(root: Path, scope_key: str, seq: int, source: Path,
         "type": "wiki-convert", "step": "agent", "scopeKey": scope_key,
         "documentIds": [document_id], "documentId": document_id,
     })
-    # The MCP server opens its own connection; two writers on one SQLite file is
-    # a lock waiting to happen.
-    await LocalVaultFS.close()
-
+    instruction = ingest_instruction(registered["address"], scope_key)
     print(f"[{seq}] {source.name} ...", flush=True)
     started = time.monotonic()
-    result = runtime.run(
-        ingest_instruction(registered["address"], scope_key),
-        root=root, scope_key=scope_key, job_id=job_id,
-    )
+
+    if transport == "in-process":
+        # **배송 경로다** (S15P11B106-152). 도구가 이 프로세스 안에 있으므로 저장소를
+        # 닫지 않고 그대로 넘긴다 — 쓰는 쪽이 하나뿐이라 SQLite 잠금 걱정이 없다.
+        result = await runtime.arun(instruction, fs=LocalVaultFS(scope_key, job_id),
+                                    scope_id=scope_id, root=root,
+                                    scope_key=scope_key, job_id=job_id)
+        await LocalVaultFS.close()
+    else:
+        # MCP 서버가 자기 연결을 연다 — SQLite 파일 하나에 쓰는 쪽이 둘이면 잠금이 난다.
+        await LocalVaultFS.close()
+        # **스레드로 띄운다.** `DeepAgentsRuntime.run` 은 안에서 `asyncio.run` 을 부르는데
+        # 이 함수는 이미 도는 루프 안이라 그대로 부르면 `asyncio.run() cannot be called
+        # from a running event loop` 로 죽는다. `wiki_api/session.py::run_agent` 가 sync
+        # 런타임에 하는 것과 같다. claude-code 는 subprocess 라 원래 문제가 없었고,
+        # 그래서 이 경로가 deepagents 로 한 번도 안 돌아 봤다.
+        result = await asyncio.to_thread(
+            runtime.run, instruction, root=root, scope_key=scope_key, job_id=job_id)
 
     record: dict = {
         "seq": seq,
@@ -705,7 +717,8 @@ async def _ingest_via_api(root: Path, scope_key: str, seq: int, source: Path,
 async def _run_batch(root: Path, scope_key: str, sources: list[Path],
                      runtime_name: str, model: str | None,
                      dry_run: bool = False, client=None,
-                     effort: str | None = None) -> dict:
+                     effort: str | None = None,
+                     transport: str = "mcp") -> dict:
     """`client` 가 있으면 AI 서버를 HTTP 로 부른다 (`--via-api`), 없으면 옛 경로다.
 
     `effort` 를 여기까지 넘겨야 한다. `manifest.json` 에만 적고 실행에 안 걸면 그 기록이
@@ -724,16 +737,21 @@ async def _run_batch(root: Path, scope_key: str, sources: list[Path],
         }
 
     runtime = load_runtime(runtime_name, model, effort=effort)
+    if transport == "in-process" and not hasattr(runtime, "arun"):
+        raise SystemExit(
+            f"{runtime_name} 런타임에는 in-process 경로가 없다 — 도구가 하위 프로세스에 "
+            "있다. `--transport mcp` 로 재거나 `--runtime deepagents` 를 쓴다")
     sequence = WikiIdSequence(root)
     records = []
     for seq, source in enumerate(sources, start=1):
         # FR-AI-003: one document at a time, in order, next one only after the
         # previous is reflected. FR-AI-008: a failure does not stop the rest.
         records.append(await _ingest_one(root, scope_key, seq, source, runtime, sequence,
-                                         dry_run=dry_run))
+                                         dry_run=dry_run, transport=transport))
     return {
         "scope": scope_key,
         "runtime": runtime_name,
+        "transport": transport,
         "model": getattr(runtime, "model", None),
         "effort": getattr(runtime, "effort", None),
         "order": [s.name for s in sources],
@@ -754,6 +772,12 @@ def main() -> None:
     parser.add_argument("--report", default=None, help="임시 확인용 리포트 경로")
     parser.add_argument("--scope", default="ALL", help="scope_key")
     parser.add_argument("--runtime", default="claude-code", choices=["claude-code", "deepagents"])
+    # 측정 경로와 배송 경로가 갈려 있으면 기록한 수치가 배송되는 것과 다른 것을 잰 값이
+    # 된다. S15P11B106-152 로 배송이 in-process 로 바뀌었으므로 둘 다 잴 수 있어야 한다.
+    # `claude-code` 는 `arun` 이 없어 `mcp` 만 된다.
+    parser.add_argument("--transport", default="mcp", choices=["mcp", "in-process"],
+                        help="도구를 어떻게 붙일지. mcp=하위 프로세스(옛 측정 경로), "
+                             "in-process=배송 경로")
     parser.add_argument("--model", default=None, help="런타임 모델")
     # 안 주면 CLI 기본값으로 돈다. `manifest.json` 에는 그 사실이 `None` 으로 남는다 —
     # 2026-07-27 측정들은 그 기록조차 없어서 어느 단계로 돌았는지 지금도 모른다 (D8).
@@ -819,7 +843,8 @@ def main() -> None:
     async def run() -> dict:
         if not args.via_api:
             return await _run_batch(root, args.scope, sources, args.runtime, args.model,
-                                    dry_run=args.dry_run, effort=args.effort)
+                                    dry_run=args.dry_run, effort=args.effort,
+                                    transport=args.transport)
         key = args.internal_api_key or os.environ.get("INTERNAL_API_KEY", "")
         if not key:
             print("경고: 내부 API 키가 없다 — AI 서버가 모든 요청을 401 로 막는다 "
