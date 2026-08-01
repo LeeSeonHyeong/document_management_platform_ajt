@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT FastAPI Internal API",
-    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.9.0이며 Frontend는 직접 호출하지 않습니다.",
+    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.10.0이며 Frontend는 직접 호출하지 않습니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,7 +32,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.9.0",
+      "value": "1.10.0",
       "type": "string"
     },
     {
@@ -458,10 +458,10 @@
               "query": [],
               "variable": []
             },
-            "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+            "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다. 수정 대상 본문과 근거 원본문서를 함께 보내지 않습니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 수정 대상 본문을 전혀 읽지 못한 채 수정하게 됩니다\n- `scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 현재 Wiki 본문과 근거 원본문서를 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- 응답의 `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"wikiPath\": \"wiki/D1-D2/pages/c4d8e1b2.md\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
+              "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"chatHistory\": []\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -493,10 +493,10 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다. 수정 대상 본문과 근거 원본문서를 함께 보내지 않습니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 수정 대상 본문을 전혀 읽지 못한 채 수정하게 됩니다\n- `scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 현재 Wiki 본문과 근거 원본문서를 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- 응답의 `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"wikiPath\": \"wiki/D1-D2/pages/c4d8e1b2.md\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
+                  "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"chatHistory\": []\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -543,10 +543,10 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `currentWiki`: 현재 Wiki 본문\n- `currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**\n- `evidenceDocuments`: 연결 원본문서\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
+                "description": "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.\nSpring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다. 수정 대상 본문과 근거 원본문서를 함께 보내지 않습니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `wikiId`, `scopeKey`, `instruction`\n- `chatHistory`: 해당 Wiki 관리자 대화\n- `wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 수정 대상 본문을 전혀 읽지 못한 채 수정하게 됩니다\n- `scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다\n\n### 정책\n- 관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.\n- 현재 Wiki 본문과 근거 원본문서를 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.\n- 원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.\n- 응답의 `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `agentMessage`: 관리자에게 보여줄 응답\n- `wikiChanges`, `categoryChanges`, `relationChanges`, `indexEntries`\n- `wikiChanges[].wikiCategoryRef`·`wikiPath`는 Wiki 변환과 같은 규칙을 따릅니다.\n- `relationChanges[]`·`indexEntries[]`는 Wiki 변환과 같은 필드를 따릅니다 (`sourceWikiRef` 등). `relationChanges`는 Wiki-Wiki 전용이고, Wiki-원본문서 연결은 `wikiChanges[].evidence`가 전달합니다.\n\n### Error\n- `400 Bad Request`: 지시 내용 또는 Wiki 컨텍스트 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_EDIT_FAILED`",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"currentWiki\": {\n    \"title\": \"휴가 규정\",\n    \"wikiPath\": \"wiki/D1-D2/pages/c4d8e1b2.md\",\n    \"contentMarkdown\": \"# 휴가 규정\\n...\"\n  },\n  \"evidenceDocuments\": [],\n  \"chatHistory\": []\n}",
+                  "raw": "{\n  \"wikiId\": \"100\",\n  \"scopeKey\": \"D1-D2\",\n  \"instruction\": \"중복된 휴가 규정을 하나로 정리해줘.\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"chatHistory\": []\n}",
                   "options": {
                     "raw": {
                       "language": "json"

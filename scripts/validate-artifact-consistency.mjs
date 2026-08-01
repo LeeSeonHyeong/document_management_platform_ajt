@@ -357,7 +357,10 @@ const collectionVariable = (collection, key) =>
 // wiki-transformations 요청에서 currentIndex·currentCategories·selectedWikis 제거,
 // wikiCapability·scopeVersion 을 선택에서 필수로. 호환되지 않는 변경이라 minor 다
 // (S15P11B106-174).
-const expectedContractVersion = "1.9.0";
+// 1.10.0 은 위키 관리자 수정에도 같은 것을 한 것이다 — wiki-edits 요청에서 currentWiki·
+// evidenceDocuments 제거, wikiCapability·scopeVersion 을 선택에서 필수로. 호환되지 않는
+// 변경이라 minor 다 (S15P11B106-176).
+const expectedContractVersion = "1.10.0";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
@@ -502,6 +505,17 @@ expect(
   transformationBody.changeType === "document_replaced" &&
     typeof transformationBody.removedParsedMarkdown === "string",
   "Wiki 변환 요청에 document_replaced changeType 또는 removedParsedMarkdown이 없음",
+);
+
+const editBody = parseRawRequestBody("POST", "/internal/v1/wiki-edits");
+expect(
+  !("currentWiki" in editBody) && !("evidenceDocuments" in editBody),
+  "Wiki 수정 요청이 아직 본문·근거 문서를 밀어 보내고 있음 — 에이전트가 직접 조회한다",
+);
+expect(
+  typeof editBody.wikiCapability === "string" &&
+    typeof editBody.scopeVersion === "number",
+  "Wiki 수정 요청에 wikiCapability 또는 scopeVersion이 없음 — 1.10.0 부터 필수다",
 );
 
 const transformationRequest = findRequest(

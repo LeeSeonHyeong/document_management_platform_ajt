@@ -1,48 +1,36 @@
 package com.ajt.backend.global.ai.client;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * `POST /internal/v1/wiki-edits` 요청입니다.
  * FastAPI가 정의되지 않은 필드를 거부하므로(extra=forbid) 계약에 있는 필드만 보낸다.
+ *
+ * <p>수정(S15P11B106-176): <b>본문을 밀어 보내지 않는다.</b> 수정 대상 Wiki 본문과 근거 원본문서를
+ * 싣던 것을 걷어냈다 — 에이전트가 Wiki 조회 API로 직접 읽는다. 그래서 요청이 대상 ID와 지시,
+ * 대화 이력, 그리고 <b>조회 권한</b>(허가값·범위 버전)으로 끝난다.
  */
 public record WikiEditRequest(
         String wikiId,
         String scopeKey,
         String instruction,
-        WikiBody currentWiki,
-        List<EvidenceDocument> evidenceDocuments,
         List<ChatMessage> chatHistory,
+        /*
+         * 수정(S15P11B106-176): 선택 → 필수. 빠지면 에이전트가 조회 API를 부를 수 없어 수정 대상
+         * 본문을 전혀 못 보고, 그 상태로 라이브를 덮을 수 있다. 로그·오류 응답에 남기지 않는다.
+         */
         String wikiCapability,
+        /** 요청 시작 시점의 범위 버전. 작업 중 같은 범위가 바뀌면 AI가 이 값으로 알아채고 중단한다. */
         Long scopeVersion
 ) {
-    public WikiEditRequest(String wikiId, String scopeKey, String instruction, WikiBody currentWiki, List<EvidenceDocument> evidenceDocuments, List<ChatMessage> chatHistory) {
-        this(wikiId, scopeKey, instruction, currentWiki, evidenceDocuments, chatHistory, null, null);
-    }
     public WikiEditRequest {
         wikiId = requireNotBlank(wikiId, "wikiId");
         scopeKey = requireNotBlank(scopeKey, "scopeKey");
         instruction = requireNotBlank(instruction, "instruction");
-        currentWiki = Objects.requireNonNull(currentWiki, "currentWiki must not be null");
-        evidenceDocuments = evidenceDocuments == null ? List.of() : List.copyOf(evidenceDocuments);
         chatHistory = chatHistory == null ? List.of() : List.copyOf(chatHistory);
-        if (wikiCapability != null && wikiCapability.isBlank()) throw new IllegalArgumentException("wikiCapability must not be blank");
-    }
-
-    public record WikiBody(String title, String wikiPath, String contentMarkdown) {
-        public WikiBody {
-            title = requireNotBlank(title, "title");
-            wikiPath = requireNotBlank(wikiPath, "wikiPath");
-            contentMarkdown = requireNotBlank(contentMarkdown, "contentMarkdown");
-        }
-    }
-
-    public record EvidenceDocument(String documentId, String originalFileName, String parsedMarkdown) {
-        public EvidenceDocument {
-            documentId = requireNotBlank(documentId, "documentId");
-            originalFileName = requireNotBlank(originalFileName, "originalFileName");
-            parsedMarkdown = requireNotBlank(parsedMarkdown, "parsedMarkdown");
+        wikiCapability = requireNotBlank(wikiCapability, "wikiCapability");
+        if (scopeVersion == null) {
+            throw new IllegalArgumentException("scopeVersion must not be null");
         }
     }
 

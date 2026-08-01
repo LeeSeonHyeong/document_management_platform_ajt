@@ -472,12 +472,6 @@ class RestClientAiClientTest {
                           "instruction": "중복된 휴가 규정을 하나로 정리해줘.",
                           "wikiCapability": "capability",
                           "scopeVersion": 47,
-                          "currentWiki": {
-                            "title": "휴가 규정",
-                            "wikiPath": "wiki/D1-D2/pages/100.md",
-                            "contentMarkdown": "# 휴가 규정\\n..."
-                          },
-                          "evidenceDocuments": [],
                           "chatHistory": []
                         }
                         """))
@@ -509,8 +503,6 @@ class RestClientAiClientTest {
                 "100",
                 "D1-D2",
                 "중복된 휴가 규정을 하나로 정리해줘.",
-                new WikiEditRequest.WikiBody("휴가 규정", "wiki/D1-D2/pages/100.md", "# 휴가 규정\n..."),
-                List.of(),
                 List.of(),
                 "capability",
                 47L
@@ -532,6 +524,8 @@ class RestClientAiClientTest {
     void sendsOnlyContractFieldsForWikiEdit() {
         server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
                 .andExpect(content().string(not(containsString("currentCategories"))))
+                .andExpect(content().string(not(containsString("currentWiki"))))
+                .andExpect(content().string(not(containsString("evidenceDocuments"))))
                 .andRespond(withSuccess("""
                         {
                           "agentMessage": "변경이 없습니다.",
@@ -548,18 +542,11 @@ class RestClientAiClientTest {
     }
 
     @Test
-    @DisplayName("Wiki 수정 요청은 근거 문서와 대화 이력을 계약대로 전달한다")
-    void sendsEvidenceAndChatHistoryForWikiEdit() {
+    @DisplayName("Wiki 수정 요청은 대화 이력을 계약대로 전달한다")
+    void sendsChatHistoryForWikiEdit() {
         server.expect(requestTo("http://localhost:8000/internal/v1/wiki-edits"))
                 .andExpect(content().json("""
                         {
-                          "evidenceDocuments": [
-                            {
-                              "documentId": "15",
-                              "originalFileName": "취업규칙.pdf",
-                              "parsedMarkdown": "# 취업 규칙\\n본문..."
-                            }
-                          ],
                           "chatHistory": [
                             {"senderType": "admin", "content": "중복을 정리해줘"},
                             {"senderType": "agent", "content": "어떤 문서를 기준으로 할까요?"}
@@ -580,11 +567,11 @@ class RestClientAiClientTest {
                 "100",
                 "D1-D2",
                 "중복된 휴가 규정을 하나로 정리해줘.",
-                new WikiEditRequest.WikiBody("휴가 규정", "wiki/D1-D2/pages/100.md", "# 휴가 규정\n..."),
-                List.of(new WikiEditRequest.EvidenceDocument("15", "취업규칙.pdf", "# 취업 규칙\n본문...")),
                 List.of(
                         new WikiEditRequest.ChatMessage("admin", "중복을 정리해줘"),
-                        new WikiEditRequest.ChatMessage("agent", "어떤 문서를 기준으로 할까요?"))
+                        new WikiEditRequest.ChatMessage("agent", "어떤 문서를 기준으로 할까요?")),
+                "capability",
+                47L
         ));
 
         server.verify();
@@ -829,9 +816,9 @@ class RestClientAiClientTest {
                 "100",
                 "D1-D2",
                 "중복된 휴가 규정을 하나로 정리해줘.",
-                new WikiEditRequest.WikiBody("휴가 규정", "wiki/D1-D2/pages/100.md", "# 휴가 규정\n..."),
                 List.of(),
-                List.of()
+                "capability",
+                47L
         );
     }
 

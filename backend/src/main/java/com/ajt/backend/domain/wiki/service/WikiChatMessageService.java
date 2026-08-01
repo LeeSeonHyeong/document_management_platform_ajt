@@ -7,7 +7,6 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
-import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.wiki.api.WikiChatMessageListResponse;
 import com.ajt.backend.domain.wiki.api.WikiChatMessageResponse;
 import com.ajt.backend.domain.wiki.api.WikiChatReplyResponse;
@@ -28,7 +27,6 @@ import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +39,10 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>지시를 FastAPI {@code POST /internal/v1/wiki-edits}로 보내고, 돌아온 변경안을 Spring Boot가 검증해
  * 별도 승인 없이 현재 Wiki에 반영합니다. 관리자 지시와 에이전트 응답은 각각 대화로 저장합니다.
+ *
+ * <p>수정(S15P11B106-176): <b>본문을 밀어 보내지 않는다.</b> 수정 대상 Wiki 본문과 근거 원본문서를
+ * 싣던 것을 걷어냈다 — 에이전트가 Wiki 조회 API로 직접 읽는다. 이 서비스가 보내는 것은 대상 ID·지시·
+ * 대화 이력과 <b>조회 권한</b>(허가값·범위 버전)뿐이다.
  */
 @Service
 public class WikiChatMessageService {
@@ -54,7 +56,6 @@ public class WikiChatMessageService {
     private final WikiChatMessageRepository wikiChatMessageRepository;
     private final WikiFileStorage wikiFileStorage;
     private final DocumentRepository documentRepository;
-    private final DocumentFileStorage documentFileStorage;
     private final AiJobRepository aiJobRepository;
     private final AiClient aiClient;
     private final WikiTransformationApplier applier;
@@ -68,7 +69,6 @@ public class WikiChatMessageService {
             WikiChatMessageRepository wikiChatMessageRepository,
             WikiFileStorage wikiFileStorage,
             DocumentRepository documentRepository,
-            DocumentFileStorage documentFileStorage,
             AiJobRepository aiJobRepository,
             AiClient aiClient,
             WikiTransformationApplier applier,
@@ -81,7 +81,6 @@ public class WikiChatMessageService {
         this.wikiChatMessageRepository = wikiChatMessageRepository;
         this.wikiFileStorage = wikiFileStorage;
         this.documentRepository = documentRepository;
-        this.documentFileStorage = documentFileStorage;
         this.aiJobRepository = aiJobRepository;
         this.aiClient = aiClient;
         this.applier = applier;
@@ -138,8 +137,6 @@ public class WikiChatMessageService {
                     String.valueOf(wiki.id()),
                     wiki.scopeKey(),
                     instruction,
-                    new WikiEditRequest.WikiBody(wiki.title(), wiki.wikiPath(), requireWikiContent(wiki)),
-                    evidenceDocuments(wiki),
                     chatHistory(history),
                     capability,
                     scopeVersion
@@ -153,33 +150,6 @@ public class WikiChatMessageService {
         } finally {
             wikiCapabilityService.revoke(capability);
         }
-    }
-
-    /**
-     * 이 Wiki에 연결된 원본문서의 파싱 결과입니다.
-     * 계약상 필수 필드를 채울 수 없는 문서(파싱 전이거나 본문이 빈 경우)는 전달하지 않습니다.
-     */
-    private List<WikiEditRequest.EvidenceDocument> evidenceDocuments(Wiki wiki) {
-        List<Long> documentRefs = wiki.documentRefs();
-        if (documentRefs.isEmpty()) {
-            return List.of();
-        }
-        List<WikiEditRequest.EvidenceDocument> evidenceDocuments = new ArrayList<>();
-        for (Document document : documentRepository.findAllById(documentRefs)) {
-            if (document.parsedPath() == null || document.parsedPath().isBlank()) {
-                continue;
-            }
-            String parsedMarkdown = readText(document.parsedPath());
-            if (parsedMarkdown.isBlank()) {
-                continue;
-            }
-            evidenceDocuments.add(new WikiEditRequest.EvidenceDocument(
-                    String.valueOf(document.id()),
-                    document.originalFileName(),
-                    parsedMarkdown
-            ));
-        }
-        return evidenceDocuments;
     }
 
     private List<WikiEditRequest.ChatMessage> chatHistory(List<WikiChatMessage> history) {
@@ -273,31 +243,12 @@ public class WikiChatMessageService {
         return content.trim();
     }
 
-    /**
-     * FastAPI 요청의 currentWiki.contentMarkdown은 비어 있을 수 없습니다.
-     */
-    private String requireWikiContent(Wiki wiki) {
-        String contentMarkdown = readWikiContent(wiki);
-        if (contentMarkdown.isBlank()) {
-            throw new BusinessException(ErrorCode.WIKI_EDIT_FAILED);
-        }
-        return contentMarkdown;
-    }
-
     private String readWikiContent(Wiki wiki) {
         if (wiki.wikiPath() == null || wiki.wikiPath().isBlank()) {
             return "";
         }
         try {
             return wikiFileStorage.readWikiMarkdown(wiki.wikiPath());
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
-        }
-    }
-
-    private String readText(String storedPath) {
-        try {
-            return documentFileStorage.readText(storedPath);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
