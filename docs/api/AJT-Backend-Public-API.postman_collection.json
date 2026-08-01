@@ -3058,7 +3058,7 @@
             "description": "접근 가능한 Wiki 또는 일정을 대상으로 AI에게 질문합니다.\nWiki·일정 챗봇 입력 영역에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `conversationId`: 기존 대화의 후속 질문이면 대화 ID. 새 대화면 생략 또는 null\n- `question`: 사용자 질문\n\n### 정책\n- 같은 conversationId의 이전 질문과 답변을 문맥으로 사용하는 멀티턴 방식입니다.\n- 새 질문이면 대화를 생성하고 서버가 conversationId를 발급합니다.\n- 다른 사용자의 conversationId는 사용할 수 없습니다.\n- AI가 질문을 wiki, schedule 또는 mixed로 자동 판단합니다.\n- AI는 index.md와 일정 요약에서 종류별 최대 5개 자료를 먼저 선택합니다.\n- 백엔드는 선택 ID의 권한을 다시 검사한 뒤 선택 본문만 AI에 전달합니다.\n- Wiki 질문은 Wiki만 사용하고 원본문서는 Wiki 근거로만 표시합니다.\n- mixed 질문은 Wiki와 일정 출처를 함께 사용할 수 있습니다.\n- 답변 출처는 두 개 이상일 수 있습니다.\n- 권한이 없는 자료는 답변과 출처에 포함하지 않습니다.\n\n### Response\n- `conversationId`, `questionId`, `questionType`, `answer`\n- `sources`: Wiki 또는 일정 출처 배열\n- Wiki 출처의 `evidenceDocuments`: 연결 원본문서 목록\n\n### Error\n- `400 Bad Request`: 질문이 비어 있거나 길이 제한 위반\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: 대화가 없거나 현재 사용자의 대화가 아님\n- `503 Service Unavailable`: AI 답변 서버 이용 불가",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"question\": \"연차는 언제까지 신청해야 하나요?\"\n}",
+              "raw": "{\n  \"conversationId\": null,\n  \"question\": \"연차는 언제까지 신청해야 하나요?\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
