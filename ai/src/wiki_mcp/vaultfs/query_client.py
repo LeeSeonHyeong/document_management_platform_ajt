@@ -1,4 +1,4 @@
-"""Wiki 조회 창구 클라이언트 — 계약 v1.5.0 「Wiki 조회 창구」 7개.
+"""Wiki 조회 API 클라이언트 — 계약 v1.5.0 「Wiki 조회 API」 7개.
 
 방향이 나머지와 반대다: AI 서버가 호출자이고 Spring 이 응답한다. 그래서 이 파일만
 `httpx` 를 안다 — `federated.py` 는 HTTP 를 모르고 이 객체만 받는다.
@@ -37,7 +37,7 @@ import httpx
 
 from .base import VaultError
 
-# 조회 횟수 예산. 시간 때문이 아니다 — 창구 호출은 수백 밀리초라 예산에 영향이 없다.
+# 조회 횟수 예산. 시간 때문이 아니다 — 조회 API 호출은 수백 밀리초라 예산에 영향이 없다.
 # 목적은 D9(`10-onboarding`: 724초에 툴 77회, 출력 589토큰)처럼 같은 것을 반복 조회하며
 # 맴도는 것을 끊고, 조회 결과가 문맥에 쌓여 출력을 늘리는 것을 막는 것이다 (설계 9.5).
 #
@@ -46,7 +46,7 @@ from .base import VaultError
 # (`spring.py:106`, 라이브 전체를 다시 훑는다) → `build_edges` → 링크마다 `fs.get` →
 # 다시 `_ensure_body` 경로 때문에 read 한 번이 링크 연결 성분 전체를 당긴다. 실측
 # (`experiments/measure_federated.py --link-density 1 --phases de`): 사슬 링크 100장에서
-# read **1회**가 창구 100회·본문 100건이고(누적 104회), 150장에서는 150회다(누적 154회).
+# read **1회**가 조회 API 100회·본문 100건이고(누적 104회), 150장에서는 150회다(누적 154회).
 # 즉 소비량이 **위키 장수에 비례**하는데 상한이 고정이면 위키가 커지는 것만으로 정상
 # 작업이 실패한다. 고정 105 로 같은 시나리오를 돌리면 100장에서도 QueryBudgetExceeded 다.
 #
@@ -56,13 +56,13 @@ from .base import VaultError
 #   예산 = QUERY_CALL_BUDGET_BASE + QUERY_CALLS_PER_PAGE × 카탈로그 페이지 수
 #
 # 기본값 105 의 근거: 위키 100장 · 질의 5개 · 상위 3건 읽기 시나리오에서 링크가 없을 때
-# 창구 호출이 23회였다(하이드레이션 3 + 검색 15 + 본문 5). 그리고 실제 작업의 상한 —
-# `experiments/*/report.json` 8개 실험 문서 34건 중 창구를 건드리는 툴 호출
+# 조회 API 호출이 23회였다(하이드레이션 3 + 검색 15 + 본문 5). 그리고 실제 작업의 상한 —
+# `experiments/*/report.json` 8개 실험 문서 34건 중 조회 API 를 건드리는 툴 호출
 # (read·search·lint)이 가장 많았던 문서가 32회다(`2026-07-27-opus46-12docs` 의 한 문서.
 # D9 로 인용되는 폭주 문서다). 하이드레이션 3 을 더한 ~35회의 3배가 105 다.
 #
 # 장당 2회의 근거: 실측 fan-out 이 장당 본문 1.0회(100장→100건)다. 본문은 `wikiId` 로
-# 캐시되므로 이 항은 장수로 묶인다. 여기에 관계 창구(`get_backlinks` → `relations`)를
+# 캐시되므로 이 항은 장수로 묶인다. 여기에 관계 조회 API(`get_backlinks` → `relations`)를
 # 장당 1회로 잡아 합쳐 2 다.
 #
 # **관계 조회는 캐시가 없어 장당이 아니라 호출당 1회다** — 같은 페이지를 열 번 읽으면
@@ -94,7 +94,7 @@ class QueryBudgetExceeded(VaultError):
 
 
 class WikiQueryClient:
-    """창구 7개. 한 요청의 생애만큼 살고 그때 버린다."""
+    """Wiki 조회 API 7개. 한 요청의 생애만큼 살고 그때 버린다."""
 
     def __init__(self, base_url: str, *, api_key: str, capability: str,
                  scope_key: str, scope_version: int,
@@ -135,7 +135,7 @@ class WikiQueryClient:
     def note_scope_change(self, error: ScopeChangedError) -> ScopeChangedError:
         """범위가 바뀐 사실을 기억하고 그 예외를 돌려준다 (`raise client.note_...` 용).
 
-        어댑터(`federated.py`)도 이 창구를 쓴다 — 본문이 사라진 경합은 버전 비교가 아니라
+        어댑터(`federated.py`)도 이 조회 API 를 쓴다 — 본문이 사라진 경합은 버전 비교가 아니라
         `404` 로 드러나므로 거기서 만든 예외도 같은 자리에 남아야 한다.
         """
         self.scope_change = error
@@ -170,9 +170,9 @@ class WikiQueryClient:
             raise QueryNotFound(f"요청한 자료를 찾을 수 없습니다 — {path}")
         if response.status_code >= 400:
             # 본문을 그대로 싣지 않는다 — capability 가 되돌아올 여지를 남기지 않는다.
-            raise VaultError(f"창구 오류 {response.status_code} — {path}")
+            raise VaultError(f"조회 API 오류 {response.status_code} — {path}")
         body = response.json()
-        # 파싱본 창구만 scopeVersion 이 없다 (설계 2.4·3.7). 문서 파싱 결과는 위키
+        # 파싱본 조회 API 만 scopeVersion 이 없다 (설계 2.4·3.7). 문서 파싱 결과는 위키
         # 스냅샷과 무관하므로 위키 버전으로 판정하면 무관한 이유로 중단된다.
         actual = body.get("scopeVersion")
         if actual is not None and actual != self.scope_version:
@@ -192,7 +192,7 @@ class WikiQueryClient:
         params.update(extra or {})
         return params
 
-    # ----- 창구 -------------------------------------------------------------
+    # ----- 조회 API -----------------------------------------------------------
 
     async def search(self, query: str, limit: int = 10) -> list[dict]:
         body = await self._get("/internal/v1/wiki-search",
@@ -239,6 +239,19 @@ class WikiQueryClient:
     async def categories(self) -> list[dict]:
         body = await self._get(
             f"/internal/v1/wiki-spaces/{self.scope_key}/categories")
+        return body.get("items", [])
+
+    async def scope_relations(self) -> list[dict]:
+        """범위 전체의 참조 간선. **뒤집기는 여기서 하지 않는다.**
+
+        계약이 이 사용을 명시한다 — "역방향(`backlinks`)은 싣지 않습니다. 범위 전체
+        간선이 있으면 소비자가 뒤집어 구합니다." 방향을 정하는 것은 카탈로그의 일이고
+        (`federated._hydrate_catalog`), 여기는 조회 API 응답을 그대로 넘긴다.
+
+        페이지별 `relations()` 와 달리 `scopeKey` 쿼리 파라미터가 없다 — 경로에 있다.
+        """
+        body = await self._get(
+            f"/internal/v1/wiki-spaces/{self.scope_key}/relations")
         return body.get("items", [])
 
     async def parsed_document(self, document_id: str) -> dict:

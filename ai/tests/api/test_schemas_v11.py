@@ -1,79 +1,56 @@
 """계약 v1.1.0 스키마 개편 — `docs/superpowers/specs/2026-07-28-ai-server-v1.1-adaptation.md` §1.
 
-`SelectionRequest`/`SelectionResponse`/`SelectedWiki` 신설, `TransformRequest` 에
-`selectedWikis`·`changeType`·`removedParsedMarkdown` 을 더하고 `parsedMarkdown` 을
-선택적으로 만든다(removed 때 빈 값 허용). `ReconcileRequest` 는 v1.1.0 계약에서
-`changeType` 분기로 흡수돼 삭제됐다.
+S15P11B106-175(위키 변환 단일 호출)가 이 파일이 다루던 1단계 문맥 선택
+(`SelectionRequest`/`SelectionResponse`/`SelectedWiki`)을 지웠다 — 위키 변환이 하이드레이션
+으로 라이브 위키를 직접 읽으므로 Spring 이 선택한 위키를 실어 보낼 이유가 없다. 그 자리에
+`wikiCapability`·`scopeVersion`(Wiki 조회 API 열람 허가)이 `TransformRequest`·`EditRequest` 양쪽에서
+필수가 됐다. `ReconcileRequest` 는 v1.1.0 계약에서 `changeType` 분기로 흡수돼 삭제됐다.
 """
 
 import pytest
 from pydantic import ValidationError
 
 from wiki_api.errors import _FAILURE_CODES, _VALIDATION_CODES
-from wiki_api.schemas import (
-    SelectedWiki,
-    SelectionRequest,
-    SelectionResponse,
-    TransformRequest,
-)
-
-
-SELECTED_WIKI = {
-    "wikiId": "101",
-    "categoryId": "9",
-    "title": "커뮤니케이션 가이드",
-    "summary": "비동기 우선 소통",
-    "contentMarkdown": "# 커뮤니케이션 가이드\n\n비동기 우선.\n",
-    "documentRefs": ["15"],
-    "wikiRefs": ["102"],
-}
-
-
-# ---- SelectedWiki ----------------------------------------------------
-
-def test_selected_wiki_accepts_the_full_shape():
-    wiki = SelectedWiki(**SELECTED_WIKI)
-    assert wiki.wikiId == "101"
-    assert wiki.documentRefs == ["15"]
-    assert wiki.wikiRefs == ["102"]
-
-
-def test_selected_wiki_allows_optional_fields_to_be_absent():
-    wiki = SelectedWiki(wikiId="101", title="커뮤니케이션 가이드",
-                        contentMarkdown="본문")
-    assert wiki.categoryId is None
-    assert wiki.summary is None
-    assert wiki.documentRefs == []
-    assert wiki.wikiRefs == []
-
-
-def test_selected_wiki_rejects_unknown_fields():
-    with pytest.raises(ValidationError):
-        SelectedWiki(**{**SELECTED_WIKI, "extra": "필드"})
+from wiki_api.schemas import EditRequest, TransformRequest
 
 
 # ---- TransformRequest --------------------------------------------------
 
-def test_transform_request_accepts_selected_wikis_and_change_type():
-    req = TransformRequest(jobId="43", documentId="15", scopeKey="9",
-                           parsedMarkdown="본문", currentIndex="",
-                           selectedWikis=[SELECTED_WIKI],
-                           changeType="document_added")
-    assert req.selectedWikis[0].wikiId == "101"
-    assert req.changeType == "document_added"
-    assert req.removedParsedMarkdown is None
+def test_transform_request_requires_the_capability():
+    """열람 허가(`wikiCapability`)는 필수다 — 없으면 400 이고 fieldErrors 가 어느 필드인지 알려준다."""
+    with pytest.raises(ValidationError) as caught:
+        TransformRequest(jobId="1", documentId="2", scopeKey="D1",
+                         parsedMarkdown="본문")
+    fields = {e["loc"][-1] for e in caught.value.errors()}
+    assert {"wikiCapability", "scopeVersion"} <= fields
+
+
+def test_transform_request_rejects_pushed_context():
+    """본문을 실어 보내는 필드는 사라졌다. Strict 라 남아 있으면 400 이다."""
+    with pytest.raises(ValidationError):
+        TransformRequest(jobId="1", documentId="2", scopeKey="D1",
+                         wikiCapability="c", scopeVersion=47,
+                         parsedMarkdown="본문", selectedWikis=[])
+
+
+def test_transform_request_minimal_payload_is_valid():
+    payload = TransformRequest(jobId="1", documentId="2", scopeKey="D1",
+                               wikiCapability="c", scopeVersion=47,
+                               parsedMarkdown="본문")
+    assert payload.changeType == "document_added"
 
 
 def test_transform_request_change_type_defaults_to_document_added():
     req = TransformRequest(jobId="43", documentId="15", scopeKey="9",
+                           wikiCapability="c", scopeVersion=47,
                            parsedMarkdown="본문")
     assert req.changeType == "document_added"
-    assert req.selectedWikis == []
 
 
 def test_transform_request_rejects_unknown_change_type():
     with pytest.raises(ValidationError):
         TransformRequest(jobId="43", documentId="15", scopeKey="9",
+                         wikiCapability="c", scopeVersion=47,
                          parsedMarkdown="본문", changeType="document_exploded")
 
 
@@ -81,10 +58,11 @@ def test_transform_request_removed_allows_missing_parsed_markdown():
     """removed 때는 걷어낼 원본문서만 있고 새 원본문서 본문이 없다 — `parsedMarkdown`
     생략(빈 문자열 기본값)을 허용해야 한다.
 
-    `selectedWikis` 는 채운다 — removed 는 인용 위키를 요구한다(아래 I3)."""
+    인용 위키가 있는지는 여기서 묻지 않는다 — 요청이 위키를 싣지 않으므로 하이드레이션이
+    카탈로그를 받은 뒤에야 판정할 수 있다 (S15P11B106-175)."""
     req = TransformRequest(jobId="43", documentId="15", scopeKey="9",
+                           wikiCapability="c", scopeVersion=47,
                            changeType="document_removed",
-                           selectedWikis=[SELECTED_WIKI],
                            removedParsedMarkdown="사라진 원본문서 본문")
     assert req.parsedMarkdown == ""
     assert req.removedParsedMarkdown == "사라진 원본문서 본문"
@@ -96,86 +74,49 @@ def test_transform_request_added_requires_a_body():
     "아무것도 안 한 성공"을 Spring 이 성공으로 기록한다."""
     with pytest.raises(ValidationError) as excinfo:
         TransformRequest(jobId="43", documentId="15", scopeKey="9",
+                         wikiCapability="c", scopeVersion=47,
                          parsedMarkdown="   ")
-    assert excinfo.value.errors()[0]["loc"] == ("parsedMarkdown",)
-
-
-def test_transform_request_removed_requires_selected_wikis():
-    """I3. removed 에 인용 위키가 없으면 걷어낼 대상이 없다 — unlink 0건의 200 은 정직해
-    보이지만 계약 위반이다(회신 #3: removed 때 Spring 이 인용 위키를 직접 보낸다).
-    합법적인 대안을 메시지에 적어 준다."""
-    with pytest.raises(ValidationError) as excinfo:
-        TransformRequest(jobId="43", documentId="15", scopeKey="9",
-                         changeType="document_removed",
-                         removedParsedMarkdown="사라진 원본문서 본문")
-    error = excinfo.value.errors()[0]
-    assert error["loc"] == ("selectedWikis",)
-    assert "변환" in error["msg"] and "삭제" in error["msg"]
+    fields = {e["loc"][-1] for e in excinfo.value.errors()}
+    assert "parsedMarkdown" in fields
 
 
 def test_transform_request_rejects_unknown_fields():
     with pytest.raises(ValidationError):
         TransformRequest(jobId="43", documentId="15", scopeKey="9",
+                         wikiCapability="c", scopeVersion=47,
                          parsedMarkdown="본문", extra="필드")
 
 
-# ---- SelectionRequest ---------------------------------------------------
+# ---- EditRequest ---------------------------------------------------------
 
-def test_selection_request_accepts_the_contract_shape():
-    req = SelectionRequest(jobId="43", documentId="15", scopeKey="9",
-                           parsedMarkdown="본문", currentIndex="# 목차\n")
-    assert req.changeType == "document_added"
-    assert req.removedParsedMarkdown is None
-
-
-def test_selection_request_accepts_removed_change_type_with_removed_markdown():
-    req = SelectionRequest(jobId="43", documentId="15", scopeKey="9",
-                           parsedMarkdown="", currentIndex="# 목차\n",
-                           changeType="document_removed",
-                           removedParsedMarkdown="사라진 원본문서 본문")
-    assert req.changeType == "document_removed"
-    assert req.removedParsedMarkdown == "사라진 원본문서 본문"
+def test_edit_request_requires_the_capability():
+    with pytest.raises(ValidationError) as caught:
+        EditRequest(wikiId="9", scopeKey="D1", instruction="요약을 고쳐라")
+    fields = {e["loc"][-1] for e in caught.value.errors()}
+    assert {"wikiCapability", "scopeVersion"} <= fields
 
 
-def test_selection_request_requires_current_index():
+def test_edit_request_rejects_pushed_context():
     with pytest.raises(ValidationError):
-        SelectionRequest(jobId="43", documentId="15", scopeKey="9",
-                         parsedMarkdown="본문")
+        EditRequest(wikiId="9", scopeKey="D1", instruction="고쳐라",
+                    wikiCapability="c", scopeVersion=47,
+                    evidenceDocuments=[])
 
 
-def test_selection_request_rejects_unknown_fields():
-    with pytest.raises(ValidationError):
-        SelectionRequest(jobId="43", documentId="15", scopeKey="9",
-                         parsedMarkdown="본문", currentIndex="", extra="필드")
+def test_edit_request_minimal_payload_is_valid():
+    req = EditRequest(wikiId="9", scopeKey="D1", instruction="요약을 고쳐라",
+                      wikiCapability="c", scopeVersion=47)
+    assert req.chatHistory == []
 
 
-# ---- SelectionResponse ---------------------------------------------------
+# ---- 오류 코드: 1단계 문맥 선택은 지워졌다 -----------------------------------
 
-def test_selection_response_accepts_wiki_ids_and_reason():
-    res = SelectionResponse(wikiIds=["101", "102"], reason="가장 관련 있는 문서")
-    assert res.wikiIds == ["101", "102"]
-
-
-def test_selection_response_does_not_enforce_the_five_item_cap():
-    """≤5는 검증 대상이 아니다 — 생성 측(선택 LLM 호출)이 보장한다 (브리프)."""
-    res = SelectionResponse(wikiIds=[str(i) for i in range(10)], reason="사유")
-    assert len(res.wikiIds) == 10
-
-
-def test_selection_response_rejects_unknown_fields():
-    with pytest.raises(ValidationError):
-        SelectionResponse(wikiIds=[], reason="사유", extra="필드")
-
-
-# ---- 오류 코드: 계약 Saved Example 과 문자 그대로 일치해야 한다 ------------
-
-def test_wiki_context_selections_error_code_matches_the_contract_example_exactly():
-    """`docs/FastAPI명세서.json` 의 400 예시(`code`·`message`)를 그대로 못 박는다 —
-    리뷰에서 발견된 실수(`INVALID_WIKI_CONTEXT_REQUEST` 를 잘못 썼던 것)가 재발하면
-    이 테스트가 바로 빨간불이 된다."""
-    code, message = _VALIDATION_CODES["/internal/v1/wiki-context-selections"]
-    assert code == "INVALID_WIKI_CONTEXT_SELECTION_REQUEST"
-    assert message == "Wiki 문맥 선택 요청 구조가 올바르지 않습니다."
+def test_wiki_context_selections_route_is_gone():
+    """`wiki-context-selections` 는 S15P11B106-175 가 지웠다 — 위키 변환이 하이드레이션으로
+    라이브 위키를 직접 읽으므로 1단계 선택 자체가 없다. 이름이 남아 있으면 Spring 이
+    계속 그 경로를 부른다."""
+    assert "/internal/v1/wiki-context-selections" not in _VALIDATION_CODES
+    assert "/internal/v1/wiki-context-selections" not in _FAILURE_CODES
 
 
 # ---- ReconcileRequest: 계약상 폐지 -----------------------------------------

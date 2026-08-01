@@ -67,9 +67,9 @@ uv sync
 cp src/.env.example src/.env                # 최초 1회. 없으면 APP_URL 이 기본값으로 돈다
 uv run pytest -m "not ocr"                  # OCR 제외 (CI 후보)
 uv run pytest                               # 전체 — 로컬 Tesseract(eng) 필요
-INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000   # 서버 기동 (claude-code)
-uv sync --extra deepagents                                         # 배포 런타임 설치
-AI_RUNTIME=deepagents INTERNAL_API_KEY=... uv run python -m wiki_api.serve   # 배포 형태
+uv sync --extra deepagents                                         # 배포 런타임 설치 (기본값)
+INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000   # 서버 기동 (deepagents, 기본)
+AI_RUNTIME=claude-code INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000  # 로컬 claude-code (위키 엔드포인트는 안 된다)
 ```
 
 `uv` 가 없으면 `curl -LsSf https://astral.sh/uv/install.sh | sh` 로 설치한다 (`~/.local/bin`).
@@ -86,7 +86,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 | --- | --- |
 | `document_parser` | 파일 → Markdown (TXT·MD·DOCX·PDF, 이미지 PDF는 OCR) |
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
-| `agent_runtime` | 에이전트 실행 — claude-code(지금)·deepagents(배포) 런타임, 시간 상한. **기본값이 `claude-code` 라 배포에서 `AI_RUNTIME=deepagents` 를 안 주면 기동은 되고 첫 요청에서 실패한다** — `serve.py` 가 CLI 부재를 기동 시점에 막지만 근본 해결은 키 확보 후 기본값 전환이다 |
+| `agent_runtime` | 에이전트 실행 — claude-code(로컬 전용)·deepagents(기본값, 배포) 런타임, 시간 상한. push 경로가 사라져(S15P11B106-175) `claude-code` 로는 위키 엔드포인트를 하나도 못 쓴다(`session.py._assert_runtime_can_use_the_gateway`) — 그래서 기본값이 `deepagents` 다. `claude-code` 는 `AI_RUNTIME=claude-code` 로 명시했을 때만 뜨고, 그때도 챗봇(`/answers`)·파싱(`/source-parses`)은 된다 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |
 | `schedule_extractor` | 일정 문서 Markdown → 일정 초안. 상태 없는 단발 LLM 호출. 시각 변환·연도 추론은 코드가 한다 |
 | `viewer/` | 위키 참조 그래프 뷰어 (개발 도구). 데이터는 `uv run python -m wiki_mcp.graph_api --root <저장소> --scope ALL` 로 띄운다 |
@@ -97,7 +97,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 
 | 파일 | 무엇을 알려주나 |
 | --- | --- |
-| `src/wiki_api/session.py` | 요청 1건의 생애 — 임시 루트 개설·하이드레이션·에이전트 실행·폐기. v1.1.0 부터 Spring 에 되묻지 않는다 |
+| `src/wiki_api/session.py` | 요청 1건의 생애 — 임시 루트 개설·하이드레이션·에이전트 실행·폐기. 하이드레이션은 Spring Wiki 조회 API(`FederatedVaultFS`)에서 라이브 위키를 읽는다 (S15P11B106-175) |
 | `src/wiki_api/changes.py` | 작업 층 diff → 계약 응답. **계약 모양을 아는 유일한 곳.** `pageKey` ↔ `tempWikiId` 매핑 |
 | `src/wiki_api/deps.py` | 내부 API 키 검증과 `requestId` 재사용. 사용자 권한 검증은 여기서 하지 않는다 |
 | `src/wiki_api/errors.py` | 계약이 허용한 상태(400·401·500)로 좁히는 곳. FastAPI 의 422 를 400 으로 바꾼다 |
@@ -108,7 +108,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 | `src/wiki_mcp/shared/schema.sql` | 파생 색인 스키마. `src/wiki_mcp/vaultfs/rebuild.py` 로 언제든 재생성 |
 | `src/document_parser/normalize.py` | 줄바꿈·공백 정규화 헬퍼 |
 
-- **AI 서버는 DB·서비스 파일에 접근하지 않는다.** 요청 본문이 실어 온 것만 처리하고 변경안을 반환한다. 저장·확정은 Spring.
+- **AI 서버는 DB·서비스 파일에 접근하지 않는다.** 라이브 위키는 Spring Wiki 조회 API로만 읽고(목차·카테고리·본문·근거 문서 포함) 변경안을 반환한다. 저장·확정은 Spring.
 - **라이브 위키는 에이전트에게 읽기 전용.** 모든 쓰기는 작업 공간(`work/{jobId}/output/`)으로 가고, 반영 전 `lint`를 통과해야 한다.
 - 의존 방향은 `wiki_api → agent_runtime → wiki_mcp` 단방향. `wiki_mcp`는 위쪽을 임포트하지 않는다.
   `schedule_extractor`는 `wiki_mcp`·`agent_runtime`을 임포트하지 않는다 — 상태가 없어 저장 계층이 필요 없다.

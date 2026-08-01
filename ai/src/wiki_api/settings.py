@@ -37,7 +37,14 @@ class ServerSettings(BaseSettings):
     internal_api_key: str = Field("", validation_alias="INTERNAL_API_KEY")
     backend_base_url: str = Field("", validation_alias="BACKEND_BASE_URL")
 
-    runtime: str = Field("claude-code", validation_alias="AI_RUNTIME")
+    # S15P11B106-175 가 요청 본문으로 위키를 받는 push 경로를 지웠다 — 이제 위키
+    # 엔드포인트는 도구가 같은 프로세스에서 도는 런타임(`arun`)에서만 성립한다
+    # (`wiki_api/session.py._assert_runtime_can_use_the_gateway`). `claude-code` 는
+    # 하위 프로세스라 그 조건을 만족하지 못해 위키 엔드포인트를 하나도 못 쓴다.
+    # 그래서 기본값을 `deepagents` 로 둔다 — `claude-code` 는 로컬에서 명시로만 쓴다
+    # (`--runtime claude-code` 또는 `AI_RUNTIME=claude-code`), 그 경우에도 챗봇
+    # (`/answers`)·파싱(`/source-parses`)은 그대로 된다.
+    runtime: str = Field("deepagents", validation_alias="AI_RUNTIME")
     # 정확한 이름을 쓴다 (`anthropic:claude-opus-4-6`). 별칭은 시점에 따라 다른 모델로
     # 해석돼 두 측정의 비교를 조용히 깨뜨린다.
     model: str | None = Field(None, validation_alias="AI_MODEL")

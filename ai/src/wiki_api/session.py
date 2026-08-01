@@ -1,15 +1,15 @@
 """요청 1건의 생애.
 
-임시 루트를 열고, **요청이 실어 온** 위키로 라이브 층을 채우고, 에이전트를 돌리고,
-폐기한다. `/data/ajt` 를 만지지 않는다 — 반영은 Spring 이 `work/{jobId}` 에서 수행한다
+임시 루트를 열고, **Wiki 조회 API 로** 라이브 층을 채우고, 에이전트를 돌리고, 폐기한다.
+`/data/ajt` 를 만지지 않는다 — 반영은 Spring 이 `work/{jobId}` 에서 수행한다
 (DR-007·008).
 
-v1.1.0 에서 이 파일의 성격이 바뀌었다: **Spring 에 되묻지 않는다.** 하이드레이션 재료
-(`pages`·`index_markdown`)는 요청 본문의 `selectedWikis`·`currentIndex` 에서 오고, 원본문서
-본문도 요청이 준다. HTTP 왕복 0회 — `SpringClient` 는 여기서 사라졌다 (설계 §1·§2).
+S15P11B106-175 에서 push 경로가 사라졌다. v1.1.0~1.8.0 사이에는 요청이 실어 온
+`selectedWikis`·`currentIndex` 로 라이브 층을 채웠는데, 그 경로는 백엔드가 고른 몇 장만
+보이는 부분 가시성이었고 이제 `FederatedVaultFS` 가 범위 전체를 조회 API 로 읽는다.
 
-`lint` 를 여기서 다시 부르는 이유: 에이전트가 부르고 통과했다고 말해도 그 말을 믿지 않는다.
-반영 전 기계 검증이 「승인 게이트 없음」을 성립시키는 유일한 장치다.
+`lint` 를 여기서 다시 부르는 이유: 에이전트가 부르고 통과했다고 말해도 그 말을 믿지
+않는다. 반영 전 기계 검증이 「승인 게이트 없음」을 성립시키는 유일한 장치다.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ import tempfile
 from pathlib import Path
 
 from agent_runtime.base import runs_tools_in_process
+from agent_runtime.guards import wrote_without_reading
 from agent_runtime.limits import exceeds_ceiling
 from wiki_mcp.vaultfs import (INDEX_ADDRESS, FederatedVaultFS, LocalVaultFS,
                               SpringVaultFS)
@@ -91,6 +92,23 @@ def failure_stage_for_error(error: str) -> FailureStage:
     return FailureStage.AGENT_ERROR
 
 
+def _promote_gateway_call(exc: Exception, error_code: str, message: str) -> InternalError:
+    """핸들러 본문의 조회 API 호출(`run_agent` 밖) 실패를 단계 있는 `InternalError` 로 승격한다.
+
+    `__aenter__`·`run_agent` 가 이미 하는 네 갈래(설계 4.5)와 같은 모양이다: 여기서
+    새로 잡는 두 호출(`get_citation_backlinks`·`stage_evidence_documents`)도 조회 API
+    HTTP 를 부르므로 `ScopeChangedError`·`QueryBudgetExceeded`·그 밖의 실패가 그대로
+    새면 `errors.py` 마지막 그물이 `failureStage` 없이 500 을 낸다. 그 밖의 예외는
+    `run_agent` 와 달리 `context_load` 로 보낸다 — 에이전트가 아직 시작하기 전(변환의
+    backlink 계산)이거나 본문을 대는 준비 단계(수정의 근거 문서 적재)이기 때문이다.
+    """
+    if isinstance(exc, ScopeChangedError):
+        return InternalError(error_code, str(exc), FailureStage.SCOPE_CHANGED)
+    if isinstance(exc, QueryBudgetExceeded):
+        return InternalError(error_code, str(exc), FailureStage.AGENT_ERROR)
+    return InternalError(error_code, f"{message} — {exc}", FailureStage.CONTEXT_LOAD)
+
+
 def assert_within_ceiling(text: str, error_code: str) -> None:
     """이 문서가 시간 천장(30분) 안에 끝날 수 있는 크기인가 (설계 §1).
 
@@ -111,12 +129,13 @@ def assert_within_ceiling(text: str, error_code: str) -> None:
 
 
 class WikiSession:
-    """두 경로를 가른다 — 요청이 창구 허가를 실어 왔는지에 따라.
+    """경로는 하나다 — 라이브 층은 언제나 Wiki 조회 API(`FederatedVaultFS`)에서 온다.
 
-    `wiki_capability`·`scope_version`·`backend_base_url` **셋이 다 있을 때만** 창구
-    (`FederatedVaultFS`)다. 하나라도 없으면 요청이 실어 온 `selectedWikis` 로 라이브 층을
-    채우는 과도기 push 경로(`SpringVaultFS`)이며, 백엔드가 창구를 배포하기 전까지는 그것이
-    유일한 실경로다 — 셋 중 하나만 보고 갈라지면 없는 주소를 부르다 죽는다.
+    S15P11B106-175 이전에는 `wiki_capability`·`scope_version`·`backend_base_url` 셋이
+    다 있을 때만 조회 API 경로였고, 하나라도 없으면 요청이 실어 온 `selectedWikis` 로 채우는
+    과도기 push 경로였다. 그 경로가 사라졌으므로 셋은 이제 **없으면 하이드레이션이
+    실패하는 필수 재료**다 — 스키마가 앞의 둘을 필수로 막고(`schemas.py`), 세 번째는
+    기동 시점에 `serve.py` 가 막는다.
 
     `request_id`·`runtime` 에 기본값이 있는 이유는 배관만 보는 테스트다 (`request_id` 는
     `job_id` 대체값과 `X-Request-Id` 전달에만, `runtime` 은 `run_agent` 에만 쓰인다).
@@ -124,9 +143,8 @@ class WikiSession:
 
     def __init__(self, *, scope_key: str, job_id: str | None,
                  request_id: str = "", runtime=None,
-                 pages: list[dict] | None = None,
-                 index_markdown: str = "",
                  error_code: str = "WIKI_TRANSFORMATION_FAILED",
+                 requires_existing_wiki: bool = False,
                  wiki_capability: str | None = None,
                  scope_version: int | None = None,
                  backend_base_url: str | None = None,
@@ -136,13 +154,10 @@ class WikiSession:
         self.job_id = job_id or f"req-{request_id}"
         self.request_id = request_id
         self.runtime = runtime
-        # 라이브 층의 재료. Spring 이 2단계 요청에 실어 보낸 것이 전부다 — 여기 없는
-        # 위키는 이번 변환에서 **보이지 않고, 따라서 변하지 않는다** (설계 §1 의
-        # 감수된 품질 리스크).
-        self.pages = pages or []
-        self.index_markdown = index_markdown
         self.error_code = error_code
-        # 창구 경로의 재료. **`wiki_capability` 는 로그·예외 메시지·telemetry 에 남기지
+        # 삭제·교체는 그 문서로 만든 위키가 이미 있다는 전제다 (설계 4.1).
+        self.requires_existing_wiki = requires_existing_wiki
+        # 조회 API 경로의 재료. **`wiki_capability` 는 로그·예외 메시지·telemetry 에 남기지
         # 않는다** (계약 1.6.0 의 마스킹 요구). 헤더로만 나간다 — `query_client.py`.
         self.wiki_capability = wiki_capability
         self.scope_version = scope_version
@@ -169,23 +184,18 @@ class WikiSession:
             self._assert_runtime_can_use_the_gateway()
             self._root = Path(tempfile.mkdtemp(prefix="ajt-ai-"))
             try:
-                if self._federated():
-                    self._query_client = WikiQueryClient(
-                        self.backend_base_url, api_key=self._internal_api_key(),
-                        capability=self.wiki_capability, scope_key=self.scope_key,
-                        scope_version=self.scope_version,
-                        request_id=self.request_id or None,
-                        transport=self.query_transport)
-                    self.scope_id = await FederatedVaultFS.open(
-                        self._root, self.scope_key, self.job_id,
-                        client=self._query_client)
-                    self.fs = FederatedVaultFS(self.scope_key, self.job_id,
-                                               self._query_client)
-                else:
-                    self.scope_id = await SpringVaultFS.open(
-                        self._root, self.scope_key, self.job_id,
-                        pages=self.pages, index_markdown=self.index_markdown)
-                    self.fs = SpringVaultFS(self.scope_key, self.job_id)
+                self._query_client = WikiQueryClient(
+                    self.backend_base_url, api_key=self._internal_api_key(),
+                    capability=self.wiki_capability, scope_key=self.scope_key,
+                    scope_version=self.scope_version,
+                    request_id=self.request_id or None,
+                    transport=self.query_transport)
+                self.scope_id = await FederatedVaultFS.open(
+                    self._root, self.scope_key, self.job_id,
+                    client=self._query_client)
+                self.fs = FederatedVaultFS(self.scope_key, self.job_id,
+                                           self._query_client)
+                self._assert_the_scope_has_wikis_if_it_must()
             except InternalError:
                 raise
             except ScopeChangedError as exc:
@@ -195,10 +205,9 @@ class WikiSession:
                 raise InternalError(self.error_code, str(exc),
                                     FailureStage.SCOPE_CHANGED) from exc
             except Exception as exc:
-                # 이제 네트워크가 없으므로 여기서 터지는 것은 요청이 준 위키 dict 가
-                # 계약과 다른 모양이거나 임시 색인이 열리지 않은 경우다. 어느 쪽이든
-                # 에이전트 이전 단계다 — Spring 이 `document_results` 에 「에이전트 오류」로
-                # 적지 않게 단계를 붙여 보낸다 (NFR-AI-003).
+                # 조회 API 가 안 뜨거나 응답이 계약과 다른 모양이거나 임시 색인이 열리지 않은
+                # 경우다. 어느 쪽이든 에이전트 이전 단계다 — Spring 이 `document_results`
+                # 에 「에이전트 오류」로 적지 않게 단계를 붙여 보낸다 (NFR-AI-003).
                 raise InternalError(self.error_code,
                                     f"현재 Wiki를 불러올 수 없습니다 — {exc}",
                                     FailureStage.CONTEXT_LOAD) from exc
@@ -210,19 +219,51 @@ class WikiSession:
     async def __aexit__(self, *_exc) -> None:
         await self._teardown()
 
-    def _federated(self) -> bool:
-        """셋이 다 있어야 창구 경로다. 하나라도 없으면 과도기 push 로 돈다."""
-        return bool(self.wiki_capability and self.scope_version is not None
-                    and self.backend_base_url)
+    @property
+    def live_page_count(self) -> int:
+        """하이드레이션이 받은 라이브 위키 장수. 아직 안 열렸으면 0 이다."""
+        return getattr(self.fs, "page_count", 0)
+
+    def _assert_the_scope_has_wikis_if_it_must(self) -> None:
+        """삭제·교체·수정인데 위키가 0장이면 모순이다 (설계 4.1).
+
+        조회 API 는 오류 없이 빈 목록을 줄 수 있다. HTTP 실패·404·버전 불일치는 예외로
+        갈리지만 200 에 빈 배열은 안 갈린다 — 신규 범위면 정상이고, 범위키가 틀렸거나
+        권한이 어긋나면 사고인데 응답이 같다.
+
+        지울 문서가 있다는 것, 고칠 위키가 있다는 것은 둘 다 그 범위에 위키가 이미
+        있었다는 뜻이다. 그래서 삭제·교체·수정에서만 0장을 막는다. 추가는 0장이
+        정상이다 (첫 문서).
+
+        `selectedWikis` 가 없어지면서 접수 시점 검증(I3)이 설 자리를 잃었고, 그 판단을
+        여기로 옮긴 것이다. 에이전트를 돌리기 전이므로 단계는 `context_load` 다.
+
+        `wiki-edits` 도 `requires_existing_wiki=True` 로 이 경로를 타므로 메시지가
+        「삭제·교체」로 고정돼 있으면 수정 요청의 실패가 엉뚱하게 번역된다
+        (`error_code` 로 갈라 `wiki-edits` 는 EDIT 문구를 낸다).
+        """
+        if not (self.requires_existing_wiki and self.live_page_count == 0):
+            return
+        if self.error_code == "WIKI_EDIT_FAILED":
+            message = ("이 범위에 위키가 없습니다 — 수정할 위키가 있어야 합니다. "
+                       "범위 설정이나 열람 허가를 확인해 주세요.")
+        else:
+            message = ("이 범위에 위키가 없습니다 — 삭제·교체할 원본문서로 만든 위키가 "
+                       "있어야 합니다. 범위 설정이나 열람 허가를 확인해 주세요.")
+        raise InternalError(self.error_code, message, FailureStage.CONTEXT_LOAD)
 
     def _assert_runtime_can_use_the_gateway(self) -> None:
-        """창구 모드는 도구가 이 프로세스 안에서 도는 런타임에서만 성립한다.
+        """Wiki 조회 API 는 도구가 이 프로세스 안에서 도는 런타임에서만 성립한다.
+
+        S15P11B106-175 이전에는 조회 API 를 쓰는 요청만 이 검사를 받았다 — 요청이 위키를 실어 오는
+        push 경로가 남아 있어 하위 프로세스 런타임도 일할 수 있었다. 그 경로가 사라져
+        이제는 **모든** 위키 요청이 여기를 지난다.
 
         별도 프로세스의 MCP 서버는 `fs_factory`(`wiki_mcp/local_server.py`)가
-        `LocalVaultFS` 를 만든다. 창구 클라이언트가 그쪽에 없으므로 두 가지가 동시에
+        `LocalVaultFS` 를 만든다. 조회 API 클라이언트가 그쪽에 없으므로 두 가지가 동시에
         깨진다:
 
-          * **본문이 없다.** 창구 하이드레이션은 카탈로그만 채우고 본문은 `get()` 이
+          * **본문이 없다.** 조회 API 하이드레이션은 카탈로그만 채우고 본문은 `get()` 이
             요구할 때 당기는데, 그 `get()` 은 이쪽 프로세스에만 있다. 에이전트는 제목만
             있는 빈 페이지를 보고 "내용이 없다" 고 판단해 라이브를 덮는다
           * **중단 신호가 없다.** 범위 변경을 프로세스 밖으로 넘길 길이 없다
@@ -232,16 +273,17 @@ class WikiSession:
         (S15P11B106-152) 배송 경로가 열렸고, `claude-code` 는 CLI 하위 프로세스라
         구현할 수 없으므로 계속 거절된다. 거절이 조용히 빈 위키를 만드는 것보다 낫다.
         """
-        if self._federated() and not runs_tools_in_process(self.runtime):
+        if not runs_tools_in_process(self.runtime):
             raise InternalError(
                 self.error_code,
-                "이 서버 구성에서는 Wiki 조회 창구를 쓸 수 없습니다 — 에이전트 런타임이 "
-                "MCP 서버를 별도 프로세스로 띄우므로 창구 본문이 에이전트에 닿지 않습니다. "
-                "Wiki 본문을 요청에 실어 보내 주세요.",
+                "이 서버 구성에서는 Wiki 조회 API 를 쓸 수 없습니다 — 에이전트 런타임이 "
+                "MCP 서버를 별도 프로세스로 띄우므로 조회 API 본문이 에이전트에 닿지 "
+                "않습니다. AI 서버를 도구가 같은 프로세스에서 도는 런타임"
+                "(`AI_RUNTIME=deepagents`)으로 띄워 주세요.",
                 FailureStage.CONTEXT_LOAD)
 
     def _internal_api_key(self) -> str:
-        """창구 호출에 붙일 서버 간 인증 키.
+        """조회 API 호출에 붙일 서버 간 인증 키.
 
         Spring→AI 와 AI→Spring 이 같은 내부 키를 쓴다 (`API_컨벤션` 8.1). 라우터가
         `app.state.api_key` 를 넘겨 주므로 `serve.py --internal-api-key`(또는
@@ -337,7 +379,7 @@ class WikiSession:
             raise InternalError(self.error_code, f"에이전트 실행에 실패했습니다 — {exc}",
                                 FailureStage.AGENT_ERROR) from exc
 
-        # 예외로 올라오지 않은 창구 중단을 여기서 잡는다. `RunResult.error` 보다 먼저 본다 —
+        # 예외로 올라오지 않은 조회 API 중단을 여기서 잡는다. `RunResult.error` 보다 먼저 본다 —
         # 범위가 바뀐 실행은 무엇을 썼든 반영할 수 없으므로 그 사실이 더 구체적인 실패다.
         self._raise_if_scope_changed()
         error = getattr(result, "error", None)
@@ -347,19 +389,19 @@ class WikiSession:
         return result
 
     def _raise_if_scope_changed(self) -> None:
-        """창구 클라이언트가 기억한 범위 변경이 있으면 중단한다 (설계 2.4·2.6).
+        """조회 API 클라이언트가 기억한 범위 변경이 있으면 중단한다 (설계 2.4·2.6).
 
         **예외 전파만으로는 성립하지 않아서 있는 검사다.** `ScopeChangedError` 는
         `VaultError` 이고 툴 6곳이 `except VaultError: return f"오류: {exc}"` 로 잡는다
         (`tools/read.py:169`·`tools/search.py:248`·`delete.py:39,82`·`write.py:370`·
-        `lint.py:456`). 에이전트는 그 문자열을 읽고 계속 작업하므로, 창구가 이미 「이
+        `lint.py:456`). 에이전트는 그 문자열을 읽고 계속 작업하므로, 조회 API 가 이미 「이
         범위는 바뀌었다」고 답한 뒤에도 실행이 성공으로 끝날 수 있다.
 
         **한계 — 지금 이것으로 덮이는 것은 in-process 경로뿐이다.** `claude-code`·
         `deepagents` 는 MCP 서버를 별도 프로세스(`wiki_mcp.local_server`)로 띄우고 그
-        프로세스의 `fs_factory` 는 `LocalVaultFS` 를 만든다 — 창구 클라이언트가 아예
+        프로세스의 `fs_factory` 는 `LocalVaultFS` 를 만든다 — 조회 API 클라이언트가 아예
         그쪽에 없으므로 남길 흔적도, 세션이 볼 상태도 없다. 그 경로까지 닫으려면
-        `local_server` 가 창구 모드에서 `FederatedVaultFS` 를 만들고 중단을 프로세스
+        `local_server` 가 조회 API 모드에서 `FederatedVaultFS` 를 만들고 중단을 프로세스
         경계 밖으로 (툴 응답의 신호·종료 코드·파일 신호 중 하나로) 넘겨야 한다.
         기록: `.superpowers/sdd/2026-07-30-wiki-query-federated-adapter/task-7-report.md`.
         """
@@ -368,6 +410,68 @@ class WikiSession:
         if change is not None:
             raise InternalError(self.error_code, str(change),
                                 FailureStage.SCOPE_CHANGED)
+
+    def assert_the_agent_looked_at_the_wiki(self, result) -> None:
+        """읽기 툴을 한 번도 안 부른 실행을 막는다 (설계 4.2).
+
+        위키가 0장인 범위는 읽을 것이 없는 것이 정상이므로 건너뛴다 — 신규 범위에
+        첫 문서를 넣는 경우다.
+        """
+        if not self.live_page_count:
+            return
+        if wrote_without_reading(getattr(result, "tool_calls", {}) or {}):
+            raise InternalError(
+                self.error_code,
+                "현재 Wiki 를 읽지 않았습니다 — 에이전트가 조회 도구를 한 번도 "
+                "부르지 않아 기존 Wiki 를 덮어쓸 수 있습니다.",
+                FailureStage.AGENT_ERROR)
+
+    async def stage_evidence_documents(self, wiki_id: str) -> int:
+        """대상 위키가 근거로 쓴 원본문서를 조회 API 로 읽어 라이브 층에 올린다.
+
+        `wiki-edits` 가 `evidenceDocuments` 를 실어 보내던 것을 대신한다
+        (S15P11B106-175). 문서 목록은 하이드레이션이 받아둔 범위 관계에 있으므로
+        추가 조회는 문서 본문뿐이다.
+
+        올린 본문의 총 길이를 돌려준다 — 호출자가 시간 상한을 계산한다.
+
+        조회 API 호출(`parsed_document`, 문서 수만큼)의 실패는 `_promote_gateway_call` 로
+        단계를 붙여 올린다 — 이 메서드가 `__aenter__`·`run_agent` 의 `try` 밖에서
+        불리므로, 승격하지 않으면 범위 변경도 500 으로만 나간다.
+        """
+        catalog = getattr(self.fs, "_catalog", None)
+        address = await self.address_for_wiki_id(wiki_id)
+        document_ids = (catalog.document_ids_by_address.get(address, [])
+                        if catalog else [])
+        total = 0
+        try:
+            for document_id in document_ids:
+                body = await self._query_client.parsed_document(document_id)
+                text = body.get("parsedMarkdown") or ""
+                await self.stage_source(document_id, text,
+                                        body.get("originalFileName"))
+                total += len(text)
+        except InternalError:
+            raise
+        except Exception as exc:
+            raise _promote_gateway_call(
+                exc, self.error_code, "근거 문서를 불러오지 못했습니다") from exc
+        return total
+
+    async def citation_backlinks(self, address: str) -> list[dict]:
+        """`FederatedVaultFS.get_citation_backlinks` 를 단계 승격까지 포함해 부른다.
+
+        삭제·교체 변환이 걷어낼 각주를 찾으려 이 문서를 인용하는 라이브 페이지를
+        조회 API 로 읽는다(`_ensure_body` → `page_content()`, 인용 위키 수만큼 HTTP).
+        `__aenter__`·`run_agent` 의 `try` 밖에서 불리므로 실패를 여기서 직접 승격한다.
+        """
+        try:
+            return await self.fs.get_citation_backlinks(self.scope_id, address)
+        except InternalError:
+            raise
+        except Exception as exc:
+            raise _promote_gateway_call(
+                exc, self.error_code, "인용 관계를 불러오지 못했습니다") from exc
 
     async def assert_lint_clean(self) -> None:
         """반영 전 기계 검증. error 가 남으면 이 문서분을 반영하지 않는다.
@@ -390,7 +494,7 @@ class WikiSession:
         work_addresses = {change["address"]
                           for change in await self.fs.pending_changes(self.scope_id)}
 
-        # 창구 경로에서는 `collect()` 가 본문을 당기므로(지연 적재) 여기서도 범위 변경을
+        # 조회 API 경로에서는 `collect()` 가 본문을 당기므로(지연 적재) 여기서도 범위 변경을
         # 만날 수 있다. 그것은 검증 실패(`lint_failed`)가 아니다 — 단계를 갈라 준다.
         try:
             issues = await LintHandler(self.fs, scope_row).collect(
@@ -468,18 +572,47 @@ class WikiSession:
         return None
 
     async def address_for_wiki_id(self, wiki_id: str) -> str:
-        """`wikiId` → 주소. 요청이 실어 온 위키에 없으면 400.
+        """`wikiId` → 주소. 하이드레이션이 받은 카탈로그에 없으면 400.
 
-        이 세션이 아는 위키는 요청 본문에 실려 온 것뿐이다 — 단건 보충 조회가 없으므로
-        되물을 곳도 없다. 그래서 없는 `wikiId` 는 서버 상태가 아니라 **요청값의 문제**다.
+        이 세션이 아는 위키는 조회 API 가 이 허가로 돌려준 범위 전체다. 거기 없다는 것은
+        그 위키가 지워졌거나 이 허가의 범위 밖이라는 뜻이므로, 서버 상태가 아니라
+        **요청값의 문제**다.
 
         404 가 아닌 이유는 계약(v1.3.0)이다. 엔드포인트마다 400·401·500 만 정의하고 400 을
         "지시 내용 또는 Wiki 컨텍스트 오류"로 둔다. 404 를 내면 Spring 의 상태 분기에서
         `UNEXPECTED_STATUS` 로 떨어져 어떤 실패인지 알 수 없게 된다.
+
+        `list_documents` 자체는 하이드레이션이 채운 카탈로그를 읽는 로컬 조회지만, 이
+        메서드는 `__aenter__`·`run_agent` 의 `try` 밖(`wiki-edits` 핸들러 본문)에서
+        불린다 — 실패가 나면 `_promote_gateway_call` 로 단계를 붙인다. 그 뒤에 raise 하는
+        400 (`INVALID_WIKI_EDIT_REQUEST`, 대상 위키를 못 찾음)은 그대로 통과시킨다 —
+        서버 쪽 실패가 아니라 요청값 문제이기 때문이다.
         """
-        for row in await self.fs.list_documents(self.scope_id):
+        try:
+            documents = await self.fs.list_documents(self.scope_id)
+        except Exception as exc:
+            raise _promote_gateway_call(
+                exc, self.error_code, "Wiki 목록을 불러오지 못했습니다") from exc
+        for row in documents:
             if str(row.get("wiki_id") or "") == str(wiki_id):
                 return row["address"]
         raise InternalError("INVALID_WIKI_EDIT_REQUEST",
                             "요청에 실린 Wiki 컨텍스트에서 대상 Wiki를 찾을 수 없습니다.",
                             status=400)
+
+    async def content_length_for(self, address: str) -> int:
+        """이 주소의 현재 본문 길이. 시간 상한 계산용이다 (`wiki-edits`).
+
+        `self.fs.get` 이 `_ensure_body` 를 타서 본문을 조회 API 로 당긴다
+        (`FederatedVaultFS._ensure_body`) — `stage_evidence_documents`·
+        `citation_backlinks` 와 같은 자리(핸들러 본문, 세션 `try` 밖)에서 불리므로 같은
+        이유로 `_promote_gateway_call` 을 거친다.
+        """
+        try:
+            row = await self.fs.get(self.scope_id, address)
+        except InternalError:
+            raise
+        except Exception as exc:
+            raise _promote_gateway_call(
+                exc, self.error_code, "Wiki 본문을 불러오지 못했습니다") from exc
+        return len((row or {}).get("content") or "")

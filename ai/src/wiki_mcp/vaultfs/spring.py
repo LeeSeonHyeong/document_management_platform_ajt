@@ -1,16 +1,17 @@
-"""라이브 층을 Spring 이 준 dict 로 채우는 VaultFS (v1.1.0 — push).
+"""라이브 층을 밖에서 채워 넣는 VaultFS — 2단 SQLite 저장 계층.
 
-2단 SQLite 는 `local.py` 것을 그대로 쓴다. 바뀌는 것은 라이브 층의 출처뿐이다 — HTTP
-왕복 대신 `open()` 이 직접 받는 `pages`(SelectedWiki 모양의 dict 목록)와
-`index_markdown`. Spring 이 이미 두 번의 호출(선택·변환)로 본문을 실어 보냈으므로
-AI 서버는 되묻지 않는다(설계 §1·§2). 그래서 툴 10개·프롬프트·`lint` 가 이 파일을 모른다.
+2단 SQLite 는 `local.py` 것을 그대로 쓴다. 이 파일이 더하는 것은 라이브 층에 행을
+직접 꽂는 `_insert_live` 와 그 뒤처리(`_sync_page_references`·`_clear_staleness`),
+그리고 각주 단위 인용 역링크(`get_citation_backlinks`)다. 툴 10개·프롬프트·`lint` 는
+이 파일을 모른다.
+
+**S15P11B106-175 에서 push 하이드레이션이 사라졌다.** v1.1.0~1.8.0 사이에는
+`open(pages=…, index_markdown=…)` 이 요청 본문의 `selectedWikis`·`currentIndex` 로
+라이브 층을 채웠다. 이제 라이브 층의 유일한 출처는 Wiki 조회 API 이고 그 하이드레이션은
+`FederatedVaultFS.open` 이 한다 — 이 클래스는 그 아래 저장 계층으로만 남는다.
 
 임시 루트에 SQLite 와 파일을 만든다. `/data/ajt` 를 만지지 않는다 — 요청이 끝나면 임시
 디렉터리를 버리고, 반영은 Spring 이 `work/{jobId}` 에서 수행한다 (DR-007·008).
-
-**본문을 한 번에 전부 받는다.** `search` 는 청크 FTS 로 돌고 청크는 본문을 저장할 때
-생긴다. 지연 적재하면 검색이 0건을 내고 에이전트가 기존 페이지를 못 찾아 전부 새로 만든다.
-받는 것과 프롬프트에 넣는 것은 별개다 — 색인만 하고 에이전트는 자기가 고른 것만 읽는다.
 
 메타데이터 추출은 `tools/write.py`의 `parse_frontmatter`/`extract_frontmatter_field`/
 `extract_frontmatter_tags`/`extract_metadata`를 그대로 쓴다 — 그쪽 시그니처가 이 파일이
@@ -21,8 +22,7 @@ AI 서버는 되묻지 않는다(설계 §1·§2). 그래서 툴 10개·프롬�
 
 **Task 4: pull 경로 제거.** `client` 위치 인자와 그것으로만 도는 `_hydrate`·`load_page`·
 `load_source`(전부 HTTP 로 Spring 을 되물었다)는 `api/session.py`가 `pages=`로 옮기면서
-함께 지웠다 — 이제 라이브 층은 `open(..., pages=..., index_markdown=...)`으로만 채워진다.
-`springclient.py` 자체도 지웠다(`docs/AI호출명세서.json`과 함께).
+함께 지웠다. `springclient.py` 자체도 지웠다(`docs/AI호출명세서.json`과 함께).
 """
 
 from __future__ import annotations
@@ -33,8 +33,7 @@ from pathlib import Path
 
 from wiki_mcp.services.chunker import Chunk, chunk_text, store_chunks
 
-from .local import (INDEX_ADDRESS, PAGES_PREFIX, SOURCES_PREFIX, LocalVaultFS,
-                    kind_for)
+from .local import SOURCES_PREFIX, LocalVaultFS, kind_for
 
 # `tools.write` imports `tools.references`, which imports `vaultfs` (for the
 # `VaultFS` type) — and `vaultfs/__init__.py` imports this module. A top-level
@@ -57,60 +56,22 @@ def address_from_wiki_path(wiki_path: str, scope_key: str) -> str:
 
 class SpringVaultFS(LocalVaultFS):
     @staticmethod
-    async def open(root: str | Path, scope_key: str, job_id: str | None, *,
-                   pages: list[dict] | None = None,
-                   index_markdown: str | None = None) -> str:
-        """임시 색인을 열고 이 범위의 위키로 채운다. scope_id 를 돌려준다.
+    async def open(root: str | Path, scope_key: str, job_id: str | None) -> str:
+        """임시 색인을 열고 scope_id 를 돌려준다. 라이브 층은 채우지 않는다.
 
-        `pages` — SelectedWiki 모양의 dict 목록
-        (`wikiId`·`title`·`summary`·`contentMarkdown`·`categoryName?`·`wikiPath?`) —
-        과 `index_markdown` 을 직접 받아 채운다. HTTP 왕복이 없다. 둘 다 안 주면
-        (테스트에서 `SpringVaultFS(...)` 만 생성하는 경우처럼) 아무것도 채우지 않는다.
+        S15P11B106-175 이전에는 `pages`·`index_markdown` 을 받아 요청이 실어 온 위키로
+        라이브 층을 채웠다. 그 경로가 사라졌으므로 여기는 색인만 연다 — 조회 API 하이드레이션은
+        `FederatedVaultFS.open` 이 한다.
         """
-        scope_id = await LocalVaultFS.open(root, scope_key, job_id)
-        fs = SpringVaultFS(scope_key, job_id)
-        if pages is not None or index_markdown is not None:
-            await fs._hydrate_from_pages(scope_id, pages or [], index_markdown or "")
-        return scope_id
-
-    async def _hydrate_from_pages(self, scope_id: str, pages: list[dict],
-                                  index_markdown: str) -> None:
-        """`pages`(SelectedWiki 모양의 dict 목록)로 라이브 층을 채운다 — v1.1.0 정본 경로.
-
-        selectedWikis 에는 `wikiPath` 가 없다(설계 §3) — 새 코퍼스는 `wikiId` 로 주소를
-        짓는다(`pages/{wikiId}.md`, `wikiId` 가 이미 있어 유일함이 보장된다). 다만 옛
-        SelectedWiki 모양(`wikiPath` 를 포함하는 하위호환 입력)이 오면 그 접미사를 그대로
-        쓴다 — `address_from_wiki_path` 주석 참고.
-        """
-        for page in pages:
-            wiki_path = page.get("wikiPath")
-            wiki_id = page.get("wikiId")
-            address = (address_from_wiki_path(wiki_path, self.scope_key) if wiki_path
-                      else f"{PAGES_PREFIX}{wiki_id}.md")
-            await self._insert_live(
-                scope_id, address, page.get("contentMarkdown") or "",
-                wiki_id=wiki_id, title=page.get("title"),
-                category=page.get("categoryName"))
-        await self._insert_live(scope_id, INDEX_ADDRESS, index_markdown or "",
-                               title="위키 목차", category="목차")
-        # `vaultfs/rebuild.py:96-100` 과 같은 두 단계 방식: 전부 넣은 뒤에 훑는다. 페이지를
-        # 하나씩 넣으며 그때그때 동기화하면, 아직 안 들어온 페이지로 가는 links_to 가
-        # 매번 빠진다 — 목록 순서가 보장되지 않는다.
-        await self._sync_page_references(scope_id)
-        # 하이드레이션은 한 순간의 스냅샷이다 — t0 에는 아무것도 stale 일 수 없다.
-        # `sync_references`가 부르는 `propagate_staleness`는 "링크 대상이 방금 바뀌었다"는
-        # 신호인데, 하이드레이션 중에는 그 대상이 바뀐 적이 없다 — 그래프를 처음 채우는
-        # 것뿐이다. 지우지 않으면 B가 A를 링크한다는 사실만으로 A가 거짓으로 stale 표시된다.
-        await self._clear_staleness(scope_id)
+        return await LocalVaultFS.open(root, scope_key, job_id)
 
     async def _sync_page_references(self, scope_id: str) -> None:
         """라이브 페이지·목차 전부의 참조 그래프를 다시 채운다.
 
-        하이드레이션은 위키 페이지만 넣는다 — 각주가 가리키는 원본문서는 `stage_source`가
-        나중에 따로 넣는다. 그래서 이 메서드는 `_hydrate_from_pages` 끝에서 한 번, 그리고
-        원본문서가 라이브에 새로 들어올 때마다(`stage_source`) 다시 불린다 — 그 시점에야
-        이미 하이드레이션된 페이지의 각주가 비로소 풀린다. 매번 전체를 다시 쓰므로
-        (`replace_references`) 몇 번을 불러도 안전하다.
+        라이브 층에는 위키 페이지만 들어온다 — 각주가 가리키는 원본문서는 `stage_source`가
+        나중에 따로 넣는다. 그래서 이 메서드는 원본문서가 라이브에 새로 들어올 때마다
+        (`stage_source`) 다시 불린다 — 그 시점에야 이미 올라와 있던 페이지의 각주가 비로소
+        풀린다. 매번 전체를 다시 쓰므로 (`replace_references`) 몇 번을 불러도 안전하다.
         """
         from wiki_mcp.tools.references import sync_references
 
@@ -261,8 +222,8 @@ class SpringVaultFS(LocalVaultFS):
     def _indexes_live_locally(self, kind: str) -> bool:
         """이 종류의 라이브 본문을 내부 청크 색인에 넣나.
 
-        push 방식에서는 전부 넣는다 — 검색할 곳이 여기뿐이다. 창구 모드는 다르다
-        (`FederatedVaultFS` 가 재정의한다).
+        이 계층만 쓰는 경우(테스트·재색인)에는 전부 넣는다 — 검색할 곳이 여기뿐이다.
+        Wiki 조회 API 모드는 다르다 (`FederatedVaultFS` 가 재정의한다).
         """
         return True
 

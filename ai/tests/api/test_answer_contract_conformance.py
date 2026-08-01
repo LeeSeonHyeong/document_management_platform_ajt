@@ -278,7 +278,9 @@ def test_계약에_정의된_엔드포인트가_앱에_등록됐다():
     assert "/internal/v1/answers" in paths
     # 1단계는 계약 1.8.0 이 지웠다. 남겨두면 백엔드가 계속 부른다.
     assert "/internal/v1/answer-context-selections" not in paths
-    # 기존 4개도 그대로 있어야 한다 — 라우터 등록 순서를 바꾸며 가리는 사고를 막는다.
-    for path in ("/internal/v1/source-parses", "/internal/v1/wiki-context-selections",
+    # 위키 변환의 1단계도 S15P11B106-175 가 지웠다 — 남은 것은 변환 1개다.
+    assert "/internal/v1/wiki-context-selections" not in paths
+    # 기존 3개는 그대로 있어야 한다 — 라우터 등록 순서를 바꾸며 가리는 사고를 막는다.
+    for path in ("/internal/v1/source-parses",
                  "/internal/v1/wiki-transformations", "/internal/v1/wiki-edits"):
         assert path in paths, path

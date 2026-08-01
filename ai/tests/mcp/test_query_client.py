@@ -1,4 +1,4 @@
-"""창구 HTTP 클라이언트 단위 테스트. 네트워크를 쓰지 않는다 — MockTransport 다."""
+"""Wiki 조회 API HTTP 클라이언트 단위 테스트. 네트워크를 쓰지 않는다 — MockTransport 다."""
 
 import httpx
 import pytest
@@ -204,4 +204,37 @@ async def test_index_and_categories_and_relations_and_parsed():
     assert (await client.relations("101"))["backlinks"] == ["108"]
     assert (await client.parsed_document("15"))["originalFileName"] == "취업규칙.pdf"
     assert await client.list_pages() == []
+    await client.aclose()
+
+
+async def test_scope_relations_returns_items():
+    """범위 관계는 items 를 그대로 돌려준다 — 뒤집기는 카탈로그가 한다."""
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json={
+            "scopeVersion": 47,
+            "items": [
+                {"wikiId": "101", "wikiRefs": ["102"], "documentRefs": ["15"]},
+                {"wikiId": "102", "wikiRefs": [], "documentRefs": ["15", "16"]},
+            ],
+        })
+
+    client = _client(handler)
+    items = await client.scope_relations()
+    await client.aclose()
+
+    assert seen == ["/internal/v1/wiki-spaces/D1-D2/relations"]
+    assert items[0]["documentRefs"] == ["15"]
+    assert items[1]["wikiRefs"] == []
+
+
+async def test_scope_relations_on_empty_scope():
+    """위키 0장인 범위는 빈 배열이다 (계약 정책). 오류가 아니다."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"scopeVersion": 47, "items": []})
+
+    client = _client(handler)
+    assert await client.scope_relations() == []
     await client.aclose()

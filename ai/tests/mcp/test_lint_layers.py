@@ -26,6 +26,8 @@ from wiki_mcp.tools.references import sync_references
 from wiki_mcp.vaultfs import LocalVaultFS
 from wiki_mcp.vaultfs.spring import SpringVaultFS
 
+from .hydration import open_with_pages
+
 SCOPE = "D1-D2"
 JOB_ID = "42"
 
@@ -118,8 +120,7 @@ async def vault(tmp_path):
     """라이브 페이지 5장 + 이번 요청의 원본문서 1건. 작업 층은 비어 있다."""
     pages = [CLEAN_LIVE, NO_FRONTMATTER_LIVE, FOREIGN_CITATION_LIVE,
              LINKS_TO_CLEAN_LIVE, ALREADY_BROKEN_LIVE]
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=pages, index_markdown=INDEX_MD)
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, pages, INDEX_MD)
     fs = SpringVaultFS(SCOPE, JOB_ID)
     await fs.stage_source(scope_id, "15", SOURCE_MD)
     yield scope_id, fs
@@ -274,8 +275,7 @@ async def test_a_hundred_live_pages_produce_no_noise_for_the_agent(tmp_path):
     좁히기 전에는 여기서 error 300건쯤이 나왔고 에이전트는 "끝내기 전에 모두 고친다" 지시에
     따라 남의 페이지를 고치려 들었다. 고칠 수도 없다 — 인용된 문서들이 실려 오지 않았다."""
     pages = _noisy_pages(100)
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=pages, index_markdown="# 목차\n")
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, pages, "# 목차\n")
     fs = SpringVaultFS(SCOPE, JOB_ID)
     try:
         await fs.stage_source(scope_id, "15", SOURCE_MD)
@@ -306,9 +306,8 @@ async def test_removing_a_page_at_scale_still_names_every_broken_inbound_link(tm
         ),
     } for i in range(3)]
 
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=[*pages, *linkers],
-                                        index_markdown="# 목차\n")
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID,
+                                     [*pages, *linkers], "# 목차\n")
     fs = SpringVaultFS(SCOPE, JOB_ID)
     try:
         await fs.stage_source(scope_id, "15", SOURCE_MD)

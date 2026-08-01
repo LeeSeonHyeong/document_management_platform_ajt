@@ -130,7 +130,7 @@ class Runtime(Protocol):
 def runs_tools_in_process(runtime) -> bool:
     """이 런타임이 도구를 이 프로세스 안에서 도는가.
 
-    창구 모드(`FederatedVaultFS`)가 성립하는 조건이다. 별도 프로세스의 MCP 서버는
+    Wiki 조회 API 모드(`FederatedVaultFS`)가 성립하는 조건이다. 별도 프로세스의 MCP 서버는
     `fs_factory`(`wiki_mcp/local_server.py`)가 `LocalVaultFS` 라 본문이 빈 페이지를
     에이전트에게 보이고, 에이전트는 "내용이 없다" 고 판단해 라이브를 덮는다. 범위 변경
     중단 신호도 프로세스 밖으로 나올 길이 없다.
@@ -159,43 +159,6 @@ def ingest_instruction(document_address: str, scope_key: str) -> str:
         f"겹치는 페이지를 검색해 본문까지 읽고, 기존 페이지를 고치거나 새로 만들고, "
         f"`index.md`를 갱신하고, 마지막에 `lint`를 부른다.\n\n"
         f"`lint`가 `error`를 내면 고치고 다시 부른다. error가 0이 될 때까지 끝내지 않는다."
-    )
-
-
-def selection_instruction(parsed_markdown: str, current_index: str,
-                          change_type: str = "document_added",
-                          removed_markdown: str | None = None) -> str:
-    """1단계 문맥 선택의 프롬프트 (설계 §5). **툴이 없는 단발 호출이다.**
-
-    에이전트 지시문(`ingest_instruction` 등)과 달리 `guide` 를 부르라고 하지 않는다 —
-    MCP 서버가 없기 때문이다. 입력은 목차와 문서 본문뿐이고, 출력은 목차 링크에 실재하는
-    `wikiId` 최대 5개다. 파싱은 `api/selection.py` 가 하며 **목차에 없는 ID 는 버린다** —
-    모델이 ID 를 지어내도 그 결과가 2단계 변환의 하이드레이션으로 흘러가지 않게 한다.
-
-    `document_removed` 는 질문이 뒤집힌다: 「이 문서를 반영하려면 어디를 읽어야 하나」가
-    아니라 「이 문서를 **근거로 쓴** 위키가 어디인가」다. 목차에는 요약만 있고 각주 관계가
-    없으므로 이 선택의 정확도는 낮을 수 있다 (설계 §7 의 리스크 — Spring 이
-    `document_wiki_refs` 로 인용 위키를 직접 보내는 편이 옳다는 제안이 회신에 있다).
-    """
-    body = (removed_markdown or "") if change_type == "document_removed" else parsed_markdown
-    if change_type == "document_removed":
-        question = ("아래 원본문서가 **삭제**됐다. 이 문서를 근거(각주)로 썼을 가능성이 "
-                    "높은 위키를 고른다.")
-    elif change_type == "document_replaced":
-        question = ("아래 원본문서가 **교체**됐다. 옛 내용을 근거로 썼거나 새 내용과 겹치는 "
-                    "위키를 고른다.")
-    else:
-        question = ("아래 원본문서를 위키에 반영하려 한다. 그 작업에 **읽어야 할** 위키를 "
-                    "고른다 — 내용이 겹쳐 고쳐야 하거나, 병합 후보이거나, 링크할 곳이다.")
-
-    return (
-        f"{question}\n\n"
-        f"관련도 순서로 **최대 5개**, 목차 링크(`pages/{{wikiId}}.md`)에 실재하는 wikiId 로만 "
-        f"답한다. 관련된 위키가 없으면 빈 배열을 낸다 — 억지로 채우지 않는다.\n\n"
-        f"다른 말 없이 JSON 만 출력한다:\n"
-        f'{{"wikiIds": ["101", "108"], "reason": "고른 이유 한두 문장"}}\n\n'
-        f"## 현재 목차\n\n{current_index}\n\n"
-        f"## 원본문서\n\n{body}\n"
     )
 
 

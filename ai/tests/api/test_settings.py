@@ -39,8 +39,10 @@ def test_explicit_argument_beats_everything(tmp_path, monkeypatch):
     assert ServerSettings(_env_file=env, openai_api_key="explicit").openai_api_key == "explicit"
 
 
-def test_defaults_to_the_claude_code_runtime(tmp_path):
-    assert ServerSettings(_env_file=_write_env(tmp_path, "")).runtime == "claude-code"
+def test_defaults_to_the_deepagents_runtime(tmp_path):
+    """push 경로가 사라져 `claude-code` 로는 위키 엔드포인트를 못 쓴다 — 기본값은
+    `deepagents` 다 (`wiki_api/session.py._assert_runtime_can_use_the_gateway`)."""
+    assert ServerSettings(_env_file=_write_env(tmp_path, "")).runtime == "deepagents"
 
 
 def test_rejects_an_unknown_runtime_at_construction(tmp_path):
@@ -58,7 +60,7 @@ def test_unrelated_env_entries_are_ignored(tmp_path):
     """같은 `.env` 를 `wiki_mcp/config.py` 도 읽는다. 남의 변수로 터지면 안 된다."""
     env = _write_env(tmp_path, "WORKSPACE_PATH=/tmp/ws\nAPP_URL=http://x\n")
 
-    assert ServerSettings(_env_file=env).runtime == "claude-code"
+    assert ServerSettings(_env_file=env).runtime == "deepagents"
 
 
 @pytest.mark.parametrize("model,expected", [

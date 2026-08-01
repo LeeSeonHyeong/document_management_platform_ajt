@@ -21,3 +21,22 @@ def bypassed_server(changes: list[dict], tool_calls: dict[str, int]) -> bool:
     if not changes or not tool_calls:
         return False
     return not any(tool_calls.get(name) for name in WRITE_TOOLS)
+
+
+# 현재 위키를 보는 툴. `guide` 는 지침 문서라 여기 없다 — 그것만 부른 실행은 위키를
+# 본 것이 아니다. `lint` 도 없다: 검증은 쓴 뒤에 하는 것이라 읽었다는 증거가 못 된다.
+READ_TOOLS = ("read", "search")
+
+
+def wrote_without_reading(tool_calls: dict[str, int]) -> bool:
+    """현재 위키를 한 번도 안 보고 끝난 실행인가 (설계 4.2).
+
+    Wiki 조회 API 로의 전환이 새로 들여온 실패 방식이다. 요청이 본문을 실어 보내던 때는 라이브 층이
+    이미 채워져 있어 「안 읽음」이 곧 「빈 위키」는 아니었다. 이제 안 읽으면 에이전트가
+    본 것이 아무것도 없고, 그 상태로 쓴 페이지는 라이브를 덮는다.
+
+    빈 로그는 통과가 아니라 판단 불가다 — `bypassed_server` 와 같은 규칙이다.
+    """
+    if not tool_calls:
+        return False
+    return not any(tool_calls.get(name) for name in READ_TOOLS)

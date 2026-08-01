@@ -224,14 +224,15 @@ async def test_rebuilding_the_index_reproduces_the_same_hits(tmp_path):
     from wiki_mcp.vaultfs.rebuild import rebuild_index
     from wiki_mcp.vaultfs.spring import SpringVaultFS
 
+    from .hydration import open_with_pages
+
     page = {
         "wikiId": "101",
         "title": "연차 규정",
         "wikiPath": f"wiki/{SCOPE}/pages/a1b2c3d4.md",
         "contentMarkdown": LEAVE_PAGE,
     }
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                       pages=[page], index_markdown="# 목차\n")
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, [page], "# 목차\n")
     fs = SpringVaultFS(SCOPE, JOB_ID)
     try:
         before = await _hits(fs, scope_id, "연차")
@@ -260,6 +261,8 @@ async def test_the_shipped_search_path_meets_the_corpus_targets(tmp_path):
     """
     from wiki_mcp.vaultfs.spring import SpringVaultFS
 
+    from .hydration import open_with_pages
+
     stems = sorted(p.stem for p in (CORPUS / "pages").glob("*.md"))
     # wikiId 는 1부터. 주소는 하이드레이션이 `pages/{wikiId}.md` 로 짓는다.
     address_of = {stem: f"pages/{i}.md" for i, stem in enumerate(stems, 1)}
@@ -271,8 +274,7 @@ async def test_the_shipped_search_path_meets_the_corpus_targets(tmp_path):
 
     queries = json.loads((CORPUS / "queries.json").read_text(encoding="utf-8"))["dev"]
 
-    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB_ID,
-                                        pages=pages, index_markdown="# 목차\n")
+    scope_id = await open_with_pages(tmp_path, SCOPE, JOB_ID, pages, "# 목차\n")
     fs = SpringVaultFS(SCOPE, JOB_ID)
     try:
         hit5 = {"exact": 0.0, "para": 0.0}

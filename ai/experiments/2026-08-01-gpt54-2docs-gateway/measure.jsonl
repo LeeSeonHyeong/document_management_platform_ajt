@@ -1,0 +1,4 @@
+{"kind": "agent", "model": "openai:gpt-5.4", "toolCalls": {"guide": 1, "read": 2, "search": 2, "create": 1, "edit": 2, "lint": 2}, "inputTokens": 65046, "outputTokens": 2213, "turns": 9, "elapsedSeconds": 21.8, "error": null}
+{"kind": "gateway", "queryCalls": 5, "callBudget": 105, "catalogPages": 0, "bodyFetches": 0}
+{"kind": "agent", "model": "openai:gpt-5.4", "toolCalls": {"guide": 1, "read": 5, "search": 3, "create": 1, "edit": 1, "lint": 1}, "inputTokens": 74406, "outputTokens": 2562, "turns": 9, "elapsedSeconds": 24.9, "error": null}
+{"kind": "gateway", "queryCalls": 7, "callBudget": 107, "catalogPages": 1, "bodyFetches": 1}

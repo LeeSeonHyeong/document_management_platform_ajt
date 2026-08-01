@@ -18,7 +18,9 @@ What it fakes, and where each rule comes from:
   * the change set handed back is the per-document 작업 요약 (FR-AI-009)
 
 두 경로가 있다. 기본은 런타임을 직접 부르는 옛 경로(`_ingest_one`)이고, `--via-api URL` 은
-AI 서버를 **HTTP 로** 부른다 (`_ingest_via_api` — 선택·변환 2단계, 설계 §2). 후자가
+AI 서버를 **HTTP 로** 부른다 (`_ingest_via_api` — 변환 1회, S15P11B106-175). 그 경로는
+AI 서버가 Wiki 조회 API 를 부를 수 있어야 돈다 — `experiments/query_gateway.py` 를 띄우고 AI
+서버에 `BACKEND_BASE_URL` 로 그 주소를 준다. 후자가
 「측정 경로 = 프로덕션 경로」다: 계약 스키마·세션·하이드레이션·lint 게이트·응답 조립을
 전부 실제로 통과하고, 이 파일은 Spring 이 할 일(주소 치환·카테고리 ID 발급·목차 재구성·
 `wikiId` 발급·반영)만 한다. 옛 경로는 비용·시간 회귀 측정 때문에 남긴다 — 계약 응답에는
@@ -250,14 +252,18 @@ async def _ingest_one(root: Path, scope_key: str, seq: int, source: Path,
 
 # ----- via-api: 측정 경로 = 프로덕션 경로 -----------------------------------
 #
-# 여기 아래가 Spring 이 v1.1.0 계약으로 하게 될 일이다 (설계 §2). 위의 `_ingest_one` 은
-# 런타임을 직접 부르지만(옛 경로, 지금까지의 측정), 이쪽은 **HTTP 로 AI 서버를 두 번
-# 부르고 응답만 반영한다** — 즉 이 경로로 돈 측정은 `api/` 계약 층을 실제로 통과한다.
+# 여기 아래가 Spring 이 계약대로 하게 될 일이다. 위의 `_ingest_one` 은 런타임을 직접
+# 부르지만(옛 경로, 지금까지의 측정), 이쪽은 **HTTP 로 AI 서버를 한 번 부르고 응답만
+# 반영한다** — 즉 이 경로로 돈 측정은 `api/` 계약 층을 실제로 통과한다.
+#
+# **1단계 문맥 선택은 S15P11B106-175 가 지웠다.** 요청은 위키를 싣지 않고, AI 서버가
+# 조회 API 로 범위 전체를 읽는다 — 그래서 이 경로를 돌리려면 조회 API 가 떠 있어야 한다
+# (`experiments/query_gateway.py`, `--via-api` 와 함께 AI 서버의 `BACKEND_BASE_URL`).
 #
 # 주소 체계가 두 개라는 것이 이 배선의 핵심 난점이다 (설계 §3):
 #
 #   store(여기)   `pages/{pageKey}.md`  — 에이전트가 발급한 키. `wiki_path` 컬럼(DR-016)
-#   계약(AI 서버) `pages/{wikiId}.md`   — selectedWikis 에 wikiPath 가 없다
+#   계약(AI 서버) `pages/{wikiId}.md`   — 조회 API 목록에 wikiPath 가 없으면 이 이름이다
 #
 # 그래서 요청을 만들 때 목차·본문의 페이지 링크를 wikiId 주소로 바꾸고, 응답을 반영할 때
 # 되돌린다. 그 치환이 곧 Spring 이 할 일이다 — 「본문에 남은 페이지 링크를 실제 wikiId 로
@@ -268,7 +274,6 @@ _PAGE_LINK_RE = re.compile(r"pages/[A-Za-z0-9_-]+\.md")
 # Spring 의 read timeout 과 같은 자리 — 에이전트 상한 30분 + 여유 (설계 §1).
 API_TIMEOUT_SECONDS = 1900
 
-SELECT_PATH = "/internal/v1/wiki-context-selections"
 TRANSFORM_PATH = "/internal/v1/wiki-transformations"
 
 
@@ -290,7 +295,7 @@ class CategoryRegistry:
     """`wiki_category.wiki_category_id` AUTO_INCREMENT 대역 (DR-019).
 
     카테고리는 에이전트가 관리하고 관리자는 조회만 한다 — 그러나 **ID 를 발급하는 것은
-    Spring 이다**. 요청의 `currentCategories` 가 이미 있는 이름을 실어 보내야 에이전트가
+    Spring 이다**. 이미 있는 이름이 조회 API 의 카테고리 목록으로 에이전트에게 보여야
     같은 분류를 다시 만들지 않는다 (C4 수렴, `api/changes.py.CategoryRefs`).
     """
 
@@ -348,9 +353,9 @@ async def _collect_context(scope_key: str, scope_id: str,
                            categories: CategoryRegistry) -> dict:
     """자기 store 에서 요청에 실을 재료를 만든다 — Spring 의 DB 조회 자리.
 
-    페이지 링크를 `pages/{wikiId}.md` 로 바꾼 목차를 함께 낸다. 1단계 선택이 목차 링크에
-    실재하는 ID 만 남기므로(`api/selection.py.index_wiki_ids`), 여기서 바꾸지 않으면 선택은
-    pageKey 를 고르고 2단계는 그 ID 로 본문을 찾지 못해 **항상 빈 문맥**으로 돈다.
+    페이지 링크를 `pages/{wikiId}.md` 로 바꾼 목차를 함께 낸다. 응답을 반영할 때 그
+    주소를 store 의 pageKey 주소로 되돌려야 하므로(`_apply_transform`) 양방향 표를
+    여기서 만들어 둔다.
     """
     fs = LocalVaultFS(scope_key)
     pages: dict[str, dict] = {}
@@ -376,41 +381,6 @@ async def _collect_context(scope_key: str, scope_id: str,
         "index": _relink((index_row or {}).get("content") or "", to_wiki_ids),
         "categories": categories.current(p["category"] for p in pages.values()),
     }
-
-
-async def _selected_wikis(fs, scope_id: str, context: dict, wiki_ids: list[str],
-                          categories: CategoryRegistry) -> list[dict]:
-    """선택된 ID → `SelectedWiki` 본문. 관계까지 실어 보낸다 (DR-002·003).
-
-    Spring 은 선택 응답의 ID 를 **재검증한 뒤** 본문을 읽는다 (계약 정책). 여기서도 store
-    에 실재하는 ID 만 남긴다 — 지어낸 ID 로 없는 페이지를 실어 보내지 않는다.
-    """
-    selected = []
-    for wiki_id in wiki_ids:
-        page = context["pages"].get(str(wiki_id))
-        if not page:
-            continue
-        documents: list[str] = []
-        wikis: list[str] = []
-        for edge in await fs.get_forward_references(scope_id, page["address"]):
-            if edge["reference_type"] == "cites" and edge.get("source_id"):
-                documents.append(str(edge["source_id"]))
-            elif edge["reference_type"] == "links_to":
-                # `address` 다 — `get_forward_references` 는 대상 행을 조인한다. 같은 자리에서
-                # `target_address` 를 읽던 `api/changes.py` 의 버그를 그대로 베껴 왔었다.
-                target = context["toWikiIds"].get(edge["address"])
-                if target:
-                    wikis.append(target[len("pages/"):-3])
-        selected.append({
-            "wikiId": page["wikiId"],
-            "categoryId": categories.id_for(page["category"]),
-            "title": page["title"],
-            "summary": page["summary"],
-            "contentMarkdown": _relink(page["content"], context["toWikiIds"]),
-            "documentRefs": sorted(set(documents)),
-            "wikiRefs": sorted(set(wikis)),
-        })
-    return selected
 
 
 async def _post(client, path: str, body: dict) -> tuple[dict | None, str | None]:
@@ -440,12 +410,10 @@ def _index_markdown(current: str, entries: list[dict], targets: dict[str, str],
                     merges: dict[str, str] | None = None) -> str:
     """`indexEntries` → 목차 본문. 목차를 재구성하는 것은 Spring 이다 (설계 §3).
 
-    **덮어쓰지 않고 겹친다.** 응답의 `indexEntries` 는 AI 서버가 **본** 위키만 담는다 —
-    이번 요청에 실리지 않은 위키(selectedWikis 밖)는 거기에 없다. 통째로 갈아치우면 그
-    위키들의 목차 줄이 사라지고, 목차가 1단계 선택의 유일한 입력이므로(설계 §5) 그 위키는
-    **다시는 선택되지 않는다** — 한 번 밖에 나면 영구히 보이지 않는다. 그래서 응답에 있는
-    줄만 갱신하고 나머지는 자리를 지킨다. 협의 목록에 올릴 값: Spring 의 목차 재구성도
-    같아야 한다.
+    **덮어쓰지 않고 겹친다.** 응답의 `indexEntries` 는 AI 서버가 이번 작업에서 **건드린**
+    위키만 담는다 — 손대지 않은 위키는 거기에 없다. 통째로 갈아치우면 그 위키들의 목차
+    줄이 사라진다. 그래서 응답에 있는 줄만 갱신하고 나머지는 자리를 지킨다. 협의 목록에
+    올릴 값: Spring 의 목차 재구성도 같아야 한다.
 
     frontmatter 는 지금 것을 그대로 이어 쓴다 — 목차의 frontmatter 는 이 저장소가
     `bootstrap_scope` 에서 만든 것이고, 버리면 `lint` 가 `missing-frontmatter` 로 막는다.
@@ -571,10 +539,9 @@ async def _apply_transform(scope_key: str, scope_id: str, job_id: str, response:
 async def _redirect_merged_links(fs, scope_id: str, merges: dict[str, str]) -> list[str]:
     """흡수된 페이지를 가리키던 본문 링크를 남은 페이지로 옮긴다 (DR-002·003).
 
-    **에이전트가 대신 해 줄 수 없다.** 이번 요청에 실린 위키는 `selectedWikis` 뿐이고,
-    선택 밖에 있던 페이지는 AI 서버가 존재조차 모른다 — 그쪽 본문의 링크를 고치는 것은
-    구조적으로 백엔드 몫이다. 안 고치면 반영 뒤 `lint` 가 `dangling-link` 로 그 범위를
-    막는다(실제로 막았다).
+    **에이전트가 대신 해 줄 수 없다.** AI 서버의 작업 층에는 이번에 고친 페이지만 있고,
+    반영된 라이브 본문을 고치는 것은 구조적으로 백엔드 몫이다. 안 고치면 반영 뒤 `lint`
+    가 `dangling-link` 로 그 범위를 막는다(실제로 막았다).
 
     범위 전체를 훑는다. 위키 1개 범위는 작고(측정에서 페이지 수십 장), 링크를 역인덱스로
     찾으려면 `document_references` 를 병합 시점 기준으로 다시 읽어야 하는데 방금 지운
@@ -618,8 +585,10 @@ def _api_outcome(record: dict, lint_failed: bool, dry_run: bool) -> str:
 
 async def _ingest_via_api(root: Path, scope_key: str, seq: int, source: Path,
                           client, sequence: WikiIdSequence,
-                          categories: CategoryRegistry, dry_run: bool = False) -> dict:
-    """문서 1건 — 선택 POST → 변환 POST → 반영. HTTP 왕복 2회 (설계 §2)."""
+                          categories: CategoryRegistry, dry_run: bool = False,
+                          capability: str = "cap-local",
+                          scope_version: int = 47) -> dict:
+    """문서 1건 — 변환 POST → 반영. HTTP 왕복 1회 (S15P11B106-175)."""
     job_id = f"{9000 + seq}"
     document_id = str(100 + seq)
     text = source.read_text(encoding="utf-8")
@@ -634,12 +603,12 @@ async def _ingest_via_api(root: Path, scope_key: str, seq: int, source: Path,
     registered = await register_source(scope_key, document_id, f"document-{document_id}",
                                        text)
     write_job_state(scope_key, job_id, {
-        "type": "wiki-convert", "step": "select", "scopeKey": scope_key,
+        "type": "wiki-convert", "step": "transform", "scopeKey": scope_key,
         "documentIds": [document_id], "documentId": document_id,
     })
     context = await _collect_context(scope_key, scope_id, categories)
     fs = LocalVaultFS(scope_key, job_id)
-    # 선택 응답이 오기 전에는 어느 위키를 실을지 모른다 — 관계 조회까지 마치고 닫는다.
+    # 요청을 보내는 동안은 색인을 잡고 있을 이유가 없다 — 응답을 반영할 때 다시 연다.
     await LocalVaultFS.close()
 
     print(f"[{seq}] {source.name} (via-api) ...", flush=True)
@@ -651,36 +620,19 @@ async def _ingest_via_api(root: Path, scope_key: str, seq: int, source: Path,
         "error": None, "reply": "", "changes": [], "committed": [],
     }
 
-    selection, error = await _post(client, SELECT_PATH, {
+    # 목차·카테고리·위키 본문을 싣지 않는다 (S15P11B106-175) — AI 서버가 조회 API 로
+    # 직접 읽는다. 여기서 넘기는 것은 허가값 둘과 이번 문서의 파싱본뿐이다.
+    response, error = await _post(client, TRANSFORM_PATH, {
         "jobId": job_id, "documentId": document_id, "scopeKey": scope_key,
-        "parsedMarkdown": text, "currentIndex": context["index"],
-        "changeType": "document_added",
+        "parsedMarkdown": text, "changeType": "document_added",
+        "wikiCapability": capability, "scopeVersion": scope_version,
     })
-    response = None
-    if error:
-        record["error"] = error
-    else:
-        record["selection"] = selection
-        await LocalVaultFS.open(root, scope_key, job_id)
-        try:
-            selected = await _selected_wikis(fs, scope_id, context,
-                                             selection.get("wikiIds") or [], categories)
-        finally:
-            await LocalVaultFS.close()
-        record["selectedWikis"] = [w["wikiId"] for w in selected]
-
-        response, error = await _post(client, TRANSFORM_PATH, {
-            "jobId": job_id, "documentId": document_id, "scopeKey": scope_key,
-            "parsedMarkdown": text, "currentIndex": context["index"],
-            "currentCategories": context["categories"], "selectedWikis": selected,
-            "changeType": "document_added",
-        })
-        record["error"] = error
-        if response is not None:
-            record["response"] = response
-            record["reply"] = response.get("summary") or ""
-            record["relationChanges"] = response.get("relationChanges") or []
-            record["categoryChanges"] = response.get("categoryChanges") or []
+    record["error"] = error
+    if response is not None:
+        record["response"] = response
+        record["reply"] = response.get("summary") or ""
+        record["relationChanges"] = response.get("relationChanges") or []
+        record["categoryChanges"] = response.get("categoryChanges") or []
 
     record["elapsedSeconds"] = round(time.monotonic() - started, 1)
 
@@ -708,8 +660,7 @@ async def _ingest_via_api(root: Path, scope_key: str, seq: int, source: Path,
 
     status = record["error"] or (
         f"{'완료' if record['outcome'] == 'committed' else record['outcome']} "
-        f"(선택 {len(record.get('selectedWikis') or [])}건, "
-        f"반영 {len(record['committed'])}건)")
+        f"(반영 {len(record['committed'])}건)")
     print(f"    {record['elapsedSeconds']:.1f}s  {status}", flush=True)
     return record
 
@@ -718,7 +669,9 @@ async def _run_batch(root: Path, scope_key: str, sources: list[Path],
                      runtime_name: str, model: str | None,
                      dry_run: bool = False, client=None,
                      effort: str | None = None,
-                     transport: str = "mcp") -> dict:
+                     transport: str = "mcp",
+                     capability: str = "cap-local",
+                     scope_version: int = 47) -> dict:
     """`client` 가 있으면 AI 서버를 HTTP 로 부른다 (`--via-api`), 없으면 옛 경로다.
 
     `effort` 를 여기까지 넘겨야 한다. `manifest.json` 에만 적고 실행에 안 걸면 그 기록이
@@ -729,8 +682,9 @@ async def _run_batch(root: Path, scope_key: str, sources: list[Path],
         categories = CategoryRegistry(root)
         records = []
         for seq, source in enumerate(sources, start=1):
-            records.append(await _ingest_via_api(root, scope_key, seq, source, client,
-                                                 sequence, categories, dry_run=dry_run))
+            records.append(await _ingest_via_api(
+                root, scope_key, seq, source, client, sequence, categories,
+                dry_run=dry_run, capability=capability, scope_version=scope_version))
         return {
             "scope": scope_key, "runtime": "via-api", "model": None,
             "order": [s.name for s in sources], "documents": records,
@@ -791,6 +745,12 @@ def main() -> None:
                              "(선택→변환 2단계). 예: http://127.0.0.1:8000")
     parser.add_argument("--internal-api-key", default=None,
                         help="--via-api 의 X-Internal-API-Key. 기본은 환경변수 INTERNAL_API_KEY")
+    # 요청이 위키를 싣지 않으므로 AI 서버는 이 허가로 조회 API 를 부른다
+    # (S15P11B106-175). 기본값은 `experiments/query_gateway.py` 의 기본값과 같다.
+    parser.add_argument("--wiki-capability", default="cap-local",
+                        help="--via-api 요청에 실을 열람 허가. 조회 API 의 --capability 와 맞춘다")
+    parser.add_argument("--scope-version", type=int, default=47,
+                        help="--via-api 요청에 실을 scopeVersion. 조회 API 의 것과 맞춘다")
     parser.add_argument("--from-experiment", default=None, metavar="SLUG",
                         help="기존 실험의 data/ 를 복사해 시작점으로 쓴다 (원본은 보존)")
     args = parser.parse_args()
@@ -853,7 +813,9 @@ def main() -> None:
             # `--via-api` 는 AI 서버가 자기 런타임으로 돈다 — `effort` 는 그 서버를 띄울
             # 때 정해지므로 여기서 넘길 수 없다. 그 경로로 잰 값은 서버 쪽 설정에 달렸다.
             return await _run_batch(root, args.scope, sources, args.runtime, args.model,
-                                    dry_run=args.dry_run, client=client)
+                                    dry_run=args.dry_run, client=client,
+                                    capability=args.wiki_capability,
+                                    scope_version=args.scope_version)
 
     report = asyncio.run(run())
 
