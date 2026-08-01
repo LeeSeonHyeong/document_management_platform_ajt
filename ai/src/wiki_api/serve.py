@@ -53,9 +53,11 @@ import sys
 from pydantic import ValidationError
 
 from agent_runtime import load_runtime
+from schedule_extractor.config import build_provider
 
 from .app import create_app
-from .settings import RUNTIMES, ServerSettings, credential_table
+from .settings import (RUNTIMES, ServerSettings, credential_table,
+                       schedule_settings)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -192,7 +194,30 @@ def build_app(settings: ServerSettings):
         settings.runtime, settings.model,
         fast_model=settings.model_fast, quality_model=settings.model_quality,
         credentials=credentials)
+    # 일정 추출 어댑터도 프로세스 하나에 하나다. 여기서 만들면 설정 오류(예:
+    # provider=anthropic 인데 키 없음)가 첫 요청 500 이 아니라 기동 실패로 나온다.
+    app.state.schedule_provider = build_provider(schedule_settings(settings))
     return app
+
+
+def startup_banner(app, settings: ServerSettings, *, host: str, port: int) -> str:
+    """기동 한 줄. **키 값은 넣지 않는다** — 무엇으로 떴는지만 적는다.
+
+    일정 추출 어댑터를 함께 적는 이유: 기본값이 로컬 ollama 다. 배포에서
+    `SCHEDULE_EXTRACTOR_PROVIDER` 를 빼먹으면 서버는 정상으로 뜨고 첫 일정 문서
+    업로드만 500 이 된다 — 가장 늦게 발견되는 실패 모양이다. `anthropic` 은 키가
+    없으면 기동에서 죽지만(`config.py`) `ollama` 는 죽을 이유가 없어 그 가드가 없다.
+    무엇으로 떴는지 기동 로그에 남기는 것이 그 자리를 메운다.
+
+    `resolved()` 를 부르는 이유: 비운 `model`·`base_url` 을 프로바이더별 기본값으로
+    채운 뒤의 값이 실제로 쓰이는 값이다. 설정 파일에 적힌 빈 문자열을 적으면 로그가
+    거짓말을 한다.
+    """
+    schedule = schedule_settings(settings).resolved()
+    return (f"AI 서버 — 런타임 {app.state.runtime.name} "
+            f"({getattr(app.state.runtime, 'model', '?')}), "
+            f"일정 추출 {schedule.provider}/{schedule.model} @ {schedule.base_url}, "
+            f"http://{host}:{port}")
 
 
 def main() -> None:
@@ -205,9 +230,7 @@ def main() -> None:
               "(--internal-api-key 또는 INTERNAL_API_KEY)", file=sys.stderr)
 
     app = build_app(settings)
-    print(f"AI 서버 — 런타임 {app.state.runtime.name} "
-          f"({getattr(app.state.runtime, 'model', '?')}), "
-          f"http://{args.host}:{args.port}")
+    print(startup_banner(app, settings, host=args.host, port=args.port))
     uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
 
 

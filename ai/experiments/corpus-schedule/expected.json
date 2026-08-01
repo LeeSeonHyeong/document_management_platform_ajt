@@ -1,0 +1,19 @@
+{
+  "01-august-notice": {
+    "status": "extracted",
+    "schedules": [
+      {"title": "하계 워크샵", "startAt": "2026-08-12T00:00:00Z",
+       "endAt": "2026-08-13T09:00:00Z"},
+      {"title": "참가 신청 마감", "startAt": "2026-08-04T15:00:00Z",
+       "endAt": "2026-08-05T14:59:59.999999Z"},
+      {"title": "정기 안전교육", "startAt": "2026-08-20T05:00:00Z",
+       "endAt": "2026-08-20T07:00:00Z"},
+      {"title": "8월 급여 지급", "startAt": "2026-08-24T15:00:00Z",
+       "endAt": "2026-08-25T14:59:59.999999Z"}
+    ]
+  },
+  "02-no-schedule": {
+    "status": "no_schedule",
+    "schedules": []
+  }
+}

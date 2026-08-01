@@ -6,7 +6,8 @@
 
 import pytest
 
-from wiki_api.settings import RUNTIMES, ServerSettings, credential_table, credentials_for
+from wiki_api.settings import (RUNTIMES, ServerSettings, credential_table,
+                              credentials_for, schedule_settings)
 
 
 def _write_env(tmp_path, body: str):
@@ -100,3 +101,52 @@ def test_credential_table_is_empty_when_nothing_is_configured(tmp_path):
     settings = ServerSettings(_env_file=_write_env(tmp_path, ""))
 
     assert credential_table(settings) == {}
+
+
+# ----- 일정 추출 어댑터 설정 ---------------------------------------------------
+
+
+def test_schedule_settings_defaults_to_ollama(tmp_path):
+    settings = ServerSettings(_env_file=_write_env(tmp_path, ""))
+
+    extractor = schedule_settings(settings)
+
+    assert extractor.provider == "ollama"
+    assert extractor.api_key == ""
+
+
+def test_schedule_settings_reuses_the_anthropic_credentials(tmp_path):
+    """GMS 게이트웨이 주소·키를 두 번 적으면 한쪽만 갱신되는 사고가 난다."""
+    env = _write_env(tmp_path,
+                     "SCHEDULE_EXTRACTOR_PROVIDER=anthropic\n"
+                     "ANTHROPIC_API_KEY=gms-key\n"
+                     "ANTHROPIC_BASE_URL=https://gms.example/gmsapi/api.anthropic.com\n")
+
+    extractor = schedule_settings(ServerSettings(_env_file=env))
+
+    assert extractor.api_key == "gms-key"
+    assert extractor.base_url == "https://gms.example/gmsapi/api.anthropic.com"
+
+
+def test_an_explicit_schedule_base_url_wins(tmp_path):
+    env = _write_env(tmp_path,
+                     "SCHEDULE_EXTRACTOR_PROVIDER=anthropic\n"
+                     "ANTHROPIC_BASE_URL=https://gms.example\n"
+                     "SCHEDULE_EXTRACTOR_BASE_URL=https://direct.example\n")
+
+    assert schedule_settings(ServerSettings(_env_file=env)).base_url \
+        == "https://direct.example"
+
+
+def test_the_ollama_adapter_never_receives_the_anthropic_key(tmp_path):
+    """로컬 측정 경로에 배포 키가 실려 나가지 않는다."""
+    env = _write_env(tmp_path, "ANTHROPIC_API_KEY=gms-key\n")
+
+    assert schedule_settings(ServerSettings(_env_file=env)).api_key == ""
+
+
+def test_rejects_an_unknown_schedule_provider_at_construction(tmp_path):
+    env = _write_env(tmp_path, "SCHEDULE_EXTRACTOR_PROVIDER=gpt\n")
+
+    with pytest.raises(Exception, match="SCHEDULE_EXTRACTOR_PROVIDER"):
+        ServerSettings(_env_file=env)

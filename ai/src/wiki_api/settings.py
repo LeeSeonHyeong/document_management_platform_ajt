@@ -19,6 +19,9 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from schedule_extractor.config import (DEFAULT_TIMEOUT_SECONDS, PROVIDERS,
+                                       ScheduleExtractorSettings)
+
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 RUNTIMES = ("claude-code", "deepagents")
@@ -45,6 +48,27 @@ class ServerSettings(BaseSettings):
     anthropic_base_url: str = Field("", validation_alias="ANTHROPIC_BASE_URL")
     openai_api_key: str = Field("", validation_alias="OPENAI_API_KEY")
     openai_base_url: str = Field("", validation_alias="OPENAI_BASE_URL")
+
+    # 일정 추출은 에이전트 런타임을 쓰지 않는다 — 상태 없는 단발 구조화 출력이고
+    # `completion.complete()` 는 스키마 강제를 하지 않는다. 그래서 자기 어댑터를 고른다.
+    # 모델·주소를 비우면 프로바이더별 기본값이 채워진다 (`schedule_extractor/config.py`).
+    schedule_provider: str = Field(
+        "ollama", validation_alias="SCHEDULE_EXTRACTOR_PROVIDER")
+    schedule_model: str = Field("", validation_alias="SCHEDULE_EXTRACTOR_MODEL")
+    schedule_base_url: str = Field("", validation_alias="SCHEDULE_EXTRACTOR_BASE_URL")
+    schedule_timeout_seconds: float = Field(
+        DEFAULT_TIMEOUT_SECONDS,
+        validation_alias="SCHEDULE_EXTRACTOR_TIMEOUT_SECONDS")
+
+    @field_validator("schedule_provider")
+    @classmethod
+    def _known_schedule_provider(cls, value: str) -> str:
+        """`AI_RUNTIME` 과 같은 이유로 오타를 기동 시점에 막는다."""
+        if value not in PROVIDERS:
+            raise ValueError(
+                f"SCHEDULE_EXTRACTOR_PROVIDER 값이 올바르지 않다: {value!r} — "
+                f"{', '.join(PROVIDERS)} 중 하나여야 한다")
+        return value
 
     @field_validator("runtime")
     @classmethod
@@ -86,6 +110,29 @@ def credentials_for(model: str | None, settings: ServerSettings) -> tuple[str, s
     if fields is None:
         return "", ""
     return getattr(settings, fields[0]), getattr(settings, fields[1])
+
+
+def schedule_settings(settings: ServerSettings) -> ScheduleExtractorSettings:
+    """일정 추출 어댑터 설정만 떼어낸다.
+
+    `credential_table` 과 같은 이유로 평범한 자료형을 돌려준다 — `schedule_extractor` 가
+    `ServerSettings` 를 몰라도 되게 한다.
+
+    `anthropic` 일 때 주소·키를 프로바이더 공용 필드에서 가져온다. GMS 게이트웨이를 쓰면
+    `ANTHROPIC_BASE_URL` 하나로 에이전트 런타임과 일정 추출이 같은 경로를 타야 하고,
+    키를 두 번 적게 하면 한쪽만 갱신되는 사고가 난다. `SCHEDULE_EXTRACTOR_BASE_URL` 을
+    직접 주면 그것이 이긴다 — 일정 추출만 다른 주소로 보내는 측정을 위해서다.
+    """
+    anthropic = settings.schedule_provider == "anthropic"
+    base_url = settings.schedule_base_url
+    if not base_url and anthropic:
+        base_url = settings.anthropic_base_url
+    return ScheduleExtractorSettings(
+        provider=settings.schedule_provider,
+        model=settings.schedule_model,
+        base_url=base_url,
+        timeout_seconds=settings.schedule_timeout_seconds,
+        api_key=settings.anthropic_api_key if anthropic else "")
 
 
 def credential_table(settings: ServerSettings) -> dict[str, tuple[str, str]]:
