@@ -1,6 +1,7 @@
 package com.ajt.backend.global.ai.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
@@ -57,26 +58,14 @@ class RestClientAiClientTest {
                           "changeType": "document_replaced",
                           "parsedMarkdown": "# 취업 규칙\\n본문...",
                           "removedParsedMarkdown": "# 기존 취업 규칙\\n이전 본문...",
-                          "currentIndex": "# 목차\\n- [휴가 규정](pages/101.md)",
-                          "currentCategories": [
-                            {"categoryId": "10", "name": "인사·복무"}
-                          ],
                           "wikiCapability": "capability",
-                          "scopeVersion": 47,
-                          "selectedWikis": [
-                            {
-                              "wikiId": "101",
-                              "categoryId": "10",
-                              "title": "휴가 규정",
-                              "summary": "연차와 반차 사용 기준",
-                              "wikiPath": "wiki/D1-D2/pages/101.md",
-                              "contentMarkdown": "# 휴가 규정\\n...",
-                              "documentRefs": ["15", "18"],
-                              "wikiRefs": ["108"]
-                            }
-                          ]
+                          "scopeVersion": 47
                         }
                         """))
+                // 밀어 보내던 문맥이 실리지 않는다 — 에이전트가 조회 API로 직접 읽는다.
+                .andExpect(content().string(not(containsString("currentIndex"))))
+                .andExpect(content().string(not(containsString("currentCategories"))))
+                .andExpect(content().string(not(containsString("selectedWikis"))))
                 .andRespond(withSuccess("""
                         {
                           "summary": "휴가 규정 Wiki를 생성했습니다.",
@@ -122,18 +111,6 @@ class RestClientAiClientTest {
                 WikiDocumentChangeType.DOCUMENT_REPLACED,
                 "# 취업 규칙\n본문...",
                 "# 기존 취업 규칙\n이전 본문...",
-                "# 목차\n- [휴가 규정](pages/101.md)",
-                List.of(new WikiTransformationRequest.CurrentCategory("10", "인사·복무")),
-                List.of(new WikiTransformationRequest.SelectedWiki(
-                        "101",
-                        "10",
-                        "휴가 규정",
-                        "연차와 반차 사용 기준",
-                        "wiki/D1-D2/pages/101.md",
-                        "# 휴가 규정\n...",
-                        List.of("15", "18"),
-                        List.of("108")
-                )),
                 "capability",
                 47L
         ));
@@ -151,6 +128,24 @@ class RestClientAiClientTest {
     }
 
     @Test
+    @DisplayName("허가값이 없으면 변환 요청을 만들 수 없다 — 창구를 못 불러 라이브를 덮는다")
+    void wikiCapabilityIsRequired() {
+        assertThatThrownBy(() -> new WikiTransformationRequest(
+                "42", "15", "D1-D2", WikiDocumentChangeType.DOCUMENT_ADDED,
+                "# 본문", null, null, 47L))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("범위 버전이 없으면 변환 요청을 만들 수 없다 — 작업 중 위키가 바뀐 것을 못 잡는다")
+    void scopeVersionIsRequired() {
+        assertThatThrownBy(() -> new WikiTransformationRequest(
+                "42", "15", "D1-D2", WikiDocumentChangeType.DOCUMENT_ADDED,
+                "# 본문", null, "capability", null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("Wiki 변환 응답의 필수 목록이 없으면 잘못된 응답으로 처리한다")
     void mapsMissingWikiTransformationFieldsToInvalidResponse() {
         server.expect(requestTo("http://localhost:8000/internal/v1/wiki-transformations"))
@@ -164,9 +159,8 @@ class RestClientAiClientTest {
                         WikiDocumentChangeType.DOCUMENT_ADDED,
                         "# parsed",
                         null,
-                        "# index",
-                        List.of(),
-                        List.of()
+                        "capability",
+                        47L
                 )),
                 AiClientException.class
         );
@@ -237,71 +231,9 @@ class RestClientAiClientTest {
                 WikiDocumentChangeType.DOCUMENT_ADDED,
                 "# parsed",
                 null,
-                "# index",
-                List.of(),
-                List.of()
+                "capability",
+                47L
         );
-    }
-
-    @Test
-    @DisplayName("Wiki 문맥 선택 요청을 JSON 계약대로 보내고 선택된 Wiki ID를 읽는다")
-    void sendsWikiContextSelectionContractAndReadsPostmanSuccess() {
-        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-context-selections"))
-                .andExpect(method(HttpMethod.POST))
-                .andExpect(header("X-Internal-API-Key", "local-dev-key"))
-                .andExpect(header(HttpHeaders.CONTENT_TYPE, containsString(MediaType.APPLICATION_JSON_VALUE)))
-                .andExpect(content().json("""
-                        {
-                          "jobId": "42",
-                          "documentId": "15",
-                          "scopeKey": "D1-D2",
-                          "changeType": "document_added",
-                          "parsedMarkdown": "# 취업 규칙\\n본문...",
-                          "currentIndex": "# 목차\\n- [휴가 규정](pages/101.md)"
-                        }
-                        """))
-                .andRespond(withSuccess("""
-                        {"wikiIds":["101","108"],"reason":"새 취업 규칙의 휴가·복무 항목과 관련된 현재 Wiki입니다."}
-                        """, MediaType.APPLICATION_JSON));
-
-        WikiContextSelectionResponse response = client.selectWikiContext(new WikiContextSelectionRequest(
-                "42",
-                "15",
-                "D1-D2",
-                WikiDocumentChangeType.DOCUMENT_ADDED,
-                "# 취업 규칙\n본문...",
-                null,
-                "# 목차\n- [휴가 규정](pages/101.md)"
-        ));
-
-        assertThat(response.wikiIds()).containsExactly("101", "108");
-        assertThat(response.reason()).isEqualTo("새 취업 규칙의 휴가·복무 항목과 관련된 현재 Wiki입니다.");
-        server.verify();
-    }
-
-    @Test
-    @DisplayName("Wiki 문맥 선택 응답의 wikiIds가 5개를 초과하면 잘못된 응답으로 처리한다")
-    void mapsTooManyWikiContextSelectionIdsToInvalidResponse() {
-        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-context-selections"))
-                .andRespond(withSuccess("""
-                        {"wikiIds":["1","2","3","4","5","6"],"reason":"too many"}
-                        """, MediaType.APPLICATION_JSON));
-
-        AiClientException error = catchThrowableOfType(
-                () -> client.selectWikiContext(new WikiContextSelectionRequest(
-                        "42",
-                        "15",
-                        "ALL",
-                        WikiDocumentChangeType.DOCUMENT_ADDED,
-                        "# parsed",
-                        null,
-                        "# index"
-                )),
-                AiClientException.class
-        );
-
-        assertThat(error.failureType()).isEqualTo(AiClientFailureType.INVALID_RESPONSE);
-        assertThat(error.upstreamStatus()).isEqualTo(200);
     }
 
     @Test

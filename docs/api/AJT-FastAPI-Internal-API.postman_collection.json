@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT FastAPI Internal API",
-    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.8.0이며 Frontend는 직접 호출하지 않습니다.",
+    "description": "Spring Boot → FastAPI 내부 API입니다. 개발 계약 v1.9.0이며 Frontend는 직접 호출하지 않습니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -32,7 +32,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.8.0",
+      "value": "1.9.0",
       "type": "string"
     },
     {
@@ -299,143 +299,6 @@
       "description": "Wiki 전체 구조 변환과 관리자 수정 대화 API",
       "item": [
         {
-          "name": "Wiki 변환 문맥 선택",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{aiBaseUrl}}/internal/v1/wiki-context-selections",
-              "host": [
-                "{{aiBaseUrl}}"
-              ],
-              "path": [
-                "internal",
-                "v1",
-                "wiki-context-selections"
-              ],
-              "query": [],
-              "variable": []
-            },
-            "description": "새 원본문서와 현재 목차를 분석해 변환에 필요한 Wiki만 선택합니다.\nSpring Boot가 전역 직렬 Wiki 변환에서 본문 조회 전에 먼저 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 요청 scopeKey의 현재 index.md 내용\n\n### 정책\n- FastAPI는 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- removed·replaced는 Spring Boot가 원본·파싱 파일을 삭제 또는 교체하기 전에 호출합니다.\n- wikiIds는 currentIndex의 링크에서 식별하며, 중복 없이 관련도 순서로 최대 5개를 반환합니다.\n- Spring Boot는 응답 ID의 존재와 scopeKey를 재검증한 뒤 선택 본문만 Wiki 변환 API에 전달합니다.\n\n### Response\n- `wikiIds`: 변환 문맥으로 필요한 Wiki 문자열 ID 배열, 최대 5개\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 문서 Markdown 또는 목차 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_CONTEXT_SELECTION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "response": [
-            {
-              "name": "200 OK - 성공",
-              "originalRequest": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-context-selections",
-                  "host": [
-                    "{{aiBaseUrl}}"
-                  ],
-                  "path": [
-                    "internal",
-                    "v1",
-                    "wiki-context-selections"
-                  ],
-                  "query": [],
-                  "variable": []
-                },
-                "description": "새 원본문서와 현재 목차를 분석해 변환에 필요한 Wiki만 선택합니다.\nSpring Boot가 전역 직렬 Wiki 변환에서 본문 조회 전에 먼저 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 요청 scopeKey의 현재 index.md 내용\n\n### 정책\n- FastAPI는 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- removed·replaced는 Spring Boot가 원본·파싱 파일을 삭제 또는 교체하기 전에 호출합니다.\n- wikiIds는 currentIndex의 링크에서 식별하며, 중복 없이 관련도 순서로 최대 5개를 반환합니다.\n- Spring Boot는 응답 ID의 존재와 scopeKey를 재검증한 뒤 선택 본문만 Wiki 변환 API에 전달합니다.\n\n### Response\n- `wikiIds`: 변환 문맥으로 필요한 Wiki 문자열 ID 배열, 최대 5개\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 문서 Markdown 또는 목차 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_CONTEXT_SELECTION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "status": "OK",
-              "code": 200,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                },
-                {
-                  "key": "X-Request-Id",
-                  "value": "01KABCDEF123456789"
-                }
-              ],
-              "cookie": [],
-              "body": "{\n  \"wikiIds\": [\n    \"101\",\n    \"108\"\n  ],\n  \"reason\": \"새 취업 규칙의 휴가·복무 항목과 관련된 현재 Wiki입니다.\"\n}"
-            },
-            {
-              "name": "400 Bad Request - 대표 오류",
-              "originalRequest": {
-                "method": "POST",
-                "header": [
-                  {
-                    "key": "Content-Type",
-                    "value": "application/json"
-                  }
-                ],
-                "url": {
-                  "raw": "{{aiBaseUrl}}/internal/v1/wiki-context-selections",
-                  "host": [
-                    "{{aiBaseUrl}}"
-                  ],
-                  "path": [
-                    "internal",
-                    "v1",
-                    "wiki-context-selections"
-                  ],
-                  "query": [],
-                  "variable": []
-                },
-                "description": "새 원본문서와 현재 목차를 분석해 변환에 필요한 Wiki만 선택합니다.\nSpring Boot가 전역 직렬 Wiki 변환에서 본문 조회 전에 먼저 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 요청 scopeKey의 현재 index.md 내용\n\n### 정책\n- FastAPI는 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- removed·replaced는 Spring Boot가 원본·파싱 파일을 삭제 또는 교체하기 전에 호출합니다.\n- wikiIds는 currentIndex의 링크에서 식별하며, 중복 없이 관련도 순서로 최대 5개를 반환합니다.\n- Spring Boot는 응답 ID의 존재와 scopeKey를 재검증한 뒤 선택 본문만 Wiki 변환 API에 전달합니다.\n\n### Response\n- `wikiIds`: 변환 문맥으로 필요한 Wiki 문자열 ID 배열, 최대 5개\n- `reason`: 선택 근거 요약\n\n### Error\n- `400 Bad Request`: 문서 Markdown 또는 목차 형식 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_CONTEXT_SELECTION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/101.md)\"\n}",
-                  "options": {
-                    "raw": {
-                      "language": "json"
-                    }
-                  }
-                }
-              },
-              "status": "Bad Request",
-              "code": 400,
-              "_postman_previewlanguage": "json",
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                },
-                {
-                  "key": "X-Request-Id",
-                  "value": "01KABCDEF123456789"
-                }
-              ],
-              "cookie": [],
-              "body": "{\n  \"timestamp\": \"2026-07-27T09:00:00Z\",\n  \"status\": 400,\n  \"error\": \"Bad Request\",\n  \"code\": \"INVALID_WIKI_CONTEXT_SELECTION_REQUEST\",\n  \"message\": \"Wiki 문맥 선택 요청 구조가 올바르지 않습니다.\",\n  \"path\": \"/internal/v1/wiki-context-selections\",\n  \"fieldErrors\": []\n}"
-            }
-          ]
-        },
-        {
           "name": "Wiki 변환",
           "request": {
             "method": "POST",
@@ -458,10 +321,10 @@
               "query": [],
               "variable": []
             },
-            "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+            "description": "새 문서를 분석해 Wiki 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다. 호출은 한 번이며 자료 선택 단계가 따로 없습니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 현재 Wiki를 전혀 읽지 못한 채 변환하게 됩니다\n- `scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- 현재 목차·카테고리·Wiki 본문을 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.\n- FastAPI는 Wiki 조회 API 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- 응답의 `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/a3f2c1d4.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
+              "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -493,10 +356,10 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "description": "새 문서를 분석해 Wiki 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다. 호출은 한 번이며 자료 선택 단계가 따로 없습니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 현재 Wiki를 전혀 읽지 못한 채 변환하게 됩니다\n- `scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- 현재 목차·카테고리·Wiki 본문을 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.\n- FastAPI는 Wiki 조회 API 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- 응답의 `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/a3f2c1d4.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
+                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47\n}",
                   "options": {
                     "raw": {
                       "language": "json"
@@ -543,10 +406,10 @@
                   "query": [],
                   "variable": []
                 },
-                "description": "새 문서와 문맥 선택된 Wiki만 분석해 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `currentIndex`: 현재 Wiki 목차\n- `currentCategories`: 같은 공간의 현재 카테고리 ID와 이름\n- `selectedWikis`: 선택 API 후 Spring Boot가 재검증해 읽은 Wiki ID, 본문, 관계 JSON\n- `selectedWikis[].summary`: `wiki.summary`(DR-029 개정분)에서 채웁니다. 값이 없으면 생략할 수 있습니다.\n- `selectedWikis[].wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **기존 Wiki에는 필수입니다.**\n- `wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가. 없으면 FastAPI는 창구를 호출하지 않고 `selectedWikis`만 사용합니다.\n- `scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`. 창구 응답의 값과 다르면 FastAPI가 중단합니다.\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- FastAPI는 selectedWikis와 Wiki 조회 창구 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- `currentCategories`는 해당 scopeKey의 전체 카테고리를 전달합니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
+                "description": "새 문서를 분석해 Wiki 변경 결과를 생성합니다.\nSpring Boot의 전역 직렬 Wiki 변환 작업에서 호출합니다. 호출은 한 번이며 자료 선택 단계가 따로 없습니다.\n\n### Authorization\n- `X-Internal-API-Key` 필요\n\n### Path Params\n없음\n\n### Query Params\n없음\n\n### Request Body\n- `jobId`, `documentId`, `scopeKey`\n- `changeType`: `document_added`, `document_removed` 또는 `document_replaced`\n- `parsedMarkdown`: added·replaced의 새 문서 파싱 결과; removed에서는 생략\n- `removedParsedMarkdown`: removed·replaced의 제거 또는 교체 전 문서 파싱 결과\n- `wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 현재 Wiki를 전혀 읽지 못한 채 변환하게 됩니다\n- `scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다\n\n### 정책\n- 다른 scopeKey의 문서와 Wiki는 사용하지 않습니다.\n- 현재 목차·카테고리·Wiki 본문을 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.\n- FastAPI는 Wiki 조회 API 외의 실제 Wiki 본문·파일 경로·DB 정보에 접근하지 않습니다.\n- Wiki 및 Wiki 카테고리 생성·수정·병합·제거 결과를 반환할 수 있습니다.\n- 새 Wiki와 카테고리는 temp 참조값을 사용하고 Spring Boot가 실제 ID를 발급합니다.\n- FastAPI는 구조화된 변경 결과만 반환하고 Spring Boot가 링크·관계를 검증 후 반영합니다.\n- 응답의 `wikiPath`가 필수인 이유: Wiki 본문의 내부 링크는 `](pages/{pageKey}.md)`처럼 파일명 기준입니다. 경로 없이 `pages/{wikiId}.md`로 적재하면 그 링크가 어느 페이지도 가리키지 못하고 병합·제거 시 끊어질 링크를 판별할 수 없습니다.\n- `wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.\n\n### Response\n- `summary`: 문서별 작업 요약\n- `categoryChanges`, `wikiChanges`, `relationChanges`\n- `wikiChanges[].wikiCategoryRef`: 그 Wiki가 속할 카테고리. 같은 응답의 `tempCategoryId` 또는 기존 `wikiCategoryId`\n- `wikiChanges[].wikiPath`: `action`이 `create`일 때만. 에이전트가 발급한 신규 페이지 경로 (DR-016)\n- `wikiChanges[].evidence`(선택): 문서 ID, 각주, 위치와 인용 근거. Wiki-원본문서 연결은 오직 이 필드로만 전달됩니다 — Spring Boot는 `evidence`를 `wiki.document_refs`에 반영하고, 여기엔 항상 그 변경이 속한 원본문서 ID가 포함됩니다.\n- `relationChanges`는 Wiki-Wiki 관계 전용입니다. Wiki-원본문서 연결은 `relationChanges`가 아니라 위 `wikiChanges[].evidence`가 전달합니다.\n- `relationChanges[].action`: `add` 또는 `remove`\n- `relationChanges[].type`: 항상 `wiki_wiki`\n- `relationChanges[].sourceWikiRef`: 관계의 출발 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `relationChanges[].targetWikiRef`: 관계의 대상 Wiki. 같은 응답의 `tempWikiId` 또는 기존 `wikiId`\n- `indexEntries`: AI가 정한 목차 구조·순서·제목·요약\n- `indexEntries[].wikiRef`, `order`, `title`, `summary`\n\n### Error\n- `400 Bad Request`: 현재 Wiki 구조 또는 요청값 오류\n- `401 Unauthorized`: 내부 API 키 오류\n- `500 Internal Server Error`: `WIKI_TRANSFORMATION_FAILED`; 오류 본문의 `failureStage`는 실패 단계를 제공합니다.",
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"currentIndex\": \"# 목차\\n- [휴가 규정](pages/a3f2c1d4.md)\",\n  \"currentCategories\": [\n    {\n      \"categoryId\": \"10\",\n      \"name\": \"인사·복무\"\n    }\n  ],\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47,\n  \"selectedWikis\": [\n    {\n      \"wikiId\": \"101\",\n      \"categoryId\": \"10\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiPath\": \"wiki/D1-D2/pages/a3f2c1d4.md\",\n      \"contentMarkdown\": \"# 휴가 규정\\n...\",\n      \"documentRefs\": [\n        \"15\",\n        \"18\"\n      ],\n      \"wikiRefs\": [\n        \"108\"\n      ]\n    }\n  ]\n}",
+                  "raw": "{\n  \"jobId\": \"42\",\n  \"documentId\": \"15\",\n  \"scopeKey\": \"D1-D2\",\n  \"changeType\": \"document_replaced\",\n  \"parsedMarkdown\": \"# 취업 규칙\\n본문...\",\n  \"removedParsedMarkdown\": \"# 기존 취업 규칙\\n이전 본문...\",\n  \"wikiCapability\": \"{{wikiCapability}}\",\n  \"scopeVersion\": 47\n}",
                   "options": {
                     "raw": {
                       "language": "json"

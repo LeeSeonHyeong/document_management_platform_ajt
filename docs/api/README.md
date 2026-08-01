@@ -2,10 +2,10 @@
 
 ## 계약 버전
 
-- 현재 버전: `1.8.0`
+- 현재 버전: `1.9.0`
 - 기준 요구사항: `docs/requirements/요구사항정의서.md` v2.19
 - 공개 API: 59개
-- Spring Boot → FastAPI 내부 API: 6개
+- Spring Boot → FastAPI 내부 API: 5개
 - FastAPI → Spring Boot Wiki 조회 API: 8개
 - FastAPI → Spring Boot 일정 조회 API: 2개
 
@@ -39,7 +39,7 @@ P0 Request의 `Examples`에는 성공 응답과 대표 오류 응답이 저장�
 
 - 프론트엔드는 성공 Example을 화면 Mock 데이터와 응답 타입 작성 기준으로 사용한다.
 - 백엔드는 요청 Docs와 성공·오류 Example을 Controller 응답 기준으로 사용한다.
-- AI 서버는 내부 API 6개의 요청 본문과 Example을 Pydantic 모델 기준으로 사용한다.
+- AI 서버는 내부 API 5개의 요청 본문과 Example을 Pydantic 모델 기준으로 사용한다.
 - 실제 구현 응답이 Example과 다르면 구현자가 임의로 맞추지 않고 계약 변경 절차를 따른다.
 
 ## 공통 데이터 규칙
@@ -107,13 +107,13 @@ Wiki 변환·문맥 선택 오류 응답은 공통 오류 구조에 선택 필�
 | 문의 | GET | `/api/v1/inquiries` |
 | 문의 | GET | `/api/v1/inquiries/{inquiryId}` |
 
-FastAPI 내부 API 6개는 모두 P0다.
+FastAPI 내부 API 5개는 모두 P0다.
 
 ## 6명 역할
 
 | 담당 | 소유 범위 |
 |---|---|
-| AI 서버 1명 | FastAPI 내부 API 6개, 파싱·Wiki 변환 문맥 선택·Wiki 변환·Wiki 관리자 수정·일정 추출·답변 생성 |
+| AI 서버 1명 | FastAPI 내부 API 5개, 파싱·Wiki 변환·Wiki 관리자 수정·일정 추출·답변 생성 |
 | AI 연동 백엔드 1명 | 문서·Wiki·일정 파일 처리, 작업 직렬화, 질문 오케스트레이션과 내부 API 호출 |
 | 공개 백엔드 1명 | 인증·사용자·부서·문의, 공개 CRUD API와 공통 오류 응답 |
 | 프론트엔드 1명 | 로그인·회원가입·내 정보·사원 Wiki·챗봇 |

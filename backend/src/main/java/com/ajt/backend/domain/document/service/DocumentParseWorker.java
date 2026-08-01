@@ -12,8 +12,6 @@ import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
 import com.ajt.backend.global.ai.client.SourceParseResponse;
 import com.ajt.backend.global.ai.client.SourceType;
-import com.ajt.backend.global.ai.client.WikiContextSelectionRequest;
-import com.ajt.backend.global.ai.client.WikiContextSelectionResponse;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -138,7 +136,6 @@ public class DocumentParseWorker {
         documentRepository.save(document);
         String scopeKey = job.scopeKey();
         String parsedMarkdown;
-        List<Long> selectedWikiIds;
         try {
             SourceParseResponse response = aiClient.parseSource(new SourceParseRequest(
                     UUID.randomUUID().toString(),
@@ -150,17 +147,9 @@ public class DocumentParseWorker {
             ));
             parsedMarkdown = response.parsedMarkdown();
             String parsedPath = storeParsedMarkdown(document, parsedMarkdown);
-            WikiContextSelectionResponse selection = aiClient.selectWikiContext(new WikiContextSelectionRequest(
-                    String.valueOf(job.id()),
-                    String.valueOf(document.id()),
-                    scopeKey,
-                    changeType,
-                    parsedMarkdown,
-                    removedParsedMarkdown,
-                    wikiTransformationService.currentIndex(scopeKey)
-            ));
-            selectedWikiIds = wikiIds(selection);
-            document.completeParsing(parsedPath, selectedWikiIds);
+            // 수정(S15P11B106-174): 자료 선택 단계가 없어졌다. 참조 목록은 변환이 끝난 뒤
+            //   completeProcessing 이 실제 영향받은 Wiki 로 채운다.
+            document.completeParsing(parsedPath);
             documentRepository.save(document);
         } catch (AiClientException exception) {
             document.failParsing(failureReason(exception));
@@ -175,7 +164,7 @@ public class DocumentParseWorker {
             documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
-        return transformWiki(job, document, changeType, parsedMarkdown, removedParsedMarkdown, selectedWikiIds);
+        return transformWiki(job, document, changeType, parsedMarkdown, removedParsedMarkdown);
     }
 
     /**
@@ -199,23 +188,13 @@ public class DocumentParseWorker {
     ) {
         String scopeKey = job.scopeKey();
         try {
-            WikiContextSelectionResponse selection = aiClient.selectWikiContext(new WikiContextSelectionRequest(
-                    String.valueOf(job.id()),
-                    String.valueOf(documentId),
-                    scopeKey,
-                    WikiDocumentChangeType.DOCUMENT_REMOVED,
-                    null,
-                    removedParsedMarkdown,
-                    wikiTransformationService.currentIndex(scopeKey)
-            ));
             var response = wikiTransformationService.requestForDocumentChange(
                     job.id(),
                     documentId,
                     scopeKey,
                     WikiDocumentChangeType.DOCUMENT_REMOVED,
                     null,
-                    removedParsedMarkdown,
-                    wikiIds(selection)
+                    removedParsedMarkdown
             );
             WikiTransformationResult result = transactionService.applyRemovedDocument(
                     documentId, scopeKey, response);
@@ -240,8 +219,7 @@ public class DocumentParseWorker {
             Document document,
             WikiDocumentChangeType changeType,
             String parsedMarkdown,
-            String removedParsedMarkdown,
-            List<Long> selectedWikiIds
+            String removedParsedMarkdown
     ) {
         String scopeKey = job.scopeKey();
         try {
@@ -251,8 +229,7 @@ public class DocumentParseWorker {
                     scopeKey,
                     changeType,
                     parsedMarkdown,
-                    removedParsedMarkdown,
-                    selectedWikiIds
+                    removedParsedMarkdown
             );
             // 교체는 문서가 그대로 남으므로 추가와 같은 반영 경로를 쓴다 — 새 근거를 documentRefs에 더한다.
             WikiTransformationResult result = transactionService.applyAddedDocument(
@@ -274,13 +251,6 @@ public class DocumentParseWorker {
             documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
         }
-    }
-
-    private List<Long> wikiIds(WikiContextSelectionResponse selection) {
-        return selection.wikiIds()
-                .stream()
-                .map(Long::parseLong)
-                .toList();
     }
 
     private String storeParsedMarkdown(Document document, String parsedMarkdown) {

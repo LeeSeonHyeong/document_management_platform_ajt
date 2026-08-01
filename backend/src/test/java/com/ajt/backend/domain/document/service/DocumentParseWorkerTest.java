@@ -23,8 +23,6 @@ import com.ajt.backend.global.ai.client.AiClientFailureType;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
 import com.ajt.backend.global.ai.client.SourceParseResponse;
 import com.ajt.backend.global.ai.client.SourceType;
-import com.ajt.backend.global.ai.client.WikiContextSelectionRequest;
-import com.ajt.backend.global.ai.client.WikiContextSelectionResponse;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.FieldErrorResponse;
 import java.lang.reflect.Field;
@@ -54,13 +52,10 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job), Optional.of(cancelled));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willReturn(response("15", "# first"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown(eq("ALL"), eq(15L), anyString()))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
-        given(wikiTransformationService.requestForDocumentChange(anyLong(), anyLong(), anyString(), any(), anyString(), any(), anyList()))
+        given(wikiTransformationService.requestForDocumentChange(anyLong(), anyLong(), anyString(), any(), anyString(), any()))
                 .willReturn(transformationResponse("반영 완료"));
         given(transactionService.applyAddedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "반영 완료"));
@@ -101,15 +96,12 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation ->
                 response(invocation.<SourceParseRequest>getArgument(0).sourceId(), "# parsed"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown(eq("ALL"), anyLong(), anyString()))
                 .willReturn("wiki/ALL/sources/parsed.md");
         given(wikiTransformationService.requestForDocumentChange(
-                anyLong(), anyLong(), anyString(), any(), anyString(), any(), anyList()))
+                anyLong(), anyLong(), anyString(), any(), anyString(), any()))
                 .willReturn(new com.ajt.backend.global.ai.client.WikiTransformationResponse(
                         "변환 완료", List.of(), List.of(), List.of(), List.of()));
         given(transactionService.applyAddedDocument(eq(15L), eq("ALL"), any()))
@@ -145,17 +137,10 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(second, first));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
-        given(wikiTransformationService.currentIndex("ALL"))
-                .willReturn("# 목차\n- [휴가 규정](pages/101.md) — 연차와 반차 사용 기준");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation -> {
             SourceParseRequest request = invocation.getArgument(0);
             capturedSourceIds.add(request.sourceId());
             return response(request.sourceId(), "# " + ("15".equals(request.sourceId()) ? "first" : "second"));
-        });
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class))).willAnswer(invocation -> {
-            WikiContextSelectionRequest request = invocation.getArgument(0);
-            capturedContextSelections.add(request);
-            return new WikiContextSelectionResponse(List.of("101", "108"), "관련 Wiki");
         });
         given(fileStorage.storeParsedMarkdown("ALL", 15L, "# first"))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
@@ -167,8 +152,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willReturn(transformationResponse("휴가 규정을 Wiki에 반영했습니다."));
         given(transactionService.applyAddedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L, 205L), "휴가 규정을 Wiki에 반영했습니다."));
@@ -182,14 +166,6 @@ class DocumentParseWorkerTest {
         assertThat(second.status()).isEqualTo(DocumentStatus.COMPLETED);
         assertThat(second.parsedPath()).isEqualTo("wiki/ALL/sources/16/parsed.md");
         assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
-        assertThat(capturedContextSelections)
-                .extracting(WikiContextSelectionRequest::documentId)
-                .containsExactly("15", "16");
-        assertThat(capturedContextSelections.get(0).jobId()).isEqualTo(String.valueOf(job.id()));
-        assertThat(capturedContextSelections.get(0).scopeKey()).isEqualTo("ALL");
-        assertThat(capturedContextSelections.get(0).parsedMarkdown()).isEqualTo("# first");
-        assertThat(capturedContextSelections.get(0).currentIndex())
-                .isEqualTo("# 목차\n- [휴가 규정](pages/101.md) — 연차와 반차 사용 기준");
     }
 
     @Test
@@ -200,11 +176,8 @@ class DocumentParseWorkerTest {
         assignId(job, 42L);
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
         given(fileStorage.load(document.originalPath())).willReturn(resource("first"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class)))
                 .willReturn(response("15", "# 취업 규칙"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of("101", "108"), "관련 Wiki"));
         given(fileStorage.storeParsedMarkdown("ALL", 15L, "# 취업 규칙"))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
         given(wikiTransformationService.requestForDocumentChange(
@@ -213,8 +186,7 @@ class DocumentParseWorkerTest {
                 eq("ALL"),
                 eq(WikiDocumentChangeType.DOCUMENT_ADDED),
                 eq("# 취업 규칙"),
-                eq(null),
-                eq(List.of(101L, 108L))
+                eq(null)
         )).willReturn(transformationResponse("반영 완료"));
         given(transactionService.applyAddedDocument(eq(15L), eq("ALL"), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "반영 완료"));
@@ -237,7 +209,6 @@ class DocumentParseWorkerTest {
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
         given(fileStorage.load(third.originalPath())).willReturn(resource("third"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation -> {
             SourceParseRequest request = invocation.getArgument(0);
             capturedSourceIds.add(request.sourceId());
@@ -246,8 +217,6 @@ class DocumentParseWorkerTest {
             }
             return response(request.sourceId(), "# parsed " + request.sourceId());
         });
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown("ALL", 15L, "# parsed 15"))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
         given(fileStorage.storeParsedMarkdown("ALL", 17L, "# parsed 17"))
@@ -258,8 +227,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willReturn(transformationResponse("반영 완료"));
         given(transactionService.applyAddedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(300L), "반영 완료"));
@@ -284,11 +252,8 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation ->
                 response(invocation.<SourceParseRequest>getArgument(0).sourceId(), "# parsed"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown(eq("ALL"), anyLong(), anyString()))
                 .willReturn("wiki/ALL/sources/parsed.md");
         given(wikiTransformationService.requestForDocumentChange(
@@ -297,8 +262,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willThrow(timeout());
         given(wikiTransformationService.requestForDocumentChange(
                 anyLong(),
@@ -306,8 +270,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willReturn(transformationResponse("반영 완료"));
         given(transactionService.applyAddedDocument(eq(16L), eq("ALL"), any()))
                 .willReturn(new WikiTransformationResult(List.of(301L), "반영 완료"));
@@ -330,11 +293,8 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
         given(fileStorage.load(first.originalPath())).willReturn(resource("first"));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation ->
                 response(invocation.<SourceParseRequest>getArgument(0).sourceId(), "# parsed"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown(eq("ALL"), anyLong(), anyString()))
                 .willReturn("wiki/ALL/sources/parsed.md");
         given(wikiTransformationService.requestForDocumentChange(
@@ -343,8 +303,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willReturn(transformationResponse("휴가 규정을 Wiki에 반영했습니다."));
         given(transactionService.applyAddedDocument(eq(15L), eq("ALL"), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "휴가 규정을 Wiki에 반영했습니다."));
@@ -354,8 +313,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willThrow(failureWithStage());
 
         worker.parse(job);
@@ -384,7 +342,6 @@ class DocumentParseWorkerTest {
         assignId(job, 42L);
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(only));
         given(fileStorage.load(only.originalPath())).willReturn(resource("first"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willThrow(timeout());
 
         worker.parse(job);
@@ -403,10 +360,7 @@ class DocumentParseWorkerTest {
         assignId(job, 42L);
         given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(second));
         given(fileStorage.load(second.originalPath())).willReturn(resource("second"));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willReturn(response("16", "# parsed"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of(), "신규 생성 필요"));
         given(fileStorage.storeParsedMarkdown(eq("ALL"), anyLong(), anyString()))
                 .willReturn("wiki/ALL/sources/parsed.md");
         given(wikiTransformationService.requestForDocumentChange(
@@ -415,8 +369,7 @@ class DocumentParseWorkerTest {
                 anyString(),
                 any(),
                 anyString(),
-                any(),
-                anyList()
+                any()
         )).willReturn(transformationResponse("반영 완료"));
         given(transactionService.applyAddedDocument(eq(16L), eq("ALL"), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "반영 완료"));
@@ -464,7 +417,6 @@ class DocumentParseWorkerTest {
     }
 
     private final List<String> capturedSourceIds = new ArrayList<>();
-    private final List<WikiContextSelectionRequest> capturedContextSelections = new ArrayList<>();
 
     private AiClientException timeout() {
         return new AiClientException(
@@ -487,11 +439,8 @@ class DocumentParseWorkerTest {
         assignId(job, 42L);
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of("101"), "이 문서를 근거로 쓴 위키"));
         given(wikiTransformationService.requestForDocumentChange(
-                anyLong(), anyLong(), anyString(), any(), any(), anyString(), anyList()))
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
                 .willReturn(transformationResponse("걷어내기 완료"));
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
@@ -505,14 +454,9 @@ class DocumentParseWorkerTest {
                 .storeParsedMarkdown(anyString(), anyLong(), anyString());
 
         // 문맥 선택·변환 모두 문서의 현재 범위가 아니라 작업의 범위를 대상으로 한다.
-        org.mockito.Mockito.verify(aiClient).selectWikiContext(org.mockito.ArgumentMatchers.argThat(
-                request -> request.scopeKey().equals("ALL")
-                        && request.changeType() == WikiDocumentChangeType.DOCUMENT_REMOVED
-                        && request.parsedMarkdown() == null
-                        && request.removedParsedMarkdown().equals("# 옛 취업규칙\n본문")));
         org.mockito.Mockito.verify(wikiTransformationService).requestForDocumentChange(
                 eq(42L), eq(15L), eq("ALL"), eq(WikiDocumentChangeType.DOCUMENT_REMOVED),
-                eq(null), eq("# 옛 취업규칙\n본문"), eq(List.of(101L)));
+                eq(null), eq("# 옛 취업규칙\n본문"));
         org.mockito.Mockito.verify(transactionService).applyRemovedDocument(15L, "ALL", transformationResponse("걷어내기 완료"));
 
         // 문서 상태는 새 범위 작업이 관리한다 — 걷어내기가 건드리지 않는다.
@@ -531,12 +475,9 @@ class DocumentParseWorkerTest {
         given(fileStorage.load(document.originalPath())).willReturn(resource("new"));
         given(fileStorage.storeParsedMarkdown(eq("ALL"), eq(15L), anyString()))
                 .willReturn("wiki/ALL/sources/15/parsed.md");
-        given(wikiTransformationService.currentIndex("ALL")).willReturn("# 목차");
         given(aiClient.parseSource(any(SourceParseRequest.class))).willReturn(response("15", "# 새 취업규칙"));
-        given(aiClient.selectWikiContext(any(WikiContextSelectionRequest.class)))
-                .willReturn(new WikiContextSelectionResponse(List.of("101"), "옛 내용을 근거로 쓴 위키"));
         given(wikiTransformationService.requestForDocumentChange(
-                anyLong(), anyLong(), anyString(), any(), anyString(), any(), anyList()))
+                anyLong(), anyLong(), anyString(), any(), anyString(), any()))
                 .willReturn(transformationResponse("교체 반영 완료"));
         given(transactionService.applyAddedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "교체 반영 완료"));
@@ -544,13 +485,9 @@ class DocumentParseWorkerTest {
         worker.parse(job, DocumentReprocessPlan.replaced(15L, "# 옛 취업규칙"));
 
         // 문맥 선택·변환 모두 새 본문과 교체 전 본문을 함께 실어야 한다.
-        org.mockito.Mockito.verify(aiClient).selectWikiContext(org.mockito.ArgumentMatchers.argThat(
-                request -> request.changeType() == WikiDocumentChangeType.DOCUMENT_REPLACED
-                        && request.parsedMarkdown().equals("# 새 취업규칙")
-                        && request.removedParsedMarkdown().equals("# 옛 취업규칙")));
         org.mockito.Mockito.verify(wikiTransformationService).requestForDocumentChange(
                 eq(42L), eq(15L), eq("ALL"), eq(WikiDocumentChangeType.DOCUMENT_REPLACED),
-                eq("# 새 취업규칙"), eq("# 옛 취업규칙"), eq(List.of(101L)));
+                eq("# 새 취업규칙"), eq("# 옛 취업규칙"));
         assertThat(document.status()).isEqualTo(DocumentStatus.COMPLETED);
     }
 

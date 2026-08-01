@@ -48,7 +48,10 @@ expect(requirements.includes("MySQL 8.4 LTS"), "요구사항에 MySQL 8.4 LTS가
 expect(requirements.includes("총 파일 크기는 최대 100MB"), "요구사항에 요청당 총 100MB 제한이 없음");
 expect(requirements.includes("`MIXED`"), "요구사항에 MIXED 질문 유형이 없음");
 expect(requirements.includes("답변 자료 자율 조회"), "요구사항에 답변 자료 자율 조회가 없음");
-expect(requirements.includes("wiki-context-selections"), "요구사항에 Wiki 변환 문맥 선택 API가 없음");
+expect(
+  requirements.includes("조회 수단이 준비되어 과도기를 끝냈다"),
+  "요구사항에 Wiki 변환 자율 조회 전환이 반영되지 않음",
+);
 expect(requirements.includes("링크 정합성"), "요구사항에 백엔드 링크 정합성 검사가 없음");
 expect(requirements.includes("`FAILED` 또는 `CANCELLED`"), "요구사항의 재처리 상태가 FAILED·CANCELLED로 통일되지 않음");
 expect(requirements.includes("`signup_status`"), "요구사항에 가입 승인 상태 컬럼이 없음");
@@ -262,16 +265,16 @@ expect(
   "챗봇 2단계 자료 선택 API가 아직 계약에 남아 있음 — 에이전트가 직접 조회한다",
 );
 expect(
+  !findRequest(internalRequests, "POST", "/internal/v1/wiki-context-selections"),
+  "위키 2단계 자료 선택 API가 아직 계약에 남아 있음 — 에이전트가 직접 조회한다",
+);
+expect(
   findRequest(internalRequests, "GET", "/internal/v1/schedules"),
   "일정 목록 조회 API가 없음",
 );
 expect(
   findRequest(internalRequests, "GET", "/internal/v1/schedules/:scheduleId"),
   "일정 상세 조회 API가 없음",
-);
-expect(
-  findRequest(internalRequests, "POST", "/internal/v1/wiki-context-selections"),
-  "Wiki 변환 문맥 선택 API가 없음",
 );
 expect(
   findRequest(internalRequests, "POST", "/internal/v1/answers"),
@@ -326,8 +329,9 @@ expect(publicRequests.length === 59, `공개 API 수가 59개가 아님: ${publi
 // backendBaseUrl 이다.
 //
 // 챗봇 2단계 중 answer-context-selections 가 없어져 Spring → FastAPI 가 7개에서 6개가
-// 됐고, 일정 조회 2개가 늘었다 (S15P11B106-169).
-expect(internalRequests.length === 16, `내부 API 수가 16개가 아님: ${internalRequests.length}`);
+// 됐고, 일정 조회 2개가 늘었다 (S15P11B106-169). 이어서 위키 2단계 중
+// wiki-context-selections 가 없어져 5개가 됐다 (S15P11B106-174).
+expect(internalRequests.length === 15, `내부 API 수가 15개가 아님: ${internalRequests.length}`);
 
 const collectionVariable = (collection, key) =>
   collection.variable?.find((item) => item.key === key)?.value;
@@ -349,7 +353,11 @@ const collectionVariable = (collection, key) =>
 //
 // ⚠️ 이 상수가 1.6.2 에 멈춰 있었다. 그 사이 계약이 1.6.9 까지 올라갔는데 여기가 따라오지
 // 않았다 — 이 검사가 이미 실패하는 상태였다. 계약 버전을 올릴 때 이 줄도 같이 올린다.
-const expectedContractVersion = "1.8.0";
+// 1.9.0 은 위키 변환 2단계를 하나로 합친 것이다 — wiki-context-selections 삭제,
+// wiki-transformations 요청에서 currentIndex·currentCategories·selectedWikis 제거,
+// wikiCapability·scopeVersion 을 선택에서 필수로. 호환되지 않는 변경이라 minor 다
+// (S15P11B106-174).
+const expectedContractVersion = "1.9.0";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
@@ -423,10 +431,9 @@ const assertSavedExamples = (requestItem, label) => {
       "path",
       "fieldErrors",
     ].sort();
-    const permitsFailureStage = [
-      "/internal/v1/wiki-context-selections",
-      "/internal/v1/wiki-transformations",
-    ].includes(requestItem.path);
+    const permitsFailureStage = ["/internal/v1/wiki-transformations"].includes(
+      requestItem.path,
+    );
     const actualErrorFields = Object.keys(errorBody).sort();
     const allowedErrorFields = [
       ...expectedErrorFields,
@@ -476,19 +483,20 @@ const parseRawRequestBody = (method, path) => {
   }
 };
 
-const contextSelectionBody = parseRawRequestBody(
-  "POST",
-  "/internal/v1/wiki-context-selections",
-);
-expect(
-  contextSelectionBody.changeType === "document_replaced" &&
-    typeof contextSelectionBody.removedParsedMarkdown === "string",
-  "Wiki 문맥 선택 요청에 document_replaced changeType 또는 removedParsedMarkdown이 없음",
-);
-
 const transformationBody = parseRawRequestBody(
   "POST",
   "/internal/v1/wiki-transformations",
+);
+expect(
+  !("currentIndex" in transformationBody) &&
+    !("currentCategories" in transformationBody) &&
+    !("selectedWikis" in transformationBody),
+  "Wiki 변환 요청이 아직 목차·카테고리·본문을 밀어 보내고 있음 — 에이전트가 직접 조회한다",
+);
+expect(
+  typeof transformationBody.wikiCapability === "string" &&
+    typeof transformationBody.scopeVersion === "number",
+  "Wiki 변환 요청에 wikiCapability 또는 scopeVersion이 없음 — 1.9.0 부터 필수다",
 );
 expect(
   transformationBody.changeType === "document_replaced" &&

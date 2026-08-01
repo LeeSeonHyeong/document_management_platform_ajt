@@ -6,8 +6,6 @@ public interface AiClient {
 
     ScheduleExtractionResponse extractSchedules(ScheduleExtractionRequest request);
 
-    WikiContextSelectionResponse selectWikiContext(WikiContextSelectionRequest request);
-
     WikiTransformationResponse transformWiki(WikiTransformationRequest request);
 
     WikiEditResponse editWiki(WikiEditRequest request);
