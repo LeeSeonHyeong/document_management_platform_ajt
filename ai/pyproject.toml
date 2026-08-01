@@ -3,7 +3,7 @@ requires = ["hatchling>=1.26"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/document_parser", "src/wiki_mcp", "src/agent_runtime", "src/wiki_api"]
+packages = ["src/document_parser", "src/wiki_mcp", "src/agent_runtime", "src/wiki_api", "src/schedule_extractor"]
 
 [project]
 name = "ajt-ai-server"
@@ -49,4 +49,5 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "ocr: 로컬 Tesseract(eng traineddata) 필요",
+    "llm: 로컬 ollama 와 모델 필요. 출력이 비결정적이라 기본 실행에서 뺀다",
 ]

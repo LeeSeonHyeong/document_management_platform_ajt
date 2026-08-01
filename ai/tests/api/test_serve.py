@@ -65,6 +65,30 @@ def test_build_app_takes_settings_and_injects_the_runtime():
     assert app.state.api_key == "k"
 
 
+def test_build_app_injects_the_schedule_provider():
+    """`app.state.runtime` 과 같은 이유로 여기서 만든다 — 요청마다 만들지 않는다."""
+    from schedule_extractor.providers.ollama import OllamaProvider
+    from wiki_api import serve
+    from wiki_api.settings import ServerSettings
+
+    app = serve.build_app(ServerSettings(runtime="claude-code", internal_api_key="k"))
+
+    assert isinstance(app.state.schedule_provider, OllamaProvider)
+
+
+def test_build_app_fails_when_the_schedule_adapter_has_no_key():
+    """설정 오류를 첫 요청 500 이 아니라 기동에서 알아야 한다."""
+    import pytest
+
+    from wiki_api import serve
+    from wiki_api.settings import ServerSettings
+
+    settings = ServerSettings(runtime="claude-code", internal_api_key="k",
+                              schedule_provider="anthropic", anthropic_api_key="")
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        serve.build_app(settings)
+
+
 # ----- claude-code 는 CLI 가 있어야 뜬다 --------------------------------------
 
 
@@ -226,6 +250,9 @@ def test_the_readable_error_never_echoes_a_secret_field_value(monkeypatch):
     assert secret not in str(excinfo.value)
 
 
+# ----- 모델과 자격증명이 맞는지 기동에서 본다 -----------------------------------
+
+
 def test_startup_rejects_model_without_its_credential():
     """OpenAI 모델을 지정했는데 OpenAI 키가 없으면 기동에서 막는다.
 
@@ -252,3 +279,38 @@ def test_startup_passes_when_the_credential_is_there():
                               model="openai:gpt-4o-mini", openai_api_key="sk-test")
 
     check_model_credentials(settings)   # 예외가 없으면 통과
+
+
+# ----- 기동 한 줄에 일정 추출 어댑터를 적는다 -----------------------------------
+
+
+def test_the_startup_banner_names_the_schedule_adapter(monkeypatch):
+    """기본값이 로컬 ollama 라서 배포에서 환경변수를 빼먹으면 서버는 정상으로 뜨고
+    첫 일정 문서 업로드만 500 이 된다. 무엇으로 떴는지 기동 로그에 있어야 한다."""
+    from wiki_api import serve
+    from wiki_api.settings import ServerSettings
+
+    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
+    settings = ServerSettings(runtime="claude-code", internal_api_key="k")
+    app = serve.build_app(settings)
+
+    banner = serve.startup_banner(app, settings, host="0.0.0.0", port=8000)
+
+    assert "ollama" in banner
+    assert "qwen2.5:7b-instruct" in banner        # 빈 값은 기본값으로 채워 적는다
+    assert "http://localhost:11434" in banner
+
+
+def test_the_startup_banner_never_echoes_the_api_key(monkeypatch, tmp_path):
+    from wiki_api import serve
+
+    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
+    settings = _isolated_settings(
+        monkeypatch, tmp_path, runtime="claude-code", internal_api_key="k",
+        schedule_provider="anthropic", anthropic_api_key="sk-super-secret-value")
+    app = serve.build_app(settings)
+
+    banner = serve.startup_banner(app, settings, host="0.0.0.0", port=8000)
+
+    assert "anthropic" in banner
+    assert "sk-super-secret-value" not in banner

@@ -2,6 +2,10 @@
 
 경계: 이 패키지는 계약 모양을 알고 SQLite 를 모른다. `mcp/` 는 반대다. 둘 사이의 유일한
 접점은 `pending_changes()` 반환값이며 `api/changes.py` 가 그것을 계약 응답으로 바꾼다.
+
+일정 추출은 `app.state.schedule_provider` 를 쓴다 — `app.state.runtime` 과 같은 방식으로
+`serve.py` 의 `build_app()` 이 채우고, 테스트는 그 자리에 가짜를 넣는다. 여기서 만들지 않는
+이유는 아래 `create_app` 주석과 같다(설정을 읽는 지점이 갈리면 안 된다).
 """
 
 from __future__ import annotations
@@ -38,9 +42,10 @@ def create_app(*, api_key: str | None = None,
         response.headers["X-Request-Id"] = rid
         return response
 
-    from .routers import answer, source_parse, wiki
+    from .routers import answer, schedule, source_parse, wiki
 
     app.include_router(wiki.build_router(app))
     app.include_router(source_parse.build_router(app))
     app.include_router(answer.build_router(app))
+    app.include_router(schedule.build_router(app))
     return app

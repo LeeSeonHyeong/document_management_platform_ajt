@@ -79,6 +79,8 @@ _VALIDATION_CODES = {
         "INVALID_WIKI_CONTEXT_SELECTION_REQUEST", "Wiki 문맥 선택 요청 구조가 올바르지 않습니다."),
     "/internal/v1/source-parses": (
         "INVALID_SOURCE_PARSE_REQUEST", "파싱 요청 파일 또는 메타데이터가 올바르지 않습니다."),
+    "/internal/v1/schedule-extractions": (
+        "INVALID_SCHEDULE_EXTRACTION_REQUEST", "일정 추출 요청 구조가 올바르지 않습니다."),
     # 1단계(`answer-context-selections`)는 계약 1.8.0 이 지웠다 — 에이전트가 스스로
     # 조회하므로 「후보 자료를 고르는」 요청 자체가 없다. 남겨두면 Spring 이 계속 부른다.
     "/internal/v1/answers": (
@@ -95,6 +97,7 @@ _FAILURE_CODES = {
     "/internal/v1/wiki-transformations": "WIKI_TRANSFORMATION_FAILED",
     "/internal/v1/wiki-edits": "WIKI_EDIT_FAILED",
     "/internal/v1/source-parses": "DOCUMENT_PARSE_FAILED",
+    "/internal/v1/schedule-extractions": "SCHEDULE_EXTRACTION_FAILED",
     # 예상 못한 예외의 이름이다. 원인이 짚히는 실패는 `answer.py` 가 자기 이름
     # (`NO_WIKI_OR_SCHEDULE_WAS_READ`·`AGENT_TURN_LIMIT_REACHED` 등)으로 낸다.
     "/internal/v1/answers": "ANSWER_GENERATION_FAILED",

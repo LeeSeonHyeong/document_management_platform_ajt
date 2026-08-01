@@ -476,6 +476,75 @@ class SourceParseResponse(Strict):
     warnings: list[str] = Field(default_factory=list)
 
 
+# ---- 일정 추출 (schedule-extractions) --------------------------------------
+#
+# 계약 v1.3.1. 응답 필드 이름과 형태를 계약 Saved Example 이 정했다.
+#
+# `parsedMarkdown` 바이트 상한은 계약에 없다. 업로드 파일이 20MB 이하이고
+# (FR-DOC-003) 파싱 결과가 원본보다 커지는 경우는 드물어 그로부터 유도한다.
+# 계약상 유효한 요청을 막지 않도록 넉넉히 잡는다 — MR 협의 항목이다.
+#
+# **이 상한은 사실상 모델이 먼저 거절한다.** 문서를 청킹하지 않고 프롬프트에 그대로
+# 넣으므로 실제 한계는 모델 컨텍스트다 — 20만 토큰이면 한글 문서 1MB 안쪽이다. 그보다
+# 큰 문서는 여기를 통과하고 모델 호출에서 터져 SCHEDULE_EXTRACTION_FAILED 가 된다.
+# 일정 문서가 그만큼 커질 일이 실제로 생기면 청킹을 넣는다 — 상한만 낮추면 계약상
+# 유효한 요청을 우리가 먼저 막는 셈이라 더 나쁘다.
+MAX_SCHEDULE_MARKDOWN_BYTES = 24 * 1024 * 1024
+
+ScheduleVisibility = Literal["all", "department"]
+
+
+class ScheduleExtractionRequest(Strict):
+    sourceGroupKey: str = Field(min_length=1)
+    parsedMarkdown: str
+    visibilityType: ScheduleVisibility
+    departmentIds: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _the_document_must_have_content(self) -> "ScheduleExtractionRequest":
+        """빈 문서로 부르면 모델을 태울 이유가 없다 — 400 으로 되돌린다.
+
+        공백만 있는 경우도 막는다. 파싱이 실패했는데 빈 문자열로 성공한 것처럼
+        온 경우가 여기서 걸린다.
+        """
+        errors: list[InitErrorDetails] = []
+        if not self.parsedMarkdown.strip():
+            errors.append(InitErrorDetails(
+                type=PydanticCustomError(
+                    "schedule_markdown_blank", "parsedMarkdown 이 비어 있습니다."),
+                loc=("parsedMarkdown",), input=self.parsedMarkdown))
+        size = len(self.parsedMarkdown.encode("utf-8"))
+        if size > MAX_SCHEDULE_MARKDOWN_BYTES:
+            errors.append(InitErrorDetails(
+                type=PydanticCustomError(
+                    "schedule_markdown_too_large",
+                    "parsedMarkdown 이 상한을 넘었습니다: {size} 바이트",
+                    {"size": size}),
+                loc=("parsedMarkdown",), input=size))
+        if errors:
+            raise ValidationError.from_exception_data(self.__class__.__name__, errors)
+        return self
+
+
+class ExtractedScheduleOut(Strict):
+    """계약 응답의 일정 1건. 시각은 문자열이다 — 백엔드가 Instant.parse 한다."""
+
+    order: int
+    title: str
+    content: str | None = None
+    targetText: str | None = None
+    location: str | None = None
+    visibilityType: ScheduleVisibility
+    departmentIds: list[str] = Field(default_factory=list)
+    startAt: str
+    endAt: str
+
+
+class ScheduleExtractionResponse(Strict):
+    status: Literal["extracted", "no_schedule"]
+    schedules: list[ExtractedScheduleOut] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
 # ---- 챗봇 답변 (계약 v1.3.0 「답변 생성」) ------------------------------------
 
 ANSWER_PATH = "/internal/v1/answers"

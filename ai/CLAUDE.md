@@ -78,7 +78,8 @@ AI_RUNTIME=deepagents INTERNAL_API_KEY=... uv run python -m wiki_api.serve   # �
 
 ```
 Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
-                        └-> document_parser
+                        ├-> document_parser
+                        └-> schedule_extractor
 ```
 
 | 패키지 | 역할 |
@@ -87,6 +88,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
 | `agent_runtime` | 에이전트 실행 — claude-code(지금)·deepagents(배포) 런타임, 시간 상한. **기본값이 `claude-code` 라 배포에서 `AI_RUNTIME=deepagents` 를 안 주면 기동은 되고 첫 요청에서 실패한다** — `serve.py` 가 CLI 부재를 기동 시점에 막지만 근본 해결은 키 확보 후 기본값 전환이다 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |
+| `schedule_extractor` | 일정 문서 Markdown → 일정 초안. 상태 없는 단발 LLM 호출. 시각 변환·연도 추론은 코드가 한다 |
 | `viewer/` | 위키 참조 그래프 뷰어 (개발 도구). 데이터는 `uv run python -m wiki_mcp.graph_api --root <저장소> --scope ALL` 로 띄운다 |
 | `experiments/` | 측정 기록 — `INDEX.md` 가 수치의 정본. 실험별로 `report.json`(문서→위키 변경 매핑 포함)·`data/wiki/`(생성된 위키 전문)·`graph.json`(각주 단위 인용 그래프)이 있어 "어떤 원본에서 어떤 위키가 나왔나"를 추적할 수 있다 |
 
@@ -109,6 +111,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 - **AI 서버는 DB·서비스 파일에 접근하지 않는다.** 요청 본문이 실어 온 것만 처리하고 변경안을 반환한다. 저장·확정은 Spring.
 - **라이브 위키는 에이전트에게 읽기 전용.** 모든 쓰기는 작업 공간(`work/{jobId}/output/`)으로 가고, 반영 전 `lint`를 통과해야 한다.
 - 의존 방향은 `wiki_api → agent_runtime → wiki_mcp` 단방향. `wiki_mcp`는 위쪽을 임포트하지 않는다.
+  `schedule_extractor`는 `wiki_mcp`·`agent_runtime`을 임포트하지 않는다 — 상태가 없어 저장 계층이 필요 없다.
 - `wiki_mcp`는 [Lucas LLM Wiki](https://github.com/lucasastorian/llmwiki)(Apache 2.0) 이식 — 수정 시 파일 헤더의 원본·변경점 기록을 유지하고, 요약은 `NOTICE`에.
 
 ## 함정
