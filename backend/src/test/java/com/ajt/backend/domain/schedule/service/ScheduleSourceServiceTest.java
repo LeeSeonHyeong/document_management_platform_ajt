@@ -18,6 +18,8 @@ import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.domain.schedule.storage.LocalScheduleSourceFileStorage;
 import com.ajt.backend.domain.schedule.storage.ScheduleSourceFileStorage;
 import com.ajt.backend.global.ai.client.AiClient;
+import com.ajt.backend.global.ai.client.AiClientException;
+import com.ajt.backend.global.ai.client.AiClientFailureType;
 import com.ajt.backend.global.ai.client.ScheduleExtractionRequest;
 import com.ajt.backend.global.ai.client.ScheduleExtractionResponse;
 import com.ajt.backend.global.ai.client.SourceParseRequest;
@@ -187,6 +189,37 @@ class ScheduleSourceServiceTest {
 
         assertThatThrownBy(() -> service.upload(admin(), xlsx(), "all", null))
                 .isInstanceOf(IllegalStateException.class);
+
+        assertThat(storageRoot.resolve("schedule-sources").toFile().list()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("AI 연결 실패는 503(AI_SERVER_UNAVAILABLE)으로 내리고 파일을 남기지 않는다")
+    void mapsAiConnectionFailureToServiceUnavailable() {
+        given(aiClient.extractSchedules(any(ScheduleExtractionRequest.class)))
+                .willThrow(new AiClientException(
+                        AiClientFailureType.CONNECTION_FAILED, null, null,
+                        "FastAPI에 연결하지 못했습니다.", List.of(), null));
+
+        assertThatThrownBy(() -> service.upload(admin(), xlsx(), "all", null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_SERVER_UNAVAILABLE);
+
+        assertThat(storageRoot.resolve("schedule-sources").toFile().list()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("AI 처리 실패(응답 5xx)는 503이 아니라 기존 서버 오류로 전파한다")
+    void keepsAiProcessingFailureAsServerError() {
+        given(aiClient.extractSchedules(any(ScheduleExtractionRequest.class)))
+                .willThrow(new AiClientException(
+                        AiClientFailureType.SERVER_ERROR, 500, "EXTRACTION_FAILED",
+                        "추출에 실패했습니다.", List.of(), null));
+
+        // 연결 불가가 아니므로 AI_SERVER_UNAVAILABLE로 매핑하지 않고 원래 예외를 그대로 둔다.
+        assertThatThrownBy(() -> service.upload(admin(), xlsx(), "all", null))
+                .isInstanceOf(AiClientException.class);
 
         assertThat(storageRoot.resolve("schedule-sources").toFile().list()).isEmpty();
     }

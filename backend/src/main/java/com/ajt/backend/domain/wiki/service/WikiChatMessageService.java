@@ -145,6 +145,10 @@ public class WikiChatMessageService {
                     scopeVersion
             ));
         } catch (AiClientException exception) {
+            // AI 서버 미가동/연결 실패·타임아웃은 일시적 이용 불가 → 503. AI가 응답한 처리 실패는 기존 500 유지.
+            if (exception.failureType().isServerUnavailable()) {
+                throw new BusinessException(ErrorCode.AI_SERVER_UNAVAILABLE);
+            }
             throw new BusinessException(ErrorCode.WIKI_EDIT_FAILED);
         } finally {
             wikiCapabilityService.revoke(capability);

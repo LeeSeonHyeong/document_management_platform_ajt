@@ -294,6 +294,32 @@ class WikiChatMessageServiceTest {
     }
 
     @Test
+    @DisplayName("AI 서버 연결 실패는 503(AI_SERVER_UNAVAILABLE)으로 내린다")
+    void mapsAiConnectionFailureToServiceUnavailable() throws Exception {
+        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(), List.of());
+        adminLoggedIn();
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정");
+        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L)).willReturn(List.of());
+        given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
+        given(aiClient.editWiki(any(WikiEditRequest.class))).willThrow(new AiClientException(
+                AiClientFailureType.CONNECTION_FAILED,
+                null,
+                null,
+                "FastAPI에 연결하지 못했습니다.",
+                List.<FieldErrorResponse>of(),
+                null
+        ));
+
+        assertThatThrownBy(() -> service.sendChatMessage(101L, "정리해줘."))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.AI_SERVER_UNAVAILABLE);
+        verify(wikiChatMessageRepository, never()).save(any(WikiChatMessage.class));
+        verify(applier, never()).apply(anyString(), any(WikiEditResponse.class));
+    }
+
+    @Test
     @DisplayName("대화를 오래된 순서로 조회한다")
     void getsChatMessages() throws Exception {
         Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(), List.of());
