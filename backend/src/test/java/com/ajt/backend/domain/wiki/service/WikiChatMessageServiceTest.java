@@ -20,7 +20,6 @@ import com.ajt.backend.domain.document.model.WikiScope;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.document.service.CurrentMemberRole;
-import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.wiki.api.WikiChatMessageListResponse;
 import com.ajt.backend.domain.wiki.api.WikiChatReplyResponse;
 import com.ajt.backend.domain.wiki.model.Wiki;
@@ -60,7 +59,6 @@ class WikiChatMessageServiceTest {
     private final WikiChatMessageRepository wikiChatMessageRepository = mock(WikiChatMessageRepository.class);
     private final WikiFileStorage wikiFileStorage = mock(WikiFileStorage.class);
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
-    private final DocumentFileStorage documentFileStorage = mock(DocumentFileStorage.class);
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final AiClient aiClient = mock(AiClient.class);
     private final WikiTransformationApplier applier = mock(WikiTransformationApplier.class);
@@ -73,7 +71,6 @@ class WikiChatMessageServiceTest {
             wikiChatMessageRepository,
             wikiFileStorage,
             documentRepository,
-            documentFileStorage,
             aiJobRepository,
             aiClient,
             applier,
@@ -106,7 +103,6 @@ class WikiChatMessageServiceTest {
         given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L))
                 .willReturn(List.of(existingAgentMessage(wiki, "이전 응답입니다.")));
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document(15L, "취업규칙.pdf")));
-        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업 규칙\n파싱 결과");
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
         given(wikiCategoryRepository.findById(9L)).willReturn(Optional.of(category(9L, "휴가 및 근태")));
         given(wikiRepository.findAllByScopeKeyAndIdIn(SCOPE_KEY, List.of(108L))).willReturn(List.of(related));
@@ -143,7 +139,7 @@ class WikiChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("FastAPI 요청에 현재 본문, 근거 문서와 기존 대화를 계약대로 담는다")
+    @DisplayName("FastAPI 요청에 기존 대화와 조회 권한만 계약대로 담는다")
     void buildsEditRequest() throws Exception {
         Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(15L), List.of());
         adminLoggedIn();
@@ -152,7 +148,6 @@ class WikiChatMessageServiceTest {
         given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L))
                 .willReturn(List.of(existingAgentMessage(wiki, "이전 응답입니다.")));
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document(15L, "취업규칙.pdf")));
-        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업 규칙\n파싱 결과");
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
         given(aiClient.editWiki(any(WikiEditRequest.class)))
                 .willReturn(new WikiEditResponse("반영했습니다.", List.of(), List.of(), List.of(), List.of()));
@@ -165,41 +160,12 @@ class WikiChatMessageServiceTest {
         assertThat(request.wikiId()).isEqualTo("101");
         assertThat(request.scopeKey()).isEqualTo(SCOPE_KEY);
         assertThat(request.instruction()).isEqualTo("중복 규정을 정리해줘.");
-        assertThat(request.currentWiki().title()).isEqualTo("휴가 규정");
-        assertThat(request.currentWiki().wikiPath()).isEqualTo("wiki/ALL/pages/101.md");
-        assertThat(request.currentWiki().contentMarkdown()).isEqualTo("# 휴가 규정\n본문");
         assertThat(request.wikiCapability()).isEqualTo("capability");
         assertThat(request.scopeVersion()).isZero();
-        assertThat(request.evidenceDocuments()).singleElement().satisfies(document -> {
-            assertThat(document.documentId()).isEqualTo("15");
-            assertThat(document.originalFileName()).isEqualTo("취업규칙.pdf");
-            assertThat(document.parsedMarkdown()).isEqualTo("# 취업 규칙\n파싱 결과");
-        });
         assertThat(request.chatHistory()).singleElement().satisfies(message -> {
             assertThat(message.senderType()).isEqualTo("agent");
             assertThat(message.content()).isEqualTo("이전 응답입니다.");
         });
-    }
-
-    @Test
-    @DisplayName("파싱되지 않은 근거 문서는 FastAPI에 전달하지 않는다")
-    void skipsUnparsedEvidenceDocument() throws Exception {
-        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(15L), List.of());
-        adminLoggedIn();
-        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
-        given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정");
-        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L)).willReturn(List.of());
-        given(documentRepository.findAllById(List.of(15L)))
-                .willReturn(List.of(Document.uploaded(10L, 7L, SCOPE_KEY, "미파싱.pdf", "p", "application/pdf", 1L)));
-        given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
-        given(aiClient.editWiki(any(WikiEditRequest.class)))
-                .willReturn(new WikiEditResponse("반영했습니다.", List.of(), List.of(), List.of(), List.of()));
-
-        service.sendChatMessage(101L, "정리해줘.");
-
-        ArgumentCaptor<WikiEditRequest> captor = ArgumentCaptor.forClass(WikiEditRequest.class);
-        verify(aiClient).editWiki(captor.capture());
-        assertThat(captor.getValue().evidenceDocuments()).isEmpty();
     }
 
     @Test

@@ -1886,31 +1886,24 @@ const internalFolders = [
         instruction: "중복된 휴가 규정을 하나로 정리해줘.",
         wikiCapability: "{{wikiCapability}}",
         scopeVersion: 47,
-        currentWiki: {
-          title: "휴가 규정",
-          wikiPath: "wiki/D1-D2/pages/c4d8e1b2.md",
-          contentMarkdown: "# 휴가 규정\n...",
-        },
-        evidenceDocuments: [],
         chatHistory: [],
       }),
       description: docs({
         summary: "관리자의 자연어 지시를 바탕으로 Wiki 수정 결과를 생성합니다.",
-        usage: "Spring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다.",
+        usage:
+          "Spring Boot가 Wiki 상세 관리자 대화를 처리할 때 호출합니다. 수정 대상 본문과 근거 원본문서를 함께 보내지 않습니다.",
         auth: "`X-Internal-API-Key` 필요",
         requestBody: [
           "`wikiId`, `scopeKey`, `instruction`",
-          "`currentWiki`: 현재 Wiki 본문",
-          "`currentWiki.wikiPath`: `wiki.wiki_path`(DR-016) 그대로. **필수입니다.**",
-          "`evidenceDocuments`: 연결 원본문서",
           "`chatHistory`: 해당 Wiki 관리자 대화",
-          "`wikiCapability`(선택): Wiki 조회 창구 호출에 실을 요청 단위 열람 허가",
-          "`scopeVersion`(선택): 요청 시작 시점의 `wiki_scope.scope_version`",
+          "`wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 수정 대상 본문을 전혀 읽지 못한 채 수정하게 됩니다",
+          "`scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다",
         ],
         policy: [
           "관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.",
+          "현재 Wiki 본문과 근거 원본문서를 전달하지 않습니다. 에이전트가 Wiki 조회 API로 직접 읽습니다.",
           "원본문서에서 근거를 찾을 수 없는 변경은 경고하거나 생성하지 않습니다.",
-          "`wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.",
+          "응답의 `wikiPath`가 필수인 이유는 Wiki 변환과 같습니다 — 본문의 내부 링크가 파일명 기준입니다.",
           "`wikiCapability`는 로그·오류 응답·telemetry에 남기지 않습니다.",
         ],
         response: [
