@@ -101,7 +101,7 @@ pipeline {
                     steps {
                         sh '''
                             docker build --target test --tag "ajt-ai-test:${IMAGE_TAG}" ai
-                            docker run --rm "ajt-ai-test:${IMAGE_TAG}"
+                            docker run --rm --volume "${WORKSPACE}/docs:/docs:ro" "ajt-ai-test:${IMAGE_TAG}"
                         '''
                     }
                 }

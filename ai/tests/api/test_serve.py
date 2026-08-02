@@ -53,10 +53,11 @@ def test_the_command_line_beats_the_environment(monkeypatch):
     assert settings.internal_api_key == "explicit"
 
 
-def test_build_app_takes_settings_and_injects_the_runtime():
+def test_build_app_takes_settings_and_injects_the_runtime(monkeypatch):
     from wiki_api import serve
     from wiki_api.settings import ServerSettings
 
+    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = ServerSettings(runtime="claude-code", model="claude-opus-4-6",
                               internal_api_key="k", backend_base_url="http://localhost:8080")
     app = serve.build_app(settings)
@@ -65,25 +66,30 @@ def test_build_app_takes_settings_and_injects_the_runtime():
     assert app.state.api_key == "k"
 
 
-def test_build_app_injects_the_schedule_provider():
+def test_build_app_injects_the_schedule_provider(monkeypatch):
     """`app.state.runtime` 과 같은 이유로 여기서 만든다 — 요청마다 만들지 않는다."""
     from schedule_extractor.providers.ollama import OllamaProvider
     from wiki_api import serve
     from wiki_api.settings import ServerSettings
 
-    app = serve.build_app(ServerSettings(runtime="claude-code", internal_api_key="k"))
+    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
+    app = serve.build_app(ServerSettings(
+        runtime="claude-code", internal_api_key="k",
+        backend_base_url="http://localhost:8080"))
 
     assert isinstance(app.state.schedule_provider, OllamaProvider)
 
 
-def test_build_app_fails_when_the_schedule_adapter_has_no_key():
+def test_build_app_fails_when_the_schedule_adapter_has_no_key(monkeypatch):
     """설정 오류를 첫 요청 500 이 아니라 기동에서 알아야 한다."""
     import pytest
 
     from wiki_api import serve
     from wiki_api.settings import ServerSettings
 
+    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = ServerSettings(runtime="claude-code", internal_api_key="k",
+                              backend_base_url="http://localhost:8080",
                               schedule_provider="anthropic", anthropic_api_key="")
     with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
         serve.build_app(settings)
