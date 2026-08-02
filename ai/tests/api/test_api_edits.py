@@ -271,17 +271,30 @@ def test_edit_time_limit_counts_the_wiki_and_its_evidence(monkeypatch):
     큰 근거 문서를 붙인 수정이 부당하게 짧은 상한을 받는다.
 
     상한을 재는 재료가 요청에서 조회 API 로 옮겨갔다 — 페이지 본문은 지연 적재한 라이브
-    본문이고, 근거 문서 길이는 `stage_evidence_documents` 가 돌려주는 합계다."""
-    from agent_runtime.limits import time_limit_seconds
+    본문이고, 근거 문서 길이는 `stage_evidence_documents` 가 돌려주는 합계다.
+
+    근거 문서가 시간 floor(작은 입력이 다 받는 최소치)를 넘길 만큼 커야 그 차이가
+    드러난다 — 작은 근거는 페이지 본문과 똑같이 floor 로 뭉개져 이 규칙을 검증할 수
+    없다. 그래서 조회 API 가 돌려주는 근거를 floor 경계(~9.6천자) 위로 키운다. 각주가
+    인용하는 문장은 `SOURCE_MD` 안에 있으므로 그것을 그대로 품어 lint 를 통과시킨다.
+    """
+    from agent_runtime.limits import FLOOR_SECONDS, time_limit_seconds
     from wiki_api.routers import wiki as wiki_router
+
+    big_evidence = SOURCE_MD + "\n\n" + "회의 운영 세칙 조항. " * 1400
+    gateway = edit_gateway(documents={
+        "15": {"documentId": "15", "originalFileName": "회의운영.pdf",
+               "parsedMarkdown": big_evidence}})
 
     sizes: list[int] = []
     real = wiki_router.time_limit_seconds
     monkeypatch.setattr(wiki_router, "time_limit_seconds",
                         lambda size: sizes.append(size) or real(size))
 
-    assert _post(EditingRuntime()).status_code == 200
-    assert sizes == [len(PAGE_MD) + len(SOURCE_MD)]
+    assert _post(EditingRuntime(), gateway=gateway).status_code == 200
+    assert sizes == [len(PAGE_MD) + len(big_evidence)]
+    # 페이지 본문만 세면 floor 에 뭉개지지만, 큰 근거를 더하면 그보다 길어진다.
+    assert time_limit_seconds(len(PAGE_MD)) == FLOOR_SECONDS
     assert time_limit_seconds(sizes[0]) > time_limit_seconds(len(PAGE_MD))
 
 

@@ -8,9 +8,15 @@ NFR-PERF-002는 고정 10분이고 등급이 `권장`이다. 12건 측정에서 
 from agent_runtime.limits import exceeds_ceiling, time_limit_seconds
 
 
-def test_small_document_gets_a_short_limit():
-    # 2,423자 (01-training.md). 예상 3.11분 × 1.5 = 4.67분 = 280초
-    assert time_limit_seconds(2423) == 280
+def test_small_document_gets_at_least_the_floor():
+    """작은 문서라도 최소 시간(floor)을 받는다.
+
+    시간 한도는 새 문서 글자수로만 계산되는데, 작은 개정문서가 기존 위키 여러 개와의
+    병합·모순해소를 유발하면 그 작은 글자수 예산으로는 부족해 작업 도중 죽는다
+    (실측: 679자 문서가 위키 3개 병합 중 201초에 잘림, 17턴/60턴). floor 로 병합-무거운
+    작은 문서에 여유를 준다 — 간단한 문서는 그 전에 끝나므로 floor 는 kill 임계만 올린다.
+    """
+    assert time_limit_seconds(679) == 600
 
 
 def test_medium_document():
