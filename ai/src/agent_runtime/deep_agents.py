@@ -72,6 +72,34 @@ CALL_TIMEOUT_SECONDS = 600
 # turns, so this is well clear of normal work while still bounded.
 MAX_TURNS = 60
 
+# GMS 게이트웨이의 요청 크기벽(~42K 토큰) 아래로 문맥을 유지하기 위한 압축 설정. 긴 병합은
+# 이력이 누적돼 벽을 넘으면 GMS 가 400 을 내고 잡이 죽는다. deepagents 기본 요약 트리거는
+# 170K/0.85 라 벽보다 훨씬 높아 안 터지므로 낮게 재설정한다. 34K = 벽까지 실측 최대 1턴
+# 증가폭(~4.6K) 여유. (spec: docs/superpowers/specs/2026-08-02-gms-context-compaction-design.md)
+COMPACTION_TRIGGER = ("tokens", 34000)
+COMPACTION_KEEP = ("messages", 6)
+
+_COMPACTION_MW_CLASS = None
+
+
+def _compaction_middleware_class():
+    """`SummarizationMiddleware` 의 서브클래스(다른 정확-타입)를 캐시해 돌려준다.
+
+    create_deep_agent 은 기본 요약 미들웨어(같은 클래스)를 무조건 넣는다. 프로필에서 그 base
+    클래스를 정확-타입으로 exclude 하면 base 는 빠지지만, 이 서브클래스는 다른 타입이라 살아
+    남는다 — 그래야 우리 낮은 트리거(34K) 요약 하나만 남고 「중복 미들웨어」 어서션을 피한다
+    (`deepagents/_excluded_middleware.py::_apply_excluded_middleware` docstring). 캐시로 타입을
+    고정한다 — 호출마다 새 타입을 만들면 exclude 대상과의 정확-타입 비교가 흔들린다."""
+    global _COMPACTION_MW_CLASS
+    if _COMPACTION_MW_CLASS is None:
+        from deepagents.middleware.summarization import SummarizationMiddleware
+
+        class _CompactionSummarizationMiddleware(SummarizationMiddleware):
+            pass
+
+        _COMPACTION_MW_CLASS = _CompactionSummarizationMiddleware
+    return _COMPACTION_MW_CLASS
+
 
 def _server_config(root: Path, scope_key: str, job_id: str,
                    tool_log: Path | None = None) -> dict:
@@ -252,6 +280,9 @@ class DeepAgentsRuntime:
                 )
             counts = read_counts(tool_log)
 
+        _log_usage(job_id, usage, turns=turns,
+                   tool_calls=sum(counts.values()) if counts else 0,
+                   elapsed_seconds=round(time.monotonic() - started, 1))
         return RunResult(
             text=text,
             tool_calls=counts,
@@ -273,6 +304,29 @@ class DeepAgentsRuntime:
 
         return init_chat_model(self.model, timeout=timeout, max_retries=0,
                                **self._credential_kwargs(self.model))
+
+    def _summarization_middleware(self, backend):
+        """GMS 요청 크기벽(~42K) 대응 문맥 압축 미들웨어.
+
+        create_deep_agent 은 기본으로 요약 미들웨어를 넣지만 트리거가 170K/0.85 라 GMS 벽보다
+        훨씬 높아 벽에서 죽을 때까지 안 터진다. 트리거를 34K 로 낮춰 벽 전에 압축하고, 최근
+        6메시지는 보존한다. 요약 콜은 FAST 티어(haiku)로 싸게 돈다. 이름이 기본과 같아
+        (`SummarizationMiddleware`) create_deep_agent 이 기본을 이것으로 교체한다.
+        (spec: docs/superpowers/specs/2026-08-02-gms-context-compaction-design.md)
+        """
+        from langchain.chat_models import init_chat_model
+
+        if self._chat_model_override is not None:
+            # 테스트가 주입한 모델을 요약에도 쓴다 — `_chat_model` 과 같은 규약.
+            summary_model = self._chat_model_override
+        else:
+            fast = self._model_for(FAST)
+            summary_model = init_chat_model(fast, max_retries=0,
+                                            **self._credential_kwargs(fast))
+        return _compaction_middleware_class()(
+            model=summary_model, backend=backend,
+            trigger=COMPACTION_TRIGGER, keep=COMPACTION_KEEP,
+        )
 
     async def arun_with_tools(self, guide: str, question: str, *, tools: list,
                               max_turns: int, timeout: int,
@@ -382,6 +436,8 @@ class DeepAgentsRuntime:
             register_harness_profile,
         )
 
+        from deepagents.middleware.summarization import SummarizationMiddleware
+
         from .wiki_tools import wiki_agent_tools
 
         limit = timeout or CALL_TIMEOUT_SECONDS
@@ -398,13 +454,22 @@ class DeepAgentsRuntime:
             HarnessProfile(
                 excluded_tools=EXCLUDED_BUILTIN_TOOLS,
                 general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
+                # 기본 요약(트리거 170K)을 정확-타입으로 뺀다 — 우리 서브클래스(34K)만 남긴다.
+                # frozenset 이다 — 프로필 병합이 `|` 로 합집합하므로 list 면 TypeError.
+                excluded_middleware=frozenset({SummarizationMiddleware}),
             ),
         )
+        # GMS 요청 크기벽(~42K) 아래로 문맥을 유지한다. 위 프로필이 기본 요약(170K)을 빼고,
+        # 여기서 낮은 트리거(34K) 요약 서브클래스를 넣는다. 요약 오프로드용 backend 는 이
+        # 작업의 임시 루트에 둔다 — 텍스트 요약이라 거의 안 쓰인다.
+        from deepagents.backends import FilesystemBackend
+        compaction_backend = FilesystemBackend(root_dir=str(root), virtual_mode=True)
         agent = create_deep_agent(
             model=self._chat_model(limit),
             tools=tools,
             subagents=[],
             system_prompt="사내 위키 편집 에이전트다. `guide` 도구를 먼저 불러 작업 방식을 확인한다.",
+            middleware=[self._summarization_middleware(compaction_backend)],
         )
 
         def elapsed() -> float:
@@ -436,11 +501,15 @@ class DeepAgentsRuntime:
         messages = result.get("messages") or []
         text = str(getattr(messages[-1], "content", "")) if messages else ""
         usage = _usage(messages)
+        turns = _turns(messages)
+        _log_usage(job_id, usage, turns=turns,
+                   tool_calls=sum(counts.values()) if counts else 0,
+                   elapsed_seconds=elapsed())
         return RunResult(
             text=text, tool_calls=counts,
             input_tokens=int(usage.get("input_tokens", 0) or 0),
             output_tokens=int(usage.get("output_tokens", 0) or 0),
-            turns=_turns(messages), elapsed_seconds=elapsed())
+            turns=turns, elapsed_seconds=elapsed())
 
     async def _run(self, instruction: str, root: Path, scope_key: str,
                    job_id: str, tool_log: Path,
@@ -544,12 +613,32 @@ def _usage(messages: list) -> dict:
     inflating the cache fields — so they are comparable between DeepAgents runs and
     to the API baseline, but not to CLI runs.
     """
-    total = {"input_tokens": 0, "output_tokens": 0}
+    total = {"input_tokens": 0, "output_tokens": 0,
+             "cache_read": 0, "cache_creation": 0}
     for message in messages:
         usage = getattr(message, "usage_metadata", None) or {}
         total["input_tokens"] += int(usage.get("input_tokens", 0) or 0)
         total["output_tokens"] += int(usage.get("output_tokens", 0) or 0)
+        # 캐시 적중을 빼면 예산이 몇 배 틀린다 — 같은 입력 토큰이라도 `cache_read` 로
+        # 청구되면 정가의 일부다. `complete` 경로가 이미 이 값을 들고 다닌다.
+        details = usage.get("input_token_details") or {}
+        total["cache_read"] += int(details.get("cache_read", 0) or 0)
+        total["cache_creation"] += int(details.get("cache_creation", 0) or 0)
     return total
+
+
+def _log_usage(job_id: str, usage: dict, *, turns: int, tool_calls: int,
+               elapsed_seconds: float) -> None:
+    """토큰·턴을 한 줄로 남긴다. RunResult 가 담지만 아무도 찍지 않아 "왜 이 비용인가" 를
+    사후에 알 방법이 없었다. cache_read 를 함께 내야 캐시가 도는지 보인다."""
+    logger.info(
+        "deepagents usage job=%s turns=%s input=%s output=%s "
+        "cache_read=%s cache_creation=%s tool_calls=%s elapsed=%.1fs",
+        job_id, turns,
+        usage.get("input_tokens", 0), usage.get("output_tokens", 0),
+        usage.get("cache_read", 0), usage.get("cache_creation", 0),
+        tool_calls, elapsed_seconds,
+    )
 
 
 def _turns(messages: list) -> int:
