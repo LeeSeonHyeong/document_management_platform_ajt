@@ -29,8 +29,9 @@ grep -q "stage('AI Test')" "$JENKINSFILE" \
   || fail 'AI test stage is missing'
 grep -q 'docker build --target test --tag "ajt-ai-test:${IMAGE_TAG}" ai' "$JENKINSFILE" \
   || fail 'AI test image is not built from the test target'
-grep -q 'docker run --rm "ajt-ai-test:${IMAGE_TAG}"' "$JENKINSFILE" \
-  || fail 'AI test image is not executed'
+grep -Fq 'docker run --rm --volume "${WORKSPACE}/docs:/docs:ro" "ajt-ai-test:${IMAGE_TAG}"' \
+  "$JENKINSFILE" \
+  || fail 'AI test image is not executed with read-only contract docs'
 grep -q 'docker build --target runtime --tag "${AI_IMAGE}:${IMAGE_TAG}" ai' "$JENKINSFILE" \
   || fail 'AI runtime image is not built with the commit SHA'
 grep -q 'AI_IMAGE="${AI_IMAGE}"' "$JENKINSFILE" \
