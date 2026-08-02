@@ -38,6 +38,12 @@ if [[ "$(grep -c 'ANTHROPIC_API_KEY:' "$ROOT_DIR/docker-compose.yml")" != "1" ]]
   exit 1
 fi
 
+if ! grep -q 'SCHEDULE_EXTRACTOR_MODEL: "claude-haiku-4-5-20251001"' \
+  "$ROOT_DIR/docker-compose.yml"; then
+  echo 'ERROR: schedule extractor must use claude-haiku-4-5-20251001' >&2
+  exit 1
+fi
+
 rendered="$TMP_DIR/compose.yml"
 DEPLOY_ENV_FILE="$ENV_FILE" IMAGE_TAG=123456789abc \
   docker compose --env-file "$ENV_FILE" --file "$ROOT_DIR/docker-compose.yml" config \
@@ -48,6 +54,7 @@ grep -q 'image: ajt-ai:123456789abc' "$rendered"
 grep -q 'AI_BASE_URL: http://ai:8000' "$rendered"
 grep -q 'BACKEND_BASE_URL: http://backend:8080' "$rendered"
 grep -q 'SCHEDULE_EXTRACTOR_PROVIDER: anthropic' "$rendered"
+grep -q 'SCHEDULE_EXTRACTOR_MODEL: claude-haiku-4-5-20251001' "$rendered"
 grep -q 'ANTHROPIC_BASE_URL: https://gms.ssafy.io/gmsapi/api.anthropic.com' "$rendered"
 grep -q 'condition: service_healthy' "$rendered"
 

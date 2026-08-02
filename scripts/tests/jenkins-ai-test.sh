@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 JENKINSFILE="$ROOT_DIR/Jenkinsfile"
+AI_DOCKERFILE="$ROOT_DIR/ai/Dockerfile"
+AI_DOCKERIGNORE="$ROOT_DIR/ai/.dockerignore"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -33,5 +35,22 @@ grep -q 'docker build --target runtime --tag "${AI_IMAGE}:${IMAGE_TAG}" ai' "$JE
   || fail 'AI runtime image is not built with the commit SHA'
 grep -q 'AI_IMAGE="${AI_IMAGE}"' "$JENKINSFILE" \
   || fail 'AI image name is not passed to deploy.sh'
+
+if grep -q '^experiments/$' "$AI_DOCKERIGNORE"; then
+  fail 'AI Docker build context excludes experiments required by tests'
+fi
+
+if ! awk '
+  /^FROM base AS test$/ { stage = "test"; next }
+  /^FROM / { stage = "other"; next }
+  stage == "test" && $0 == "COPY experiments ./experiments" { found = 1 }
+  END { exit !found }
+' "$AI_DOCKERFILE"; then
+  fail 'AI test image does not copy experiments'
+fi
+
+if [[ "$(grep -c '^COPY experiments ./experiments$' "$AI_DOCKERFILE")" != "1" ]]; then
+  fail 'experiments must be copied exactly once in the AI test stage'
+fi
 
 echo 'PASS: Jenkins AI pipeline wiring'

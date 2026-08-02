@@ -29,11 +29,11 @@ services:
       BACKEND_BASE_URL: "http://backend:8080"
       # 운영 배포는 모든 LLM 호출을 SSAFY GMS의 Anthropic API로 고정한다.
       AI_RUNTIME: "deepagents"
-      AI_MODEL: "anthropic:claude-opus-4-6"
+      AI_MODEL: "anthropic:claude-sonnet-4-6"
       AI_MODEL_FAST: "anthropic:claude-haiku-4-5-20251001"
       AI_MODEL_QUALITY: "anthropic:claude-sonnet-4-6"
       SCHEDULE_EXTRACTOR_PROVIDER: "anthropic"
-      SCHEDULE_EXTRACTOR_MODEL: "claude-opus-4-6"
+      SCHEDULE_EXTRACTOR_MODEL: "claude-haiku-4-5-20251001"
       ANTHROPIC_BASE_URL: "https://gms.ssafy.io/gmsapi/api.anthropic.com"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
     expose:

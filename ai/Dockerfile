@@ -14,6 +14,7 @@ FROM base AS test
 RUN uv sync --frozen --extra deepagents --no-install-project
 COPY src ./src
 COPY tests ./tests
+COPY experiments ./experiments
 RUN uv sync --frozen --extra deepagents
 CMD ["uv", "run", "--no-sync", "pytest", "-m", "not ocr and not llm", "-q"]
 
