@@ -21,7 +21,7 @@ from pathlib import Path
 from .base import SOURCES_PREFIX, VaultError
 from .local import INDEX_ADDRESS, PAGES_PREFIX, LocalVaultFS
 from .query_client import QueryNotFound, ScopeChangedError, WikiQueryClient
-from .spring import SpringVaultFS, address_from_wiki_path
+from .spring import SpringVaultFS, address_from_wiki_path, rewrite_index_links
 
 # 작업층 검색 결과 상한. 설계 §7.1 은 "work 결과는 자르지 않는다" 였는데 D8(출력 토큰
 # 과다)과 충돌해 문서 자신이 "상한을 둔다" 로 결론했다.
@@ -173,7 +173,11 @@ class FederatedVaultFS(SpringVaultFS):
         # 범위 관계 1회. 페이지 루프 뒤에 둔다 — 뒤집으려면 wikiId↔주소 표가 먼저
         # 다 있어야 한다.
         await self._invert_scope_relations()
-        index_markdown = await self._client.index_markdown()
+        # 목차는 백엔드 `WikiIndex` 가 항상 wikiId 로 링크하지만, 페이지는 위에서 pageKey
+        # 주소로 깔았다. 목차 링크를 페이지 주소로 맞춰야 한 vault 안이 한 이름으로 통일돼
+        # 에이전트가 목차를 다시 써도 lint dangling-link 가 나지 않는다.
+        index_markdown = rewrite_index_links(
+            await self._client.index_markdown(), self._catalog.address_by_wiki_id)
         await self._insert_live(scope_id, INDEX_ADDRESS, index_markdown,
                                title="위키 목차", category="목차")
         # 목차의 링크만 여기서 그래프에 넣는다. 하이드레이션 시점에 본문이 있는 문서가
