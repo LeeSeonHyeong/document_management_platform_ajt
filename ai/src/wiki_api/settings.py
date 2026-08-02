@@ -142,6 +142,31 @@ def schedule_settings(settings: ServerSettings) -> ScheduleExtractorSettings:
         api_key=settings.anthropic_api_key if anthropic else "")
 
 
+def vision_ocr_engine(settings: ServerSettings):
+    """스캔 PDF OCR 을 GMS 비전 모델로 돌리는 엔진. 설정이 없으면 `None` → 로컬 Tesseract.
+
+    로컬 Tesseract 는 배포 환경에 언어 데이터(kor)를 깔아야 하고, 안 깔린 곳에선 한글
+    스캔 PDF 가 통째로 실패한다 (S15P11B106-180). 저렴한 FAST 티어 모델(`AI_MODEL_FAST`,
+    보통 haiku)과 `anthropic`(GMS) 자격을 재사용해 그 로컬 의존을 없앤다.
+
+    `None` 을 돌려주면 `parse_pdf` 가 로컬 Tesseract 로 폴백한다 — 모델·키·주소가 없거나
+    프로바이더가 `anthropic` 이 아니면 그렇게 둔다(오류로 기동을 막지 않는다).
+    """
+    model = settings.model_fast
+    if not model:
+        return None
+    provider, _, name = model.partition(":")
+    if provider != "anthropic" or not name:
+        return None
+    if not settings.anthropic_api_key or not settings.anthropic_base_url:
+        return None
+    from document_parser.vision_ocr import AnthropicVisionOcr
+    return AnthropicVisionOcr(
+        model=name, api_key=settings.anthropic_api_key,
+        base_url=settings.anthropic_base_url,
+        timeout_seconds=settings.schedule_timeout_seconds)
+
+
 def credential_table(settings: ServerSettings) -> dict[str, tuple[str, str]]:
     """프로바이더 이름 → `(api_key, base_url)` 표. 값이 하나도 없는 프로바이더는 뺀다.
 

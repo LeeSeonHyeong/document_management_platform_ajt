@@ -7,7 +7,8 @@
 import pytest
 
 from wiki_api.settings import (RUNTIMES, ServerSettings, credential_table,
-                              credentials_for, schedule_settings)
+                              credentials_for, schedule_settings,
+                              vision_ocr_engine)
 
 
 def _write_env(tmp_path, body: str):
@@ -23,6 +24,35 @@ def test_reads_values_from_the_env_file(tmp_path):
 
     assert settings.openai_api_key == "from-file"
     assert settings.runtime == "deepagents"
+
+
+def test_vision_ocr_engine_is_built_from_the_fast_model_and_gms_creds(tmp_path):
+    """스캔 PDF OCR 엔진은 저렴한 FAST 티어 모델과 anthropic(GMS) 자격으로 만든다.
+    모델 문자열의 `anthropic:` 접두사는 떼고 이름만 API 에 넘긴다 (S15P11B106-180)."""
+    env = _write_env(tmp_path,
+                     "AI_MODEL_FAST=anthropic:claude-haiku-4-5-20251001\n"
+                     "ANTHROPIC_API_KEY=k\n"
+                     "ANTHROPIC_BASE_URL=https://gms.example/api.anthropic.com\n")
+
+    engine = vision_ocr_engine(ServerSettings(_env_file=env))
+
+    assert engine is not None
+    assert engine._model == "claude-haiku-4-5-20251001"
+    assert engine._base_url == "https://gms.example/api.anthropic.com"
+
+
+def test_vision_ocr_engine_is_none_without_a_fast_model(tmp_path):
+    """FAST 모델이 없으면 None → parse_pdf 가 로컬 Tesseract 로 폴백한다."""
+    env = _write_env(tmp_path, "ANTHROPIC_API_KEY=k\n"
+                               "ANTHROPIC_BASE_URL=https://gms.example\n")
+    assert vision_ocr_engine(ServerSettings(_env_file=env)) is None
+
+
+def test_vision_ocr_engine_is_none_without_anthropic_creds(tmp_path):
+    """모델은 있어도 키·주소가 없으면 None(오류로 기동을 막지 않는다)."""
+    env = _write_env(tmp_path,
+                     "AI_MODEL_FAST=anthropic:claude-haiku-4-5-20251001\n")
+    assert vision_ocr_engine(ServerSettings(_env_file=env)) is None
 
 
 def test_process_environment_beats_the_env_file(tmp_path, monkeypatch):

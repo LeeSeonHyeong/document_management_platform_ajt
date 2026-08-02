@@ -59,7 +59,7 @@ from schedule_extractor.config import build_provider
 
 from .app import create_app
 from .settings import (RUNTIMES, ServerSettings, credential_table,
-                       schedule_settings)
+                       schedule_settings, vision_ocr_engine)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -219,6 +219,8 @@ def build_app(settings: ServerSettings):
     # 일정 추출 어댑터도 프로세스 하나에 하나다. 여기서 만들면 설정 오류(예:
     # provider=anthropic 인데 키 없음)가 첫 요청 500 이 아니라 기동 실패로 나온다.
     app.state.schedule_provider = build_provider(schedule_settings(settings))
+    # 스캔 PDF OCR 엔진. GMS 비전 모델 설정이 있으면 그것을, 없으면 None(→ 로컬 Tesseract).
+    app.state.vision_ocr = vision_ocr_engine(settings)
     return app
 
 
