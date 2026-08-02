@@ -85,12 +85,14 @@ def render_docx(md_text: str, out: Path) -> None:
     doc.save(out)
 
 
-def build_all(root: Path = ROOT) -> list[Path]:
-    (root / "documents").mkdir(exist_ok=True)
+def build_all(root: Path = ROOT, *, realistic: bool = False) -> list[Path]:
+    sources_dir = root / ("sources-realistic" if realistic else "sources")
+    documents_dir = root / ("documents-realistic" if realistic else "documents")
+    documents_dir.mkdir(exist_ok=True)
     written: list[Path] = []
     for slug, fmt in FORMAT_MAP.items():
-        md_text = (root / "sources" / f"{slug}.md").read_text(encoding="utf-8")
-        out = root / "documents" / f"{slug}.{fmt}"
+        md_text = (sources_dir / f"{slug}.md").read_text(encoding="utf-8")
+        out = documents_dir / f"{slug}.{fmt}"
         if fmt == "md":
             out.write_text(md_text, encoding="utf-8")
         elif fmt == "txt":
@@ -104,5 +106,11 @@ def build_all(root: Path = ROOT) -> list[Path]:
 
 
 if __name__ == "__main__":
-    for path in build_all():
+    import argparse
+
+    ap = argparse.ArgumentParser(description="corpus-ko-wiki 렌더")
+    ap.add_argument("--realistic", action="store_true",
+                    help="sources-realistic/ → documents-realistic/ 렌더")
+    args = ap.parse_args()
+    for path in build_all(realistic=args.realistic):
         print(f"wrote {path.relative_to(ROOT.parent.parent)}")
