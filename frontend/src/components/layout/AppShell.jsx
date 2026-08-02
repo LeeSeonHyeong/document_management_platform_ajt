@@ -14,7 +14,7 @@ export default function AppShell() {
       <Sidebar role={role} />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
           <div className="mx-auto max-w-7xl px-6 py-6">
             <Outlet />
           </div>

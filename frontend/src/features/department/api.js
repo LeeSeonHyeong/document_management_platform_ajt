@@ -1,4 +1,5 @@
 import apiClient from '@/api/client'
+import { SIGNUP_STATUS } from '@/shared/constants/enums'
 
 // 부서 목록 응답의 각 항목:
 // departmentId=부서 ID, name=부서명, manager=지정 관리자({ userId, name }) 또는 null
@@ -10,7 +11,9 @@ export async function fetchDepartments() {
 // 인원 수와 관리자 선택 후보를 만들기 위해 직원 목록을 함께 조회합니다.
 // 직원의 department.departmentId를 기준으로 부서별 인원을 집계합니다.
 export async function fetchDepartmentMembers() {
-  const { data } = await apiClient.get('/users', { params: { page: 1, size: 100 } })
+  const { data } = await apiClient.get('/users', {
+    params: { page: 1, size: 100, signupStatus: SIGNUP_STATUS.APPROVED },
+  })
   return data.items
 }
 

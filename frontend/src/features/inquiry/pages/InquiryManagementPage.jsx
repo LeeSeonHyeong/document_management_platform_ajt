@@ -18,6 +18,12 @@ const PRIORITY_META = {
   [INQUIRY_PRIORITY.LOW]: { label: '낮음', className: 'bg-slate-100 text-slate-500' },
 }
 
+const PRIORITY_ORDER = {
+  [INQUIRY_PRIORITY.HIGH]: 3,
+  [INQUIRY_PRIORITY.NORMAL]: 2,
+  [INQUIRY_PRIORITY.LOW]: 1,
+}
+
 function PriorityBadge({ priority }) {
   const meta = PRIORITY_META[priority] ?? PRIORITY_META[INQUIRY_PRIORITY.NORMAL]
   return <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${meta.className}`}>{meta.label}</span>
@@ -69,7 +75,9 @@ export default function InquiryManagementPage() {
   const [keyword, setKeyword] = useState('')
   const [sort, setSort] = useState('priority,desc')
   const [departmentId, setDepartmentId] = useState('')
-  const params = { page, size: 20, keyword: keyword || undefined, sort }
+  // 백엔드는 createdAt/updatedAt 정렬만 허용한다. 중요도 정렬은 현재 페이지에서 처리한다.
+  const apiSort = sort.startsWith('priority') ? 'createdAt,desc' : sort
+  const params = { page, size: 20, keyword: keyword || undefined, sort: apiSort }
   const query = useQuery({
     queryKey: qk.inquiries.list(params),
     queryFn: () => fetchInquiries(params),
@@ -99,9 +107,15 @@ export default function InquiryManagementPage() {
 
   // 전체 관리자만 쓰는 부서별 필터. 문의 목록 API에 부서 파라미터가 없어 현재 페이지에서 걸러낸다.
   // 계약에 담당자 부서(assignee.department)만 있으므로 담당자 부서를 기준으로 한다.
-  const visibleInquiries = departmentId
+  const departmentInquiries = departmentId
     ? inquiries.filter((item) => String(item.assignee?.department?.departmentId) === departmentId)
     : inquiries
+  const visibleInquiries = sort.startsWith('priority')
+    ? [...departmentInquiries].sort(
+        (left, right) =>
+          (PRIORITY_ORDER[right.priority] ?? 0) - (PRIORITY_ORDER[left.priority] ?? 0),
+      )
+    : departmentInquiries
 
   const columns = [
     {

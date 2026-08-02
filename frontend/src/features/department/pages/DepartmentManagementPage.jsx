@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronDown, Info, Plus, RotateCcw, UserRound } from 'lucide-react'
+import { Info, Plus, UserRound } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import ConfirmDialog from '@/components/ui/ConfirmDialog'
 import EmptyState from '@/components/ui/EmptyState'
+import Field from '@/components/ui/Field'
+import Input from '@/components/ui/Input'
+import Modal from '@/components/ui/Modal'
 import Spinner from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui'
+import { useAuth } from '@/hooks/useAuth'
 import { ACCOUNT_STATUS, ROLES, SIGNUP_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
 import { cn } from '@/shared/lib/cn'
+import { updateUser } from '@/features/member/api'
 import {
   createDepartment,
   deleteDepartment,
@@ -28,6 +33,9 @@ const AVATAR_TONES = [
   'bg-cyan-100 text-cyan-700',
 ]
 
+const SYSTEM_DEPARTMENT_NAMES = new Set(['최고관리자'])
+const KEEP_CURRENT_MANAGER = '__keep_current_manager__'
+
 function DepartmentAvatar({ department, index }) {
   return (
     <span className={cn('flex size-8 items-center justify-center rounded-xl text-sm font-bold', AVATAR_TONES[index % AVATAR_TONES.length])}>
@@ -39,9 +47,13 @@ function DepartmentAvatar({ department, index }) {
 export default function DepartmentManagementPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const { isSuperAdmin } = useAuth()
   const [newName, setNewName] = useState('')
   const [newManagerId, setNewManagerId] = useState('')
-  const [managerDrafts, setManagerDrafts] = useState({})
+  const [editing, setEditing] = useState(null)
+  const [editName, setEditName] = useState('')
+  const [editManagerId, setEditManagerId] = useState('')
+  const [editManagerError, setEditManagerError] = useState('')
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const departmentsQuery = useQuery({
@@ -54,30 +66,34 @@ export default function DepartmentManagementPage() {
   })
 
   const departments = useMemo(
-    () => departmentsQuery.data ?? [],
+    () =>
+      (departmentsQuery.data ?? []).filter(
+        (department) => !SYSTEM_DEPARTMENT_NAMES.has(department.name?.trim()),
+      ),
     [departmentsQuery.data],
   )
   const members = useMemo(
     () => membersQuery.data ?? [],
     [membersQuery.data],
   )
-  const managerCandidates = members.filter(
+  const approvedActiveMembers = members.filter(
     (member) =>
-      member.role === ROLES.ADMIN &&
       member.signupStatus === SIGNUP_STATUS.APPROVED &&
-      member.accountStatus === ACCOUNT_STATUS.ACTIVE,
+      member.accountStatus === ACCOUNT_STATUS.ACTIVE &&
+      member.isSuperAdmin !== true &&
+      !SYSTEM_DEPARTMENT_NAMES.has(member.department?.name?.trim()),
   )
-
-  useEffect(() => {
-    setManagerDrafts(
-      Object.fromEntries(
-        departments.map((department) => [
-          department.departmentId,
-          department.manager?.userId ?? '',
-        ]),
-      ),
-    )
-  }, [departments])
+  const createManagerCandidates = approvedActiveMembers.filter(
+    (member) => member.role === ROLES.ADMIN && !member.isDepartmentManager,
+  )
+  const editManagerCandidates = editing
+    ? approvedActiveMembers.filter(
+        (member) =>
+          member.department?.departmentId === editing.departmentId &&
+          member.userId !== editing.manager?.userId &&
+          !member.isDepartmentManager,
+      )
+    : []
 
   const memberCounts = useMemo(() => {
     const counts = {}
@@ -114,29 +130,64 @@ export default function DepartmentManagementPage() {
     onError: (error) => toast.error(error.message ?? '부서를 추가하지 못했습니다.'),
   })
 
-  const saveMutation = useMutation({
+  const editMutation = useMutation({
     mutationFn: async () => {
-      const changed = departments.filter(
-        (department) =>
-          (department.manager?.userId ?? '') !==
-          (managerDrafts[department.departmentId] ?? ''),
-      )
-      await Promise.all(
-        changed.map((department) =>
-          updateDepartment(department.departmentId, {
-            managerId: managerDrafts[department.departmentId] || null,
-          }),
-        ),
-      )
-      return changed.length
+      const previousManagerId = editing.manager?.userId ?? null
+      const managerChanged = editManagerId !== KEEP_CURRENT_MANAGER
+      const nextManager = managerChanged && editManagerId
+        ? members.find((member) => member.userId === editManagerId)
+        : null
+
+      // 관리자 미지정은 기존 관리자의 역할 강등만 요청한다.
+      // 백엔드가 강등과 부서 관리자 해제를 한 트랜잭션으로 처리하므로 중간 상태가 남지 않는다.
+      if (managerChanged && !editManagerId && previousManagerId) {
+        await updateUser(previousManagerId, { role: ROLES.EMPLOYEE })
+        await updateDepartment(editing.departmentId, { name: editName.trim() })
+        return { previousManagerDemotionFailed: false }
+      }
+
+      const promotedNextManager = Boolean(nextManager && nextManager.role !== ROLES.ADMIN)
+      if (promotedNextManager) {
+        await updateUser(nextManager.userId, { role: ROLES.ADMIN })
+      }
+
+      // 기존 관리자는 본인이 담당하던 문의를 모두 처리해야 교체할 수 있다.
+      // 강등이 거절되면 관리자 변경을 진행하지 않고, 앞서 승격한 후보도 원래 역할로 복구한다.
+      if (managerChanged && previousManagerId && previousManagerId !== editManagerId) {
+        try {
+          await updateUser(previousManagerId, { role: ROLES.EMPLOYEE })
+        } catch (error) {
+          if (promotedNextManager) {
+            try {
+              await updateUser(nextManager.userId, { role: ROLES.EMPLOYEE })
+            } catch {
+              // 복구 실패보다 기존 강등 실패 원인을 우선 안내한다.
+            }
+          }
+          throw error
+        }
+      }
+
+      const departmentChanges = { name: editName.trim() }
+      if (managerChanged) {
+        departmentChanges.managerId = editManagerId || null
+      }
+      await updateDepartment(editing.departmentId, departmentChanges)
+      return null
     },
-    onSuccess: async (changedCount) => {
+    onSuccess: async () => {
       await refresh()
-      toast.success(
-        changedCount ? '관리자 지정이 저장되었습니다.' : '변경된 내용이 없습니다.',
-      )
+      setEditing(null)
+      setEditManagerError('')
+      toast.success('부서 정보가 수정되었습니다.')
     },
-    onError: (error) => toast.error(error.message ?? '변경사항을 저장하지 못했습니다.'),
+    onError: (error) => {
+      if (error.code === 'INQUIRY_ASSIGNEE_HAS_PENDING') {
+        setEditManagerError('* 처리되지 않은 문의가 남은 관리자는 변경하거나 미지정할 수 없습니다.')
+        return
+      }
+      toast.error(error.message ?? '부서 정보를 수정하지 못했습니다.')
+    },
   })
 
   const deleteMutation = useMutation({
@@ -152,15 +203,11 @@ export default function DepartmentManagementPage() {
     },
   })
 
-  const resetDrafts = () => {
-    setManagerDrafts(
-      Object.fromEntries(
-        departments.map((department) => [
-          department.departmentId,
-          department.manager?.userId ?? '',
-        ]),
-      ),
-    )
+  const openEditModal = (department) => {
+    setEditing(department)
+    setEditName(department.name)
+    setEditManagerId(department.manager ? KEEP_CURRENT_MANAGER : '')
+    setEditManagerError('')
   }
 
   if (departmentsQuery.isLoading || membersQuery.isLoading) {
@@ -179,7 +226,9 @@ export default function DepartmentManagementPage() {
               </span>
             </div>
             <p className="mt-1 text-sm text-slate-400">
-              부서를 추가·삭제하고, 부서별 관리자를 지정할 수 있습니다.
+              {isSuperAdmin
+                ? '부서를 추가·삭제하고, 부서별 관리자를 지정할 수 있습니다.'
+                : '부서별 인원과 관리자를 확인할 수 있습니다.'}
             </p>
           </div>
           <div className="rounded-xl bg-slate-100 px-4 py-2 text-sm text-slate-500">
@@ -187,7 +236,7 @@ export default function DepartmentManagementPage() {
           </div>
         </div>
 
-        <form
+        {isSuperAdmin && <form
           className="mx-5 mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-primary-200 bg-primary-50/40 p-3"
           onSubmit={(event) => {
             event.preventDefault()
@@ -216,24 +265,24 @@ export default function DepartmentManagementPage() {
             className="focus-ring h-10 min-w-56 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600"
           >
             <option value="">부서 관리자 선택 (선택)</option>
-            {managerCandidates.map((manager) => (
+            {createManagerCandidates.map((manager) => (
               <option key={manager.userId} value={manager.userId}>{manager.name}</option>
             ))}
           </select>
           <Button type="submit" loading={createMutation.isPending}>부서 추가</Button>
-        </form>
+        </form>}
 
         {departments.length === 0 ? (
           <EmptyState title="등록된 부서가 없습니다." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto border-t border-slate-200">
+            <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead className="border-y border-slate-100 bg-slate-50 text-xs text-slate-500">
                 <tr>
                   <th className="px-5 py-3 text-center">부서명</th>
                   <th className="px-5 py-3 text-center">인원 수</th>
                   <th className="px-5 py-3 text-center">부서 관리자</th>
-                  <th className="px-5 py-3 text-center">관리</th>
+                  {isSuperAdmin && <th className="px-5 py-3 text-center">관리</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -242,11 +291,6 @@ export default function DepartmentManagementPage() {
                     department.memberCount ??
                     memberCounts[department.departmentId] ??
                     0
-                  const selectedManager = managerCandidates.find(
-                    (manager) =>
-                      manager.userId ===
-                      (managerDrafts[department.departmentId] ?? ''),
-                  )
                   return (
                     <tr key={department.departmentId}>
                       <td className="px-5 py-3">
@@ -257,68 +301,65 @@ export default function DepartmentManagementPage() {
                       </td>
                       <td className="px-5 py-3 text-center font-semibold text-slate-700">{count}명</td>
                       <td className="px-5 py-3 text-center">
-                        <div className="relative mx-auto max-w-xs text-left">
+                        <div className="inline-flex items-center gap-2">
                           <span
                             className={cn(
-                              'pointer-events-none absolute inset-y-0 left-2 my-auto flex size-7 items-center justify-center rounded-full text-xs font-bold',
-                              selectedManager
+                              'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                              department.manager
                                 ? 'bg-primary-600 text-white'
                                 : 'border border-dashed border-slate-300 bg-white text-slate-400',
                             )}
                           >
-                            {selectedManager ? (
-                              selectedManager.name.slice(0, 1)
+                            {department.manager ? (
+                              department.manager.name.slice(0, 1)
                             ) : (
                               <UserRound className="size-4" />
                             )}
                           </span>
-                          <select
-                            value={managerDrafts[department.departmentId] ?? ''}
-                            onChange={(event) =>
-                              setManagerDrafts({
-                                ...managerDrafts,
-                                [department.departmentId]: event.target.value,
-                              })
-                            }
-                            className="focus-ring h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-11 pr-9 text-sm text-slate-700"
-                          >
-                            <option value="">관리자 미지정</option>
-                            {managerCandidates.map((manager) => (
-                              <option key={manager.userId} value={manager.userId}>
-                                {manager.name}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-slate-400" />
+                          <span className={department.manager ? 'font-medium text-slate-700' : 'text-slate-400'}>
+                            {department.manager?.name ?? '관리자 미지정'}
+                          </span>
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-center">
-                        {isDefaultDepartment(department) ? (
-                          // 시스템 기본 부서('전체')는 삭제할 수 없어 삭제 버튼을 렌더링하지 않는다(S15P11B106-146).
-                          <span className="text-xs font-medium text-slate-400">기본 부서</span>
-                        ) : (
-                          <span className="group relative inline-flex">
+                      {isSuperAdmin && (
+                        <td className="px-5 py-3 text-center">
+                          <div className="flex flex-nowrap items-center justify-center gap-2">
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-rose-200 text-rose-600 hover:bg-rose-50"
-                              disabled={count > 0}
-                              onClick={() => setDeleteTarget(department)}
+                              onClick={() => openEditModal(department)}
                             >
-                              삭제
+                              수정
                             </Button>
-                            {count > 0 && (
-                              <span
-                                role="tooltip"
-                                className="pointer-events-none absolute bottom-[calc(100%+8px)] right-0 z-20 hidden whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block"
-                              >
-                                소속 인원 {count}명이 있어 삭제할 수 없습니다.
-                                <span className="absolute -bottom-1 right-5 size-2 rotate-45 bg-slate-900" />
+
+                            {isDefaultDepartment(department) ? (
+                              // 시스템 기본 부서('전체')는 삭제할 수 없어 삭제 버튼을 렌더링하지 않는다(S15P11B106-146).
+                              <span className="text-xs font-medium text-slate-400">기본 부서</span>
+                            ) : (
+                              <span className="group relative inline-flex">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                                  disabled={count > 0}
+                                  onClick={() => setDeleteTarget(department)}
+                                >
+                                  삭제
+                                </Button>
+                                {count > 0 && (
+                                  <span
+                                    role="tooltip"
+                                    className="pointer-events-none absolute bottom-[calc(100%+8px)] right-0 z-20 hidden whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block"
+                                  >
+                                    소속 인원 {count}명이 있어 삭제할 수 없습니다.
+                                    <span className="absolute -bottom-1 right-5 size-2 rotate-45 bg-slate-900" />
+                                  </span>
+                                )}
                               </span>
                             )}
-                          </span>
-                        )}
-                      </td>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -327,23 +368,73 @@ export default function DepartmentManagementPage() {
           </div>
         )}
 
-        <div className="flex items-center gap-2 border-t border-slate-100 bg-primary-50/40 px-5 py-3 text-xs text-slate-500">
+        {isSuperAdmin && <div className="flex items-center gap-2 border-t border-slate-100 bg-primary-50/40 px-5 py-3 text-xs text-slate-500">
           <Info className="size-4 text-primary-500" />
           부서 안에 사원이 1명이라도 남아있으면, 부서 삭제가 불가능합니다.
-        </div>
+        </div>}
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <p className="text-xs text-slate-400">변경한 관리자 지정은 저장해야 반영됩니다.</p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={resetDrafts}>
-            <RotateCcw className="size-4" /> 되돌리기
-          </Button>
-          <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-            변경사항 저장
-          </Button>
+      <Modal
+        open={Boolean(editing)}
+        onClose={editMutation.isPending ? undefined : () => setEditing(null)}
+        closeOnOverlay={!editMutation.isPending}
+        showClose={false}
+        size="lg"
+        footerClassName="bg-slate-50 px-6 py-4"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditing(null)} disabled={editMutation.isPending}>
+              취소
+            </Button>
+            <Button
+              onClick={() => editMutation.mutate()}
+              loading={editMutation.isPending}
+              disabled={!editName.trim()}
+            >
+              저장
+            </Button>
+          </>
+        }
+      >
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">부서 수정</h2>
+          <p className="mt-1 text-sm text-slate-500">부서명과 부서 관리자를 변경할 수 있습니다.</p>
         </div>
-      </div>
+
+        <div className="mt-5 space-y-4">
+          <Input
+            label="부서명"
+            required
+            value={editName}
+            onChange={(event) => setEditName(event.target.value)}
+            placeholder="부서명"
+          />
+          <Field label="부서 관리자" error={editManagerError}>
+            <select
+              value={editManagerId}
+              onChange={(event) => {
+                setEditManagerId(event.target.value)
+                setEditManagerError('')
+              }}
+              className="focus-ring h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+            >
+              {editing?.manager && (
+                <option value={KEEP_CURRENT_MANAGER}>{editing.manager.name} (현재 관리자)</option>
+              )}
+              <option value="">관리자 미지정</option>
+              {editManagerCandidates.map((manager) => (
+                <option key={manager.userId} value={manager.userId}>
+                  {manager.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="flex items-center gap-2 rounded-xl bg-primary-50 px-3 py-2.5 text-xs text-slate-500">
+            <Info className="size-4 shrink-0 text-primary-500" />
+            저장하면 변경한 부서 정보가 목록에 바로 반영됩니다.
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={Boolean(deleteTarget)}

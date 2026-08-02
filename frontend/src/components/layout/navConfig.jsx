@@ -18,7 +18,12 @@ export const NAV_ITEMS = {
     { to: '/inquiries', label: '문의하기', icon: MessageSquare },
   ],
   [ROLES.ADMIN]: [
-    { to: '/admin/users', label: '직원 관리', icon: Users },
+    {
+      to: '/admin/users',
+      label: '직원 관리',
+      icon: Users,
+      activePaths: ['/admin/signup-requests'],
+    },
     { to: '/admin/departments', label: '부서 관리', icon: Building2 },
     { to: '/admin/inquiries', label: '문의 관리', icon: Inbox },
     { to: '/admin/documents', label: '문서 관리', icon: FileText },

@@ -18,7 +18,7 @@ export default function WikiDetail({ wikiId }) {
   const toast = useToast()
   const [downloading, setDownloading] = useState(false)
   const { data: wiki, isLoading, isError } = useWiki(wikiId)
-  const { data: scopeWikiPage } = useWikis(wiki ? { scopeKey: wiki.scopeKey, size: 200 } : undefined)
+  const { data: scopeWikiPage } = useWikis(wiki ? { scopeKey: wiki.scopeKey, size: 100 } : undefined)
 
   const currentListItem = (scopeWikiPage?.items ?? []).find(
     (item) => String(item.wikiId) === String(wikiId),

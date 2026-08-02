@@ -32,13 +32,22 @@ export default function EmployeeInquiriesPage() {
     page: 1,
     size: 20,
     status: ['pending', 'done'].includes(filter) ? filter : undefined,
-    sort: filter === 'priority' ? 'priority,desc' : 'createdAt,desc',
+    // 백엔드는 createdAt/updatedAt 정렬만 허용하므로 중요도는 응답 목록에서 정렬한다.
+    sort: 'createdAt,desc',
   }
   const listQuery = useQuery({
     queryKey: qk.inquiries.list(params),
     queryFn: () => fetchInquiries(params),
   })
-  const inquiries = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items])
+  const inquiries = useMemo(() => {
+    const items = listQuery.data?.items ?? []
+    if (filter !== 'priority') return items
+    const priorityOrder = { high: 3, normal: 2, low: 1 }
+    return [...items].sort(
+      (left, right) =>
+        (priorityOrder[right.priority] ?? 0) - (priorityOrder[left.priority] ?? 0),
+    )
+  }, [filter, listQuery.data?.items])
 
   useEffect(() => {
     if (!inquiries.length) {

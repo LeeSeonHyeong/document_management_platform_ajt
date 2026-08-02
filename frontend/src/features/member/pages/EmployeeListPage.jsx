@@ -20,6 +20,11 @@ const FILTERS = [
 ]
 
 const PAGE_SIZE = 20
+const SYSTEM_DEPARTMENT_NAME = '최고관리자'
+
+function isSuperAdminAccount(member) {
+  return member?.isSuperAdmin === true || member?.department?.name?.trim() === SYSTEM_DEPARTMENT_NAME
+}
 
 export default function EmployeeListPage() {
   const navigate = useNavigate()
@@ -69,20 +74,22 @@ export default function EmployeeListPage() {
     enabled: isSuperAdmin,
   })
 
-  const employees = query.data?.items ?? []
+  const employees = (query.data?.items ?? []).filter((employee) => !isSuperAdminAccount(employee))
 
   // 상단 카드의 관리자/사원 수는 현재 페이지가 아니라 전체 승인 계정 기준이어야 하므로
   // role별로 size=1 조회해 totalCount만 받아온다(가입 대기 카드와 같은 방식).
   const roleCountQueries = useQueries({
     queries: [ROLES.ADMIN, ROLES.EMPLOYEE].map((role) => {
-      const countParams = { page: 1, size: 1, signupStatus: SIGNUP_STATUS.APPROVED, role }
+      const countParams = { page: 1, size: 100, signupStatus: SIGNUP_STATUS.APPROVED, role }
       return {
         queryKey: qk.users.list(countParams),
         queryFn: () => fetchUsers(countParams),
       }
     }),
   })
-  const adminCount = roleCountQueries[0].data?.totalCount ?? 0
+  const adminCount = (roleCountQueries[0].data?.items ?? []).filter(
+    (member) => !isSuperAdminAccount(member),
+  ).length
   const employeeCount = roleCountQueries[1].data?.totalCount ?? 0
   const totalCount = adminCount + employeeCount
 
