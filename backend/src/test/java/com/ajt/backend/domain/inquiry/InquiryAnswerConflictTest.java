@@ -10,6 +10,7 @@ import com.ajt.backend.domain.inquiry.storage.InquiryFileStorage;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.Role;
+import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -39,6 +40,8 @@ class InquiryAnswerConflictTest {
     private MemberRepository memberRepository;
     @Mock
     private InquiryFileStorage fileStorage;
+    @Mock
+    private SuperAdminChecker superAdminChecker;
 
     @InjectMocks
     private InquiryService inquiryService;
@@ -54,6 +57,10 @@ class InquiryAnswerConflictTest {
         Inquiry inquiry = mock(Inquiry.class);
         when(inquiry.getAssignee()).thenReturn(assignee);
 
+        // 최고관리자가 아니라 담당자 자격으로 답변하는 상황(기존 동시성 충돌 시나리오 유지).
+        when(superAdminChecker.isSuperAdmin("admin@ajt.com", true)).thenReturn(false);
+        // 답변 작성자는 실제 로그인 사용자(=담당자)로 조회된다.
+        when(memberRepository.findById(7L)).thenReturn(Optional.of(assignee));
         when(inquiryRepository.findById(inquiryId)).thenReturn(Optional.of(inquiry));
         // 두 요청 모두 "답변 없음"으로 판단하는 상황: findByInquiryId가 비어 있다.
         when(inquiryReplyRepository.findByInquiryId(inquiryId)).thenReturn(Optional.empty());

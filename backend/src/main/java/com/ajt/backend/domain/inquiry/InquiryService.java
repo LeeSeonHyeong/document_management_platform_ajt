@@ -13,6 +13,7 @@ import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.Role;
 import com.ajt.backend.domain.member.SignupStatus;
+import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -60,17 +61,26 @@ public class InquiryService {
     private final InquiryReplyRepository inquiryReplyRepository;
     private final MemberRepository memberRepository;
     private final InquiryFileStorage fileStorage;
+    // 수정(S15P11B106-146): 최고관리자(설정 이메일 기준)는 담당자가 아니어도 전체 문의 조회·상세·답변이 가능하다.
+    private final SuperAdminChecker superAdminChecker;
 
     public InquiryService(
             InquiryRepository inquiryRepository,
             InquiryReplyRepository inquiryReplyRepository,
             MemberRepository memberRepository,
-            InquiryFileStorage fileStorage
+            InquiryFileStorage fileStorage,
+            SuperAdminChecker superAdminChecker
     ) {
         this.inquiryRepository = inquiryRepository;
         this.inquiryReplyRepository = inquiryReplyRepository;
         this.memberRepository = memberRepository;
         this.fileStorage = fileStorage;
+        this.superAdminChecker = superAdminChecker;
+    }
+
+    /** 최고관리자(설정 이메일) 여부. role=ADMIN만으로 판단하지 않고 기존 SuperAdminChecker 기준을 재사용한다. */
+    private boolean isSuperAdmin(AuthenticatedMember loginMember) {
+        return superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin());
     }
 
     /**
@@ -144,7 +154,7 @@ public class InquiryService {
         requireLogin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
         Specification<Inquiry> specification = inquirySpecification(
-                loginMember, status, priority, memberId, createdFrom, createdTo);
+                loginMember, isSuperAdmin(loginMember), status, priority, memberId, createdFrom, createdTo);
         Page<InquirySummaryResponse> result = inquiryRepository.findAll(specification, pageable)
                 .map(InquirySummaryResponse::from);
         return InquiryListResponse.from(result);
@@ -216,7 +226,10 @@ public class InquiryService {
     public InquiryAnswerResponse upsertAnswer(AuthenticatedMember loginMember, long inquiryId, String content) {
         requireLogin(loginMember);
         Inquiry inquiry = findInquiry(inquiryId);
-        requireAssignee(loginMember, inquiry);
+        requireAnswerPermission(loginMember, inquiry);
+        // 수정(S15P11B106-146): 답변 작성자는 지정 담당자가 아니라 '실제로 답변한 로그인 사용자'다.
+        //   담당자가 답변하면 담당자==로그인 사용자라 기존과 동일하고, 최고관리자가 답변하면 최고관리자로 올바르게 귀속된다.
+        Member responder = findMember(loginMember.memberId());
 
         // 수정(S15P11B106-105): 답변은 문의당 1건(inquiry_id UNIQUE)이라, 두 담당자가 거의 동시에 답변을 등록하면
         //   둘 다 "답변 없음"으로 판단해 각각 INSERT를 시도하고 나중 요청이 UNIQUE 제약에 걸린다. 이 INSERT는 커밋
@@ -230,7 +243,7 @@ public class InquiryService {
                         return existing;
                     })
                     .orElseGet(() -> inquiryReplyRepository.save(
-                            InquiryReply.create(inquiryId, inquiry.getAssignee(), content)));
+                            InquiryReply.create(inquiryId, responder, content)));
             inquiryReplyRepository.flush();
         } catch (IllegalArgumentException exception) {
             throw new BusinessException(ErrorCode.INVALID_INQUIRY, exception.getMessage());
@@ -251,7 +264,7 @@ public class InquiryService {
     public void deleteAnswer(AuthenticatedMember loginMember, long inquiryId) {
         requireLogin(loginMember);
         Inquiry inquiry = findInquiry(inquiryId);
-        requireAssignee(loginMember, inquiry);
+        requireAnswerPermission(loginMember, inquiry);
         InquiryReply reply = inquiryReplyRepository.findByInquiryId(inquiryId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INQUIRY_ANSWER_NOT_FOUND));
         inquiryReplyRepository.delete(reply);
@@ -344,14 +357,20 @@ public class InquiryService {
 
     private Inquiry findVisibleInquiry(AuthenticatedMember loginMember, long inquiryId) {
         Inquiry inquiry = findInquiry(inquiryId);
-        if (!isAuthor(loginMember, inquiry) && !isAssignee(loginMember, inquiry)) {
+        // 수정(S15P11B106-146): 최고관리자는 작성자·담당자가 아니어도 상세를 조회할 수 있다.
+        //   권한 없는 사용자에게는 기존처럼 문의 존재를 숨기기 위해 404(INQUIRY_NOT_FOUND)로 응답한다.
+        if (!isSuperAdmin(loginMember) && !isAuthor(loginMember, inquiry) && !isAssignee(loginMember, inquiry)) {
             throw new BusinessException(ErrorCode.INQUIRY_NOT_FOUND);
         }
         return inquiry;
     }
 
-    private void requireAssignee(AuthenticatedMember loginMember, Inquiry inquiry) {
-        if (!isAssignee(loginMember, inquiry)) {
+    /**
+     * 답변 작성·수정·삭제 권한을 확인합니다(S15P11B106-146).
+     * 최고관리자는 담당자가 아니어도 허용하고, 그 외에는 기존처럼 지정 담당자(assignee)만 허용한다.
+     */
+    private void requireAnswerPermission(AuthenticatedMember loginMember, Inquiry inquiry) {
+        if (!isSuperAdmin(loginMember) && !isAssignee(loginMember, inquiry)) {
             throw new BusinessException(ErrorCode.INQUIRY_FORBIDDEN);
         }
     }
@@ -376,6 +395,12 @@ public class InquiryService {
             predicates.add(criteriaBuilder.equal(root.get("role"), Role.ADMIN));
             predicates.add(criteriaBuilder.equal(root.get("signupStatus"), SignupStatus.APPROVED));
             predicates.add(criteriaBuilder.equal(root.get("accountStatus"), AccountStatus.ACTIVE));
+            // 수정(S15P11B106-146): 최고관리자(설정 이메일)는 담당자로 지정하지 않아도 답변할 수 있으므로 후보에서 제외한다.
+            String superAdminEmail = superAdminChecker.superAdminEmail();
+            if (superAdminEmail != null && !superAdminEmail.isBlank()) {
+                predicates.add(criteriaBuilder.notEqual(
+                        criteriaBuilder.lower(root.get("email")), superAdminEmail.toLowerCase(Locale.ROOT)));
+            }
             if (keyword != null && !keyword.isBlank()) {
                 String likeKeyword = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("name")), likeKeyword));
@@ -387,6 +412,7 @@ public class InquiryService {
     @SuppressWarnings("unchecked")
     private Specification<Inquiry> inquirySpecification(
             AuthenticatedMember loginMember,
+            boolean superAdmin,
             String status,
             String priority,
             String memberId,
@@ -413,7 +439,11 @@ public class InquiryService {
                 assigneeJoin = (Join<Inquiry, Member>) assigneeFetch;
             }
 
-            if (loginMember.isAdmin()) {
+            // 수정(S15P11B106-146): 최고관리자는 전체 문의를 조회한다(작성자·담당자 제한 없음).
+            //   그 외 관리자(부서관리자)는 본인이 담당자인 문의만, 사원은 본인이 작성한 문의만 조회한다.
+            if (superAdmin) {
+                // 전체 조회: 작성자/담당자 범위 제한을 추가하지 않는다.
+            } else if (loginMember.isAdmin()) {
                 predicates.add(criteriaBuilder.equal(assigneeJoin.get("id"), loginMember.memberId()));
             } else {
                 predicates.add(criteriaBuilder.equal(authorJoin.get("id"), loginMember.memberId()));

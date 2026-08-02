@@ -142,6 +142,41 @@ class MemberServiceTest {
     }
 
     @Test
+    @DisplayName("직원 현황 검색은 소속 부서명으로도 조회된다(S15P11B106-146)")
+    void findUsersSearchesByDepartmentName() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Department hr = departmentRepository.save(new Department("인사부"));
+        Member admin = memberRepository.save(approvedAdmin(dev)); // admin@ajt.com, 개발부
+        memberRepository.save(approvedEmployee(dev, "dev.emp@ajt.com", "김개발", "AJT-2026-1001"));
+        memberRepository.save(approvedEmployee(hr, "hr.emp@ajt.com", "이인사", "AJT-2026-1002"));
+
+        UserListResponse response = memberService.findUsers(
+                new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN),
+                1, 20, null, null, null, false, "개발부", null);
+
+        // 개발부 소속(관리자 + 김개발)만 조회되고 인사부 소속(이인사)은 제외된다.
+        assertThat(response.items()).extracting("email")
+                .contains("admin@ajt.com", "dev.emp@ajt.com")
+                .doesNotContain("hr.emp@ajt.com");
+    }
+
+    @Test
+    @DisplayName("직원 현황 검색은 이메일로도 조회된다(기존 유지, S15P11B106-146)")
+    void findUsersSearchesByEmail() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(dev));
+        memberRepository.save(approvedEmployee(dev, "special.person@ajt.com", "김개발", "AJT-2026-1001"));
+
+        UserListResponse response = memberService.findUsers(
+                new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN),
+                1, 20, null, null, null, false, "special.person", null);
+
+        assertThat(response.items()).extracting("email")
+                .contains("special.person@ajt.com")
+                .doesNotContain("admin@ajt.com");
+    }
+
+    @Test
     @DisplayName("관리자가 아니면 사용자 목록을 조회할 수 없다")
     void findUsersRequiresAdmin() {
         AuthenticatedMember employee = new AuthenticatedMember(1L, "employee@ajt.com", Role.EMPLOYEE);

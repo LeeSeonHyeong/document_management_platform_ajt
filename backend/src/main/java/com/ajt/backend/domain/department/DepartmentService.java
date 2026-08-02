@@ -111,6 +111,10 @@ public class DepartmentService {
 
         if (request.name() != null) {
             String name = normalizeName(request.name());
+            // 수정(S15P11B106-146): 기본 부서('전체')는 이름을 실제로 바꾸는 요청을 거절한다(같은 이름 재전송은 허용).
+            if (department.isDefault() && !Department.DEFAULT_NAME.equals(name)) {
+                throw new BusinessException(ErrorCode.DEFAULT_DEPARTMENT_PROTECTED);
+            }
             validateDuplicateName(name, department.getId());
             department.changeName(name);
         }
@@ -132,6 +136,10 @@ public class DepartmentService {
     public void deleteDepartment(AuthenticatedMember loginMember, Long departmentId) {
         requireAdmin(loginMember);
         Department department = findDepartment(departmentId);
+        // 수정(S15P11B106-146): 시스템 기본 부서('전체')는 최고관리자라도 삭제할 수 없다(항상 존재 보장).
+        if (department.isDefault()) {
+            throw new BusinessException(ErrorCode.DEFAULT_DEPARTMENT_PROTECTED);
+        }
         if (memberRepository.existsByDepartment_Id(department.getId())) {
             throw new BusinessException(ErrorCode.DEPARTMENT_IN_USE);
         }

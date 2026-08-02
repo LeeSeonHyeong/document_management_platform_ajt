@@ -171,6 +171,19 @@ public class Document {
         this.failureReason = null;
     }
 
+    /**
+     * 파일 교체 확정(promote)이 커밋 후 실패한 경우처럼, 재처리를 시작하기도 전에 문서를 실패로 표시합니다(S15P11B106-146).
+     * DB에는 이미 새 파일 메타데이터가 커밋됐지만 실제 파일이 최종 경로에 없을 수 있어, 문서 자체를 FAILED로 남겨
+     * 다운로드/상세 조회에서 정상인 것처럼 보이지 않게 한다. 처리 중(PARSING/PROCESSING) 문서에는 쓰지 않는다.
+     */
+    public void failReplace(String failureReason) {
+        if (isInProgress()) {
+            throw new IllegalStateException("처리 중인 문서는 교체 실패로 표시할 수 없습니다.");
+        }
+        this.failureReason = failureReason;
+        this.status = DocumentStatus.FAILED;
+    }
+
     public void changeOriginalPath(String originalPath) {
         this.originalPath = originalPath;
     }

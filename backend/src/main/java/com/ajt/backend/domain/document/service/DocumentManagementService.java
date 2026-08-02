@@ -26,6 +26,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.document.storage.DocumentFileMutation;
+import com.ajt.backend.domain.document.storage.StagedOriginalFile;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.error.BusinessException;
@@ -76,6 +77,9 @@ public class DocumentManagementService {
     private final WikiScopeRepository wikiScopeRepository;
     // 작업(S15P11B106-70): 목록·상세 응답에 공개범위 부서명을 채우기 위한 부서 조회.
     private final DepartmentRepository departmentRepository;
+    // 수정(S15P11B106-146): 파일 교체 확정(promote)이 커밋 후 실패하면 작업/문서를 FAILED로 남기기 위한 컴포넌트.
+    private final AiJobFailureMarker aiJobFailureMarker;
+    private final DocumentFailureMarker documentFailureMarker;
 
     public DocumentManagementService(
             CurrentMemberProvider currentMemberProvider,
@@ -86,7 +90,9 @@ public class DocumentManagementService {
             DocumentFileStorage documentFileStorage,
             MemberRepository memberRepository,
             WikiScopeRepository wikiScopeRepository,
-            DepartmentRepository departmentRepository
+            DepartmentRepository departmentRepository,
+            AiJobFailureMarker aiJobFailureMarker,
+            DocumentFailureMarker documentFailureMarker
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.documentRepository = documentRepository;
@@ -97,6 +103,8 @@ public class DocumentManagementService {
         this.memberRepository = memberRepository;
         this.wikiScopeRepository = wikiScopeRepository;
         this.departmentRepository = departmentRepository;
+        this.aiJobFailureMarker = aiJobFailureMarker;
+        this.documentFailureMarker = documentFailureMarker;
     }
 
     @Transactional(readOnly = true)
@@ -118,6 +126,11 @@ public class DocumentManagementService {
     public DocumentFileDownload downloadFile(long documentId) {
         requireAdmin();
         Document document = findDocument(documentId);
+        // 수정(S15P11B106-146): 파일 교체 확정(promote) 실패 등으로 FAILED가 된 문서는 DB 메타데이터와 실제 파일이
+        //   어긋날 수 있으므로(같은 확장자 교체 실패 시 기존 파일이 새 파일처럼 내려갈 수 있음) 다운로드를 막는다.
+        if (document.status() == DocumentStatus.FAILED) {
+            throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS);
+        }
         Resource resource = documentFileStorage.load(document.originalPath());
         // 작업: DB엔 경로가 있으나 실제 파일이 없으면(유실) 500 대신 404로 안전하게 처리한다.
         if (!resource.isReadable()) {
@@ -156,7 +169,10 @@ public class DocumentManagementService {
     /**
      * 작업(DOC): 원본문서 파일 교체 (PUT /documents/{id}/file).
      * 문서 ID·카테고리·공개범위는 유지한 채 원본 파일만 새 파일로 교체하고, 해당 문서를 재처리한다(202 + jobId).
-     * 저장 경로는 문서 ID 기준으로 결정되므로, 확장자가 바뀌어 경로가 달라지면 이전 파일을 정리한다.
+     *
+     * <p>수정(S15P11B106-146): 새 파일을 최종 경로에 바로 덮어쓰지 않고 staging 경로에 저장한다. DB 트랜잭션에서는
+     * 메타데이터 변경과 재처리 작업 생성만 하고, 커밋이 성공한 뒤에만 staging→최종 이동으로 교체를 확정하며 기존
+     * 원본·파싱 파일을 지운다. 롤백되면 staging 파일만 정리하고 기존 파일은 그대로 둔다(문서 삭제 afterCommit 패턴과 동일).
      */
     @Transactional
     public DocumentFileReplaceResponse replaceFile(long documentId, MultipartFile file) {
@@ -165,37 +181,125 @@ public class DocumentManagementService {
         DocumentUploadRequest.validateReplacementFile(file);
         ensureNotInProgress(document);
 
-        // 새 파일을 저장하기 전에 교체 전 파싱 본문을 읽어 둔다. 저장 경로가 문서 ID 기준이라
-        // 원본이 덮어써지고, 재처리 중에는 parsed.md도 새 본문으로 덮어써져 옛 내용을 잃는다.
-        // 이 본문이 없으면 옛 내용을 근거로 쓴 문단·각주를 고치도록 지시할 수 없다.
+        // 새 파일을 저장하기 전에 교체 전 파싱 본문을 읽어 둔다. 커밋 후 parsed.md도 정리되고 재처리로 새로
+        // 생성되므로, 옛 내용을 근거로 쓴 문단·각주를 고치도록 지시하려면 지금 읽어 재처리 계획에 담아야 한다.
         String removedParsedMarkdown = readParsedMarkdownQuietly(document);
+        String previousOriginalPath = document.originalPath();
+        String previousParsedPath = document.parsedPath();
 
-        String previousPath = document.originalPath();
-        String newPath;
+        StagedOriginalFile staged;
         try {
-            newPath = documentFileStorage.storeOriginal(document.scopeKey(), document.id(), file);
+            // 최종 경로가 아닌 staging에 저장한다(기존 파일을 아직 건드리지 않는다).
+            staged = documentFileStorage.stageOriginal(document.scopeKey(), document.id(), file);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }
-        document.replaceFile(file.getOriginalFilename(), newPath, file.getContentType(), file.getSize());
-        if (previousPath != null && !previousPath.equals(newPath)) {
-            // 확장자가 바뀌어 저장 경로가 달라진 경우에만 이전 파일이 남으므로 정리한다.
-            deleteQuietly(previousPath);
-        }
 
-        // 재처리 범위는 이 문서 1건이다(update의 '같은 범위=단건 증분 재처리'와 같은 패턴).
-        // 교체 전 본문이 없으면 계획이 document_added로 강등되어, 옛 내용을 걷어내지 못하는
-        // 한계만 남는다. 방향이 어긋나지는 않는다(DocumentReprocessPlan.replaced 주석 참고).
-        AiJob job = reprocessDocument(
-                admin.memberId(),
-                document,
-                DocumentReprocessPlan.replaced(document.id(), removedParsedMarkdown)
-        );
-        return new DocumentFileReplaceResponse(
-                String.valueOf(job.id()),
-                String.valueOf(document.id()),
-                job.status().name().toLowerCase()
-        );
+        try {
+            // 메타데이터는 최종 경로를 가리키게 한다. 실제 파일은 커밋 후에 그 경로로 확정된다.
+            document.replaceFile(file.getOriginalFilename(), staged.finalPath(), file.getContentType(), file.getSize());
+
+            // 재처리 작업을 waiting 상태로 만들되, 이 자리에서 실행하지는 않는다. 재처리 범위는 이 문서 1건이다.
+            // 교체 전 본문이 없으면 계획이 document_added로 강등된다(DocumentReprocessPlan.replaced 주석 참고).
+            document.markForReprocess();
+            DocumentReprocessPlan plan = DocumentReprocessPlan.replaced(document.id(), removedParsedMarkdown);
+            AiJob job = aiJobRepository.save(AiJob.waiting(
+                    admin.memberId(),
+                    document.scopeKey(),
+                    document.scopeKey() + "/jobs/" + UUID.randomUUID(),
+                    List.of(document.id())
+            ));
+
+            // 파일 확정 → (성공 시) 기존 파일 삭제 + 재처리 실행 순서를 하나의 afterCommit 흐름에서 보장한다.
+            // promote가 실패하면 재처리를 시작하지 않고 작업을 FAILED로 남긴다(DB↔실제 파일 불일치를 조용히 묻지 않는다).
+            registerAfterCommitFileReplace(
+                    document.id(), staged.stagingPath(), staged.finalPath(),
+                    previousOriginalPath, previousParsedPath, job, plan);
+
+            return new DocumentFileReplaceResponse(
+                    String.valueOf(job.id()),
+                    String.valueOf(document.id()),
+                    job.status().name().toLowerCase()
+            );
+        } catch (RuntimeException exception) {
+            // DB 작업(메타 변경·작업 생성)이 실패하면 트랜잭션이 롤백된다. 새로 저장한 staging 임시 파일만 정리하고
+            // 기존 파일은 손대지 않는다(등록 전 실패라 afterCompletion이 실행되지 않으므로 여기서 직접 정리).
+            deleteQuietly(staged.stagingPath());
+            throw exception;
+        }
+    }
+
+    /**
+     * 수정(S15P11B106-146): 파일 교체 확정을 트랜잭션 커밋 이후로 미룬다.
+     *
+     * <p>afterCommit에서 staging→최종 이동(promote)을 먼저 하고, 성공한 경우에만 기존 원본·파싱 파일을 지우고
+     * 재처리를 실행한다. promote가 실패하면(=DB↔실제 파일 불일치) 재처리를 시작하지 않고 작업을 FAILED로 남긴다.
+     * 롤백(afterCompletion STATUS_ROLLED_BACK)에서는 staging 임시 파일만 정리하고 기존 파일은 그대로 둔다.
+     * 동기화가 비활성(트랜잭션 밖)일 때만 즉시 확정한다. replaceFile은 {@code @Transactional}이라 보통 afterCommit 경로를 탄다.
+     */
+    private void registerAfterCommitFileReplace(
+            long documentId, String stagingPath, String finalPath,
+            String previousOriginalPath, String previousParsedPath, AiJob job, DocumentReprocessPlan plan) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            finalizeReplace(documentId, stagingPath, finalPath, previousOriginalPath, previousParsedPath, job, plan);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                finalizeReplace(documentId, stagingPath, finalPath, previousOriginalPath, previousParsedPath, job, plan);
+            }
+
+            @Override public void afterCompletion(int status) {
+                if (status == STATUS_ROLLED_BACK) {
+                    // 롤백: 새로 저장한 임시 파일만 지운다. 기존 파일은 손대지 않았으므로 그대로 유지된다.
+                    deleteQuietly(stagingPath);
+                }
+            }
+        });
+    }
+
+    /**
+     * 커밋 이후 파일 교체를 확정한다. promote 성공 시에만 기존 파일 삭제 + 재처리 실행, 실패 시 작업을 FAILED로 남긴다.
+     */
+    private void finalizeReplace(
+            long documentId, String stagingPath, String finalPath,
+            String previousOriginalPath, String previousParsedPath, AiJob job, DocumentReprocessPlan plan) {
+        try {
+            documentFileStorage.promoteStagedOriginal(stagingPath, finalPath);
+        } catch (IOException exception) {
+            // promote 실패는 DB↔실제 파일 불일치라 삭제 실패보다 강하게 처리한다: 재처리를 시작하지 않고,
+            // 작업과 문서를 모두 FAILED로 남긴다(문서만 정상인 것처럼 보이지 않게 한다).
+            log.error("교체 파일 확정 실패(staging→최종 이동). 재처리를 시작하지 않고 작업·문서를 FAILED로 표시합니다. "
+                            + "documentId={}, jobId={}, staging={}, final={}",
+                    documentId, job.id(), stagingPath, finalPath, exception);
+            // afterCommit 이후 보정이므로 한쪽 마킹이 실패해도 다른 쪽은 최대한 시도한다(각각 독립 try/catch).
+            // 어떤 마킹 실패도 사용자 응답을 깨지 않도록 밖으로 던지지 않는다.
+            try {
+                aiJobFailureMarker.markFailedBeforeStart(
+                        job.id(), "원본 파일 확정(staging→최종 이동) 실패로 재처리를 시작하지 못했습니다.");
+            } catch (RuntimeException markException) {
+                log.error("AiJob 실패 마킹 중 오류. documentId={}, jobId={}", documentId, job.id(), markException);
+            }
+            try {
+                documentFailureMarker.markFailed(
+                        documentId, "파일 교체 확정(staging→최종 이동) 실패로 문서 처리에 실패했습니다.");
+            } catch (RuntimeException markException) {
+                log.error("문서 실패 마킹 중 오류. documentId={}", documentId, markException);
+            }
+            return;
+        }
+        // promote 성공: 기존 파일 정리(실패는 로그만) 후 재처리 실행
+        deleteReplacedOldFiles(finalPath, previousOriginalPath, previousParsedPath);
+        parseJobLauncher.launchNow(job, plan);
+    }
+
+    private void deleteReplacedOldFiles(String finalPath, String previousOriginalPath, String previousParsedPath) {
+        // 확장자가 바뀌어 경로가 달라진 경우에만 기존 원본을 지운다(같은 경로면 promote가 이미 덮어썼다).
+        if (previousOriginalPath != null && !previousOriginalPath.equals(finalPath)) {
+            deleteQuietly(previousOriginalPath);
+        }
+        // 기존 파싱 파일은 옛 내용 기준이라 정리한다. 재처리가 새 parsed.md를 다시 만든다. null이면 무시된다.
+        deleteQuietly(previousParsedPath);
     }
 
     /**

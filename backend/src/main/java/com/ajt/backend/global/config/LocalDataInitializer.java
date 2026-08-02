@@ -82,6 +82,7 @@ public class LocalDataInitializer {
     ) {
         return args -> {
             // 1) 부서
+            // 시스템 기본 부서 '전체'는 DefaultDepartmentConfig의 러너가 프로필과 무관하게 보장한다(S15P11B106-146).
             Department dev = findOrCreateDepartment(departmentRepository, "개발부");
             Department planning = findOrCreateDepartment(departmentRepository, "기획부");
             Department design = findOrCreateDepartment(departmentRepository, "디자인부");

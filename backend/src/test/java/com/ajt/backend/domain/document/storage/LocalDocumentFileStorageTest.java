@@ -68,6 +68,40 @@ class LocalDocumentFileStorageTest {
     }
 
     @Test
+    @DisplayName("stageOriginal은 최종 경로가 아닌 staging 경로에 저장하고 최종 경로는 건드리지 않는다(S15P11B106-146)")
+    void stageOriginalWritesToStagingNotFinal() throws Exception {
+        LocalDocumentFileStorage storage = new LocalDocumentFileStorage(storageRoot);
+        // 기존 최종 원본이 이미 있다고 가정
+        String existingFinal = storage.storeOriginal("ALL", 15L, new MockMultipartFile(
+                "files", "old.md", "text/markdown", "old".getBytes()));
+
+        StagedOriginalFile staged = storage.stageOriginal("ALL", 15L, new MockMultipartFile(
+                "files", "new.md", "text/markdown", "new".getBytes()));
+
+        assertThat(staged.finalPath()).isEqualTo("wiki/ALL/sources/15/original.md");
+        assertThat(staged.stagingPath()).startsWith("wiki/ALL/sources/15/.staging/");
+        // 새 파일은 staging에만 있고, 기존 최종 파일은 그대로다.
+        assertThat(Files.readString(storageRoot.resolve(staged.stagingPath()))).isEqualTo("new");
+        assertThat(Files.readString(storageRoot.resolve(existingFinal))).isEqualTo("old");
+    }
+
+    @Test
+    @DisplayName("promoteStagedOriginal은 staging 파일을 최종 경로로 이동해 기존 파일을 덮어쓴다(S15P11B106-146)")
+    void promoteMovesStagingOverFinal() throws Exception {
+        LocalDocumentFileStorage storage = new LocalDocumentFileStorage(storageRoot);
+        storage.storeOriginal("ALL", 15L, new MockMultipartFile(
+                "files", "old.md", "text/markdown", "old".getBytes()));
+        StagedOriginalFile staged = storage.stageOriginal("ALL", 15L, new MockMultipartFile(
+                "files", "new.md", "text/markdown", "new".getBytes()));
+
+        storage.promoteStagedOriginal(staged.stagingPath(), staged.finalPath());
+
+        // 최종 경로가 새 내용으로 확정되고, staging 파일은 사라진다.
+        assertThat(Files.readString(storageRoot.resolve(staged.finalPath()))).isEqualTo("new");
+        assertThat(Files.exists(storageRoot.resolve(staged.stagingPath()))).isFalse();
+    }
+
+    @Test
     @DisplayName("원본과 파싱 파일을 새 scope로 옮긴 뒤 롤백하면 이전 경로를 복구한다")
     void movesFilesToScopeAndRestoresThemOnRollback() throws Exception {
         LocalDocumentFileStorage storage = new LocalDocumentFileStorage(storageRoot);

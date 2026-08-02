@@ -31,7 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "ajt.local-data.enabled=false"
+        "ajt.local-data.enabled=false",
+        // signup-departments 목록 개수를 직접 단언하므로 시작 시 '전체' 자동 생성은 끈다(S15P11B106-146).
+        "ajt.default-department.enabled=false"
 })
 @AutoConfigureMockMvc
 @Transactional
