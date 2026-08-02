@@ -2,11 +2,9 @@
 set -euo pipefail
 
 branch="${1:-}"
-branch="${branch#origin/}"
-branch="${branch#*/}"
 
 case "$branch" in
-  develop)
+  develop|origin/develop|\*/develop)
     printf '%s\n' \
       'DEPLOY_ENV_FILE=/var/lib/jenkins/ajt-secrets/develop.env' \
       'DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/develop' \
@@ -14,7 +12,7 @@ case "$branch" in
       'COMPOSE_PROJECT_NAME=ajt-develop' \
       'DEPLOY_TARGET_LABEL=develop 8090'
     ;;
-  master)
+  master|origin/master|\*/master)
     printf '%s\n' \
       'DEPLOY_ENV_FILE=/var/lib/jenkins/ajt-secrets/prod.env' \
       'DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/prod' \

@@ -14,6 +14,7 @@ FAKE_BLOCK_TAG_FILE="${TEST_ROOT}/block-tag"
 FAKE_BLOCK_ENTERED_FILE="${TEST_ROOT}/block-entered"
 FAKE_BLOCK_RELEASE_FILE="${TEST_ROOT}/block-release"
 FAKE_COMPOSE_ENTERED_DIR="${TEST_ROOT}/compose-entered"
+FAKE_MISSING_IMAGE_FILE="${TEST_ROOT}/missing-image"
 ENV_FILE="${TEST_ROOT}/deploy.env"
 COMPOSE_FILE="${TEST_ROOT}/compose.yml"
 mkdir -p "$FAKE_BIN"
@@ -26,6 +27,12 @@ cat > "${FAKE_BIN}/docker" <<'EOF'
 set -euo pipefail
 printf 'IMAGE_TAG=%s DEPLOY_ENV_FILE=%s :: %s\n' \
   "${IMAGE_TAG:-}" "${DEPLOY_ENV_FILE:-}" "$*" >> "$FAKE_DOCKER_LOG"
+
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+  missing_image="$(cat "$FAKE_MISSING_IMAGE_FILE" 2>/dev/null || true)"
+  [[ "${3:-}" != "$missing_image" ]]
+  exit
+fi
 
 if [[ "${1:-}" == "compose" && "$*" == *" up "* ]]; then
   : > "${FAKE_COMPOSE_ENTERED_DIR}/${IMAGE_TAG:?}"
@@ -82,6 +89,7 @@ export FAKE_BLOCK_TAG_FILE
 export FAKE_BLOCK_ENTERED_FILE
 export FAKE_BLOCK_RELEASE_FILE
 export FAKE_COMPOSE_ENTERED_DIR
+export FAKE_MISSING_IMAGE_FILE
 export DEPLOY_ENV_FILE="$ENV_FILE"
 export DEPLOY_COMPOSE_FILE="$COMPOSE_FILE"
 export DEPLOY_LOCK_FILE="${TEST_ROOT}/deploy.lock"
@@ -118,6 +126,7 @@ test_records_successful_tag_atomically() {
   local new_tag="0123456789ab"
   : > "$FAKE_DOCKER_LOG"
   : > "$FAKE_FAIL_TAG_FILE"
+  : > "$FAKE_MISSING_IMAGE_FILE"
 
   DEPLOY_STATE_DIR="$state_dir" bash "$DEPLOY_SCRIPT" "$new_tag" >/dev/null
 
@@ -125,6 +134,25 @@ test_records_successful_tag_atomically() {
   grep -q "IMAGE_TAG=${new_tag} .* up -d --no-build --remove-orphans" "$FAKE_DOCKER_LOG" \
     || fail "새 SHA로 compose up을 호출하지 않음"
   [[ ! -e "${state_dir}/current-image-tag.tmp" ]] || fail "임시 상태 파일이 남음"
+}
+
+test_rejects_deploy_when_new_ai_image_is_missing() {
+  local state_dir="${TEST_ROOT}/missing-new-ai-state"
+  local new_tag="555555555555"
+  printf 'ajt-ai:%s\n' "$new_tag" > "$FAKE_MISSING_IMAGE_FILE"
+  : > "$FAKE_FAIL_TAG_FILE"
+  : > "$FAKE_DOCKER_LOG"
+
+  set +e
+  DEPLOY_STATE_DIR="$state_dir" bash "$DEPLOY_SCRIPT" "$new_tag" >/dev/null 2>&1
+  local status=$?
+  set -e
+
+  [[ "$status" != "0" ]] || fail "AI 이미지가 없는데 배포가 성공함"
+  grep -q "image inspect ajt-ai:${new_tag}" "$FAKE_DOCKER_LOG" \
+    || fail "새 AI 이미지 존재 여부를 확인하지 않음"
+  ! grep -q 'compose .* up ' "$FAKE_DOCKER_LOG" \
+    || fail "AI 이미지가 없는데 compose up을 호출함"
 }
 
 test_rolls_back_and_keeps_previous_tag_when_health_fails() {
@@ -135,6 +163,7 @@ test_rolls_back_and_keeps_previous_tag_when_health_fails() {
   printf '%s\n' "$previous_tag" > "${state_dir}/current-image-tag"
   printf '%s\n' "$failed_tag" > "$FAKE_FAIL_TAG_FILE"
   : > "$FAKE_DOCKER_LOG"
+  : > "$FAKE_MISSING_IMAGE_FILE"
 
   set +e
   DEPLOY_STATE_DIR="$state_dir" bash "$DEPLOY_SCRIPT" "$failed_tag" >/dev/null 2>&1
@@ -148,6 +177,31 @@ test_rolls_back_and_keeps_previous_tag_when_health_fails() {
     || fail "실패한 SHA 배포 호출이 없음"
   grep -q "IMAGE_TAG=${previous_tag} .* up -d --no-build --remove-orphans" "$FAKE_DOCKER_LOG" \
     || fail "이전 SHA 롤백 호출이 없음"
+}
+
+test_does_not_attempt_rollback_when_previous_ai_image_is_missing() {
+  local state_dir="${TEST_ROOT}/missing-rollback-ai-state"
+  local previous_tag="666666666666"
+  local failed_tag="777777777777"
+  local output="${TEST_ROOT}/missing-rollback-ai-output"
+  mkdir -p "$state_dir"
+  printf '%s\n' "$previous_tag" > "${state_dir}/current-image-tag"
+  printf '%s\n' "$failed_tag" > "$FAKE_FAIL_TAG_FILE"
+  printf 'ajt-ai:%s\n' "$previous_tag" > "$FAKE_MISSING_IMAGE_FILE"
+  : > "$FAKE_DOCKER_LOG"
+
+  set +e
+  DEPLOY_STATE_DIR="$state_dir" bash "$DEPLOY_SCRIPT" "$failed_tag" >"$output" 2>&1
+  local status=$?
+  set -e
+
+  assert_equals "1" "$status" "이전 AI 이미지가 없는 롤백의 종료 코드"
+  grep -q "image inspect ajt-ai:${previous_tag}" "$FAKE_DOCKER_LOG" \
+    || fail "롤백 전에 이전 AI 이미지를 확인하지 않음"
+  ! grep -q "IMAGE_TAG=${previous_tag} .* up -d" "$FAKE_DOCKER_LOG" \
+    || fail "이전 AI 이미지가 없는데 롤백 compose up을 호출함"
+  grep -q 'rollback image not found' "$output" \
+    || fail "이전 이미지 누락 원인을 명확히 출력하지 않음"
 }
 
 test_serializes_compose_changes_with_a_shared_lock() {
@@ -165,6 +219,7 @@ test_serializes_compose_changes_with_a_shared_lock() {
     "$FAKE_FAIL_TAG_FILE" \
     "${FAKE_COMPOSE_ENTERED_DIR}/${blocked_tag}" \
     "${FAKE_COMPOSE_ENTERED_DIR}/${waiting_tag}"
+  : > "$FAKE_MISSING_IMAGE_FILE"
   printf '%s\n' "$blocked_tag" > "$FAKE_BLOCK_TAG_FILE"
   : > "$FAKE_DOCKER_LOG"
 
@@ -201,7 +256,9 @@ test_serializes_compose_changes_with_a_shared_lock() {
 
 test_rejects_non_sha_before_docker_call
 test_records_successful_tag_atomically
+test_rejects_deploy_when_new_ai_image_is_missing
 test_rolls_back_and_keeps_previous_tag_when_health_fails
+test_does_not_attempt_rollback_when_previous_ai_image_is_missing
 test_serializes_compose_changes_with_a_shared_lock
 
 printf 'PASS: deploy.sh behavior\n'

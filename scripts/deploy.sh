@@ -11,6 +11,7 @@ DEPLOY_COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.yml}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ajt-prod}"
 BACKEND_IMAGE="${BACKEND_IMAGE:-ajt-backend}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:-ajt-frontend}"
+AI_IMAGE="${AI_IMAGE:-ajt-ai}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lib/jenkins/ajt-deploy/deploy.lock}"
 STATE_FILE="${DEPLOY_STATE_DIR}/current-image-tag"
 
@@ -42,6 +43,7 @@ compose_for_tag() {
   shift
 
   DEPLOY_ENV_FILE="$DEPLOY_ENV_FILE" IMAGE_TAG="$tag" \
+    BACKEND_IMAGE="$BACKEND_IMAGE" FRONTEND_IMAGE="$FRONTEND_IMAGE" AI_IMAGE="$AI_IMAGE" \
     docker compose \
       --project-name "$COMPOSE_PROJECT_NAME" \
       --env-file "$DEPLOY_ENV_FILE" \
@@ -92,8 +94,14 @@ if [[ -f "$STATE_FILE" ]]; then
   is_commit_sha "$previous_tag" || die_config "invalid previous image tag in $STATE_FILE"
 fi
 
-docker image inspect "${BACKEND_IMAGE}:${IMAGE_TAG}" >/dev/null
-docker image inspect "${FRONTEND_IMAGE}:${IMAGE_TAG}" >/dev/null
+for image in \
+  "${BACKEND_IMAGE}:${IMAGE_TAG}" \
+  "${FRONTEND_IMAGE}:${IMAGE_TAG}" \
+  "${AI_IMAGE}:${IMAGE_TAG}"
+do
+  docker image inspect "$image" >/dev/null \
+    || die_config "deploy image not found: $image"
+done
 
 printf 'Deploying image tag %s to Compose project %s\n' "$IMAGE_TAG" "$COMPOSE_PROJECT_NAME"
 if compose_for_tag "$IMAGE_TAG" up -d --no-build --remove-orphans && wait_until_healthy; then
@@ -112,6 +120,17 @@ if [[ -z "$previous_tag" ]]; then
 fi
 
 printf 'Rolling back to previous image tag: %s\n' "$previous_tag" >&2
+for image in \
+  "${BACKEND_IMAGE}:${previous_tag}" \
+  "${FRONTEND_IMAGE}:${previous_tag}" \
+  "${AI_IMAGE}:${previous_tag}"
+do
+  if ! docker image inspect "$image" >/dev/null; then
+    printf 'ERROR: rollback image not found: %s\n' "$image" >&2
+    exit 1
+  fi
+done
+
 if ! compose_for_tag "$previous_tag" up -d --no-build --remove-orphans; then
   printf 'ERROR: rollback compose update failed: %s\n' "$previous_tag" >&2
   exit 1

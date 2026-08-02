@@ -9,10 +9,10 @@
 - 운영 포트: `443`
 - 검증 Compose 프로젝트: `ajt-develop`
 - 검증 포트: `8090`
-- 이미지: `ajt-backend:<12자리 Git SHA>`, `ajt-frontend:<12자리 Git SHA>`
+- 이미지: `ajt-backend:<12자리 Git SHA>`, `ajt-frontend:<12자리 Git SHA>`, `ajt-ai:<12자리 Git SHA>`
 - 자동 실행: GitLab `develop`·`master` push webhook을 Job별로 분리
 - 배포 반영: Jenkins 테스트·이미지 빌드 성공 후 사람의 승인
-- AI: 별도 서버. 이 저장소에서는 컨테이너를 실행하지 않고 `AI_BASE_URL`과 `AI_INTERNAL_API_KEY`만 주입
+- AI: 같은 Compose의 내부 전용 FastAPI 서비스. 호스트 포트는 열지 않고 모든 모델 호출은 SSAFY GMS Anthropic 경로를 사용
 
 `develop`과 `master`에는 직접 push하지 않는다. feature→develop, develop→master MR을 각각 승인 후 Squash merge한다.
 
@@ -94,6 +94,7 @@ sudo -u jenkins nano /var/lib/jenkins/ajt-secrets/prod.env
 SPRING_PROFILES_ACTIVE=prod
 BACKEND_IMAGE=ajt-backend
 FRONTEND_IMAGE=ajt-frontend
+AI_IMAGE=ajt-ai
 FRONTEND_PORT=443
 MYSQL_VOLUME_NAME=ajt-prod-mysql-data
 AJT_FILES_VOLUME_NAME=ajt-prod-files
@@ -115,15 +116,25 @@ AJT_PASSWORD_RESET_SECRET=<openssl rand -base64 48>
 SPRING_DATASOURCE_PASSWORD=<openssl rand -hex 24>
 MYSQL_ROOT_PASSWORD=<openssl rand -hex 24>
 MYSQL_PASSWORD=<SPRING_DATASOURCE_PASSWORD와 동일>
-AI_BASE_URL=<AI 담당자가 전달한 실제 내부 URL>
-AI_INTERNAL_API_KEY=<AI 담당자와 합의한 공유 키>
+AI_INTERNAL_API_KEY=<openssl rand -base64 48>
+ANTHROPIC_API_KEY=<SSAFY GMS에서 발급한 API 키>
 ```
+
+`AI_BASE_URL`, `AI_RUNTIME`, `SCHEDULE_EXTRACTOR_PROVIDER`, `ANTHROPIC_BASE_URL`은
+`docker-compose.yml`이 각각 내부 서비스 주소, `deepagents`, `anthropic`, SSAFY GMS 주소로
+고정한다. 운영 환경파일에서 Ollama 주소나 프로바이더를 지정하지 않는다.
 
 검사할 때 값 자체를 출력하지 않는다.
 
 ```bash
 sudo stat -c '%U %G %a %n' /var/lib/jenkins/ajt-secrets/prod.env
 sudo -u jenkins test -r /var/lib/jenkins/ajt-secrets/prod.env
+
+for key in AI_INTERNAL_API_KEY ANTHROPIC_API_KEY; do
+  sudo -u jenkins grep -qE "^${key}=.+" /var/lib/jenkins/ajt-secrets/prod.env \
+    && echo "${key}=SET" \
+    || echo "${key}=MISSING"
+done
 ```
 
 예상 권한은 `jenkins jenkins 600`이다.
@@ -205,12 +216,16 @@ MYSQL_VOLUME_NAME=ajt-develop-mysql-data
 AJT_FILES_VOLUME_NAME=ajt-develop-files
 ```
 
-나머지 비밀값은 운영값을 복사하지 말고 검증용 랜덤값을 사용한다. AI 서버가 아직 준비되지 않았으면 AI 기능 검증은 제외하고 아래처럼 즉시 연결 거부되는 로컬 discard 포트와 검증용 랜덤 키를 사용한다. 운영 env에는 이 값을 사용하지 않는다.
+나머지 비밀값은 운영값을 복사하지 말고 검증용 랜덤값을 사용한다. 내부 공유 키는 랜덤값으로 만들고, GMS 키는 발급된 검증용 키를 넣는다.
 
 ```dotenv
-AI_BASE_URL=http://127.0.0.1:9
 AI_INTERNAL_API_KEY=<openssl rand -base64 48>
+ANTHROPIC_API_KEY=<SSAFY GMS 검증용 API 키>
 ```
+
+GMS 키를 아직 받지 못했다면 Jenkins의 테스트·이미지 빌드까지만 진행할 수 있다. Compose
+검사와 승인 후 배포는 키가 들어오기 전까지 실패하도록 설정되어 있으므로 임시 Ollama 값이나
+가짜 GMS 키로 배포하지 않는다.
 
 Jenkins가 같은 검증 환경을 사용하도록 작성이 끝난 파일을 Jenkins 전용 경로에 복사한다. 이 명령은 develop 환경파일만 덮어쓰며 `prod.env`는 건드리지 않는다.
 
@@ -236,6 +251,9 @@ IMAGE_TAG="$(git rev-parse --short=12 HEAD)"
 
 docker build --tag "ajt-backend:${IMAGE_TAG}" backend
 docker build --tag "ajt-frontend:${IMAGE_TAG}" frontend
+docker build --target test --tag "ajt-ai-test:${IMAGE_TAG}" ai
+docker run --rm "ajt-ai-test:${IMAGE_TAG}"
+docker build --target runtime --tag "ajt-ai:${IMAGE_TAG}" ai
 ```
 
 Compose 문법과 최종 값을 먼저 검사한다. 출력에는 환경변수가 포함될 수 있으므로 공유 채널에 그대로 붙이지 않는다.
@@ -256,7 +274,8 @@ docker compose \
   config --images
 ```
 
-예상 서비스는 `mysql`, `backend`, `frontend`이고 AI 서비스는 없어야 한다.
+예상 서비스는 `mysql`, `ai`, `backend`, `frontend`이다. 이미지에는 `mysql:8.4`와 같은 SHA의
+`ajt-ai`, `ajt-backend`, `ajt-frontend`가 표시되어야 한다.
 
 8090에 실행한다.
 
@@ -276,9 +295,12 @@ docker compose \
   ps
 
 curl --insecure --fail --show-error https://127.0.0.1:8090/api/v1/health
+
+docker exec ajt-develop-ai-1 python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read().decode())"
 ```
 
-현재 수동 배포 SHA를 Jenkins의 develop 롤백 기준으로 인수한다. backend와 frontend 이미지가 모두 로컬에 있을 때만 기록한다.
+현재 수동 배포 SHA를 Jenkins의 develop 롤백 기준으로 인수한다. backend, frontend, AI 이미지가 모두 로컬에 있을 때만 기록한다.
 
 ```bash
 CURRENT_DEVELOP_IMAGE="$(docker inspect ajt-develop-backend-1 --format '{{.Config.Image}}')"
@@ -286,7 +308,8 @@ CURRENT_DEVELOP_TAG="${CURRENT_DEVELOP_IMAGE##*:}"
 
 if [[ "$CURRENT_DEVELOP_TAG" =~ ^[0-9a-f]{7,40}$ ]] \
   && docker image inspect "ajt-backend:${CURRENT_DEVELOP_TAG}" >/dev/null 2>&1 \
-  && docker image inspect "ajt-frontend:${CURRENT_DEVELOP_TAG}" >/dev/null 2>&1; then
+  && docker image inspect "ajt-frontend:${CURRENT_DEVELOP_TAG}" >/dev/null 2>&1 \
+  && docker image inspect "ajt-ai:${CURRENT_DEVELOP_TAG}" >/dev/null 2>&1; then
   printf '%s\n' "$CURRENT_DEVELOP_TAG" \
     | sudo -u jenkins tee \
       /var/lib/jenkins/ajt-deploy/develop/current-image-tag >/dev/null
@@ -304,14 +327,15 @@ Docker의 backend healthcheck도 같은 `/api/v1/health`를 사용한다. `/actu
 ```text
 Backend Gradle test: PASS
 Frontend lint/test/build: PASS
-Docker image build: PASS
+AI pytest (non-ocr, non-llm): PASS
+Backend/frontend/AI Docker image build: PASS
 Compose services/images validation: PASS
-8090 health and browser smoke test: PASS
+8090 backend health, internal AI health, and browser smoke test: PASS
 ```
 
 ## 7. master 첫 운영 전환
 
-develop→master MR을 Squash merge하고 `S15P11B106-pipeline` Job을 Enable하면 master push webhook이 Jenkins를 실행한다. Jenkins가 테스트와 두 이미지 빌드를 완료하면 `Deployment Approval`에서 최대 24시간 대기한다.
+develop→master MR을 Squash merge하고 `S15P11B106-pipeline` Job을 Enable하면 master push webhook이 Jenkins를 실행한다. Jenkins가 테스트와 세 이미지 빌드를 완료하면 `Deployment Approval`에서 최대 24시간 대기한다.
 
 서버의 수동 관리용 clone도 merge된 master로 맞춘다.
 
@@ -406,7 +430,7 @@ docker inspect \
 
 ## 10. 이후 배포와 롤백
 
-두 번째 배포부터 `scripts/deploy.sh`가 환경별 직전 성공 SHA를 다음 파일에 나누어 보관한다. 새 배포의 healthcheck가 실패하면 같은 Compose 프로젝트와 volume을 유지한 채 해당 환경의 직전 backend/frontend 이미지로 자동 복원한다.
+두 번째 배포부터 `scripts/deploy.sh`가 환경별 직전 성공 SHA를 다음 파일에 나누어 보관한다. 새 배포의 healthcheck가 실패하면 같은 Compose 프로젝트와 volume을 유지한 채 해당 환경의 직전 backend/frontend/AI 이미지로 자동 복원한다.
 
 ```text
 develop: /var/lib/jenkins/ajt-deploy/develop/current-image-tag
@@ -414,7 +438,7 @@ master:  /var/lib/jenkins/ajt-deploy/prod/current-image-tag
 공통 잠금: /var/lib/jenkins/ajt-deploy/deploy.lock
 ```
 
-기존 master 상태 파일이 있다면 기록된 두 이미지가 모두 로컬에 있을 때만 prod 상태 디렉터리로 복사한다.
+기존 master 상태 파일이 있다면 기록된 세 이미지가 모두 로컬에 있을 때만 prod 상태 디렉터리로 복사한다. AI 통합 전 SHA라 `ajt-ai` 이미지가 없으면 상태 파일을 이관하지 않고 첫 통합 배포로 취급한다.
 
 ```bash
 if sudo test -f /var/lib/jenkins/ajt-deploy/current-image-tag; then
@@ -423,7 +447,8 @@ if sudo test -f /var/lib/jenkins/ajt-deploy/current-image-tag; then
 
   if [[ "$CURRENT_PROD_TAG" =~ ^[0-9a-f]{7,40}$ ]] \
     && docker image inspect "ajt-backend:${CURRENT_PROD_TAG}" >/dev/null 2>&1 \
-    && docker image inspect "ajt-frontend:${CURRENT_PROD_TAG}" >/dev/null 2>&1; then
+    && docker image inspect "ajt-frontend:${CURRENT_PROD_TAG}" >/dev/null 2>&1 \
+    && docker image inspect "ajt-ai:${CURRENT_PROD_TAG}" >/dev/null 2>&1; then
     printf '%s\n' "$CURRENT_PROD_TAG" \
       | sudo -u jenkins tee \
         /var/lib/jenkins/ajt-deploy/prod/current-image-tag >/dev/null
@@ -448,5 +473,8 @@ sudo -u jenkins env \
   DEPLOY_HEALTHCHECK_URL=https://127.0.0.1/api/v1/health \
   DEPLOY_LOCK_FILE=/var/lib/jenkins/ajt-deploy/deploy.lock \
   COMPOSE_PROJECT_NAME=ajt-prod \
+  BACKEND_IMAGE=ajt-backend \
+  FRONTEND_IMAGE=ajt-frontend \
+  AI_IMAGE=ajt-ai \
   bash scripts/deploy.sh <12자리-SHA>
 ```

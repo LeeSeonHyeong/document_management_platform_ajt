@@ -39,4 +39,12 @@ if bash "$RESOLVER" feature/example >/dev/null 2>&1; then
   fail 'unsupported branch accepted'
 fi
 
+if bash "$RESOLVER" feature/develop >/dev/null 2>&1; then
+  fail 'feature/develop was incorrectly accepted as develop'
+fi
+
+if bash "$RESOLVER" feature/master >/dev/null 2>&1; then
+  fail 'feature/master was incorrectly accepted as master'
+fi
+
 printf 'PASS: deploy target resolver\n'
