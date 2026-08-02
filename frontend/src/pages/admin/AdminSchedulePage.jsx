@@ -8,6 +8,7 @@ import {
   endOfDay,
   eachDayOfInterval,
   addMonths,
+  addDays,
   format,
   isWithinInterval,
   isToday,
@@ -37,11 +38,10 @@ import { SCHEDULE_VISIBILITY } from '@/shared/constants/enums'
 
 const ALL_TAB = 'all'
 
-// 월/주/일 뷰 전환. 월은 캘린더 그리드, 주·일은 같은 일정 데이터를 날짜별 목록으로 좁혀 보여준다.
+// 월/주 뷰 전환. 월은 캘린더 그리드, 주는 요일×시간 그리드로 일정을 시간 위치대로 배치한다.
 const VIEW_MODES = [
   { value: 'month', label: '월' },
   { value: 'week', label: '주' },
-  { value: 'day', label: '일' },
 ]
 
 // 공개 범위별 강조색(캘린더 밴드 색과 맞춘다).
@@ -102,51 +102,150 @@ function DayScheduleCard({ event, onClick }) {
   )
 }
 
-// 주·일 뷰. 날짜별로 해당 일정만 좁혀 나열한다(시간 그리드는 두지 않는다).
-function AgendaView({ days, events, selectedDate, onSelectDate, onEventClick }) {
+// 주 뷰 시간 그리드 표시 범위(09:00~18:00)와 1시간당 높이(px).
+const WEEK_START_HOUR = 9
+const WEEK_END_HOUR = 18
+const HOUR_PX = 56
+
+// 공개 범위별 일정 블록 색(좌측 강조선 + 옅은 배경).
+const WEEK_BLOCK = {
+  [SCHEDULE_VISIBILITY.ALL]: 'border-primary-500 bg-primary-50 text-primary-900',
+  [SCHEDULE_VISIBILITY.DEPARTMENT]: 'border-sky-500 bg-sky-50 text-sky-900',
+  [SCHEDULE_VISIBILITY.PERSONAL]: 'border-emerald-500 bg-emerald-50 text-emerald-900',
+}
+
+// 이벤트가 해당 날짜 열에서 차지하는 상단 위치(px)와 높이(px). 표시 범위 밖이면 null.
+function blockGeometry(event, date) {
+  const dayStart = startOfDay(date).getTime()
+  const dayEnd = endOfDay(date).getTime()
+  const from = Math.max(event.start.getTime(), dayStart)
+  const to = Math.min(event.end.getTime(), dayEnd)
+  const gridTop = WEEK_START_HOUR * 60
+  const gridBottom = WEEK_END_HOUR * 60
+  const startMin = Math.max((from - dayStart) / 60000, gridTop)
+  const endMin = Math.min((to - dayStart) / 60000, gridBottom)
+  if (endMin <= gridTop || startMin >= gridBottom) return null
+  return {
+    top: ((startMin - gridTop) / 60) * HOUR_PX,
+    height: Math.max(((endMin - startMin) / 60) * HOUR_PX, 22),
+  }
+}
+
+// 주 뷰. 요일 헤더 + 시간대 그리드에 일정을 시간 위치대로 블록으로 배치한다.
+function WeekGrid({ weekDays, events, selectedDate, onSelectDate, onEventClick }) {
+  const now = new Date()
+  const nowKey = format(now, 'yyyy-MM-dd')
+  const gridHeight = (WEEK_END_HOUR - WEEK_START_HOUR) * HOUR_PX
+  const hourLines = Array.from({ length: WEEK_END_HOUR - WEEK_START_HOUR + 1 }, (_, i) => i)
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const nowTop = ((nowMin - WEEK_START_HOUR * 60) / 60) * HOUR_PX
+  const nowVisible = nowMin >= WEEK_START_HOUR * 60 && nowMin <= WEEK_END_HOUR * 60
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-      {days.map((date) => {
-        const dayEvents = events
-          .filter((e) => occursOn(e, date))
-          .sort((a, b) => a.start - b.start)
-        const selected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
-        return (
-          <div
-            key={date.toISOString()}
-            className={cn(
-              'border-b border-slate-100 last:border-b-0',
-              selected && 'bg-primary-50/40',
-            )}
-          >
+      {/* 요일 헤더 */}
+      <div className="flex border-b border-slate-100 px-3 py-2">
+        <div className="w-14 shrink-0" />
+        {weekDays.map((date) => {
+          const selected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+          const sunday = date.getDay() === 0
+          return (
             <button
+              key={date.toISOString()}
               type="button"
               onClick={() => onSelectDate(date)}
-              className="focus-ring flex w-full items-center justify-between px-4 py-2.5 text-left"
+              className="focus-ring flex flex-1 flex-col items-center gap-1 rounded-lg py-1"
             >
+              <span className={cn('text-xs', sunday ? 'text-rose-500' : 'text-slate-400')}>
+                {format(date, 'EEE', { locale: ko })}
+              </span>
               <span
                 className={cn(
-                  'text-sm font-medium',
-                  isToday(date) ? 'text-primary-700' : 'text-slate-700',
+                  'flex size-7 items-center justify-center rounded-full text-sm font-semibold',
+                  selected
+                    ? 'bg-primary-600 text-white'
+                    : sunday
+                      ? 'text-rose-500'
+                      : 'text-slate-700',
                 )}
               >
-                {format(date, 'M월 d일 (EEE)', { locale: ko })}
-                {isToday(date) && ' · 오늘'}
-              </span>
-              <span className="text-xs text-slate-400">
-                {dayEvents.length > 0 ? `일정 ${dayEvents.length}건` : '일정 없음'}
+                {format(date, 'd')}
               </span>
             </button>
-            {dayEvents.length > 0 && (
-              <div className="space-y-1.5 px-4 pb-3">
-                {dayEvents.map((e) => (
-                  <DayScheduleCard key={e.id} event={e} onClick={onEventClick} />
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
+
+      {/* 시간 그리드 */}
+      <div className="flex px-3 py-3">
+        {/* 시간 눈금 */}
+        <div className="relative w-14 shrink-0" style={{ height: gridHeight }}>
+          {hourLines.map((i) => (
+            <span
+              key={i}
+              className="absolute right-2 -translate-y-1/2 text-xs text-slate-400"
+              style={{ top: i * HOUR_PX }}
+            >
+              {String(WEEK_START_HOUR + i).padStart(2, '0')}:00
+            </span>
+          ))}
+        </div>
+
+        {/* 날짜별 열 */}
+        {weekDays.map((date) => {
+          const selected = format(date, 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+          const isNowColumn = format(date, 'yyyy-MM-dd') === nowKey
+          const dayEvents = events.filter((e) => occursOn(e, date))
+          return (
+            <div
+              key={date.toISOString()}
+              className={cn('relative flex-1 border-l border-slate-100', selected && 'bg-primary-50/40')}
+              style={{ height: gridHeight }}
+            >
+              {/* 시간별 가로줄 */}
+              {hourLines.map((i) => (
+                <div
+                  key={i}
+                  className="pointer-events-none absolute inset-x-0 border-t border-slate-100"
+                  style={{ top: i * HOUR_PX }}
+                />
+              ))}
+
+              {/* 현재 시각 표시 */}
+              {nowVisible && isNowColumn && (
+                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: nowTop }}>
+                  <div className="relative border-t-2 border-rose-500">
+                    <span className="absolute -left-1 top-0 size-2 -translate-y-1/2 rounded-full bg-rose-500" />
+                  </div>
+                </div>
+              )}
+
+              {/* 일정 블록 */}
+              {dayEvents.map((event) => {
+                const geo = blockGeometry(event, date)
+                if (!geo) return null
+                return (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => onEventClick(event)}
+                    style={{ top: geo.top, height: geo.height }}
+                    className={cn(
+                      'focus-ring absolute inset-x-1 z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 text-left',
+                      WEEK_BLOCK[event.visibilityType] ?? 'border-slate-400 bg-slate-50 text-slate-800',
+                    )}
+                  >
+                    <p className="truncate text-xs font-semibold leading-tight">{event.title}</p>
+                    <p className="truncate text-[11px] leading-tight opacity-80">
+                      {format(event.start, 'HH:mm')} – {format(event.end, 'HH:mm')}
+                    </p>
+                  </button>
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -192,14 +291,21 @@ export default function AdminSchedulePage() {
     [approvedEvents, selectedDate],
   )
 
-  // 주 뷰는 선택 날짜가 속한 주, 일 뷰는 선택 날짜 하루만 본다.
-  const agendaDays = useMemo(() => {
-    if (viewMode === 'day') return [selectedDate]
-    return eachDayOfInterval({
-      start: startOfWeek(selectedDate, { weekStartsOn: 0 }),
-      end: endOfWeek(selectedDate, { weekStartsOn: 0 }),
-    })
-  }, [viewMode, selectedDate])
+  // 주 뷰는 선택 날짜가 속한 한 주(일~토)를 본다.
+  const weekDays = useMemo(
+    () =>
+      eachDayOfInterval({
+        start: startOfWeek(selectedDate, { weekStartsOn: 0 }),
+        end: endOfWeek(selectedDate, { weekStartsOn: 0 }),
+      }),
+    [selectedDate],
+  )
+
+  // 헤더 제목: 월 뷰는 "yyyy년 M월", 주 뷰는 선택 주의 기간("yyyy년 M월 d일 – d일").
+  const periodLabel =
+    viewMode === 'week'
+      ? `${format(startOfWeek(selectedDate, { weekStartsOn: 0 }), 'yyyy년 M월 d일')} – ${format(endOfWeek(selectedDate, { weekStartsOn: 0 }), 'd일')}`
+      : format(month, 'yyyy년 M월')
 
   // 월 이동 시 선택 날짜도 새 달의 같은 일(길이 초과 시 말일로 보정)로 옮긴다.
   const moveMonth = (delta) => {
@@ -209,6 +315,17 @@ export default function AdminSchedulePage() {
     setSelectedDate(setDate(next, day))
   }
 
+  // 이전/다음 이동. 주 뷰는 주 단위로 옮기고, 조회 범위(month)도 새 주가 포함되도록 따라간다.
+  const movePeriod = (delta) => {
+    if (viewMode === 'week') {
+      const next = addDays(selectedDate, delta * 7)
+      setSelectedDate(next)
+      setMonth(startOfMonth(next))
+    } else {
+      moveMonth(delta)
+    }
+  }
+
   // 일정 추가 모달을 선택 날짜로 열어 준다.
   const openCreate = () => {
     setEditing(null)
@@ -216,7 +333,7 @@ export default function AdminSchedulePage() {
   }
 
   const tabs = [
-    { value: ALL_TAB, label: '전체' },
+    { value: ALL_TAB, label: '전체 부서' },
     ...departments.map((d) => ({ value: d.departmentId, label: d.name })),
   ]
 
@@ -298,13 +415,13 @@ export default function AdminSchedulePage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-bold text-slate-800">{format(month, 'yyyy년 M월')}</h1>
+          <h1 className="text-xl font-bold text-slate-800">{periodLabel}</h1>
           <div className="flex items-center">
             <button
               type="button"
-              onClick={() => moveMonth(-1)}
+              onClick={() => movePeriod(-1)}
               className="focus-ring rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
-              aria-label="이전 달"
+              aria-label={viewMode === 'week' ? '이전 주' : '이전 달'}
             >
               <ChevronLeft className="size-5" />
             </button>
@@ -320,16 +437,16 @@ export default function AdminSchedulePage() {
             </button>
             <button
               type="button"
-              onClick={() => moveMonth(1)}
+              onClick={() => movePeriod(1)}
               className="focus-ring rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
-              aria-label="다음 달"
+              aria-label={viewMode === 'week' ? '다음 주' : '다음 달'}
             >
               <ChevronRight className="size-5" />
             </button>
           </div>
         </div>
 
-        {/* 월/주/일 뷰 전환 */}
+        {/* 월/주 뷰 전환 */}
         <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white p-0.5">
           {VIEW_MODES.map((mode) => (
             <button
@@ -378,8 +495,8 @@ export default function AdminSchedulePage() {
             }}
           />
         ) : (
-          <AgendaView
-            days={agendaDays}
+          <WeekGrid
+            weekDays={weekDays}
             events={approvedEvents}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
