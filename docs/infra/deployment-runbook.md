@@ -10,8 +10,8 @@
 - 검증 Compose 프로젝트: `ajt-develop`
 - 검증 포트: `8090`
 - 이미지: `ajt-backend:<12자리 Git SHA>`, `ajt-frontend:<12자리 Git SHA>`
-- 자동 실행: GitLab `master` push webhook
-- 운영 반영: Jenkins 테스트·이미지 빌드 성공 후 사람의 승인
+- 자동 실행: GitLab `develop`·`master` push webhook을 Job별로 분리
+- 배포 반영: Jenkins 테스트·이미지 빌드 성공 후 사람의 승인
 - AI: 별도 서버. 이 저장소에서는 컨테이너를 실행하지 않고 `AI_BASE_URL`과 `AI_INTERNAL_API_KEY`만 주입
 
 `develop`과 `master`에는 직접 push하지 않는다. feature→develop, develop→master MR을 각각 승인 후 Squash merge한다.
@@ -66,14 +66,20 @@ sudo -u jenkins git --version
 
 프론트 검증은 Jenkinsfile이 `node:22-alpine` 컨테이너에서 실행하므로 호스트에 Node를 설치하지 않는다.
 
-## 4. 운영 비밀 환경파일 준비
+## 4. 배포 비밀 환경파일 준비
 
 디렉터리와 빈 파일을 먼저 최소 권한으로 만든다.
 
 ```bash
 sudo install -d -m 700 -o jenkins -g jenkins /var/lib/jenkins/ajt-secrets
 sudo install -d -m 700 -o jenkins -g jenkins /var/lib/jenkins/ajt-deploy
-sudo install -m 600 -o jenkins -g jenkins /dev/null /var/lib/jenkins/ajt-secrets/prod.env
+sudo install -d -m 700 -o jenkins -g jenkins /var/lib/jenkins/ajt-deploy/develop
+sudo install -d -m 700 -o jenkins -g jenkins /var/lib/jenkins/ajt-deploy/prod
+
+if ! sudo test -e /var/lib/jenkins/ajt-secrets/prod.env; then
+  sudo install -m 600 -o jenkins -g jenkins /dev/null \
+    /var/lib/jenkins/ajt-secrets/prod.env
+fi
 ```
 
 `.env.example`을 기준으로 `/var/lib/jenkins/ajt-secrets/prod.env`를 작성한다.
@@ -133,17 +139,30 @@ sudo -u jenkins test -r /var/lib/jenkins/ajt-secrets/prod.env
 
 Jenkins에 GitLab clone용 자격증명을 `Username with password` 타입으로 등록한다. password에는 저장소를 읽을 수 있는 최소 권한의 GitLab token을 넣는다.
 
-Pipeline job을 다음과 같이 만든다.
+두 개의 일반 Pipeline Job을 사용한다. 기존 `S15P11B106-pipeline`은 master 전용으로 유지하고 develop 전용 Job을 추가한다.
 
 ```text
-Job name: ajt-master-deploy
-Definition: Pipeline script from SCM
-SCM: Git
-Repository URL: https://lab.ssafy.com/s15-webmobile2-sub1/S15P11B106.git
-Credentials: 위에서 등록한 GitLab 자격증명
-Branch Specifier: */master
-Script Path: Jenkinsfile
+공통 설정
+  Definition: Pipeline script from SCM
+  SCM: Git
+  Repository URL: https://lab.ssafy.com/s15-webmobile2-sub1/S15P11B106.git
+  Credentials: gitlab-token
+  Script Path: Jenkinsfile
+
+develop Job
+  Job name: S15P11B106-develop
+  Branch Specifier: */develop
+  GitLab branch filter: develop
+
+master Job
+  Job name: S15P11B106-pipeline
+  Branch Specifier: */master
+  GitLab branch filter: master
 ```
+
+develop 검증이 끝나고 같은 Jenkinsfile이 master에 병합되기 전까지 `S15P11B106-pipeline` Job은 Jenkins 화면에서 Disable한다. 기존 443 컨테이너는 중단하지 않는다.
+
+변경 브랜치의 첫 Jenkins 문법 검증 때만 `S15P11B106-develop`의 Branch Specifier를 `*/codex/jenkins-dual-deploy`로 두고 자동 트리거를 끈다. `Build Now` 실행은 Jenkinsfile 문법을 통과한 뒤 resolver가 지원하지 않는 feature 브랜치를 오류로 거부하면 성공이다. feature 브랜치를 develop 환경으로 위장해 배포하지 않는다. MR이 develop에 병합되면 Branch Specifier를 `*/develop`으로 바꾸고 수동 빌드에서 승인 화면과 8090 배포를 검증한 다음 develop Webhook을 활성화한다.
 
 Build Triggers에서 `Build when a change is pushed to GitLab`을 활성화한다.
 
@@ -152,7 +171,7 @@ Push Events: enabled
 Opened Merge Request Events: disabled
 Accepted Merge Request Events: disabled
 Branch filter type: NameBasedFilter
-Include: master
+Include: 각 Job의 고정 브랜치(`develop` 또는 `master`)
 Exclude: empty
 Secret token: Generate
 ```
@@ -161,11 +180,11 @@ Jenkins 화면에 표시된 webhook URL과 생성한 secret token을 GitLab 프�
 
 ```text
 Trigger: Push events
-Branch filter: master
+Branch filter: Job과 동일한 브랜치
 SSL verification: enabled
 ```
 
-GitLab의 webhook test가 HTTP 2xx를 반환하는지 확인한다. Jenkins를 외부에 공개해야 한다면 Jenkins 포트를 전체 인터넷에 열지 말고 GitLab에서 도달 가능한 범위로 방화벽 또는 보안그룹을 제한한다.
+Job별 webhook URL과 secret token을 GitLab에 각각 등록한다. GitLab의 webhook test가 HTTP 2xx를 반환하는지 확인한다. Jenkins를 외부에 공개해야 한다면 Jenkins 포트를 전체 인터넷에 열지 말고 GitLab에서 도달 가능한 범위로 방화벽 또는 보안그룹을 제한한다.
 
 ## 6. feature/develop 8090 검증
 
@@ -191,6 +210,17 @@ AJT_FILES_VOLUME_NAME=ajt-develop-files
 ```dotenv
 AI_BASE_URL=http://127.0.0.1:9
 AI_INTERNAL_API_KEY=<openssl rand -base64 48>
+```
+
+Jenkins가 같은 검증 환경을 사용하도록 작성이 끝난 파일을 Jenkins 전용 경로에 복사한다. 이 명령은 develop 환경파일만 덮어쓰며 `prod.env`는 건드리지 않는다.
+
+```bash
+sudo install -m 600 -o jenkins -g jenkins \
+  /home/ubuntu/S15P11B106/.env.develop \
+  /var/lib/jenkins/ajt-secrets/develop.env
+
+sudo stat -c '%U %G %a %n' /var/lib/jenkins/ajt-secrets/develop.env
+sudo -u jenkins test -r /var/lib/jenkins/ajt-secrets/develop.env
 ```
 
 현재 `demo`가 8090을 사용 중이면 해당 프로젝트만 중단한다.
@@ -248,6 +278,23 @@ docker compose \
 curl --insecure --fail --show-error https://127.0.0.1:8090/api/v1/health
 ```
 
+현재 수동 배포 SHA를 Jenkins의 develop 롤백 기준으로 인수한다. backend와 frontend 이미지가 모두 로컬에 있을 때만 기록한다.
+
+```bash
+CURRENT_DEVELOP_IMAGE="$(docker inspect ajt-develop-backend-1 --format '{{.Config.Image}}')"
+CURRENT_DEVELOP_TAG="${CURRENT_DEVELOP_IMAGE##*:}"
+
+if [[ "$CURRENT_DEVELOP_TAG" =~ ^[0-9a-f]{7,40}$ ]] \
+  && docker image inspect "ajt-backend:${CURRENT_DEVELOP_TAG}" >/dev/null 2>&1 \
+  && docker image inspect "ajt-frontend:${CURRENT_DEVELOP_TAG}" >/dev/null 2>&1; then
+  printf '%s\n' "$CURRENT_DEVELOP_TAG" \
+    | sudo -u jenkins tee \
+      /var/lib/jenkins/ajt-deploy/develop/current-image-tag >/dev/null
+else
+  echo "기존 develop 이미지가 SHA 태그가 아니거나 롤백 이미지가 없어 상태 파일을 만들지 않음"
+fi
+```
+
 Docker의 backend healthcheck도 같은 `/api/v1/health`를 사용한다. `/actuator/health`는 DB뿐 아니라 SMTP 같은 외부 연동 상태까지 포함하므로 컨테이너 기동 판정에는 사용하지 않는다. 비밀번호 재설정 메일을 실제로 사용할 때는 별도로 `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`을 운영 env에 설정한다.
 
 브라우저에서 `https://i15b106.p.ssafy.io:8090`을 확인하고, 컨테이너 재시작 후 `ajt-develop-mysql-data`와 `ajt-develop-files`가 유지되는지 확인한다.
@@ -264,7 +311,7 @@ Compose services/images validation: PASS
 
 ## 7. master 첫 운영 전환
 
-develop→master MR을 Squash merge하면 GitLab push webhook이 Jenkins를 실행한다. Jenkins가 테스트와 두 이미지 빌드를 완료하면 `Production Approval`에서 최대 24시간 대기한다.
+develop→master MR을 Squash merge하고 `S15P11B106-pipeline` Job을 Enable하면 master push webhook이 Jenkins를 실행한다. Jenkins가 테스트와 두 이미지 빌드를 완료하면 `Deployment Approval`에서 최대 24시간 대기한다.
 
 서버의 수동 관리용 clone도 merge된 master로 맞춘다.
 
@@ -295,7 +342,7 @@ docker inspect \
 docker stop s15p11b106-frontend-1 s15p11b106-backend-1 s15p11b106-mysql-1
 ```
 
-이제 Jenkins에서 `운영 배포 승인`을 누른다.
+이제 Jenkins에서 `배포 승인`을 누른다. 승인 화면의 대상이 반드시 `master 443`과 `ajt-prod`인지 확인한다.
 
 성공 기준:
 
@@ -359,12 +406,36 @@ docker inspect \
 
 ## 10. 이후 배포와 롤백
 
-두 번째 운영 배포부터 `scripts/deploy.sh`가 직전 성공 SHA를 `/var/lib/jenkins/ajt-deploy/current-image-tag`에 보관한다. 새 배포의 healthcheck가 실패하면 같은 Compose 프로젝트와 volume을 유지한 채 직전 backend/frontend 이미지로 자동 복원한다.
+두 번째 배포부터 `scripts/deploy.sh`가 환경별 직전 성공 SHA를 다음 파일에 나누어 보관한다. 새 배포의 healthcheck가 실패하면 같은 Compose 프로젝트와 volume을 유지한 채 해당 환경의 직전 backend/frontend 이미지로 자동 복원한다.
+
+```text
+develop: /var/lib/jenkins/ajt-deploy/develop/current-image-tag
+master:  /var/lib/jenkins/ajt-deploy/prod/current-image-tag
+공통 잠금: /var/lib/jenkins/ajt-deploy/deploy.lock
+```
+
+기존 master 상태 파일이 있다면 기록된 두 이미지가 모두 로컬에 있을 때만 prod 상태 디렉터리로 복사한다.
+
+```bash
+if sudo test -f /var/lib/jenkins/ajt-deploy/current-image-tag; then
+  CURRENT_PROD_TAG="$(sudo sh -c \
+    "tr -d '[:space:]' </var/lib/jenkins/ajt-deploy/current-image-tag")"
+
+  if [[ "$CURRENT_PROD_TAG" =~ ^[0-9a-f]{7,40}$ ]] \
+    && docker image inspect "ajt-backend:${CURRENT_PROD_TAG}" >/dev/null 2>&1 \
+    && docker image inspect "ajt-frontend:${CURRENT_PROD_TAG}" >/dev/null 2>&1; then
+    printf '%s\n' "$CURRENT_PROD_TAG" \
+      | sudo -u jenkins tee \
+        /var/lib/jenkins/ajt-deploy/prod/current-image-tag >/dev/null
+  fi
+fi
+```
 
 현재 배포 SHA 확인:
 
 ```bash
-sudo -u jenkins cat /var/lib/jenkins/ajt-deploy/current-image-tag
+sudo -u jenkins cat /var/lib/jenkins/ajt-deploy/develop/current-image-tag
+sudo -u jenkins cat /var/lib/jenkins/ajt-deploy/prod/current-image-tag
 ```
 
 수동으로 검증된 SHA를 다시 배포할 때:
@@ -373,8 +444,9 @@ sudo -u jenkins cat /var/lib/jenkins/ajt-deploy/current-image-tag
 cd /home/ubuntu/S15P11B106
 sudo -u jenkins env \
   DEPLOY_ENV_FILE=/var/lib/jenkins/ajt-secrets/prod.env \
-  DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy \
+  DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/prod \
   DEPLOY_HEALTHCHECK_URL=https://127.0.0.1/api/v1/health \
+  DEPLOY_LOCK_FILE=/var/lib/jenkins/ajt-deploy/deploy.lock \
   COMPOSE_PROJECT_NAME=ajt-prod \
   bash scripts/deploy.sh <12자리-SHA>
 ```

@@ -11,6 +11,7 @@ DEPLOY_COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-docker-compose.yml}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ajt-prod}"
 BACKEND_IMAGE="${BACKEND_IMAGE:-ajt-backend}"
 FRONTEND_IMAGE="${FRONTEND_IMAGE:-ajt-frontend}"
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/var/lib/jenkins/ajt-deploy/deploy.lock}"
 STATE_FILE="${DEPLOY_STATE_DIR}/current-image-tag"
 
 usage() {
@@ -24,6 +25,16 @@ die_config() {
 
 is_commit_sha() {
   [[ "$1" =~ ^[0-9a-f]{7,40}$ ]]
+}
+
+acquire_deploy_lock() {
+  if [[ "${DEPLOY_LOCK_HELD:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$DEPLOY_LOCK_FILE")"
+  exec env DEPLOY_LOCK_HELD=1 \
+    flock --exclusive "$DEPLOY_LOCK_FILE" "$0" "$@"
 }
 
 compose_for_tag() {
@@ -69,6 +80,9 @@ is_commit_sha "$IMAGE_TAG" || die_config "image tag must be a 7-40 character low
 
 command -v docker >/dev/null 2>&1 || die_config "docker command not found"
 command -v curl >/dev/null 2>&1 || die_config "curl command not found"
+command -v flock >/dev/null 2>&1 || die_config "flock command not found"
+
+acquire_deploy_lock "$IMAGE_TAG"
 
 mkdir -p "$DEPLOY_STATE_DIR"
 
