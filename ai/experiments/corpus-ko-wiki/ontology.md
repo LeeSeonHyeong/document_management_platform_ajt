@@ -2,6 +2,9 @@
 
 히어로와 (향후) 벌크가 공유하는 계약이다. 벌크 생성기는 이 매트릭스만 읽고 주변을 채운다.
 
+> 이 매트릭스는 두 세트(`sources/` 최소판, `sources-realistic/` realistic)가 공유한다.
+> realistic 세트는 같은 슬러그·같은 장치를 유지한 채 실제 문서처럼 살을 붙이고 잡음을 섞는다.
+
 주제 키: annual-leave(연차) · half-day(반차) · substitute-holiday(대체휴일) ·
 business-trip-expense(출장비) · remote-work(재택) · salary(급여) ·
 onboarding(온보딩) · infosec(정보보안)

@@ -90,6 +90,41 @@ uv run python experiments/backend_sim.py \
 test_corpus_ko_wiki.py`가 이미 함), 실제 FastAPI 서버(`wiki_api`)에 업로드해
 파싱→위키 반영 전체 경로를 확인하는 데 쓴다.
 
+## realistic 세트
+
+`sources-realistic/`(SSOT) 는 위 8문서와 같은 슬러그·같은 장치를 유지하되, 실제 사내
+문서처럼 목적·정의·부칙·서명란 등 골격과 무관 조항(잡음)을 더한 확장판이다. 최소판
+`sources/` 는 빠른 회귀용으로 그대로 두고, realistic 은 시연 optics 와 "잡음 속 신호"
+난이도 검증에 쓴다. 렌더는 다음으로 재현한다.
+
+```bash
+cd ai
+uv run python experiments/corpus-ko-wiki/build.py --realistic
+```
+
+산출물은 `documents-realistic/` 에 커밋돼 있어 시연에서 다시 렌더할 필요는 없다.
+
+### realistic 위키 생성 수동 확인 (로컬)
+
+장치가 유지되므로 최소판과 같은 단언을 재사용한다. 최소판 검증 명령의 인자 경로를
+`sources/` 에서 `sources-realistic/` 로 바꿔 실행한다.
+
+```bash
+cd ai
+uv run python experiments/backend_sim.py \
+  --runtime claude-code --model claude-sonnet-4-6 \
+  --root <임시경로> --report <임시경로>/report.json \
+  experiments/corpus-ko-wiki/sources-realistic/01-service-rules-v1.md \
+  experiments/corpus-ko-wiki/sources-realistic/02-hr-committee-minutes-2024-03.md \
+  experiments/corpus-ko-wiki/sources-realistic/03-service-rules-amendment.md \
+  experiments/corpus-ko-wiki/sources-realistic/04-business-trip-guide.md \
+  experiments/corpus-ko-wiki/sources-realistic/05-expense-faq.md
+```
+
+통과 기준(최소판과 동일): 연차 페이지가 20일 한 값으로 수렴, 출장비 페이지가 교통비·
+식비·숙박비·한도 네 조각을 병합, `03` 재업로드 시 연차 페이지 중복 없음. 추가로 잡음
+조항(복장·징계·조직개편·경조사 등)이 별도 위키 페이지로 새지 않았는지 육안 확인한다.
+
 ## 벌크 확장 seam
 
 이 8개 문서와 그 위의 의도 매핑은 `experiments/corpus-ko-wiki/ontology.md`의
