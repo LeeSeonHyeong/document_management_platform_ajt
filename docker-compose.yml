@@ -1,12 +1,15 @@
 # AJT 운영 배포용 docker-compose
-# Jenkins가 미리 빌드한 Git commit SHA 이미지로 backend + frontend + mysql을 실행한다.
+# Jenkins가 미리 빌드한 Git commit SHA 이미지로 backend + frontend + AI + mysql을 실행한다.
 # DEPLOY_ENV_FILE은 Compose 변수 해석과 컨테이너 환경변수 주입에 같은 파일을 사용하게 한다.
 
 services:
   mysql:
     image: mysql:8.4
-    env_file:
-      - "${DEPLOY_ENV_FILE:-.env}"
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:-ajt}"
+      MYSQL_USER: "${MYSQL_USER:-ajt}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}"
     volumes:
       - mysql-data:/var/lib/mysql
       - ./docs/db/erd.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -18,12 +21,65 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  ai:
+    image: "${AI_IMAGE:-ajt-ai}:${IMAGE_TAG:?IMAGE_TAG is required}"
+    environment:
+      # Spring과 FastAPI는 이 값 하나를 공유한다. 실제 값은 Jenkins 환경 파일에만 둔다.
+      INTERNAL_API_KEY: "${AI_INTERNAL_API_KEY:?AI_INTERNAL_API_KEY is required}"
+      BACKEND_BASE_URL: "http://backend:8080"
+      # 운영 배포는 모든 LLM 호출을 SSAFY GMS의 Anthropic API로 고정한다.
+      AI_RUNTIME: "deepagents"
+      AI_MODEL: "anthropic:claude-opus-4-6"
+      AI_MODEL_FAST: "anthropic:claude-haiku-4-5-20251001"
+      AI_MODEL_QUALITY: "anthropic:claude-sonnet-4-6"
+      SCHEDULE_EXTRACTOR_PROVIDER: "anthropic"
+      SCHEDULE_EXTRACTOR_MODEL: "claude-opus-4-6"
+      ANTHROPIC_BASE_URL: "https://gms.ssafy.io/gmsapi/api.anthropic.com"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
   backend:
     image: "${BACKEND_IMAGE:-ajt-backend}:${IMAGE_TAG:?IMAGE_TAG is required}"
-    env_file:
-      - "${DEPLOY_ENV_FILE:-.env}"
+    environment:
+      SPRING_PROFILES_ACTIVE: "prod"
+      SPRING_DATASOURCE_URL: "${SPRING_DATASOURCE_URL:?SPRING_DATASOURCE_URL is required}"
+      SPRING_DATASOURCE_USERNAME: "${SPRING_DATASOURCE_USERNAME:?SPRING_DATASOURCE_USERNAME is required}"
+      SPRING_DATASOURCE_PASSWORD: "${SPRING_DATASOURCE_PASSWORD:?SPRING_DATASOURCE_PASSWORD is required}"
+      AJT_ACCESS_TOKEN_SECRET: "${AJT_ACCESS_TOKEN_SECRET:?AJT_ACCESS_TOKEN_SECRET is required}"
+      AJT_ACCESS_TOKEN_EXPIRATION: "${AJT_ACCESS_TOKEN_EXPIRATION:-1h}"
+      AJT_PASSWORD_RESET_SECRET: "${AJT_PASSWORD_RESET_SECRET:?AJT_PASSWORD_RESET_SECRET is required}"
+      AJT_PASSWORD_RESET_EXPIRATION: "${AJT_PASSWORD_RESET_EXPIRATION:-30m}"
+      AJT_AUTH_COOKIE_SECURE: "${AJT_AUTH_COOKIE_SECURE:-true}"
+      SUPER_ADMIN_EMAIL: "${SUPER_ADMIN_EMAIL:-superadmin@ajt.com}"
+      MAIL_HOST: "${MAIL_HOST:-smtp.naver.com}"
+      MAIL_PORT: "${MAIL_PORT:-465}"
+      MAIL_USERNAME: "${MAIL_USERNAME:-}"
+      MAIL_PASSWORD: "${MAIL_PASSWORD:-}"
+      MAIL_FROM: "${MAIL_FROM:-noreply@ajt.local}"
+      AI_BASE_URL: "http://ai:8000"
+      AI_INTERNAL_API_KEY: "${AI_INTERNAL_API_KEY:?AI_INTERNAL_API_KEY is required}"
+      AI_CONNECT_TIMEOUT: "${AI_CONNECT_TIMEOUT:-5s}"
+      AI_READ_TIMEOUT: "${AI_READ_TIMEOUT:-10m}"
+      AI_SCHEDULE_EXTRACTION_READ_TIMEOUT: "${AI_SCHEDULE_EXTRACTION_READ_TIMEOUT:-180s}"
+      DOCUMENT_STORAGE_ROOT: "${DOCUMENT_STORAGE_ROOT:-/data/ajt/documents}"
+      SCHEDULE_SOURCE_STORAGE_ROOT: "${SCHEDULE_SOURCE_STORAGE_ROOT:-/data/ajt/schedule-sources}"
+      INQUIRY_STORAGE_ROOT: "${INQUIRY_STORAGE_ROOT:-/data/ajt/inquiries}"
     depends_on:
       mysql:
+        condition: service_healthy
+      ai:
         condition: service_healthy
     volumes:
       - ajt-files:/data/ajt

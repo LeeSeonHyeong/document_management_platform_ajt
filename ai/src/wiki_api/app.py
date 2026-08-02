@@ -34,6 +34,10 @@ def create_app(*, api_key: str | None = None,
 
     install_error_handlers(app)
 
+    @app.get("/health", include_in_schema=False)
+    async def health() -> dict[str, str]:
+        return {"status": "UP"}
+
     @app.middleware("http")
     async def _echo_request_id(request: Request, call_next):
         rid = request.headers.get("X-Request-Id") or f"ai-{uuid.uuid4().hex[:16]}"

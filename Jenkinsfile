@@ -11,6 +11,7 @@ pipeline {
     environment {
         BACKEND_IMAGE = 'ajt-backend'
         FRONTEND_IMAGE = 'ajt-frontend'
+        AI_IMAGE = 'ajt-ai'
         DEPLOY_LOCK_FILE = '/var/lib/jenkins/ajt-deploy/deploy.lock'
     }
 
@@ -81,11 +82,21 @@ pipeline {
                     }
                 }
 
+                stage('AI Test') {
+                    steps {
+                        sh '''
+                            docker build --target test --tag "ajt-ai-test:${IMAGE_TAG}" ai
+                            docker run --rm "ajt-ai-test:${IMAGE_TAG}"
+                        '''
+                    }
+                }
+
                 stage('Docker Build') {
                     steps {
                         sh '''
                             docker build --tag "${BACKEND_IMAGE}:${IMAGE_TAG}" backend
                             docker build --tag "${FRONTEND_IMAGE}:${IMAGE_TAG}" frontend
+                            docker build --target runtime --tag "${AI_IMAGE}:${IMAGE_TAG}" ai
                         '''
                     }
                 }
@@ -137,6 +148,7 @@ pipeline {
                     COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME}" \
                     BACKEND_IMAGE="${BACKEND_IMAGE}" \
                     FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
+                    AI_IMAGE="${AI_IMAGE}" \
                     bash scripts/deploy.sh "${IMAGE_TAG}"
                 '''
             }
