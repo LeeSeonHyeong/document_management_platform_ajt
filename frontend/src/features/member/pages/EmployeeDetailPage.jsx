@@ -68,7 +68,9 @@ export default function EmployeeDetailPage() {
             <div className="flex justify-between"><dt className="text-slate-400">생성일시</dt><dd className="font-semibold">{formatDate(employee.createdAt)}</dd></div>
             <div className="flex justify-between"><dt className="text-slate-400">수정일시</dt><dd className="font-semibold">{formatDate(employee.updatedAt)}</dd></div>
           </dl>
-          <p className="mt-5 rounded-lg bg-primary-50 px-4 py-3 text-xs text-primary-700">계정 정보 변경은 관리자만 가능합니다.</p>
+          {!isSuperAdmin && (
+            <p className="mt-5 rounded-lg bg-primary-50 px-4 py-3 text-xs text-primary-700">계정 정보 변경은 전체 관리자만 가능합니다.</p>
+          )}
         </Card>
       </div>
     </div>
