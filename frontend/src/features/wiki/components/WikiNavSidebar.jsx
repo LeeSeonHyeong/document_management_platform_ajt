@@ -14,7 +14,7 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
   const { data: spaces = [] } = useWikiSpaces()
   const { data: scopeCategories = [] } = useWikiCategories(scopeKey)
   const filters = useMemo(
-    () => ({ scopeKey: scopeKey || undefined, keyword: keyword || undefined, size: 200 }),
+    () => ({ scopeKey: scopeKey || undefined, keyword: keyword || undefined, size: 100 }),
     [scopeKey, keyword],
   )
   const { data: wikiPage, isLoading } = useWikis(filters)

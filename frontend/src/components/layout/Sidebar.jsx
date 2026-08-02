@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import { cn } from '@/shared/lib/cn'
 import { ROLES } from '@/shared/constants/enums'
@@ -9,6 +9,10 @@ import ajtLogo from '@/assets/ajt-logo.png'
 // 좌측 고정 사이드바. 역할에 따라 메뉴가 달라진다.
 function NavItem({ item }) {
   const Icon = item.icon
+  const { pathname } = useLocation()
+  const isRelatedPath = item.activePaths?.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  )
   return (
     <NavLink
       to={item.to}
@@ -16,7 +20,7 @@ function NavItem({ item }) {
       className={({ isActive }) =>
         cn(
           'focus-ring flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-          isActive
+          isActive || isRelatedPath
             ? 'bg-white/20 text-white'
             : 'text-white/75 hover:bg-white/10 hover:text-white',
         )

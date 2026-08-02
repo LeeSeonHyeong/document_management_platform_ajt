@@ -270,7 +270,7 @@ export default function AdminSchedulePage() {
 
   const { data: departments = [] } = useDepartments()
   const approvedQuery = useSchedules({ ...range, status: 'approved' })
-  const draftQuery = useSchedules({ status: 'draft' })
+  const draftQuery = useSchedules({ ...range, status: 'draft' })
 
   const deptId = deptTab === ALL_TAB ? null : deptTab
   const approvedEvents = useMemo(

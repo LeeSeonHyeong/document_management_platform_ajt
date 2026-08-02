@@ -19,6 +19,11 @@ const STATUS_TABS = [
 ]
 
 const PAGE_SIZE = 20
+const SYSTEM_DEPARTMENT_NAME = '최고관리자'
+
+function isSuperAdminAccount(member) {
+  return member?.isSuperAdmin === true || member?.department?.name?.trim() === SYSTEM_DEPARTMENT_NAME
+}
 
 function formatRequestedAt(value) {
   if (!value) return '-'
@@ -47,7 +52,11 @@ export default function SignupRequestsPage() {
   // 상태별 totalCount를 각각 받아 상단 카드와 상태 탭의 숫자에 함께 사용합니다.
   const countQueries = useQueries({
     queries: STATUS_TABS.map((tab) => {
-      const countParams = { page: 1, size: 1, status: tab.value }
+      const countParams = {
+        page: 1,
+        size: tab.value === SIGNUP_STATUS.APPROVED ? 100 : 1,
+        status: tab.value,
+      }
       return {
         queryKey: qk.signupRequests.list(countParams),
         queryFn: () => fetchSignupRequests(countParams),
@@ -57,7 +66,11 @@ export default function SignupRequestsPage() {
   const statusCounts = Object.fromEntries(
     STATUS_TABS.map((tab, index) => [
       tab.value,
-      countQueries[index].data?.totalCount ?? 0,
+      tab.value === SIGNUP_STATUS.APPROVED
+        ? (countQueries[index].data?.items ?? []).filter(
+            (member) => !isSuperAdminAccount(member),
+          ).length
+        : countQueries[index].data?.totalCount ?? 0,
     ]),
   )
 
@@ -71,7 +84,12 @@ export default function SignupRequestsPage() {
     onError: (error) => toast.error(error.message ?? '요청을 처리하지 못했습니다.'),
   })
 
-  const items = query.data?.items ?? []
+  const items = (query.data?.items ?? []).filter(
+    (member) => status !== SIGNUP_STATUS.APPROVED || !isSuperAdminAccount(member),
+  )
+  const totalPages = status === SIGNUP_STATUS.APPROVED
+    ? Math.max(1, Math.ceil(statusCounts[SIGNUP_STATUS.APPROVED] / PAGE_SIZE))
+    : query.data?.totalPages ?? 1
   const columns = [
     { key: 'name', header: '이름', render: (request) => <div className="flex items-center gap-3"><EmployeeAvatar employee={request} /><span className="font-semibold">{request.name}</span></div> },
     { key: 'email', header: '이메일' },
@@ -127,9 +145,9 @@ export default function SignupRequestsPage() {
           </div>
         </div>
         <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={items} rowKey="userId" loading={query.isLoading} emptyState={<EmptyState title="가입 요청이 없습니다." />} />
-        {(query.data?.totalPages ?? 1) > 1 && (
+        {totalPages > 1 && (
           <div className="border-t border-slate-100 px-5 py-4">
-            <Pagination page={query.data.page} totalPages={query.data.totalPages} onChange={setPage} />
+            <Pagination page={query.data.page} totalPages={totalPages} onChange={setPage} />
           </div>
         )}
       </section>
