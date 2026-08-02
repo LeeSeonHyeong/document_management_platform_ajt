@@ -13,6 +13,7 @@ import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.inquiry.InquiryRepository;
 import com.ajt.backend.domain.member.dto.SignupApprovalResponse;
 import com.ajt.backend.global.auth.AuthenticatedMember;
+import com.ajt.backend.global.config.SuperAdminProperties;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.time.Clock;
@@ -49,7 +50,10 @@ class MemberServiceApprovalRetryTest {
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-07-31T00:00:00Z"), ZoneOffset.UTC);
-        SuperAdminChecker superAdminChecker = new SuperAdminChecker(departmentRepository);
+        // 수정(S15P11B106-146): 최고관리자는 설정 이메일로 식별한다. 이 테스트의 액터(admin@ajt.com)를 최고관리자로
+        //   인식하도록 같은 이메일로 checker를 구성한다.
+        SuperAdminChecker superAdminChecker =
+                new SuperAdminChecker(new SuperAdminProperties("admin@ajt.com"));
         memberService = new MemberService(
                 memberRepository, departmentRepository, inquiryRepository, superAdminChecker, clock, selfProvider);
         // self 프록시 호출이 실제 인스턴스 메서드를 그대로 실행하도록 한다(트랜잭션 경계는 이 단위테스트의 관심사가 아님).

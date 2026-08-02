@@ -205,7 +205,8 @@ class MemberControllerTest {
     void updateUserChangesMember() throws Exception {
         Department beforeDepartment = departmentRepository.save(new Department("개발부"));
         Department afterDepartment = departmentRepository.save(new Department("인사부"));
-        Member admin = memberRepository.save(approvedAdmin(beforeDepartment));
+        // role·accountStatus 변경은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다(S15P11B106-146).
+        Member admin = memberRepository.save(superAdmin(beforeDepartment));
         Member employee = memberRepository.save(approvedEmployee(beforeDepartment, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
 
         mockMvc.perform(patch("/api/v1/users/{userId}", employee.getId())
@@ -254,7 +255,8 @@ class MemberControllerTest {
     @DisplayName("GET /api/v1/signup-requests는 가입 신청 목록을 반환한다")
     void signupRequestsReturnsPendingMembers() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 가입 신청 목록은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다(S15P11B106-146).
+        Member admin = memberRepository.save(superAdmin(department));
         memberRepository.save(Member.signup(department, "pending@ajt.com", "신청자", passwordEncoder.encode("password123!")));
 
         mockMvc.perform(get("/api/v1/signup-requests")
@@ -269,7 +271,8 @@ class MemberControllerTest {
     @DisplayName("POST /api/v1/signup-requests/{userId}/approve는 가입 신청을 승인한다")
     void approveSignupRequestApprovesMember() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 가입 승인은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다(S15P11B106-146).
+        Member admin = memberRepository.save(superAdmin(department));
         Member pending = memberRepository.save(Member.signup(
                 department,
                 "pending@ajt.com",
@@ -291,7 +294,8 @@ class MemberControllerTest {
     @DisplayName("POST /api/v1/signup-requests/{userId}/reject는 가입 신청을 거부한다")
     void rejectSignupRequestRejectsMember() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 가입 거절은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다(S15P11B106-146).
+        Member admin = memberRepository.save(superAdmin(department));
         Member pending = memberRepository.save(Member.signup(
                 department,
                 "pending@ajt.com",
@@ -323,6 +327,19 @@ class MemberControllerTest {
                 "관리자",
                 passwordEncoder.encode("password123!"),
                 "AJT-2026-9999",
+                Role.ADMIN
+        );
+    }
+
+    // 수정(S15P11B106-146): 최고관리자는 설정 이메일(ajt.super-admin.email 기본값)로 식별한다.
+    // 가입 승인/거절·목록과 role/status 변경 등 최고관리자 전용 동작의 액터로 사용한다.
+    private Member superAdmin(Department department) {
+        return Member.approved(
+                department,
+                "superadmin@ajt.com",
+                "최고관리자",
+                passwordEncoder.encode("password123!"),
+                "AJT-2026-9000",
                 Role.ADMIN
         );
     }

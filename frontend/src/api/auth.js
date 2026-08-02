@@ -38,13 +38,19 @@ export async function fetchSignupDepartments() {
   return data.items ?? []
 }
 
-// POST /api/v1/auth/password-reset-requests — 재설정 메일 요청(항상 동일 응답)
+// POST /api/v1/auth/password-reset-requests — 재설정 인증번호 메일 요청(항상 동일 응답)
 export async function requestPasswordReset({ email }) {
   const { data } = await apiClient.post('/auth/password-reset-requests', { email })
   return data
 }
 
-// POST /api/v1/auth/password-resets — 토큰으로 새 비밀번호 설정(204)
-export async function confirmPasswordReset({ token, newPassword }) {
-  await apiClient.post('/auth/password-resets', { token, newPassword })
+// POST /api/v1/auth/password-reset-verify — 이메일로 받은 6자리 인증번호 확인
+export async function verifyPasswordResetCode({ email, code }) {
+  const { data } = await apiClient.post('/auth/password-reset-verify', { email, code })
+  return data
+}
+
+// POST /api/v1/auth/password-resets — 이메일+인증번호로 새 비밀번호 설정(204)
+export async function confirmPasswordReset({ email, code, newPassword }) {
+  await apiClient.post('/auth/password-resets', { email, code, newPassword })
 }

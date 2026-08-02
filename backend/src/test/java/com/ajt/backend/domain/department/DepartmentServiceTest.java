@@ -104,6 +104,38 @@ class DepartmentServiceTest {
     }
 
     @Test
+    @DisplayName("부서 생성 시 최고관리자를 관리자로 지정하면 거절한다(S15P11B106-146)")
+    void createDepartmentRejectsSuperAdminAsManager() {
+        Department baseDepartment = departmentRepository.save(new Department("기본부"));
+        Member actorAdmin = memberRepository.save(approvedAdmin(baseDepartment, "admin@ajt.com", "AJT-2026-9001"));
+        // 설정 이메일(ajt.super-admin.email 기본값) 계정 → 최고관리자
+        Member superAdmin = memberRepository.save(approvedAdmin(baseDepartment, "superadmin@ajt.com", "AJT-2026-9000"));
+
+        assertThatThrownBy(() -> departmentService.createDepartment(
+                authenticated(actorAdmin),
+                new DepartmentCreateRequest("플랫폼개발부", String.valueOf(superAdmin.getId()))))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_MANAGER_INVALID);
+    }
+
+    @Test
+    @DisplayName("부서 수정 시 최고관리자를 관리자로 지정하면 거절한다(S15P11B106-146)")
+    void updateDepartmentRejectsSuperAdminAsManager() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member actorAdmin = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "AJT-2026-9001"));
+        Member superAdmin = memberRepository.save(approvedAdmin(department, "superadmin@ajt.com", "AJT-2026-9000"));
+        DepartmentUpdateRequest request = new DepartmentUpdateRequest();
+        request.setManagerId(String.valueOf(superAdmin.getId()));
+
+        assertThatThrownBy(() -> departmentService.updateDepartment(
+                authenticated(actorAdmin), department.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_MANAGER_INVALID);
+    }
+
+    @Test
     @DisplayName("부서 수정은 managerId가 null이면 지정 관리자를 해제한다")
     void updateDepartmentClearsManager() {
         Department department = departmentRepository.save(new Department("개발부"));

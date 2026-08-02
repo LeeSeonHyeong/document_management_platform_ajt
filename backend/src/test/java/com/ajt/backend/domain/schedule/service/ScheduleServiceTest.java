@@ -253,6 +253,66 @@ class ScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("목록: 관리자는 status=draft를 기간 없이 조회하면 전체 draft를 받는다(S15P11B106-146)")
+    void listDraftWithoutRangeReturnsAllDraftsForAdmin() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(admin(dev));
+        scheduleRepository.save(Schedule.create(admin.getId(), "승인 공지", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+        scheduleRepository.save(Schedule.draft(admin.getId(), "초안 기간내", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+        // 기간 필터가 없으므로 조회 기간(FROM~TO) 밖의 draft도 함께 반환되어야 한다.
+        scheduleRepository.save(Schedule.draft(admin.getId(), "초안 기간밖", null, null, null,
+                ScheduleVisibility.ALL, OUT_START, OUT_END));
+
+        ScheduleListResponse response = scheduleService.list(authOf(admin), null, null, "draft", null, null);
+
+        assertThat(response.items()).extracting(ScheduleListResponse.Item::title)
+                .containsExactlyInAnyOrder("초안 기간내", "초안 기간밖");
+    }
+
+    @Test
+    @DisplayName("목록: 관리자가 status=draft에 기간을 주면 기간 내 draft만 조회한다(S15P11B106-146)")
+    void listDraftWithRangeFiltersByPeriodForAdmin() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(admin(dev));
+        scheduleRepository.save(Schedule.draft(admin.getId(), "초안 기간내", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+        scheduleRepository.save(Schedule.draft(admin.getId(), "초안 기간밖", null, null, null,
+                ScheduleVisibility.ALL, OUT_START, OUT_END));
+
+        ScheduleListResponse response = scheduleService.list(authOf(admin), FROM, TO, "draft", null, null);
+
+        assertThat(response.items()).extracting(ScheduleListResponse.Item::title)
+                .containsExactly("초안 기간내");
+    }
+
+    @Test
+    @DisplayName("목록: status=approved는 기간이 없으면 기존처럼 400이다(S15P11B106-146)")
+    void listApprovedWithoutRangeStillRejects() {
+        Member admin = memberRepository.save(admin(departmentRepository.save(new Department("개발부"))));
+
+        assertThatThrownBy(() -> scheduleService.list(authOf(admin), null, null, "approved", null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_SCHEDULE_RANGE);
+    }
+
+    @Test
+    @DisplayName("목록: 사원이 status=draft를 기간 없이 조회해도 draft는 노출되지 않는다(빈 목록, S15P11B106-146)")
+    void listDraftWithoutRangeHidesDraftFromEmployee() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member employee = memberRepository.save(employee(dev));
+        Member admin = memberRepository.save(admin(dev, "admin@ajt.com"));
+        scheduleRepository.save(Schedule.draft(admin.getId(), "초안 공지", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+
+        ScheduleListResponse response = scheduleService.list(authOf(employee), null, null, "draft", null, null);
+
+        assertThat(response.items()).isEmpty();
+    }
+
+    @Test
     @DisplayName("목록: 조회 기간을 벗어난 일정은 제외한다")
     void listExcludesOutOfRange() {
         Department dev = departmentRepository.save(new Department("개발부"));

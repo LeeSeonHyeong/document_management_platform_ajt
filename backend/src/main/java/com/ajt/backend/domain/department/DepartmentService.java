@@ -8,6 +8,7 @@ import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
@@ -27,17 +28,20 @@ public class DepartmentService {
     private final MemberRepository memberRepository;
     private final ScheduleRepository scheduleRepository;
     private final WikiScopeRepository wikiScopeRepository;
+    private final SuperAdminChecker superAdminChecker;
 
     public DepartmentService(
             DepartmentRepository departmentRepository,
             MemberRepository memberRepository,
             ScheduleRepository scheduleRepository,
-            WikiScopeRepository wikiScopeRepository
+            WikiScopeRepository wikiScopeRepository,
+            SuperAdminChecker superAdminChecker
     ) {
         this.departmentRepository = departmentRepository;
         this.memberRepository = memberRepository;
         this.scheduleRepository = scheduleRepository;
         this.wikiScopeRepository = wikiScopeRepository;
+        this.superAdminChecker = superAdminChecker;
     }
 
     /**
@@ -193,6 +197,11 @@ public class DepartmentService {
         Long id = parseId(managerId, "관리자 ID는 숫자 문자열이어야 합니다.");
         Member manager = memberRepository.findById(id)
                 .orElseThrow(() -> new BusinessException(ErrorCode.DEPARTMENT_MANAGER_INVALID));
+        // 수정(S15P11B106-146): 최고관리자는 부서 관리자로 지정할 수 없다. 부서장으로 지정되면 최고관리자 자격을
+        //   잃는 문제(가입 승인 메뉴 사라짐)를 애초에 막는다. 최고관리자는 설정 이메일로 고정 식별한다.
+        if (superAdminChecker.isConfiguredSuperAdminEmail(manager.getEmail())) {
+            throw new BusinessException(ErrorCode.DEPARTMENT_MANAGER_INVALID, "최고관리자는 부서 관리자로 지정할 수 없습니다.");
+        }
         // 수정(S15P11B106-69): 부서장 자격 판정을 Member.isEligibleAsDepartmentManager로 일원화한다.
         //   (지정 검증과 자동 해제가 같은 자격 정의를 쓰도록 중복 제거.)
         if (!manager.isEligibleAsDepartmentManager()) {

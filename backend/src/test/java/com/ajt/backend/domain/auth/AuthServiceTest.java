@@ -141,22 +141,23 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("최고관리자(부서장으로 지정되지 않은 ADMIN) 로그인 응답은 isSuperAdmin=true")
-    void loginReturnsSuperAdminTrueForNonManagerAdmin() {
-        Department department = departmentRepository.save(new Department("개발부"));
+    @DisplayName("최고관리자(설정 이메일 계정) 로그인 응답은 부서 소속이 있어도 isSuperAdmin=true(S15P11B106-146)")
+    void loginReturnsSuperAdminTrueForConfiguredEmail() {
+        // 소속 부서가 있어도 설정 이메일(ajt.super-admin.email 기본값 superadmin@ajt.com)이면 최고관리자다.
+        Department department = departmentRepository.save(new Department("최고관리자"));
         memberRepository.save(Member.approved(
-                department, "admin@ajt.com", "관리자",
+                department, "superadmin@ajt.com", "최고관리자",
                 passwordEncoder.encode("password123!"), "AJT-2026-9001", Role.ADMIN));
 
-        LoginResult response = authService.login(new LoginRequest("admin@ajt.com", "password123!"));
+        LoginResult response = authService.login(new LoginRequest("superadmin@ajt.com", "password123!"));
 
         assertThat(response.user().role()).isEqualTo("admin");
         assertThat(response.user().isSuperAdmin()).isTrue();
     }
 
     @Test
-    @DisplayName("부서관리자(부서장으로 지정된 ADMIN) 로그인 응답은 isSuperAdmin=false")
-    void loginReturnsSuperAdminFalseForDepartmentManager() {
+    @DisplayName("설정 이메일이 아닌 일반 관리자(부서장 포함) 로그인 응답은 isSuperAdmin=false(S15P11B106-146)")
+    void loginReturnsSuperAdminFalseForOrdinaryAdmin() {
         Department department = departmentRepository.save(new Department("개발부"));
         Member manager = memberRepository.save(Member.approved(
                 department, "manager@ajt.com", "부서장",

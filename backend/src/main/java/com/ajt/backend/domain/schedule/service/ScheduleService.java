@@ -108,17 +108,9 @@ public class ScheduleService {
         //  또한 사원 가시성/부서 필터는 조회 후 인메모리로 거른다(부서 목록은 BatchSize로 모아 읽는다).
         //  기간 내 일정이 대량이면 성능 이슈 가능 → 데이터 증가 시 페이지네이션/DB 필터 도입 검토.
         requireAuthenticated(loginMember);
-        LocalDate from = parseDate(startDate);
-        LocalDate to = parseDate(endDate);
-        if (from.isAfter(to)) {
-            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_RANGE, "조회 시작일이 종료일보다 늦습니다.");
-        }
-        if (to.isAfter(from.plusYears(1))) {
-            throw new BusinessException(ErrorCode.INVALID_SCHEDULE_RANGE, "일정 조회 기간은 최대 1년입니다.");
-        }
-        Instant windowStart = from.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant windowEndExclusive = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
 
+        // 수정(S15P11B106-146): status를 기간보다 먼저 파싱한다. draft 목록은 관리자 검수 대기 목록 성격이라
+        //   기간 없이도 조회할 수 있어야 하므로, 기간 필수 검사보다 status 판단이 앞서야 한다.
         ScheduleStatus statusFilter = parseStatusFilter(status);
         ScheduleVisibility visibilityFilter = parseVisibilityFilter(visibilityType);
         Long departmentFilter = parseDepartmentFilter(departmentId);
@@ -126,9 +118,31 @@ public class ScheduleService {
         boolean admin = loginMember.isAdmin();
         Long memberDepartmentId = admin ? null : currentDepartmentId(loginMember);
 
-        Specification<Schedule> specification = withinRange(windowStart, windowEndExclusive)
-                .and(hasStatus(statusFilter, admin))
-                .and(hasVisibility(visibilityFilter));
+        // 수정(S15P11B106-146): status=draft이면서 startDate/endDate가 둘 다 비어 있으면 기간 필터를 생략하고
+        //   전체 draft를 조회한다. 저장 정책(start_at/end_at 필수, 엔티티 nullable=false)은 그대로이며 조회 조건만 완화한다.
+        //   기간이 주어졌거나 status가 draft가 아니면(없음/approved 포함) 기존처럼 기간을 필수로 검사한다.
+        //   draft 노출은 아래 canAccess가 관리자에게만 허용하므로(일반 사용자는 걸러져 빈 목록) 권한 정책은 유지된다.
+        boolean draftListWithoutRange =
+                statusFilter == ScheduleStatus.DRAFT && isBlank(startDate) && isBlank(endDate);
+
+        Specification<Schedule> specification;
+        if (draftListWithoutRange) {
+            specification = hasStatus(statusFilter, admin).and(hasVisibility(visibilityFilter));
+        } else {
+            LocalDate from = parseDate(startDate);
+            LocalDate to = parseDate(endDate);
+            if (from.isAfter(to)) {
+                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_RANGE, "조회 시작일이 종료일보다 늦습니다.");
+            }
+            if (to.isAfter(from.plusYears(1))) {
+                throw new BusinessException(ErrorCode.INVALID_SCHEDULE_RANGE, "일정 조회 기간은 최대 1년입니다.");
+            }
+            Instant windowStart = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+            Instant windowEndExclusive = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+            specification = withinRange(windowStart, windowEndExclusive)
+                    .and(hasStatus(statusFilter, admin))
+                    .and(hasVisibility(visibilityFilter));
+        }
 
         List<Schedule> schedules = scheduleRepository.findAll(
                 specification, Sort.by(Sort.Order.asc("startAt"), Sort.Order.asc("id")));
@@ -434,6 +448,10 @@ public class ScheduleService {
         } catch (RuntimeException exception) {
             throw new BusinessException(ErrorCode.INVALID_SCHEDULE, "부서 ID 형식이 올바르지 않습니다.");
         }
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private LocalDate parseDate(String value) {

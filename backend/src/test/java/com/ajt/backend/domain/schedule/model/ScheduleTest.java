@@ -66,6 +66,28 @@ class ScheduleTest {
     }
 
     @Test
+    @DisplayName("시작 시각이 없으면 생성에 실패한다(저장 필수 조건 유지, S15P11B106-146)")
+    void nullStartAtFailsCreate() {
+        assertThatThrownBy(() -> Schedule.create(
+                1L, "회의", null, null, null, ScheduleVisibility.ALL, null, END))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Schedule.draft(
+                1L, "회의", null, null, null, ScheduleVisibility.ALL, null, END))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("종료 시각이 없으면 생성에 실패한다(저장 필수 조건 유지, S15P11B106-146)")
+    void nullEndAtFailsCreate() {
+        assertThatThrownBy(() -> Schedule.create(
+                1L, "회의", null, null, null, ScheduleVisibility.ALL, START, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Schedule.draft(
+                1L, "회의", null, null, null, ScheduleVisibility.ALL, START, null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     @DisplayName("공개 부서 목록은 중복을 제거하고 정렬해 저장한다")
     void replaceDepartmentsDedupAndSort() {
         Schedule schedule = Schedule.create(

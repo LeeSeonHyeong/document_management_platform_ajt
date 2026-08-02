@@ -395,13 +395,16 @@ public class DocumentManagementService {
 
         documentRepository.delete(document);
         documentRepository.flush();
-        deleteQuietly(originalPath);
-        if (parsedPath != null) {
-            deleteQuietly(parsedPath);
-        }
 
         AiJob job = removeDeletedDocumentFromScope(
                 admin.memberId(), documentId, scopeKey, removedParsedMarkdown);
+
+        // 수정(S15P11B106-146): 파일 삭제는 DB 트랜잭션처럼 롤백되지 않으므로, 삭제할 경로만 보관했다가
+        //   커밋이 성공한 뒤에만 실제로 지운다. flush는 커밋이 아니라 여기서 바로 지우면, 이후 걷어내기 작업
+        //   생성 등에서 예외가 나 트랜잭션이 롤백돼도 파일은 이미 사라져 "DB엔 문서, 파일은 없음" 불일치가 생긴다.
+        //   위 DB 작업(문서 삭제 + 걷어내기 작업 생성)이 모두 성공한 뒤에 예약하므로, 그중 무엇이 실패하면
+        //   파일 삭제 예약 자체가 실행되지 않는다.
+        registerAfterCommitFileDelete(originalPath, parsedPath);
         // 수정(S15P11B106-93): 여기 도달했으면 삭제는 성공(실패는 위에서 예외로 처리됨). 재처리 작업이 생성됐으면
         //   reprocessRequired=true·waiting·jobId, 재처리할 내용이 없어 작업을 만들지 않았으면 false·skipped·null로
         //   내려 프론트가 "jobId=null이 정상 상황"임을 구분할 수 있게 한다.
@@ -458,7 +461,32 @@ public class DocumentManagementService {
                         : WikiScope.department(scope.departmentIds())));
     }
 
+    /**
+     * 수정(S15P11B106-146): 삭제할 파일 경로를 보관했다가 DB 트랜잭션 커밋이 성공한 뒤에만(afterCommit) 지운다.
+     *
+     * <p>파일 삭제는 트랜잭션처럼 롤백되지 않으므로 커밋 전에 지우면 롤백 시 "DB엔 문서, 파일은 없음" 불일치가 생긴다.
+     * afterCompletion이 아니라 afterCommit에 두는 이유는 롤백(STATUS_ROLLED_BACK)에서는 지우면 안 되기 때문이다.
+     * 트랜잭션 동기화가 비활성(트랜잭션 밖 호출)일 때만 즉시 지운다. delete()는 {@code @Transactional}이라 보통
+     * afterCommit 경로를 탄다. parsedPath가 null/blank이면 deleteQuietly가 안전하게 건너뛰어 originalPath만 지운다.
+     */
+    private void registerAfterCommitFileDelete(String originalPath, String parsedPath) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            deleteQuietly(originalPath);
+            deleteQuietly(parsedPath);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                deleteQuietly(originalPath);
+                deleteQuietly(parsedPath);
+            }
+        });
+    }
+
     private void deleteQuietly(String storedPath) {
+        if (storedPath == null || storedPath.isBlank()) {
+            return;
+        }
         try {
             documentFileStorage.delete(storedPath);
         } catch (IOException ignored) {
