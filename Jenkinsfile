@@ -26,19 +26,16 @@ pipeline {
             stages {
                 stage('Checkout') {
                     steps {
-                        checkout scm
                         script {
+                            def scmVars = checkout scm
                             env.IMAGE_TAG = sh(
                                 script: 'git rev-parse --short=12 HEAD',
                                 returnStdout: true
                             ).trim()
-                            env.DEPLOY_BRANCH = sh(
-                                script: '''
-                                    branch="${BRANCH_NAME:-${GIT_BRANCH:-}}"
-                                    printf '%s' "$branch"
-                                ''',
-                                returnStdout: true
-                            ).trim()
+                            env.DEPLOY_BRANCH = scmVars.GIT_BRANCH?.trim()
+                            if (!env.DEPLOY_BRANCH) {
+                                error('Git checkout 결과에서 배포 브랜치를 확인할 수 없습니다.')
+                            }
 
                             def targetOutput = withEnv(["RESOLVED_BRANCH=${env.DEPLOY_BRANCH}"]) {
                                 sh(
