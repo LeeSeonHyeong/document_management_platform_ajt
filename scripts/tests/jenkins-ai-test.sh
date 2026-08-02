@@ -9,6 +9,11 @@ fail() {
   exit 1
 }
 
+grep -q 'def scmVars = checkout scm' "$JENKINSFILE" \
+  || fail 'checkout result is not captured for branch detection'
+grep -q 'scmVars.GIT_BRANCH' "$JENKINSFILE" \
+  || fail 'checkout-provided GIT_BRANCH is not used'
+
 grep -q "AI_IMAGE = 'ajt-ai'" "$JENKINSFILE" \
   || fail 'AI image name is not declared'
 grep -q "stage('AI Test')" "$JENKINSFILE" \
