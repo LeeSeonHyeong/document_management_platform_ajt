@@ -146,4 +146,3 @@ git push -u origin codex/fix-document-download-korean-filename
 ```
 
 MR 제목은 `fix(document): 원본문서 한글 다운로드 파일명 보존`, 대상 브랜치는 `develop`로 생성한다.
-
