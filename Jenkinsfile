@@ -46,7 +46,25 @@ pipeline {
 
                             targetOutput.readLines().each { line ->
                                 def pair = line.split('=', 2)
-                                env[pair[0]] = pair[1]
+                                switch (pair[0]) {
+                                    case 'DEPLOY_ENV_FILE':
+                                        env.DEPLOY_ENV_FILE = pair[1]
+                                        break
+                                    case 'DEPLOY_STATE_DIR':
+                                        env.DEPLOY_STATE_DIR = pair[1]
+                                        break
+                                    case 'DEPLOY_HEALTHCHECK_URL':
+                                        env.DEPLOY_HEALTHCHECK_URL = pair[1]
+                                        break
+                                    case 'COMPOSE_PROJECT_NAME':
+                                        env.COMPOSE_PROJECT_NAME = pair[1]
+                                        break
+                                    case 'DEPLOY_TARGET_LABEL':
+                                        env.DEPLOY_TARGET_LABEL = pair[1]
+                                        break
+                                    default:
+                                        error("알 수 없는 배포 대상 설정입니다: ${pair[0]}")
+                                }
                             }
                         }
                         echo "검증 대상 이미지 태그: ${env.IMAGE_TAG}"

@@ -13,6 +13,13 @@ grep -q 'def scmVars = checkout scm' "$JENKINSFILE" \
   || fail 'checkout result is not captured for branch detection'
 grep -q 'scmVars.GIT_BRANCH' "$JENKINSFILE" \
   || fail 'checkout-provided GIT_BRANCH is not used'
+if grep -Fq 'env[pair[0]]' "$JENKINSFILE"; then
+  fail 'dynamic env assignment is blocked by the Jenkins Groovy sandbox'
+fi
+for key in DEPLOY_ENV_FILE DEPLOY_STATE_DIR DEPLOY_HEALTHCHECK_URL COMPOSE_PROJECT_NAME DEPLOY_TARGET_LABEL; do
+  grep -q "env\.${key} = pair\[1\]" "$JENKINSFILE" \
+    || fail "explicit Jenkins env assignment is missing: ${key}"
+done
 
 grep -q "AI_IMAGE = 'ajt-ai'" "$JENKINSFILE" \
   || fail 'AI image name is not declared'
