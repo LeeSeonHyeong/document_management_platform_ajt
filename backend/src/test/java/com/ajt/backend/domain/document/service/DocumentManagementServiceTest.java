@@ -36,6 +36,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.document.storage.DocumentFileMutation;
+import com.ajt.backend.domain.document.storage.StagedOriginalFile;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
@@ -72,6 +73,8 @@ class DocumentManagementServiceTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
     private final DepartmentRepository departmentRepository = mock(DepartmentRepository.class);
+    private final AiJobFailureMarker aiJobFailureMarker = mock(AiJobFailureMarker.class);
+    private final DocumentFailureMarker documentFailureMarker = mock(DocumentFailureMarker.class);
     private final DocumentManagementService service = new DocumentManagementService(
             currentMemberProvider,
             documentRepository,
@@ -81,7 +84,9 @@ class DocumentManagementServiceTest {
             documentFileStorage,
             memberRepository,
             wikiScopeRepository,
-            departmentRepository
+            departmentRepository,
+            aiJobFailureMarker,
+            documentFailureMarker
     );
 
     @Test
@@ -137,6 +142,23 @@ class DocumentManagementServiceTest {
         assertThat(download.fileName()).isEqualTo("rule.md");
         assertThat(download.contentType()).isEqualTo("text/markdown");
         assertThat(download.resource()).isSameAs(resource);
+    }
+
+    @Test
+    @DisplayName("FAILED 상태 문서는 다운로드를 INVALID_DOCUMENT_STATUS로 거절한다(S15P11B106-146)")
+    void downloadFileRejectsFailedDocument() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.failReplace("파일 교체 확정(staging→최종 이동) 실패로 문서 처리에 실패했습니다."); // FAILED로 전환
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> service.downloadFile(15L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+        // 상태 확인이 파일 로드보다 앞서므로 저장소 접근 자체를 하지 않는다.
+        verify(documentFileStorage, never()).load(any());
     }
 
     @Test
@@ -213,9 +235,10 @@ class DocumentManagementServiceTest {
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
-        // 같은 확장자(.md)라 저장 경로는 그대로 → 이전 파일 삭제 불필요
-        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
-                .willReturn("wiki/ALL/sources/15/original.md");
+        // 같은 확장자(.md)라 최종 경로는 그대로 → 커밋 후 promote가 덮어쓰고 별도 원본 삭제는 불필요
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.md", "wiki/ALL/sources/15/original.md"));
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -230,9 +253,14 @@ class DocumentManagementServiceTest {
         assertThat(response.status()).isEqualTo("waiting");
         assertThat(document.originalFileName()).isEqualTo("updated.md");
         assertThat(document.status().name()).isEqualTo("UPLOADED");
-        verify(documentFileStorage).storeOriginal(any(), anyLong(), any());
+        verify(documentFileStorage).stageOriginal(any(), anyLong(), any());
+        // 트랜잭션 밖 단위테스트라 즉시 확정 경로: staging→최종 이동이 일어난다.
+        verify(documentFileStorage).promoteStagedOriginal(
+                "wiki/ALL/sources/15/.staging/new.md", "wiki/ALL/sources/15/original.md");
+        // 파싱 전 문서(parsedPath null)+같은 경로라 삭제할 기존 파일이 없다.
         verify(documentFileStorage, never()).delete(any());
-        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
+        // promote 성공 후 즉시 재처리가 실행된다(afterCommit 안에서 launchNow).
+        verify(parseJobLauncher).launchNow(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test
@@ -243,8 +271,9 @@ class DocumentManagementServiceTest {
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 취업규칙\n본문");
-        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
-                .willReturn("wiki/ALL/sources/15/original.md");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.md", "wiki/ALL/sources/15/original.md"));
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -255,14 +284,14 @@ class DocumentManagementServiceTest {
                 new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes()));
 
         ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
-        verify(parseJobLauncher).launch(any(AiJob.class), plans.capture());
+        verify(parseJobLauncher).launchNow(any(AiJob.class), plans.capture());
         assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REPLACED);
         assertThat(plans.getValue().removedParsedMarkdownOf(15L)).isEqualTo("# 옛 취업규칙\n본문");
 
-        // 원본을 덮어쓰기 전에 읽어야 한다 — 덮어쓴 뒤에는 옛 내용을 복원할 수 없다.
+        // 파일을 staging에 저장하기 전에 옛 파싱 본문을 읽어야 한다 — 커밋 후 parsed는 정리·재생성된다.
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(documentFileStorage);
         order.verify(documentFileStorage).readText("wiki/ALL/sources/15/parsed.md");
-        order.verify(documentFileStorage).storeOriginal(any(), anyLong(), any());
+        order.verify(documentFileStorage).stageOriginal(any(), anyLong(), any());
     }
 
     @Test
@@ -272,8 +301,9 @@ class DocumentManagementServiceTest {
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
-        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
-                .willReturn("wiki/ALL/sources/15/original.md");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.md", "wiki/ALL/sources/15/original.md"));
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -284,7 +314,7 @@ class DocumentManagementServiceTest {
                 new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes()));
 
         ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
-        verify(parseJobLauncher).launch(any(AiJob.class), plans.capture());
+        verify(parseJobLauncher).launchNow(any(AiJob.class), plans.capture());
         assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_ADDED);
         assertThat(plans.getValue().removedParsedMarkdownOf(15L)).isNull();
     }
@@ -296,8 +326,10 @@ class DocumentManagementServiceTest {
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
-        given(documentFileStorage.storeOriginal(any(), anyLong(), any()))
-                .willReturn("wiki/ALL/sources/15/original.pdf"); // 확장자 변경 → 새 경로
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf",
+                        "wiki/ALL/sources/15/original.pdf")); // 확장자 변경 → 최종 경로가 달라짐
         given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
             AiJob job = invocation.getArgument(0);
             assignId(job, 42L);
@@ -308,7 +340,288 @@ class DocumentManagementServiceTest {
                 new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
 
         assertThat(document.originalPath()).isEqualTo("wiki/ALL/sources/15/original.pdf");
+        // 커밋 후: staging→최종(.pdf) 확정 + 경로가 달라진 기존 원본(.md) 삭제
+        verify(documentFileStorage).promoteStagedOriginal(
+                "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf");
         verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+    }
+
+    @Test
+    @DisplayName("교체 중 재처리 작업 생성이 실패하면 기존 파일을 지우지 않고 임시 파일만 정리한다(S15P11B106-146)")
+    void replaceDoesNotTouchOldFilesWhenReprocessJobCreationFails() throws Exception {
+        Document document = parsedDocument(); // 기존 원본 original.md + 파싱 parsed.md
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.md", "wiki/ALL/sources/15/original.md"));
+        // 재처리 작업 저장(=DB 작업) 단계에서 예외 → 트랜잭션 롤백
+        given(aiJobRepository.save(any(AiJob.class))).willThrow(new IllegalStateException("작업 저장 실패"));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.md", "text/markdown", "# 새 내용".getBytes())))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("작업 저장 실패");
+            // 롤백 시뮬레이션
+            fireAfterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK);
+
+            // 확정(promote)·기존 파일 삭제는 일어나지 않고, 새로 저장한 임시 파일만 정리된다.
+            verify(documentFileStorage, never()).promoteStagedOriginal(anyString(), anyString());
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/original.md");
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/parsed.md");
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/.staging/new.md");
+            // 재처리도 시작되지 않는다.
+            verify(parseJobLauncher, never()).launchNow(any(AiJob.class), any(DocumentReprocessPlan.class));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("교체 확정(promote)이 커밋 후 실패하면 재처리를 시작하지 않고 작업을 FAILED로 남긴다(S15P11B106-146)")
+    void replacePromoteFailureMarksJobFailedAndSkipsReprocess() throws Exception {
+        Document document = parsedDocument(); // 기존 original.md + parsed.md
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+        // 커밋 후 파일 확정(staging→최종 이동)이 실패한다.
+        willThrow(new IOException("이동 실패")).given(documentFileStorage)
+                .promoteStagedOriginal(anyString(), anyString());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            DocumentFileReplaceResponse response = service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+            assertThat(response.jobId()).isEqualTo("42");
+
+            // 커밋 후 promote 실패 → 예외가 새어 나오지 않고, 재처리·기존 파일 삭제는 하지 않으며 작업을 FAILED로 남긴다.
+            assertThatCode(this::fireAfterCommit).doesNotThrowAnyException();
+            verify(parseJobLauncher, never()).launchNow(any(AiJob.class), any(DocumentReprocessPlan.class));
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/original.md");
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/parsed.md");
+            // 작업과 문서 모두 FAILED로 남긴다.
+            verify(aiJobFailureMarker).markFailedBeforeStart(eq(42L), anyString());
+            verify(documentFailureMarker).markFailed(eq(15L), anyString());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("promote 실패 시 AiJob 마킹이 예외를 던져도 Document 마킹은 시도된다(S15P11B106-146)")
+    void replacePromoteFailureStillMarksDocumentWhenJobMarkingFails() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+        willThrow(new IOException("이동 실패")).given(documentFileStorage)
+                .promoteStagedOriginal(anyString(), anyString());
+        // AiJob 마킹이 실패해도 Document 마킹은 시도되어야 한다.
+        willThrow(new RuntimeException("작업 마킹 실패")).given(aiJobFailureMarker)
+                .markFailedBeforeStart(anyLong(), anyString());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+
+            assertThatCode(this::fireAfterCommit).doesNotThrowAnyException();
+            verify(aiJobFailureMarker).markFailedBeforeStart(eq(42L), anyString());
+            verify(documentFailureMarker).markFailed(eq(15L), anyString()); // 여전히 시도됨
+            verify(parseJobLauncher, never()).launchNow(any(AiJob.class), any(DocumentReprocessPlan.class));
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/original.md");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("promote 실패 시 Document 마킹이 예외를 던져도 밖으로 새지 않고 재처리·삭제는 안 한다(S15P11B106-146)")
+    void replacePromoteFailureSwallowsDocumentMarkingException() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+        willThrow(new IOException("이동 실패")).given(documentFileStorage)
+                .promoteStagedOriginal(anyString(), anyString());
+        willThrow(new RuntimeException("문서 마킹 실패")).given(documentFailureMarker)
+                .markFailed(anyLong(), anyString());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+
+            // 문서 마킹 예외가 afterCommit 밖으로 새지 않는다.
+            assertThatCode(this::fireAfterCommit).doesNotThrowAnyException();
+            verify(parseJobLauncher, never()).launchNow(any(AiJob.class), any(DocumentReprocessPlan.class));
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/original.md");
+            verify(documentFileStorage, never()).delete("wiki/ALL/sources/15/parsed.md");
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("교체는 커밋 전에는 기존 파일을 지우거나 최종 경로를 덮어쓰지 않는다(S15P11B106-146)")
+    void replaceDoesNotFinalizeBeforeCommit() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+
+            // 커밋 전: 최종 경로 확정(promote)·기존 파일 삭제가 아직 일어나지 않는다.
+            verify(documentFileStorage, never()).promoteStagedOriginal(anyString(), anyString());
+            verify(documentFileStorage, never()).delete(anyString());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("교체가 커밋되면 새 파일을 확정하고 기존 원본·파싱 파일을 지운다(S15P11B106-146)")
+    void replaceFinalizesAndDeletesOldFilesAfterCommit() throws Exception {
+        Document document = parsedDocument(); // 기존 original.md + parsed.md
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        // 확장자 변경(.pdf) → 최종 경로가 달라져 기존 원본(.md)도 삭제 대상이 된다.
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            DocumentFileReplaceResponse response = service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+
+            verify(documentFileStorage, never()).promoteStagedOriginal(anyString(), anyString());
+            fireAfterCommit(); // 커밋 성공 시뮬레이션
+
+            verify(documentFileStorage).promoteStagedOriginal(
+                    "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf");
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/parsed.md");
+            assertThat(response.jobId()).isEqualTo("42");
+            verify(parseJobLauncher).launchNow(any(AiJob.class), any(DocumentReprocessPlan.class));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("파싱 파일이 없는 문서 교체는 원본만 처리하고 null 경로 삭제를 시도하지 않는다(S15P11B106-146)")
+    void replaceWithNullParsedPathHandlesOnlyOriginal() throws Exception {
+        Document document = uploadedDocument(); // parsedPath null(파싱 전)
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        // 확장자 변경 → 기존 원본(.md)만 삭제, 파싱 파일은 없으므로 삭제 시도 없음
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+            fireAfterCommit();
+
+            verify(documentFileStorage).promoteStagedOriginal(
+                    "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf");
+            // 기존 원본만 삭제, parsed 경로 삭제는 시도조차 하지 않는다(정확히 1회 = 원본만).
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+            verify(documentFileStorage, times(1)).delete(anyString());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("커밋 후 기존 파일 삭제가 IOException으로 실패해도 교체 결과를 뒤집지 않는다(S15P11B106-146)")
+    void replaceFileDeletionFailureDoesNotBreakCommittedReplace() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 옛 본문");
+        given(documentFileStorage.stageOriginal(any(), anyLong(), any()))
+                .willReturn(new StagedOriginalFile(
+                        "wiki/ALL/sources/15/.staging/new.pdf", "wiki/ALL/sources/15/original.pdf"));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+        willThrow(new IOException("파일 삭제 실패")).given(documentFileStorage).delete(anyString());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            DocumentFileReplaceResponse response = service.replaceFile(15L,
+                    new MockMultipartFile("file", "updated.pdf", "application/pdf", "%PDF-1.4".getBytes()));
+            assertThat(response.jobId()).isEqualTo("42");
+
+            // 커밋 후 기존 파일 삭제가 실패해도 예외가 새어 나가지 않는다(경고 로그만).
+            assertThatCode(this::fireAfterCommit).doesNotThrowAnyException();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -802,6 +1115,13 @@ class DocumentManagementServiceTest {
     private void fireAfterCommit() {
         for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
             synchronization.afterCommit();
+        }
+    }
+
+    /** 등록된 트랜잭션 동기화들의 afterCompletion(status)을 호출해 커밋/롤백 완료를 흉내 낸다. */
+    private void fireAfterCompletion(int status) {
+        for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+            synchronization.afterCompletion(status);
         }
     }
 

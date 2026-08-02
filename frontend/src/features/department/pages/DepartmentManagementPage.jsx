@@ -17,6 +17,7 @@ import {
   fetchDepartments,
   updateDepartment,
 } from '../api'
+import { isDefaultDepartment } from '../defaultDepartment'
 
 const AVATAR_TONES = [
   'bg-blue-100 text-blue-700',
@@ -292,26 +293,31 @@ export default function DepartmentManagementPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3 text-center">
-                        <span className="group relative inline-flex">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-rose-200 text-rose-600 hover:bg-rose-50"
-                            disabled={count > 0}
-                            onClick={() => setDeleteTarget(department)}
-                          >
-                            삭제
-                          </Button>
-                          {count > 0 && (
-                            <span
-                              role="tooltip"
-                              className="pointer-events-none absolute bottom-[calc(100%+8px)] right-0 z-20 hidden whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block"
+                        {isDefaultDepartment(department) ? (
+                          // 시스템 기본 부서('전체')는 삭제할 수 없어 삭제 버튼을 렌더링하지 않는다(S15P11B106-146).
+                          <span className="text-xs font-medium text-slate-400">기본 부서</span>
+                        ) : (
+                          <span className="group relative inline-flex">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-rose-200 text-rose-600 hover:bg-rose-50"
+                              disabled={count > 0}
+                              onClick={() => setDeleteTarget(department)}
                             >
-                              소속 인원 {count}명이 있어 삭제할 수 없습니다.
-                              <span className="absolute -bottom-1 right-5 size-2 rotate-45 bg-slate-900" />
-                            </span>
-                          )}
-                        </span>
+                              삭제
+                            </Button>
+                            {count > 0 && (
+                              <span
+                                role="tooltip"
+                                className="pointer-events-none absolute bottom-[calc(100%+8px)] right-0 z-20 hidden whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white shadow-lg group-hover:block"
+                              >
+                                소속 인원 {count}명이 있어 삭제할 수 없습니다.
+                                <span className="absolute -bottom-1 right-5 size-2 rotate-45 bg-slate-900" />
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )

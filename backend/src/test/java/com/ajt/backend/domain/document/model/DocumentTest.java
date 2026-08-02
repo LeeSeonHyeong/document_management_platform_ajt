@@ -61,6 +61,32 @@ class DocumentTest {
     }
 
     @Test
+    @DisplayName("파일 교체 확정 실패로 업로드 상태 문서를 실패 처리할 수 있다(S15P11B106-146)")
+    void failReplaceMarksUploadedDocumentFailed() {
+        Document document = Document.uploaded(
+                10L, 3L, "ALL", "규정.md",
+                "documents/ALL/1/original.md", "text/markdown", 100L);
+
+        document.failReplace("파일 교체 확정(staging→최종 이동) 실패로 문서 처리에 실패했습니다.");
+
+        assertThat(document.status()).isEqualTo(DocumentStatus.FAILED);
+        assertThat(document.failureReason())
+                .isEqualTo("파일 교체 확정(staging→최종 이동) 실패로 문서 처리에 실패했습니다.");
+    }
+
+    @Test
+    @DisplayName("처리 중(PARSING) 문서는 교체 실패로 표시할 수 없다(S15P11B106-146)")
+    void failReplaceRejectsInProgressDocument() {
+        Document document = Document.uploaded(
+                10L, 3L, "ALL", "규정.md",
+                "documents/ALL/1/original.md", "text/markdown", 100L);
+        document.startParsing();
+
+        assertThatThrownBy(() -> document.failReplace("실패"))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     @DisplayName("업로드 상태가 아니면 파싱을 시작할 수 없다")
     void rejectsParsingStartOutsideUploadedState() {
         Document document = Document.uploaded(

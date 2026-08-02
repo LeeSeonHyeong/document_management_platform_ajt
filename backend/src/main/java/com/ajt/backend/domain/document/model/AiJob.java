@@ -108,6 +108,19 @@ public class AiJob {
     }
 
     /**
+     * 아직 시작하지 못한 작업을 실패로 마감합니다(S15P11B106-146).
+     * 예: 파일 교체 확정(staging→최종 이동)이 커밋 후 실패해 재처리를 시작조차 못 한 경우.
+     */
+    public void failBeforeStart(String failureReason) {
+        if (status != AiJobStatus.WAITING) {
+            throw new IllegalStateException("WAITING 상태의 작업만 시작 전 실패 처리할 수 있습니다.");
+        }
+        this.status = AiJobStatus.FAILED;
+        this.failureReason = failureReason;
+        this.finishedAt = LocalDateTime.now();
+    }
+
+    /**
      * 아직 시작하지 않은 문서를 멈추라는 관리자 요청입니다. 이미 시작한 문서의 결과는
      * {@link #recordResult(DocumentParseResult)}로 계속 누적할 수 있습니다.
      */

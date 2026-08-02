@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.web.multipart.MultipartFile;
@@ -45,6 +46,31 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
             Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
         }
         return storedPath;
+    }
+
+    @Override
+    public StagedOriginalFile stageOriginal(String scopeKey, long documentId, MultipartFile file) throws IOException {
+        String extension = extensionOf(file.getOriginalFilename());
+        String finalPath = "wiki/" + scopeKey + "/sources/" + documentId + "/original." + extension;
+        // 최종 경로와 충돌하지 않도록 문서별 .staging 하위에 고유 이름으로 저장한다.
+        String stagingPath =
+                "wiki/" + scopeKey + "/sources/" + documentId + "/.staging/" + UUID.randomUUID() + "." + extension;
+        Path target = resolve(stagingPath);
+        Files.createDirectories(target.getParent());
+        try (InputStream inputStream = file.getInputStream()) {
+            Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+        return new StagedOriginalFile(stagingPath, finalPath);
+    }
+
+    @Override
+    public void promoteStagedOriginal(String stagingPath, String finalPath) throws IOException {
+        Path source = resolve(stagingPath);
+        Path target = resolve(finalPath);
+        Files.createDirectories(target.getParent());
+        // 최종 경로에 기존 파일이 있으면 덮어쓴다(같은 확장자 교체). ATOMIC_MOVE는 REPLACE_EXISTING과
+        // 함께 일부 플랫폼에서 지원되지 않으므로 일반 move를 쓴다(staging과 최종은 같은 저장 루트).
+        Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
     }
 
     @Override

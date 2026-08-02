@@ -463,7 +463,8 @@ public class MemberService {
                     predicates.add(criteriaBuilder.not(root.get("id").in(alreadyAssignedManagerIds)));
                 }
             }
-            addKeywordPredicate(keyword, root.get("name"), root.get("email"), criteriaBuilder, predicates);
+            // 직원 현황 검색: 이름·이메일 + 소속 부서명(department.name)까지 OR 검색한다(S15P11B106-146).
+            addKeywordPredicate(keyword, root, true, criteriaBuilder, predicates);
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
         };
     }
@@ -475,15 +476,16 @@ public class MemberService {
                     ? SignupStatus.PENDING
                     : parseSignupStatus(status);
             predicates.add(criteriaBuilder.equal(root.get("signupStatus"), targetStatus));
-            addKeywordPredicate(keyword, root.get("name"), root.get("email"), criteriaBuilder, predicates);
+            // 가입 신청 검색은 이번 범위가 아니므로 부서명 검색은 포함하지 않는다(이름·이메일만).
+            addKeywordPredicate(keyword, root, false, criteriaBuilder, predicates);
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
         };
     }
 
     private void addKeywordPredicate(
             String keyword,
-            jakarta.persistence.criteria.Path<String> namePath,
-            jakarta.persistence.criteria.Path<String> emailPath,
+            jakarta.persistence.criteria.Root<Member> root,
+            boolean includeDepartmentName,
             jakarta.persistence.criteria.CriteriaBuilder criteriaBuilder,
             List<Predicate> predicates
     ) {
@@ -491,10 +493,16 @@ public class MemberService {
             return;
         }
         String likeKeyword = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
-        predicates.add(criteriaBuilder.or(
-                criteriaBuilder.like(criteriaBuilder.lower(namePath), likeKeyword),
-                criteriaBuilder.like(criteriaBuilder.lower(emailPath), likeKeyword)
-        ));
+        List<Predicate> keywordConditions = new ArrayList<>();
+        keywordConditions.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("name")), likeKeyword));
+        keywordConditions.add(criteriaBuilder.like(criteriaBuilder.lower(root.get("email")), likeKeyword));
+        // 수정(S15P11B106-146): 직원 현황 검색은 소속 부서명(department.name)도 OR 조건으로 포함한다.
+        //   Member.department는 NOT NULL이라 inner join으로 안전하다(행 손실·중복 없음). keyword가 있을 때만 조인한다.
+        if (includeDepartmentName) {
+            keywordConditions.add(criteriaBuilder.like(
+                    criteriaBuilder.lower(root.join("department").get("name")), likeKeyword));
+        }
+        predicates.add(criteriaBuilder.or(keywordConditions.toArray(Predicate[]::new)));
     }
 
     private Department findDepartmentOrNull(String departmentId) {

@@ -34,6 +34,11 @@ public class AsyncDocumentParseJobLauncher implements DocumentParseJobLauncher {
         submit(job, plan);
     }
 
+    @Override
+    public void launchNow(AiJob job, DocumentReprocessPlan plan) {
+        submit(job, plan);
+    }
+
     private void submit(AiJob job, DocumentReprocessPlan plan) {
         documentParseExecutor.submit(() -> worker.parse(job, plan));
     }

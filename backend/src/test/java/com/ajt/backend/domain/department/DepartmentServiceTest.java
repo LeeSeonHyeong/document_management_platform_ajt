@@ -29,7 +29,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "ajt.local-data.enabled=false"
+        "ajt.local-data.enabled=false",
+        // 부서 개수를 직접 단언하고 '전체' 부서를 테스트에서 직접 만들므로 시작 시 자동 생성은 끈다(S15P11B106-146).
+        "ajt.default-department.enabled=false"
 })
 @Transactional
 class DepartmentServiceTest {
@@ -164,6 +166,68 @@ class DepartmentServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.DEPARTMENT_MANAGER_ALREADY_ASSIGNED);
+    }
+
+    @Test
+    @DisplayName("기본 부서('전체')는 최고관리자라도 삭제할 수 없다(S15P11B106-146)")
+    void deleteDefaultDepartmentRejected() {
+        Department base = departmentRepository.save(new Department("기본부"));
+        Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
+        Member admin = memberRepository.save(approvedAdmin(base, "admin@ajt.com", "AJT-2026-9001"));
+
+        assertThatThrownBy(() -> departmentService.deleteDepartment(authenticated(admin), defaultDept.getId()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEFAULT_DEPARTMENT_PROTECTED);
+        assertThat(departmentRepository.findById(defaultDept.getId())).isPresent();
+    }
+
+    @Test
+    @DisplayName("기본 부서('전체')는 이름을 변경할 수 없다(S15P11B106-146)")
+    void renameDefaultDepartmentRejected() {
+        Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
+        Member admin = memberRepository.save(approvedAdmin(defaultDept, "admin@ajt.com", "AJT-2026-9001"));
+        DepartmentUpdateRequest request = new DepartmentUpdateRequest();
+        request.setName("전사");
+
+        assertThatThrownBy(() -> departmentService.updateDepartment(
+                authenticated(admin), defaultDept.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEFAULT_DEPARTMENT_PROTECTED);
+        assertThat(departmentRepository.findById(defaultDept.getId()).orElseThrow().getName())
+                .isEqualTo(Department.DEFAULT_NAME);
+    }
+
+    @Test
+    @DisplayName("다른 부서를 '전체' 이름으로 변경하면 중복으로 거절한다(S15P11B106-146)")
+    void renameOtherDepartmentToDefaultNameRejected() {
+        departmentRepository.save(new Department(Department.DEFAULT_NAME));
+        Department other = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(other, "admin@ajt.com", "AJT-2026-9001"));
+        DepartmentUpdateRequest request = new DepartmentUpdateRequest();
+        request.setName(Department.DEFAULT_NAME);
+
+        assertThatThrownBy(() -> departmentService.updateDepartment(
+                authenticated(admin), other.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEPARTMENT_NAME_DUPLICATED);
+    }
+
+    @Test
+    @DisplayName("기본 부서('전체')도 관리자 지정 변경은 허용한다(이름만 보호, S15P11B106-146)")
+    void defaultDepartmentAllowsManagerChange() {
+        Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
+        Member admin = memberRepository.save(approvedAdmin(defaultDept, "admin@ajt.com", "AJT-2026-9001"));
+        DepartmentUpdateRequest request = new DepartmentUpdateRequest();
+        request.setManagerId(String.valueOf(admin.getId()));
+
+        DepartmentResponse response = departmentService.updateDepartment(
+                authenticated(admin), defaultDept.getId(), request);
+
+        assertThat(response.manager().userId()).isEqualTo(String.valueOf(admin.getId()));
+        assertThat(response.name()).isEqualTo(Department.DEFAULT_NAME);
     }
 
     @Test

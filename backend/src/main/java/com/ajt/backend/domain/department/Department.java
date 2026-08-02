@@ -22,6 +22,9 @@ import lombok.Getter;
 @Table(name = "department")
 public class Department {
 
+    /** 시스템 기본 부서명입니다(S15P11B106-146). 항상 존재하며 이름 변경·삭제가 금지됩니다. */
+    public static final String DEFAULT_NAME = "전체";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "department_id")
@@ -47,6 +50,11 @@ public class Department {
      */
     public void changeName(String name) {
         this.name = requireName(name);
+    }
+
+    /** 시스템 기본 부서('전체') 여부입니다. 기본 부서는 이름 변경·삭제가 금지됩니다(S15P11B106-146). */
+    public boolean isDefault() {
+        return DEFAULT_NAME.equals(name);
     }
 
     /**

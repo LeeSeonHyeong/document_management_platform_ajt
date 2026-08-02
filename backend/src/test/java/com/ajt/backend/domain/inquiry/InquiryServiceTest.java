@@ -40,6 +40,9 @@ import org.springframework.web.multipart.MultipartFile;
 @Transactional
 class InquiryServiceTest {
 
+    // 수정(S15P11B106-146): 최고관리자는 설정 이메일(ajt.super-admin.email 기본값)로 식별한다.
+    private static final String SUPER_ADMIN_EMAIL = "superadmin@ajt.com";
+
     private final InquiryService inquiryService;
     private final InquiryRepository inquiryRepository;
     private final InquiryReplyRepository inquiryReplyRepository;
@@ -322,6 +325,88 @@ class InquiryServiceTest {
         assertThat(download.mimeType()).isEqualTo("image/png");
         assertThat(download.fileName()).isEqualTo("photo.png");
         assertThat(download.resource().exists()).isTrue();
+    }
+
+    @Test
+    @DisplayName("문의 목록은 최고관리자에게 담당자가 아니어도 전체 문의를 보여준다(S15P11B106-146)")
+    void findInquiriesShowsAllForSuperAdmin() {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        Member otherAdmin = memberRepository.save(approvedAdmin(department, "admin2@ajt.com", "이관리"));
+        Member superAdmin = memberRepository.save(approvedAdmin(department, SUPER_ADMIN_EMAIL, "최고관리자"));
+        inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        inquiryService.create(login(author), request(otherAdmin.getId(), List.of()));
+
+        // 최고관리자는 어느 문의의 담당자도 아니지만 전체(2건)를 조회한다.
+        InquiryListResponse response = inquiryService.findInquiries(
+                login(superAdmin), null, null, null, null, null, null, null, null);
+
+        assertThat(response.totalCount()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("문의 상세는 최고관리자에게 작성자·담당자가 아니어도 조회를 허용한다(S15P11B106-146)")
+    void getInquiryAllowsSuperAdmin() {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        Member superAdmin = memberRepository.save(approvedAdmin(department, SUPER_ADMIN_EMAIL, "최고관리자"));
+        InquiryResponse created = inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        long inquiryId = Long.parseLong(created.inquiryId());
+
+        InquiryResponse detail = inquiryService.getInquiry(login(superAdmin), inquiryId);
+
+        assertThat(detail.inquiryId()).isEqualTo(String.valueOf(inquiryId));
+    }
+
+    @Test
+    @DisplayName("답변은 최고관리자가 담당자가 아니어도 작성할 수 있고 답변자로 최고관리자가 기록된다(S15P11B106-146)")
+    void upsertAnswerAllowsSuperAdmin() {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        Member superAdmin = memberRepository.save(approvedAdmin(department, SUPER_ADMIN_EMAIL, "최고관리자"));
+        InquiryResponse created = inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        long inquiryId = Long.parseLong(created.inquiryId());
+
+        InquiryAnswerResponse answer = inquiryService.upsertAnswer(
+                login(superAdmin), inquiryId, "최고관리자가 직접 답변합니다");
+
+        assertThat(answer.content()).isEqualTo("최고관리자가 직접 답변합니다");
+        // 담당자(김관리)가 아니라 실제 답변자(최고관리자)로 기록된다.
+        assertThat(answer.adminId()).isEqualTo(String.valueOf(superAdmin.getId()));
+        assertThat(answer.adminName()).isEqualTo("최고관리자");
+        assertThat(inquiryRepository.findById(inquiryId).orElseThrow().getStatus()).isEqualTo(InquiryStatus.DONE);
+    }
+
+    @Test
+    @DisplayName("사원은 문의에 답변할 수 없다(403)(S15P11B106-146)")
+    void upsertAnswerRejectsEmployee() {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        InquiryResponse created = inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        long inquiryId = Long.parseLong(created.inquiryId());
+
+        assertThatThrownBy(() -> inquiryService.upsertAnswer(login(author), inquiryId, "제가 답변합니다"))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INQUIRY_FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("담당자 후보 조회는 최고관리자를 제외한다(S15P11B106-146)")
+    void findAssigneesExcludesSuperAdmin() {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member admin = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        memberRepository.save(approvedAdmin(department, SUPER_ADMIN_EMAIL, "최고관리자"));
+
+        InquiryAssigneeListResponse response = inquiryService.findAssignees(login(admin), null);
+
+        assertThat(response.items()).extracting("name")
+                .contains("김관리")
+                .doesNotContain("최고관리자");
     }
 
     // 로그인 사용자 정보를 만드는 헬퍼입니다.
