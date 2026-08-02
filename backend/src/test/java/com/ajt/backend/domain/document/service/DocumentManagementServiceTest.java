@@ -1,12 +1,14 @@
 package com.ajt.backend.domain.document.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -39,10 +41,13 @@ import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import org.mockito.ArgumentCaptor;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -684,6 +689,120 @@ class DocumentManagementServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("삭제 중 걷어내기 작업 생성이 실패하면 파일 삭제를 예약하지 않는다(S15P11B106-146)")
+    void doesNotDeleteFilesWhenReprocessJobCreationFails() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업규칙\n본문");
+        // 걷어내기 작업 저장(=DB 작업) 단계에서 예외가 나면 트랜잭션이 롤백된다.
+        given(aiJobRepository.save(any(AiJob.class))).willThrow(new IllegalStateException("작업 저장 실패"));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.delete(15L))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("작업 저장 실패");
+            // 커밋 성공을 흉내 내도(실제론 롤백된다) 파일 삭제가 예약된 적이 없어 아무 파일도 지워지지 않아야 한다.
+            fireAfterCommit();
+            verify(documentFileStorage, never()).delete(anyString());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("삭제가 커밋된 뒤에야 originalPath와 parsedPath를 지운다(S15P11B106-146)")
+    void deletesFilesOnlyAfterCommit() throws Exception {
+        Document document = parsedDocument(); // originalPath + parsedPath 모두 존재
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업규칙\n본문");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            DocumentDeleteResponse response = service.delete(15L);
+            // 커밋 전에는 파일을 지우지 않는다(경로만 예약).
+            verify(documentFileStorage, never()).delete(anyString());
+
+            fireAfterCommit(); // 커밋 성공 시뮬레이션
+
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/parsed.md");
+            assertThat(response.deleted()).isTrue();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("parsedPath가 null인 문서는 커밋 후 originalPath만 지운다(S15P11B106-146)")
+    void deletesOnlyOriginalWhenParsedPathIsNull() throws Exception {
+        Document document = uploadedDocument(); // parsedPath 없음(파싱 전)
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.delete(15L);
+            fireAfterCommit();
+
+            verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+            // parsedPath가 null이면 delete는 originalPath 한 번만 호출된다.
+            verify(documentFileStorage, times(1)).delete(anyString());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    @Test
+    @DisplayName("커밋 후 파일 삭제가 IOException으로 실패해도 삭제 API 결과를 뒤집지 않는다(S15P11B106-146)")
+    void fileDeletionFailureDoesNotBreakCommittedDelete() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업규칙\n본문");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+        willThrow(new IOException("파일 삭제 실패")).given(documentFileStorage).delete(anyString());
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            // 커밋 결과(응답)는 이미 정상 생성된다.
+            DocumentDeleteResponse response = service.delete(15L);
+            assertThat(response.deleted()).isTrue();
+
+            // 커밋 이후 파일 삭제가 IOException으로 실패해도 예외가 새어 나가지 않는다(경고 로그만).
+            assertThatCode(this::fireAfterCommit).doesNotThrowAnyException();
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    /** 등록된 트랜잭션 동기화들의 afterCommit()을 호출해 커밋 성공을 흉내 낸다. */
+    private void fireAfterCommit() {
+        for (TransactionSynchronization synchronization : TransactionSynchronizationManager.getSynchronizations()) {
+            synchronization.afterCommit();
+        }
     }
 
     @Test

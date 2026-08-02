@@ -31,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
 })
 @Transactional
 class MemberServiceTest {
+    // 수정(S15P11B106-146): 최고관리자는 설정 이메일(ajt.super-admin.email, 기본값)로 고정 식별한다.
+    private static final String SUPER_ADMIN_EMAIL = "superadmin@ajt.com";
+
     private final MemberService memberService;
     private final DepartmentRepository departmentRepository;
     private final MemberRepository memberRepository;
@@ -71,22 +74,24 @@ class MemberServiceTest {
     }
 
     @Test
-    @DisplayName("내 정보 조회 응답의 isSuperAdmin은 부서장이 아닌 관리자면 true다")
-    void findMeReturnsSuperAdminTrueForNonManagerAdmin() {
-        Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+    @DisplayName("내 정보 조회 응답의 isSuperAdmin은 설정된 최고관리자 이메일 계정이면 true다(S15P11B106-146)")
+    void findMeReturnsSuperAdminTrueForConfiguredEmail() {
+        Department department = departmentRepository.save(new Department("최고관리자"));
+        Member admin = memberRepository.save(superAdmin(department));
 
         UserResponse response =
                 memberService.findMe(new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN));
 
         assertThat(response.role()).isEqualTo("admin");
+        // 소속 부서가 있어도 설정 이메일이면 최고관리자다.
         assertThat(response.isSuperAdmin()).isTrue();
     }
 
     @Test
-    @DisplayName("내 정보 조회 응답의 isSuperAdmin은 부서장으로 지정된 관리자면 false다")
-    void findMeReturnsSuperAdminFalseForDepartmentManager() {
+    @DisplayName("내 정보 조회 응답의 isSuperAdmin은 설정 이메일이 아닌 일반 관리자면 false다(S15P11B106-146)")
+    void findMeReturnsSuperAdminFalseForOrdinaryAdmin() {
         Department department = departmentRepository.save(new Department("개발부"));
+        // approvedAdmin은 admin@ajt.com(설정 이메일 아님) → 부서장 지정 여부와 무관하게 최고관리자가 아니다.
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
@@ -95,6 +100,21 @@ class MemberServiceTest {
                 memberService.findMe(new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN));
 
         assertThat(response.isSuperAdmin()).isFalse();
+    }
+
+    @Test
+    @DisplayName("최고관리자는 어느 부서의 manager로 지정돼도 isSuperAdmin=true를 유지한다(S15P11B106-146)")
+    void superAdminStaysSuperAdminEvenWhenAssignedAsManager() {
+        Department department = departmentRepository.save(new Department("최고관리자"));
+        Member admin = memberRepository.save(superAdmin(department));
+        // API에서는 차단되지만, 데이터가 어떤 경로로 manager로 지정되더라도 최고관리자 자격은 이메일로 유지돼야 한다.
+        department.assignManager(admin);
+        departmentRepository.save(department);
+
+        UserResponse response =
+                memberService.findMe(new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN));
+
+        assertThat(response.isSuperAdmin()).isTrue();
     }
 
     @Test
@@ -137,7 +157,8 @@ class MemberServiceTest {
     void updateUserChangesOnlyRequestedFields() {
         Department beforeDepartment = departmentRepository.save(new Department("개발부"));
         Department afterDepartment = departmentRepository.save(new Department("인사부"));
-        Member admin = memberRepository.save(approvedAdmin(beforeDepartment));
+        // role·accountStatus를 바꾸므로 액터는 최고관리자(설정 이메일)여야 한다(S15P11B106-146).
+        Member admin = memberRepository.save(superAdmin(beforeDepartment));
         Member employee = memberRepository.save(approvedEmployee(beforeDepartment, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
 
         UserResponse response = memberService.updateUser(
@@ -177,7 +198,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         // role만 전달(부분 수정): 사원으로 강등
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
@@ -195,7 +216,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         // accountStatus만 전달(부분 수정): 비활성화. 역할은 여전히 admin이지만 활성 자격을 잃음
         UserUpdateRequest request = new UserUpdateRequest();
         request.setAccountStatus("inactive");
@@ -213,7 +234,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setName("새이름");
 
@@ -236,7 +257,7 @@ class MemberServiceTest {
         Member manager = memberRepository.save(approvedAdmin(department));
         department.assignManager(manager);
         departmentRepository.save(department);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setDepartmentId(String.valueOf(otherDepartment.getId()));
 
@@ -253,7 +274,7 @@ class MemberServiceTest {
     void updateUserAllowsDemotingNonManagerAdmin() {
         Department department = departmentRepository.save(new Department("기획부"));
         Member admin = memberRepository.save(approvedAdmin(department));
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
 
@@ -287,7 +308,7 @@ class MemberServiceTest {
         Member author = memberRepository.save(
                 approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
         savePendingInquiry(author, admin);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
 
@@ -305,7 +326,7 @@ class MemberServiceTest {
         Member author = memberRepository.save(
                 approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
         savePendingInquiry(author, admin);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setAccountStatus("inactive");
 
@@ -325,7 +346,7 @@ class MemberServiceTest {
         Inquiry inquiry = savePendingInquiry(author, admin);
         inquiry.markAnswered();
         inquiryRepository.save(inquiry);
-        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, "actor@ajt.com", Role.ADMIN);
+        AuthenticatedMember actor = new AuthenticatedMember(Long.MAX_VALUE, SUPER_ADMIN_EMAIL, Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
         request.setRole("employee");
 
@@ -338,7 +359,8 @@ class MemberServiceTest {
     @DisplayName("가입 신청 승인은 사번을 발급하고 approved active 상태로 바꾼다")
     void approveSignupRequestActivatesMember() {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 가입 승인은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다.
+        Member admin = memberRepository.save(superAdmin(department));
         Member pending = memberRepository.save(Member.signup(
                 department,
                 "pending@ajt.com",
@@ -362,7 +384,8 @@ class MemberServiceTest {
     @DisplayName("가입 신청 목록은 승인 완료 항목에 발급된 사번을 담고, 대기 항목은 사번이 null이다")
     void signupRequestListIncludesEmployeeNo() {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 가입 신청 목록 조회는 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다.
+        Member admin = memberRepository.save(superAdmin(department));
         AuthenticatedMember actor = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
         Member pending = memberRepository.save(Member.signup(
                 department, "pending@ajt.com", "신청자", passwordEncoder.encode("password123!")));
@@ -385,7 +408,8 @@ class MemberServiceTest {
     @DisplayName("가입 신청 거절은 rejected inactive 상태로 바꾼다")
     void rejectSignupRequestInactivatesMember() {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 가입 거절은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다.
+        Member admin = memberRepository.save(superAdmin(department));
         Member pending = memberRepository.save(Member.signup(
                 department,
                 "pending@ajt.com",
@@ -634,7 +658,7 @@ class MemberServiceTest {
     @DisplayName("최고관리자는 사원의 role·accountStatus를 변경할 수 있다(S15P11B106-86)")
     void superAdminCanChangeEmployeeRoleAndStatus() {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member superAdmin = memberRepository.save(approvedAdmin(department)); // 부서장 미지정 → 최고관리자
+        Member superAdmin = memberRepository.save(superAdmin(department)); // 설정 이메일 → 최고관리자
         Member employee = memberRepository.save(
                 approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
         AuthenticatedMember superActor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
@@ -693,7 +717,7 @@ class MemberServiceTest {
         department.assignManager(manager);
         departmentRepository.save(department);
         Member superAdmin = memberRepository.save(Member.approved(
-                department, "super@ajt.com", "최고관리자",
+                department, SUPER_ADMIN_EMAIL, "최고관리자",
                 passwordEncoder.encode("password123!"), "AJT-2026-7777", Role.ADMIN));
         AuthenticatedMember superActor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
         UserUpdateRequest request = new UserUpdateRequest();
@@ -725,6 +749,39 @@ class MemberServiceTest {
     }
 
     @Test
+    @DisplayName("managerAssignable=true 후보 목록은 최고관리자를 제외하고 일반 관리자는 포함한다(S15P11B106-146)")
+    void managerAssignableExcludesSuperAdmin() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member superAdmin = memberRepository.save(superAdmin(department));
+        memberRepository.save(approvedAdmin(department)); // admin@ajt.com, 부서장 미지정 → 후보에 포함돼야 함
+        AuthenticatedMember actor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
+
+        UserListResponse response =
+                memberService.findUsers(actor, 1, 100, null, null, null, true, null, null);
+
+        assertThat(response.items()).extracting("email")
+                .contains("admin@ajt.com")
+                .doesNotContain(SUPER_ADMIN_EMAIL);
+    }
+
+    @Test
+    @DisplayName("managerAssignable=true 후보 목록은 이미 다른 부서의 부서장인 관리자를 제외한다(S15P11B106-146)")
+    void managerAssignableExcludesAlreadyAssignedManager() {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member assignedManager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(assignedManager);
+        departmentRepository.save(department);
+        Member superAdmin = memberRepository.save(superAdmin(department));
+        AuthenticatedMember actor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
+
+        UserListResponse response =
+                memberService.findUsers(actor, 1, 100, null, null, null, true, null, null);
+
+        // 이미 부서장으로 지정된 admin@ajt.com은 후보에서 빠진다.
+        assertThat(response.items()).extracting("email").doesNotContain("admin@ajt.com");
+    }
+
+    @Test
     @DisplayName("일반 사원은 사용자 관리 API를 사용할 수 없다(403)")
     void employeeCannotAccessUserManagement() {
         AuthenticatedMember employee = new AuthenticatedMember(1L, "employee@ajt.com", Role.EMPLOYEE);
@@ -742,6 +799,18 @@ class MemberServiceTest {
         department.assignManager(manager);
         departmentRepository.save(department);
         return new AuthenticatedMember(manager.getId(), manager.getEmail(), Role.ADMIN);
+    }
+
+    // 수정(S15P11B106-146): 설정 이메일과 일치하는 최고관리자 계정. 부서 소속이 있어도 최고관리자다.
+    private Member superAdmin(Department department) {
+        return Member.approved(
+                department,
+                SUPER_ADMIN_EMAIL,
+                "최고관리자",
+                passwordEncoder.encode("password123!"),
+                "AJT-2026-9000",
+                Role.ADMIN
+        );
     }
 
     private Member approvedAdmin(Department department) {

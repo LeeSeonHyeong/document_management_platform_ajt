@@ -26,6 +26,16 @@ export const passwordResetRequestSchema = z.object({
   email: emailSchema,
 })
 
+// 이메일로 받은 6자리 인증번호. 숫자만 허용한다.
+export const codeSchema = z
+  .string()
+  .min(1, '인증번호를 입력해 주세요.')
+  .regex(/^\d{6}$/, '인증번호는 6자리 숫자입니다.')
+
+export const passwordResetVerifySchema = z.object({
+  code: codeSchema,
+})
+
 export const passwordResetConfirmSchema = z
   .object({
     newPassword: passwordSchema,

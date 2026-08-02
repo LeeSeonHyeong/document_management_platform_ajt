@@ -360,7 +360,10 @@ const collectionVariable = (collection, key) =>
 // 1.10.0 은 위키 관리자 수정에도 같은 것을 한 것이다 — wiki-edits 요청에서 currentWiki·
 // evidenceDocuments 제거, wikiCapability·scopeVersion 을 선택에서 필수로. 호환되지 않는
 // 변경이라 minor 다 (S15P11B106-176).
-const expectedContractVersion = "1.10.0";
+// 1.10.1 은 GET /schedules 목록 조회에서 관리자 status=draft 조회 시 startDate/endDate 를
+// 생략할 수 있게 명세를 완화한 것이다 — 기존 요청은 그대로 동작하는 하위 호환 변경이라 patch 다
+// (S15P11B106-146).
+const expectedContractVersion = "1.10.1";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

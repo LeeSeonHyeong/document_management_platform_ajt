@@ -1356,23 +1356,26 @@ const publicFolders = [
       ],
       description: docs({
         summary: "기간과 공개 범위에 맞는 일정 목록을 조회합니다.",
-        usage: "달력과 관리자 일정 검수 화면에서 사용합니다.",
+        usage:
+          "달력과 관리자 일정 검수 화면에서 사용합니다. 예: `GET /api/v1/schedules?status=draft`는 관리자 승인 대기 초안 전체를 조회합니다.",
         queryParams: [
-          "`startDate`, `endDate`: 조회 기간, 최대 1년",
+          "`startDate`, `endDate`: 조회 기간, 최대 1년. 단, 관리자 `status=draft` 조회에서는 생략할 수 있으며 생략 시 전체 draft 목록을 반환합니다.",
           "`status`: 관리자의 `draft` 또는 `approved` 필터",
           "`visibilityType`: `all`, `department`, `personal`",
           "`departmentId`: 부서 일정 필터",
         ],
         policy: [
           "사원에게는 승인된 전체·소속 부서 일정과 본인 개인 일정만 반환합니다.",
-          "관리자는 draft 일정도 조회할 수 있습니다.",
+          "관리자는 `status=draft`로 승인 대기 초안 일정을 조회할 수 있습니다.",
+          "`status=draft` 조회는 검수 대기 목록 성격이므로 `startDate`/`endDate`를 생략할 수 있습니다. 기간이 주어지면 해당 기간 내 draft만, 기간이 없으면 전체 draft를 반환합니다.",
+          "사원에게 draft 일정은 노출되지 않습니다.",
         ],
         response: [
           "`items`: 일정 ID, 제목, 기간, 공개 범위, 상태와 위치",
           "`items[].updatedAt`: 낙관적 동시성 토큰. 목록에서 바로 수정할 때 이 값을 수정 요청의 `expectedUpdatedAt`으로 보냅니다.",
         ],
         errors: [
-          "`400 Bad Request`: 날짜 범위 또는 필터값 오류",
+          "`400 Bad Request`: 날짜 범위 또는 필터값 오류. status가 없거나 `approved`인 일반 조회에서 `startDate`/`endDate`가 없으면 400입니다. 단, 관리자 `status=draft` 조회에서 기간 생략은 400이 아닙니다.",
           "`401 Unauthorized`: accessToken이 유효하지 않음",
         ],
       }),

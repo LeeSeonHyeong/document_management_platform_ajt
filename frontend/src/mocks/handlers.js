@@ -131,6 +131,10 @@ export const handlers = [
     }),
   ),
 
+  http.post('/api/v1/auth/password-reset-verify', () =>
+    HttpResponse.json({ message: '인증번호가 확인되었습니다.' }),
+  ),
+
   http.post('/api/v1/auth/password-resets', () => new HttpResponse(null, { status: 204 })),
 
   ...documentHandlers,

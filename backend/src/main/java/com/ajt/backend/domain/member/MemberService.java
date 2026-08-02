@@ -100,10 +100,13 @@ public class MemberService {
         //   승인 사용자를 조회할 수 있다(부서 스코프 제한은 후속 과제).
         requireAdmin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
-        Specification<Member> specification = userSpecification(status, signupStatus, role, managerAssignable, keyword);
         // 수정: 부서장 여부를 역할(ADMIN)이 아니라 department.manager_id 지정으로 판단하도록 변경(FR-USR-006).
         //       회원마다 개별 조회하면 N+1이 되므로, 부서장으로 지정된 회원 ID를 한 번에 모아 집합으로 비교한다.
+        //       수정(S15P11B106-146): managerAssignable 후보에서 최고관리자·이미 지정된 부서장을 제외하는 데도 재사용한다.
         Set<Long> managerMemberIds = new HashSet<>(departmentRepository.findManagerMemberIds());
+        Specification<Member> specification = userSpecification(
+                status, signupStatus, role, managerAssignable, keyword,
+                superAdminChecker.superAdminEmail(), managerMemberIds);
         Page<UserSummaryResponse> result = memberRepository.findAll(specification, pageable)
                 // 수정: from(member) → from(member, 부서장여부)로 인자 추가.
                 .map(member -> UserSummaryResponse.from(member, managerMemberIds.contains(member.getId())));
@@ -308,7 +311,7 @@ public class MemberService {
     //   (사용자 목록/상세/수정은 -104에서 requireAdmin으로 완화됐고, 이 게이트는 가입 신청 API에만 남는다.)
     private void requireSuperAdmin(AuthenticatedMember loginMember) {
         requireAdmin(loginMember);
-        if (!superAdminChecker.isSuperAdmin(loginMember.memberId(), loginMember.isAdmin())) {
+        if (!superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin())) {
             throw new BusinessException(
                     ErrorCode.ADMIN_PERMISSION_REQUIRED,
                     "가입 신청 관리는 최고관리자만 사용할 수 있습니다."
@@ -322,7 +325,7 @@ public class MemberService {
     //   제한을 받지 않는다(부서관리자 강등/비활성화 가능).
     private void rejectNonSuperAdminModifyingAnotherAdmin(AuthenticatedMember loginMember, Member target) {
         boolean actorIsSuperAdmin =
-                superAdminChecker.isSuperAdmin(loginMember.memberId(), loginMember.isAdmin());
+                superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin());
         boolean targetIsSelf = target.getId().equals(loginMember.memberId());
         if (!actorIsSuperAdmin && !targetIsSelf && target.getRole() == Role.ADMIN) {
             throw new BusinessException(ErrorCode.DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN);
@@ -336,7 +339,7 @@ public class MemberService {
     private void rejectNonSuperAdminChangingRoleOrStatus(
             AuthenticatedMember loginMember, Member target, Role newRole, AccountStatus newAccountStatus) {
         boolean actorIsSuperAdmin =
-                superAdminChecker.isSuperAdmin(loginMember.memberId(), loginMember.isAdmin());
+                superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin());
         if (actorIsSuperAdmin) {
             return;
         }
@@ -430,7 +433,9 @@ public class MemberService {
             String signupStatus,
             String role,
             Boolean managerAssignable,
-            String keyword
+            String keyword,
+            String superAdminEmail,
+            Set<Long> alreadyAssignedManagerIds
     ) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -447,6 +452,16 @@ public class MemberService {
                 predicates.add(criteriaBuilder.equal(root.get("role"), Role.ADMIN));
                 predicates.add(criteriaBuilder.equal(root.get("signupStatus"), SignupStatus.APPROVED));
                 predicates.add(criteriaBuilder.equal(root.get("accountStatus"), AccountStatus.ACTIVE));
+                // 수정(S15P11B106-146): 최고관리자(설정 이메일)는 부서 관리자 후보에서 제외한다.
+                if (superAdminEmail != null && !superAdminEmail.isBlank()) {
+                    predicates.add(criteriaBuilder.notEqual(
+                            criteriaBuilder.lower(root.get("email")),
+                            superAdminEmail.toLowerCase(Locale.ROOT)));
+                }
+                // 이미 다른 부서의 부서장으로 지정된 관리자도 후보에서 제외한다(중복 지정 방지).
+                if (alreadyAssignedManagerIds != null && !alreadyAssignedManagerIds.isEmpty()) {
+                    predicates.add(criteriaBuilder.not(root.get("id").in(alreadyAssignedManagerIds)));
+                }
             }
             addKeywordPredicate(keyword, root.get("name"), root.get("email"), criteriaBuilder, predicates);
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));

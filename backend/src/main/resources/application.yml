@@ -24,6 +24,10 @@ ajt:
     password-reset-secret: ${AJT_PASSWORD_RESET_SECRET:local-dev-password-reset-secret}
     password-reset-expiration: ${AJT_PASSWORD_RESET_EXPIRATION:30m}
     cookie-secure: ${AJT_AUTH_COOKIE_SECURE:true}
+  super-admin:
+    # 최고관리자 식별 이메일(S15P11B106-146). 이 이메일 계정이 role=ADMIN·APPROVED·ACTIVE이면 최고관리자로 본다.
+    # 부서장 지정 여부와 무관하게 고정 식별하므로, 최고관리자가 부서 manager로 지정돼도 자격을 잃지 않는다.
+    email: ${SUPER_ADMIN_EMAIL:superadmin@ajt.com}
   mail:
     from: ${MAIL_FROM:noreply@ajt.local}
   ai:

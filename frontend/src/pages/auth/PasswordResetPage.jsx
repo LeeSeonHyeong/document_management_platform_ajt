@@ -1,17 +1,18 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { CheckCircle2, AlertTriangle } from 'lucide-react'
 import { confirmPasswordReset } from '@/api/auth'
 import { passwordResetConfirmSchema } from '@/shared/validation/auth'
 import { applyFieldErrors } from '@/shared/lib/fieldErrors'
 import { Button, Input } from '@/components/ui'
 
-// S0 새 비밀번호 설정. 이메일 링크의 token 쿼리로 진입한다.
+// S0 새 비밀번호 설정. 인증번호 확인 화면(/password/find)에서 넘겨준
+// email/code(라우터 state)로 진입한다. 링크 토큰 방식은 사용하지 않는다.
 export default function PasswordResetPage() {
-  const [searchParams] = useSearchParams()
-  const token = searchParams.get('token')
+  const location = useLocation()
+  const { email, code } = location.state ?? {}
   const navigate = useNavigate()
   const [done, setDone] = useState(false)
 
@@ -27,26 +28,26 @@ export default function PasswordResetPage() {
 
   const onSubmit = async (values) => {
     try {
-      await confirmPasswordReset({ token, newPassword: values.newPassword })
+      await confirmPasswordReset({ email, code, newPassword: values.newPassword })
       setDone(true)
     } catch (err) {
       applyFieldErrors(err, setError, { fallbackField: 'root' })
     }
   }
 
-  // 토큰 없이 직접 진입한 경우.
-  if (!token) {
+  // 인증번호 확인 없이 직접 진입한 경우(새로고침 등으로 state 유실 포함).
+  if (!email || !code) {
     return (
       <div className="text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-amber-50">
           <AlertTriangle className="size-8 text-amber-500" />
         </div>
-        <h1 className="text-xl font-bold text-slate-800">유효하지 않은 링크예요</h1>
+        <h1 className="text-xl font-bold text-slate-800">인증이 필요해요</h1>
         <p className="mt-2 text-sm text-slate-500">
-          재설정 링크가 만료되었거나 올바르지 않습니다. 다시 요청해 주세요.
+          인증번호 확인을 먼저 진행해 주세요. 처음부터 다시 요청할 수 있습니다.
         </p>
         <Button className="mt-6" fullWidth onClick={() => navigate('/password/find')}>
-          재설정 다시 요청
+          비밀번호 찾기로 이동
         </Button>
       </div>
     )

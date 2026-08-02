@@ -86,6 +86,9 @@ public class LocalDataInitializer {
             Department planning = findOrCreateDepartment(departmentRepository, "기획부");
             Department design = findOrCreateDepartment(departmentRepository, "디자인부");
             Department hr = findOrCreateDepartment(departmentRepository, "인사부");
+            // 최고관리자 전용 부서(S15P11B106-146). 최고관리자 계정의 소속 부서명을 "최고관리자"로 두어 화면에서
+            // 역할이 이름과 모순되지 않게 한다. 이 부서에는 어떤 계정도 manager로 지정하지 않는다.
+            Department superAdminDept = findOrCreateDepartment(departmentRepository, "최고관리자");
 
             // 2) 승인된 회원 (부서별 관리자 1 + 사원 1). admin@ajt.com / employee@ajt.com은 기존 계정 유지.
             Member devAdmin = createAdmin(memberRepository, passwordEncoder, dev, "admin@ajt.com", "관리자", "AJT-2026-0002");
@@ -97,10 +100,10 @@ public class LocalDataInitializer {
             Member hrAdmin = createAdmin(memberRepository, passwordEncoder, hr, "hr.admin@ajt.com", "정인사", "AJT-2026-0007");
             createEmployee(memberRepository, passwordEncoder, hr, "hr.emp@ajt.com", "강인사", "AJT-2026-0008");
 
-            // 최고관리자(super-admin): role=ADMIN 이지만 어떤 부서의 manager로도 지정하지 않는다.
-            // SuperAdminChecker는 "ADMIN + 어느 부서 manager도 아님"을 최고관리자로 판정하므로,
-            // 아래 계정을 assignManager(...)에 절대 넣지 말 것. (넣으면 부서관리자로 강등되어 최고관리자가 다시 0명이 된다)
-            createAdmin(memberRepository, passwordEncoder, dev, "superadmin@ajt.com", "최고관리자", "AJT-2026-9999");
+            // 최고관리자(super-admin): 설정값 ajt.super-admin.email(기본 superadmin@ajt.com)로 고정 식별한다(S15P11B106-146).
+            // 이메일 기준이므로 어느 부서의 manager로 지정돼도 최고관리자 자격을 잃지 않는다(부서 지정 자체는 API에서 차단됨).
+            // 소속 부서는 "최고관리자" 부서로 두어 이름·역할이 화면에서 모순되지 않게 한다. (manager로는 지정하지 않는다.)
+            createAdmin(memberRepository, passwordEncoder, superAdminDept, "superadmin@ajt.com", "최고관리자", "AJT-2026-9999");
 
             // 3) 부서장 지정 (각 부서 admin을 자기 부서의 관리자로 — 부서장 표시 테스트용)
             assignManager(departmentRepository, dev, devAdmin);
