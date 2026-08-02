@@ -11,10 +11,7 @@ pipeline {
     environment {
         BACKEND_IMAGE = 'ajt-backend'
         FRONTEND_IMAGE = 'ajt-frontend'
-        DEPLOY_ENV_FILE = '/var/lib/jenkins/ajt-secrets/prod.env'
-        DEPLOY_STATE_DIR = '/var/lib/jenkins/ajt-deploy'
-        DEPLOY_HEALTHCHECK_URL = 'https://127.0.0.1/api/v1/health'
-        COMPOSE_PROJECT_NAME = 'ajt-prod'
+        DEPLOY_LOCK_FILE = '/var/lib/jenkins/ajt-deploy/deploy.lock'
     }
 
     stages {
@@ -34,19 +31,28 @@ pipeline {
                                 script: 'git rev-parse --short=12 HEAD',
                                 returnStdout: true
                             ).trim()
-                            env.IS_MASTER = sh(
+                            env.DEPLOY_BRANCH = sh(
                                 script: '''
-                                    branch="${BRANCH_NAME:-${GIT_BRANCH#origin/}}"
-                                    if [ "$branch" = "master" ]; then
-                                        printf true
-                                    else
-                                        printf false
-                                    fi
+                                    branch="${BRANCH_NAME:-${GIT_BRANCH:-}}"
+                                    printf '%s' "$branch"
                                 ''',
                                 returnStdout: true
                             ).trim()
+
+                            def targetOutput = withEnv(["RESOLVED_BRANCH=${env.DEPLOY_BRANCH}"]) {
+                                sh(
+                                    script: 'bash scripts/resolve-deploy-target.sh "$RESOLVED_BRANCH"',
+                                    returnStdout: true
+                                ).trim()
+                            }
+
+                            targetOutput.readLines().each { line ->
+                                def pair = line.split('=', 2)
+                                env[pair[0]] = pair[1]
+                            }
                         }
                         echo "검증 대상 이미지 태그: ${env.IMAGE_TAG}"
+                        echo "배포 대상: ${env.DEPLOY_TARGET_LABEL} (${env.COMPOSE_PROJECT_NAME})"
                     }
                 }
 
@@ -86,40 +92,26 @@ pipeline {
             }
         }
 
-        stage('Production Approval') {
+        stage('Deployment Approval') {
             agent none
-
-            when {
-                beforeInput true
-                expression {
-                    env.IS_MASTER == 'true'
-                }
-            }
 
             options {
                 timeout(time: 24, unit: 'HOURS')
             }
 
             input {
-                message "${env.IMAGE_TAG} 이미지를 운영 443 포트에 배포하시겠습니까?"
-                ok '운영 배포 승인'
+                message "${env.IMAGE_TAG} 이미지를 ${env.DEPLOY_TARGET_LABEL} 환경에 배포하시겠습니까?"
+                ok '배포 승인'
                 submitterParameter 'APPROVED_BY'
             }
 
             steps {
-                echo "운영 배포 승인자: ${env.APPROVED_BY}"
+                echo "배포 승인자: ${env.APPROVED_BY}"
             }
         }
 
-        stage('Production Deploy') {
+        stage('Deploy') {
             agent any
-
-            when {
-                beforeAgent true
-                expression {
-                    env.IS_MASTER == 'true'
-                }
-            }
 
             options {
                 timeout(time: 10, unit: 'MINUTES')
@@ -141,6 +133,7 @@ pipeline {
                     DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE}" \
                     DEPLOY_STATE_DIR="${DEPLOY_STATE_DIR}" \
                     DEPLOY_HEALTHCHECK_URL="${DEPLOY_HEALTHCHECK_URL}" \
+                    DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE}" \
                     COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME}" \
                     BACKEND_IMAGE="${BACKEND_IMAGE}" \
                     FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
