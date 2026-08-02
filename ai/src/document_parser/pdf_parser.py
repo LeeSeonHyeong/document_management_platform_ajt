@@ -5,8 +5,26 @@ from pathlib import Path
 import pymupdf
 
 from .errors import DocumentParseFailure
-from .models import PageResult, ParseError, ParseResult
+from .models import OcrEngine, PageResult, ParseError, ParseResult
 from .ocr import ocr_page
+
+# 원격 비전 OCR 에 넘길 페이지 렌더 해상도. 가독성엔 충분하고, 더 키우면 이미지 토큰·비용과
+# GMS 요청 크기만 늘어난다.
+_OCR_RENDER_DPI = 200
+
+
+def _run_ocr(page: pymupdf.Page, language: str,
+             ocr_engine: OcrEngine | None) -> str:
+    """OCR 이 필요한 페이지의 텍스트를 얻는다. 엔진이 주어지면 원격 비전으로, 아니면
+    로컬 Tesseract 로. 실패는 양쪽 다 `DocumentParseFailure` 로 올라온다."""
+    if ocr_engine is None:
+        return ocr_page(page, language)
+    try:
+        png_bytes = page.get_pixmap(dpi=_OCR_RENDER_DPI).tobytes("png")
+    except Exception as exc:
+        raise DocumentParseFailure(
+            "ocr_failed", "페이지 이미지 렌더에 실패했습니다.") from exc
+    return ocr_engine.ocr_image(png_bytes)
 
 
 def needs_ocr(text: str) -> bool:
@@ -17,7 +35,8 @@ def needs_ocr(text: str) -> bool:
     return compact.count("\ufffd") / len(compact) > 0.10
 
 
-def parse_pdf(path: Path, language: str = "eng") -> ParseResult:
+def parse_pdf(path: Path, language: str = "eng",
+              ocr_engine: OcrEngine | None = None) -> ParseResult:
     """Extract PDF text natively, using OCR only for sparse pages."""
 
     try:
@@ -46,7 +65,7 @@ def parse_pdf(path: Path, language: str = "eng") -> ParseResult:
                 continue
             if needs_ocr(text):
                 try:
-                    text = ocr_page(page, language)
+                    text = _run_ocr(page, language, ocr_engine)
                 except DocumentParseFailure as exc:
                     failed_pages.append(page_number)
                     failures.append(exc)

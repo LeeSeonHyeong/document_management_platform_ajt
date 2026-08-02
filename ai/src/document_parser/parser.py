@@ -31,7 +31,8 @@ def parse(file_path: str | Path, options: ParseOptions | None = None) -> ParseRe
         return parse_docx(path, language=options.ocr_language)
 
     if path.suffix.lower() == ".pdf":
-        return parse_pdf(path, language=options.ocr_language)
+        return parse_pdf(path, language=options.ocr_language,
+                         ocr_engine=options.ocr_engine)
 
     return ParseResult(
         error=ParseError("parser_unavailable", "해당 형식의 파서가 아직 연결되지 않았습니다.")

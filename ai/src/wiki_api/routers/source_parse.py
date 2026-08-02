@@ -78,7 +78,9 @@ def build_router(app: FastAPI) -> APIRouter:
         if not content:
             raise _bad_request("빈 파일입니다.", "file")
 
-        result = _parse_bytes(content, suffix)
+        # 스캔 PDF OCR 엔진(GMS 비전). serve 가 설정에서 만들어 올린다. 없으면(테스트에서
+        # create_app 만 쓰거나 설정이 없을 때) None → parse_pdf 가 로컬 Tesseract 로 폴백.
+        result = _parse_bytes(content, suffix, getattr(app.state, "vision_ocr", None))
 
         if result.error is not None:
             if result.error.code in _REQUEST_ERROR_CODES:
@@ -96,10 +98,11 @@ def build_router(app: FastAPI) -> APIRouter:
     return router
 
 
-def _parse_bytes(content: bytes, suffix: str):
+def _parse_bytes(content: bytes, suffix: str, ocr_engine=None):
     """파서는 경로를 받는다. 업로드 본문을 임시 파일로 떨어뜨려 넘기고 바로 지운다 —
     AI 서버는 서비스 파일에 쓰지 않는다 (계약 「정책」)."""
     with tempfile.TemporaryDirectory(prefix="ajt-parse-") as tmp:
         path = Path(tmp) / f"source{suffix}"
         path.write_bytes(content)
-        return parse(path, ParseOptions(ocr_language="kor+eng"))
+        return parse(path, ParseOptions(ocr_language="kor+eng",
+                                        ocr_engine=ocr_engine))

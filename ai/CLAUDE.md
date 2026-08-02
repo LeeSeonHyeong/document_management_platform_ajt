@@ -66,7 +66,7 @@ cd ai
 uv sync
 cp src/.env.example src/.env                # 최초 1회. 없으면 APP_URL 이 기본값으로 돈다
 uv run pytest -m "not ocr"                  # OCR 제외 (CI 후보)
-uv run pytest                               # 전체 — 로컬 Tesseract(eng) 필요
+uv run pytest                               # 전체 — `ocr` 표시 테스트만 로컬 Tesseract(eng) 필요
 uv sync --extra deepagents                                         # 배포 런타임 설치 (기본값)
 INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000   # 서버 기동 (deepagents, 기본)
 AI_RUNTIME=claude-code INTERNAL_API_KEY=... uv run python -m wiki_api.serve --port 8000  # 로컬 claude-code (위키 엔드포인트는 안 된다)
@@ -84,7 +84,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 
 | 패키지 | 역할 |
 | --- | --- |
-| `document_parser` | 파일 → Markdown (TXT·MD·DOCX·PDF, 이미지 PDF는 OCR) |
+| `document_parser` | 파일 → Markdown (TXT·MD·DOCX·PDF). 이미지 PDF는 OCR — 실서버는 GMS 비전 모델(`vision_ocr.py`, `AI_MODEL_FAST`), 미설정 시 로컬 Tesseract 폴백 |
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
 | `agent_runtime` | 에이전트 실행 — claude-code(로컬 전용)·deepagents(기본값, 배포) 런타임, 시간 상한. push 경로가 사라져(S15P11B106-175) `claude-code` 로는 위키 엔드포인트를 하나도 못 쓴다(`session.py._assert_runtime_can_use_the_gateway`) — 그래서 기본값이 `deepagents` 다. `claude-code` 는 `AI_RUNTIME=claude-code` 로 명시했을 때만 뜨고, 그때도 챗봇(`/answers`)·파싱(`/source-parses`)은 된다 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |

@@ -19,6 +19,46 @@ def _write_pdf(path: Path, *texts: str) -> None:
     document.close()
 
 
+def test_scanned_page_uses_the_injected_vision_ocr_engine(tmp_path: Path):
+    """OCR 이 필요한 페이지는 주입된 비전 엔진으로 읽는다 — 로컬 Tesseract 를 타지 않는다
+    (S15P11B106-180). 엔진에는 페이지 PNG 가 넘어가고, 그 반환 텍스트가 결과가 된다."""
+    path = tmp_path / "scan.pdf"
+    _write_pdf(path, "")  # 텍스트 없는 페이지 → needs_ocr
+
+    class FakeEngine:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ocr_image(self, png_bytes: bytes) -> str:
+            self.calls += 1
+            assert png_bytes[:4] == b"\x89PNG"  # 페이지가 PNG 로 렌더돼 넘어온다
+            return "회의 운영 세칙"
+
+    engine = FakeEngine()
+    result = parse(path, ParseOptions(ocr_engine=engine))
+
+    assert result.error is None
+    assert engine.calls == 1
+    assert "회의 운영 세칙" in result.text
+    assert result.used_ocr is True
+    assert result.pages[0].method == "ocr"
+
+
+def test_injected_vision_ocr_failure_is_a_structured_error(tmp_path: Path):
+    """엔진이 DocumentParseFailure 를 올리면 Tesseract 실패와 같은 경로로 흡수한다."""
+    path = tmp_path / "scan.pdf"
+    _write_pdf(path, "")
+
+    class FailingEngine:
+        def ocr_image(self, png_bytes: bytes) -> str:
+            raise DocumentParseFailure("ocr_failed", "비전 OCR 호출 실패")
+
+    result = parse(path, ParseOptions(ocr_engine=FailingEngine()))
+
+    assert result.error is not None
+    assert result.error.code == "ocr_failed"
+
+
 def test_parse_native_pdf_page(tmp_path: Path):
     path = tmp_path / "policy.pdf"
     _write_pdf(path, "Minimum paid leave is 25 days.")
