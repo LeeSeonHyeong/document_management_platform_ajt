@@ -64,8 +64,20 @@ export async function fetchDocumentFile(documentId) {
 
 function parseContentDispositionFileName(headers) {
   const disposition = headers?.['content-disposition'] ?? ''
-  const match = /filename\*?=(?:UTF-8''|")?([^;"]+)"?/i.exec(disposition)
-  return match ? decodeURIComponent(match[1]) : null
+  const utf8Match = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(disposition)
+  if (utf8Match) {
+    try {
+      return decodeURIComponent(utf8Match[1].trim())
+    } catch {
+      return null
+    }
+  }
+
+  const quotedMatch = /filename\s*=\s*"([^"]+)"/i.exec(disposition)
+  if (quotedMatch) return quotedMatch[1]
+
+  const plainMatch = /filename\s*=\s*([^;]+)/i.exec(disposition)
+  return plainMatch?.[1]?.trim() || null
 }
 
 // PUT /api/v1/documents/:documentId/file (multipart, 필드명 file) — 202 { jobId, documentId, status }
