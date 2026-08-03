@@ -143,7 +143,8 @@ public class AiJobQueryService {
                 responseStatus(status),
                 currentStage(status),
                 recordedResult == null ? null : recordedResult.summary(),
-                failureReasonOf(document, recordedResult)
+                failureReasonOf(document, recordedResult),
+                recordedResult == null ? null : recordedResult.failureStage()
         );
     }
 
@@ -168,6 +169,11 @@ public class AiJobQueryService {
         };
     }
 
+    /**
+     * 지금 어디까지 왔는지. 문서 상태에서 역산하므로 <b>실패 지점을 알려주지 않는다</b> —
+     * Wiki 변환 중 실패한 문서도 {@code parsing}이 된다. 실패 지점은 기록된
+     * {@code DocumentParseResult.failureStage}가 알려준다.
+     */
     private String currentStage(DocumentStatus status) {
         return switch (status) {
             case UPLOADED -> "waiting";

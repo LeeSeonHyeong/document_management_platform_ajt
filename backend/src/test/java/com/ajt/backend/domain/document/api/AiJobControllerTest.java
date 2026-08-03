@@ -50,6 +50,7 @@ class AiJobControllerTest {
                                 "processing",
                                 "wiki_pending",
                                 null,
+                                null,
                                 null
                         ),
                         new AiJobResponse.DocumentResultResponse(
@@ -58,7 +59,8 @@ class AiJobControllerTest {
                                 "failed",
                                 "parsing",
                                 null,
-                                "FastAPI timeout"
+                                "FastAPI timeout",
+                                "agent_timeout"
                         )
                 ),
                 LocalDateTime.parse("2026-07-28T15:00:00"),
@@ -81,6 +83,9 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.documentResults[1].status").value("failed"))
                 .andExpect(jsonPath("$.documentResults[1].currentStage").value("parsing"))
                 .andExpect(jsonPath("$.documentResults[1].failureReason").value("FastAPI timeout"))
+                // currentStage 는 문서 상태에서 역산한 값이라 실패 지점이 아니다.
+                // 어디서 실패했는지는 failureStage 만 안다.
+                .andExpect(jsonPath("$.documentResults[1].failureStage").value("agent_timeout"))
                 .andExpect(jsonPath("$.createdAt").value("2026-07-28T15:00:00"))
                 .andExpect(jsonPath("$.startedAt").value("2026-07-28T15:00:02"))
                 .andExpect(jsonPath("$.finishedAt").doesNotExist())
@@ -100,6 +105,7 @@ class AiJobControllerTest {
                                 "completed",
                                 "wiki_applied",
                                 "인사규정을 Wiki에 반영했습니다.",
+                                null,
                                 null
                         )),
                         LocalDateTime.parse("2026-07-26T15:24:00"),
