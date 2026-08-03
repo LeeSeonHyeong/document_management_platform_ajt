@@ -323,7 +323,8 @@ expect(
 // ⚠️ 이 값도 낡아 있었다 — 공개 API 가 58개인데 기대값이 56 이었다 (`docs/api/README.md`
 // 는 58 로 맞다). 계약 버전 상수와 같은 종류의 방치다. 공개 API 를 늘릴 때 이 줄도 올린다.
 // 59 는 S15P11B106-101 의 `POST /api/v1/ai-jobs/{jobId}/start` 신설분이다.
-expect(publicRequests.length === 59, `공개 API 수가 59개가 아님: ${publicRequests.length}`);
+// 60 은 S15P11B106-192 의 `GET /api/v1/ai-jobs` 신설분이다.
+expect(publicRequests.length === 60, `공개 API 수가 60개가 아님: ${publicRequests.length}`);
 // Spring → FastAPI 6개 + Wiki 조회 API 8개 + 일정 조회 API 2개. 뒤의 10개는 FastAPI 가
 // Spring Boot 를 호출하는 반대 방향이라 같은 내부 컬렉션에 있지만 baseVariable 이
 // backendBaseUrl 이다.
@@ -363,7 +364,10 @@ const collectionVariable = (collection, key) =>
 // 1.10.1 은 GET /schedules 목록 조회에서 관리자 status=draft 조회 시 startDate/endDate 를
 // 생략할 수 있게 명세를 완화한 것이다 — 기존 요청은 그대로 동작하는 하위 호환 변경이라 patch 다
 // (S15P11B106-146).
-const expectedContractVersion = "1.10.1";
+// 1.11.0 은 AI 작업 이력 목록 조회 `GET /api/v1/ai-jobs` 신설이다 — 기존 요청은 그대로지만
+// 새 엔드포인트 추가라 minor 다 (S15P11B106-192). 관리자 「요약 목록」 화면이 단건 조회
+// (jobId 를 쥐고 있을 때만 열린다) 말고는 지난 작업의 문서별 변경 요약을 볼 길이 없었다.
+const expectedContractVersion = "1.11.0";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

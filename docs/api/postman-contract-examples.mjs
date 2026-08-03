@@ -1,4 +1,4 @@
-export const contractVersion = "1.10.1";
+export const contractVersion = "1.11.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -271,6 +271,54 @@ const contracts = {
       httpStatus: 409,
       errorCode: "RESOURCE_CONFLICT",
       message: "이미 시작되었거나 종료된 작업입니다.",
+    },
+  },
+  "GET /api/v1/ai-jobs": {
+    success: {
+      httpStatus: 200,
+      body: page([
+        {
+          jobId: "42",
+          status: "completed",
+          documentResults: [
+            {
+              documentId: "15",
+              order: 1,
+              status: "completed",
+              currentStage: "wiki_applied",
+              summary: "2024 인사규정 문서에서 연차 산정 기준과 경조사 휴가 항목을 추출해 「2024 인사규정 안내」 Wiki를 새로 만들었습니다.",
+              failureReason: null,
+            },
+          ],
+          createdAt: timestamp,
+          startedAt: "2026-07-27T09:00:02Z",
+          finishedAt: "2026-07-27T09:02:16Z",
+          failureReason: null,
+        },
+        {
+          jobId: "41",
+          status: "completed",
+          documentResults: [
+            {
+              documentId: "16",
+              order: 1,
+              status: "failed",
+              currentStage: "parsing",
+              summary: null,
+              failureReason: "스캔된 PDF에서 텍스트를 읽지 못했습니다.",
+            },
+          ],
+          createdAt: "2026-07-25T09:00:00Z",
+          startedAt: "2026-07-25T09:00:03Z",
+          finishedAt: "2026-07-25T09:00:44Z",
+          failureReason: null,
+        },
+      ]),
+    },
+    error: {
+      httpStatus: 400,
+      errorCode: "INVALID_REQUEST",
+      message: "size는 1 이상 100 이하여야 합니다.",
     },
   },
   "GET /api/v1/ai-jobs/:jobId": {
