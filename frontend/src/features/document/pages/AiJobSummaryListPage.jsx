@@ -196,6 +196,10 @@ function JobCard({ job, docById, onOpenSummary }) {
       <ul className="divide-y divide-slate-100">
         {job.documentResults.map((result) => {
           const document = docById[result.documentId]
+          // 문서가 하드 삭제되면 상세 조회가 404다. 파일명은 작업 결과의 스냅샷이 들고
+          // 있으므로(S15P11B106-202) 나머지 칸만 「삭제된 문서」로 읽히게 한다.
+          const deleted = !document
+          const fileName = result.originalFileName ?? document?.originalFileName
           return (
             <li
               key={result.documentId}
@@ -207,18 +211,22 @@ function JobCard({ job, docById, onOpenSummary }) {
                 </span>
                 <div className="min-w-0">
                   <p className="truncate font-semibold text-slate-800">
-                    {document?.originalFileName ?? `문서 ${result.documentId}`}
+                    {fileName ?? `문서 ${result.documentId}`}
                   </p>
-                  <p className="text-xs text-slate-400">{formatFileSize(document?.fileSize)}</p>
+                  <p className="text-xs text-slate-400">
+                    {deleted ? '삭제된 문서' : formatFileSize(document?.fileSize)}
+                  </p>
                 </div>
               </div>
               <span className="truncate text-center text-slate-500">
-                {document?.visibilityType === 'all'
-                  ? '전체 공개'
-                  : (document?.departments ?? []).map((department) => department.name).join(', ') || '-'}
+                {deleted
+                  ? '-'
+                  : document.visibilityType === 'all'
+                    ? '전체 공개'
+                    : (document.departments ?? []).map((department) => department.name).join(', ') || '-'}
               </span>
               <span className="truncate text-center text-slate-500">
-                {document?.documentCategoryName ?? '미분류'}
+                {deleted ? '-' : (document.documentCategoryName ?? '미분류')}
               </span>
               <span className="truncate text-center font-semibold text-primary-600">
                 {document?.relatedWikis?.[0]?.title ?? '-'}

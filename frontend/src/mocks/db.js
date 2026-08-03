@@ -381,6 +381,7 @@ export const aiJobs = [
     documentResults: [
       {
         documentId: '1',
+        originalFileName: '취업규칙.pdf',
         order: 1,
         status: DOCUMENT_STATUS.COMPLETED,
         currentStage: 'wiki_applied',
@@ -390,6 +391,7 @@ export const aiJobs = [
       },
       {
         documentId: '2',
+        originalFileName: '연차_사용_안내.docx',
         order: 2,
         status: DOCUMENT_STATUS.COMPLETED,
         currentStage: 'wiki_applied',
@@ -413,6 +415,7 @@ export const aiJobs = [
     documentResults: [
       {
         documentId: '5',
+        originalFileName: '스캔본_직인규정.pdf',
         order: 1,
         status: DOCUMENT_STATUS.FAILED,
         // 파싱을 끝내고 Wiki 변환에서 죽었지만 currentStage 는 parsing 으로 온다.
@@ -437,6 +440,7 @@ export const aiJobs = [
     documentResults: [
       {
         documentId: '3',
+        originalFileName: '개발팀_코딩_컨벤션.md',
         order: 1,
         status: DOCUMENT_STATUS.PROCESSING,
         currentStage: 'wiki_transform',
@@ -459,6 +463,7 @@ export const aiJobs = [
     documentResults: [
       {
         documentId: '4',
+        originalFileName: '복지포인트_사용_가이드.pdf',
         order: 1,
         status: DOCUMENT_STATUS.PARSING,
         currentStage: 'parsing',

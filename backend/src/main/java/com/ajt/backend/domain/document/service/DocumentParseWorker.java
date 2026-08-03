@@ -89,6 +89,7 @@ public class DocumentParseWorker {
                 // 업로드 후 삭제된 문서다. 나머지 문서는 계속 처리하고 이 문서만 실패로 남긴다.
                 AiJob.DocumentParseResult result = AiJob.DocumentParseResult.failed(
                         documentId,
+                        null,  // 문서가 없어 이름을 알 수 없다
                         "문서를 찾을 수 없습니다.",
                         null
                 );
@@ -99,7 +100,7 @@ public class DocumentParseWorker {
             }
             // 걷어내기는 문서 행이 하드 삭제된 뒤에도 실행된다(DR-014). 문서 엔티티를 읽지 않는다.
             AiJob.DocumentParseResult result = removing
-                    ? removeDocument(job, documentId, removedParsedMarkdown)
+                    ? removeDocument(job, documentId, document, removedParsedMarkdown)
                     : parseDocument(job, document, changeType, removedParsedMarkdown);
             documentResults.add(result);
             AiJob resultJob = aiJobRepository.findById(job.id()).orElse(job);
@@ -161,13 +162,14 @@ public class DocumentParseWorker {
             documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(
                     document.id(),
+                    document.originalFileName(),
                     failureReason(exception),
                     exception.failureStage()
             );
         } catch (RuntimeException exception) {
             document.failParsing(exception.getMessage());
             documentRepository.save(document);
-            return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
+            return AiJob.DocumentParseResult.failed(document.id(), document.originalFileName(), exception.getMessage(), null);
         }
         return transformWiki(job, document, changeType, parsedMarkdown, removedParsedMarkdown);
     }
@@ -189,9 +191,12 @@ public class DocumentParseWorker {
     private AiJob.DocumentParseResult removeDocument(
             AiJob job,
             long documentId,
+            Document document,
             String removedParsedMarkdown
     ) {
         String scopeKey = job.scopeKey();
+        // 지우기 전에 이름을 잡아 둔다 — 결과에 남길 스냅샷이다 (S15P11B106-202).
+        String fileName = document == null ? null : document.originalFileName();
         try {
             var response = wikiTransformationService.requestForDocumentChange(
                     job.id(),
@@ -205,17 +210,18 @@ public class DocumentParseWorker {
                     documentId, scopeKey, response);
             // 여기까지 왔으면 Wiki 에서 이 문서의 근거가 걷혔다. 이제 지운다.
             finishDeletion(documentId);
-            return AiJob.DocumentParseResult.succeeded(documentId, result.summary());
+            return AiJob.DocumentParseResult.succeeded(documentId, fileName, result.summary());
         } catch (AiClientException exception) {
             markDeletionFailed(documentId, failureReason(exception));
             return AiJob.DocumentParseResult.failed(
                     documentId,
+                    fileName,
                     failureReason(exception),
                     exception.failureStage()
             );
         } catch (RuntimeException exception) {
             markDeletionFailed(documentId, exception.getMessage());
-            return AiJob.DocumentParseResult.failed(documentId, exception.getMessage(), null);
+            return AiJob.DocumentParseResult.failed(documentId, fileName, exception.getMessage(), null);
         }
     }
 
@@ -290,19 +296,20 @@ public class DocumentParseWorker {
             // 반영 트랜잭션은 별도로 조회한 엔티티를 완료 처리한다. 이 인스턴스도 작업 결과를
             // 조립할 때 일관된 상태를 보도록만 맞추며, 여기서 다시 저장하지는 않는다.
             document.completeProcessing(result.affectedWikiIds());
-            return AiJob.DocumentParseResult.succeeded(document.id(), result.summary());
+            return AiJob.DocumentParseResult.succeeded(document.id(), document.originalFileName(), result.summary());
         } catch (AiClientException exception) {
             document.failProcessing(failureReason(exception));
             documentRepository.save(document);
             return AiJob.DocumentParseResult.failed(
                     document.id(),
+                    document.originalFileName(),
                     failureReason(exception),
                     exception.failureStage()
             );
         } catch (RuntimeException exception) {
             document.failProcessing(exception.getMessage());
             documentRepository.save(document);
-            return AiJob.DocumentParseResult.failed(document.id(), exception.getMessage(), null);
+            return AiJob.DocumentParseResult.failed(document.id(), document.originalFileName(), exception.getMessage(), null);
         }
     }
 

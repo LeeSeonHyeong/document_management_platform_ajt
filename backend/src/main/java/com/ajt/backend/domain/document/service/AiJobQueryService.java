@@ -139,6 +139,7 @@ public class AiJobQueryService {
         DocumentStatus status = document == null ? DocumentStatus.FAILED : document.status();
         return new AiJobResponse.DocumentResultResponse(
                 String.valueOf(documentId),
+                fileNameOf(document, recordedResult),
                 orderedDocumentIds.indexOf(documentId) + 1,
                 responseStatus(status),
                 currentStage(status),
@@ -146,6 +147,21 @@ public class AiJobQueryService {
                 failureReasonOf(document, recordedResult),
                 recordedResult == null ? null : recordedResult.failureStage()
         );
+    }
+
+    /**
+     * 이력에 남길 파일 이름(S15P11B106-202).
+     *
+     * <p><b>기록된 스냅샷이 우선이다.</b> 그것이 이 작업이 실제로 처리한 파일의 이름이고,
+     * 문서가 그 뒤에 교체·삭제됐어도 이력은 그때를 가리켜야 한다. 스냅샷이 없는 옛 작업만
+     * 살아 있는 문서의 현재 이름으로 메운다 — 그마저 없으면 {@code null}이고 화면이
+     * 「삭제된 문서」로 표시한다.
+     */
+    private String fileNameOf(Document document, AiJob.DocumentParseResult recordedResult) {
+        if (recordedResult != null && recordedResult.originalFileName() != null) {
+            return recordedResult.originalFileName();
+        }
+        return document == null ? null : document.originalFileName();
     }
 
     private String failureReasonOf(Document document, AiJob.DocumentParseResult recordedResult) {

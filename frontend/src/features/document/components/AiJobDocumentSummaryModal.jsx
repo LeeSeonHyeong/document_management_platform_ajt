@@ -86,7 +86,9 @@ export default function AiJobDocumentSummaryModal({ open, onClose, job, result, 
         <div className="min-w-0">
           <p className={cn('text-sm font-semibold', theme.headlineText)}>{theme.headline}</p>
           <p className="mt-0.5 truncate text-lg font-bold text-slate-800">
-            {document?.originalFileName ?? `문서 ${result.documentId}`}
+            {/* 작업 결과의 파일명 스냅샷이 우선이다 — 문서가 삭제돼도 이름이 남는다
+                (S15P11B106-202). */}
+            {result.originalFileName ?? document?.originalFileName ?? `문서 ${result.documentId}`}
           </p>
           <p className="mt-0.5 text-xs text-slate-400">
             {workedAt ? `${workedAt} 작업` : '작업 시각 미상'}

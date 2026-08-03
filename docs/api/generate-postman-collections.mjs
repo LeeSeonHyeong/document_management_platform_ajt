@@ -1059,6 +1059,7 @@ const publicFolders = [
           "`items`: 단건 조회와 같은 구조. `jobId`, `status`, `documentResults`, `createdAt`, `startedAt`, `finishedAt`, `failureReason`",
           "`documentResults[].summary`: 그 회차에 이 문서로 무엇이 바뀌었는지에 대한 AI 작업 요약",
           "`documentResults[].failureStage`: 실제로 어디서 실패했는지. 실패하지 않았거나 단계를 알 수 없으면 `null`",
+          "`documentResults[].originalFileName`: 그때 그 파일 이름의 스냅샷. 문서를 하드 삭제해도 이력에 남는다(DR-021·DR-024와 같은 방식). 이 필드가 생기기 전 작업은 `null`",
           "`page`, `size`, `totalCount`, `totalPages`",
         ],
         errors: [
@@ -1078,7 +1079,7 @@ const publicFolders = [
         pathParams: ["`jobId`: 조회할 AI 작업 ID"],
         response: [
           "`status`: `waiting`, `processing`, `completed`, `failed`, `cancelled`",
-          "`documentResults`: 문서별 순서, 상태, 현재 단계, 요약과 실패 사유·실패 단계",
+          "`documentResults`: 문서별 순서, 파일명 스냅샷, 상태, 현재 단계, 요약과 실패 사유·실패 단계",
           "`documentResults[].currentStage`는 문서 상태에서 역산한 진행 위치라 실패 지점이 아니다. 어디서 실패했는지는 `failureStage`가 알려준다",
           "`createdAt`, `startedAt`, `finishedAt`, `failureReason`",
         ],

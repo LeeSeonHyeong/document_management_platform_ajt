@@ -212,20 +212,28 @@ public class AiJob {
      *
      * <p>{@code summary}는 FastAPI Wiki 변환 응답의 작업 요약이고,
      * {@code failureStage}는 오류 응답의 실패 단계입니다. 둘 다 없으면 {@code null}입니다.
+     *
+     * <p>{@code originalFileName}은 <b>그때 그 파일 이름의 스냅샷</b>입니다(S15P11B106-202).
+     * 문서는 하드 삭제되지만(DR-014) 이 결과는 최소 1년 보존되므로(NFR-LOG-001), 이름을 함께
+     * 남기지 않으면 이력에 문서 ID만 남아 무엇이 바뀌었는지 알 수 없다. 답변 출처의 제목
+     * 스냅샷(DR-021)·Wiki 채팅의 {@code wiki_title_snapshot}(DR-024)과 같은 방식이다.
+     * 이 필드가 생기기 전에 저장된 결과는 {@code null}이다.
      */
     public record DocumentParseResult(
             long documentId,
+            String originalFileName,
             boolean success,
             String summary,
             String failureReason,
             String failureStage
     ) {
-        public static DocumentParseResult succeeded(long documentId, String summary) {
-            return new DocumentParseResult(documentId, true, summary, null, null);
+        public static DocumentParseResult succeeded(long documentId, String originalFileName, String summary) {
+            return new DocumentParseResult(documentId, originalFileName, true, summary, null, null);
         }
 
-        public static DocumentParseResult failed(long documentId, String failureReason, String failureStage) {
-            return new DocumentParseResult(documentId, false, null, failureReason, failureStage);
+        public static DocumentParseResult failed(
+                long documentId, String originalFileName, String failureReason, String failureStage) {
+            return new DocumentParseResult(documentId, originalFileName, false, null, failureReason, failureStage);
         }
     }
 }

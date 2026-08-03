@@ -46,6 +46,7 @@ class AiJobControllerTest {
                 List.of(
                         new AiJobResponse.DocumentResultResponse(
                                 "15",
+                                "문서-15.pdf",
                                 1,
                                 "processing",
                                 "wiki_pending",
@@ -55,6 +56,7 @@ class AiJobControllerTest {
                         ),
                         new AiJobResponse.DocumentResultResponse(
                                 "16",
+                                "문서-16.pdf",
                                 2,
                                 "failed",
                                 "parsing",
@@ -101,6 +103,7 @@ class AiJobControllerTest {
                         "completed",
                         List.of(new AiJobResponse.DocumentResultResponse(
                                 "15",
+                                "문서-15.pdf",
                                 1,
                                 "completed",
                                 "wiki_applied",
