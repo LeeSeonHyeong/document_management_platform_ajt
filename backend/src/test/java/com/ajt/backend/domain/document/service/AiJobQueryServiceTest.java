@@ -330,6 +330,85 @@ class AiJobQueryServiceTest {
         return job;
     }
 
+    // ===== 문서 행이 사라진 결과의 표시(S15P11B106-209) =====
+
+    @Test
+    @DisplayName("삭제가 성공해 문서 행이 사라진 결과는 완료로 보이고 걷어낸 요약이 읽힌다")
+    void missingDocumentWithSucceededResult() throws Exception {
+        AiJob job = finishedJob(50L, 30L, AiJob.DocumentParseResult.succeeded(
+                30L, "노트북 보관 및 반출_예시.docx", "노트북 반출 규정 항목을 걷어냈습니다."));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(50L)).willReturn(Optional.of(job));
+        // 걷어내기가 끝나 행이 지워졌다(S15P11B106-195).
+        given(documentRepository.findAllById(List.of(30L))).willReturn(List.of());
+
+        AiJobResponse.DocumentResultResponse result = service.getAiJob(50L).documentResults().getFirst();
+
+        assertThat(result.status()).isEqualTo("completed");
+        assertThat(result.summary()).isEqualTo("노트북 반출 규정 항목을 걷어냈습니다.");
+        assertThat(result.failureReason()).isNull();
+        assertThat(result.originalFileName()).isEqualTo("노트북 보관 및 반출_예시.docx");
+    }
+
+    @Test
+    @DisplayName("문서 행이 사라진 실패 결과는 기록된 실제 사유를 보여준다")
+    void missingDocumentWithFailedResult() throws Exception {
+        AiJob job = finishedJob(51L, 31L, AiJob.DocumentParseResult.failed(
+                31L, "규정.docx", "FastAPI 응답에 걷어낼 변경이 없습니다.", "wiki_transform"));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(51L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(31L))).willReturn(List.of());
+
+        AiJobResponse.DocumentResultResponse result = service.getAiJob(51L).documentResults().getFirst();
+
+        assertThat(result.status()).isEqualTo("failed");
+        // 예전에는 「문서를 찾을 수 없습니다」가 실제 사유를 덮었다.
+        assertThat(result.failureReason()).isEqualTo("FastAPI 응답에 걷어낼 변경이 없습니다.");
+        assertThat(result.failureStage()).isEqualTo("wiki_transform");
+    }
+
+    @Test
+    @DisplayName("문서도 기록도 없는 옛 작업은 문서를 찾을 수 없다고 남는다")
+    void missingDocumentWithoutRecordedResult() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/52", List.of(32L));
+        assign(job, "id", 52L);
+        assign(job, "createdAt", LocalDateTime.parse("2026-08-03T15:32:00"));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(52L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(32L))).willReturn(List.of());
+
+        AiJobResponse.DocumentResultResponse result = service.getAiJob(52L).documentResults().getFirst();
+
+        assertThat(result.status()).isEqualTo("failed");
+        assertThat(result.failureReason()).isEqualTo("문서를 찾을 수 없습니다.");
+    }
+
+    @Test
+    @DisplayName("문서 행이 살아 있으면 문서의 실패 사유를 그대로 우선한다")
+    void livingDocumentKeepsExistingPrecedence() throws Exception {
+        AiJob job = finishedJob(53L, 33L, AiJob.DocumentParseResult.failed(
+                33L, "규정.docx", "기록된 사유", "wiki_transform"));
+        Document document = uploadedDocument(33L, "규정.docx");
+        document.startParsing();
+        document.failParsing("문서의 현재 사유");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(53L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(33L))).willReturn(List.of(document));
+
+        AiJobResponse.DocumentResultResponse result = service.getAiJob(53L).documentResults().getFirst();
+
+        assertThat(result.failureReason()).isEqualTo("문서의 현재 사유");
+    }
+
+    private AiJob finishedJob(long jobId, long documentId, AiJob.DocumentParseResult result) throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/%d".formatted(jobId), List.of(documentId));
+        assign(job, "id", jobId);
+        assign(job, "createdAt", LocalDateTime.parse("2026-08-03T15:32:00"));
+        job.start();
+        job.finish(List.of(result));
+        return job;
+    }
+
     private Document completedDocument(long id, String fileName) throws Exception {
         Document document = uploadedDocument(id, fileName);
         document.startParsing();

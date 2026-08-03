@@ -136,7 +136,7 @@ public class AiJobQueryService {
             AiJob.DocumentParseResult recordedResult,
             List<Long> orderedDocumentIds
     ) {
-        DocumentStatus status = document == null ? DocumentStatus.FAILED : document.status();
+        DocumentStatus status = document == null ? statusOfMissingDocument(recordedResult) : document.status();
         return new AiJobResponse.DocumentResultResponse(
                 String.valueOf(documentId),
                 fileNameOf(document, recordedResult),
@@ -164,8 +164,34 @@ public class AiJobQueryService {
         return document == null ? null : document.originalFileName();
     }
 
+    /**
+     * 문서 행이 없는 결과의 상태입니다(S15P11B106-209).
+     *
+     * <p>행이 없다는 것만으로 실패라고 볼 수 없다. S15P11B106-195 부터 <b>삭제 성공이 문서 행을
+     * 지운다</b> — 성공한 삭제와 걷어내기 실패가 똑같이 여기로 온다. 그러므로 이 작업이 그때
+     * 기록한 결과를 따른다. 기록이 아예 없는 옛 작업만 실패로 남긴다(판단 근거가 없다).
+     */
+    private DocumentStatus statusOfMissingDocument(AiJob.DocumentParseResult recordedResult) {
+        if (recordedResult == null) {
+            return DocumentStatus.FAILED;
+        }
+        return recordedResult.success() ? DocumentStatus.COMPLETED : DocumentStatus.FAILED;
+    }
+
+    /**
+     * 이력에 남길 실패 사유입니다.
+     *
+     * <p>문서 행이 없으면 <b>이 작업이 기록한 사유가 유일한 근거다</b>(S15P11B106-209).
+     * 예전에는 곧바로 「문서를 찾을 수 없습니다」로 덮어써서, 걷어내기가 실제로 왜 실패했는지
+     * 화면에서 볼 수 없었다. 기록도 문서도 없을 때만 그 문구로 남긴다.
+     *
+     * <p>문서 행이 살아 있으면 기존 우선순위를 유지한다 — 문서의 현재 실패 사유가 먼저다.
+     */
     private String failureReasonOf(Document document, AiJob.DocumentParseResult recordedResult) {
         if (document == null) {
+            if (recordedResult != null) {
+                return recordedResult.failureReason();
+            }
             return "문서를 찾을 수 없습니다.";
         }
         if (document.failureReason() != null) {
