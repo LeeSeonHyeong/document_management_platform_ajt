@@ -583,6 +583,14 @@ docker exec ajt-develop-mysql-1 sh -c '
 MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot ajt -e "
 SELECT COUNT(*) AS member_count FROM member;
 SELECT COUNT(*) AS department_count FROM department;
+SELECT COUNT(*) AS wiki_scope_count FROM wiki_scope;
+SELECT COUNT(*) AS document_category_count FROM document_category;
+SELECT COUNT(*) AS document_count FROM document;
+SELECT COUNT(*) AS wiki_count FROM wiki;
+SELECT COUNT(*) AS ai_job_count FROM ai_job;
+SELECT name, manager_id
+FROM department
+ORDER BY name;
 SELECT
   m.email,
   m.role,
@@ -592,6 +600,13 @@ SELECT
   d.manager_id
 FROM member m
 JOIN department d ON d.department_id = m.department_id;
+SELECT scope_key, visibility_type, department_refs, index_path, scope_version
+FROM wiki_scope;
+SELECT
+  scope_key AS category_scope_key,
+  name AS category_name,
+  description
+FROM document_category;
 "
 '
 ```
@@ -600,12 +615,25 @@ JOIN department d ON d.department_id = m.department_id;
 
 ```text
 member_count=1
-department_count=1
+department_count=2
+wiki_scope_count=1
+document_category_count=1
+document_count=0
+wiki_count=0
+ai_job_count=0
+departments=전체,최고관리자
 role=ADMIN
 signup_status=APPROVED
 account_status=ACTIVE
 department_name=최고관리자
 manager_id=NULL
+scope_key=ALL
+visibility_type=ALL
+department_refs=[]
+index_path=wiki/ALL/index.md
+scope_version=0
+category_scope_key=ALL
+category_name=일반
 ```
 
 브라우저 로그인 후 `/api/v1/auth/me` 응답의 `isSuperAdmin`이 `true`인지 확인한다.

@@ -123,6 +123,7 @@ test_existing_admin_does_not_generate_new_password() {
 
 test_creates_one_admin_with_random_password() {
   local output="${TEST_ROOT}/bootstrap.out"
+  local normalized_sql
   : > "$FAKE_DOCKER_LOG"
   : > "$FAKE_OPENSSL_LOG"
 
@@ -137,6 +138,21 @@ test_creates_one_admin_with_random_password() {
     || fail "최고관리자 전용 부서를 생성하지 않음"
   tr -d '[:space:]' < "$FAKE_DOCKER_LOG" | grep -q "'ADMIN','APPROVED','ACTIVE'" \
     || fail "최고관리자 상태값이 잘못됨"
+
+  normalized_sql="$(tr -d '[:space:]' < "$FAKE_DOCKER_LOG")"
+  grep -q "INSERT INTO wiki_scope" "$FAKE_DOCKER_LOG" \
+    || fail "ALL Wiki 공간 INSERT가 없음"
+  grep -q "VALUES('ALL','ALL',JSON_ARRAY(),'wiki/ALL/index.md',0)" <<< "$normalized_sql" \
+    || fail "ALL Wiki 공간 값이 잘못됨"
+  grep -q "INSERT INTO document_category" "$FAKE_DOCKER_LOG" \
+    || fail "ALL 기본 문서 카테고리 INSERT가 없음"
+  grep -q "VALUES('ALL','일반','전체공개문서기본카테고리')" <<< "$normalized_sql" \
+    || fail "ALL 기본 문서 카테고리 값이 잘못됨"
+  assert_equals "1" "$(grep -c '^START TRANSACTION;' "$FAKE_DOCKER_LOG")" "트랜잭션 시작 횟수"
+  assert_equals "1" "$(grep -c '^COMMIT;' "$FAKE_DOCKER_LOG")" "트랜잭션 커밋 횟수"
+  if grep -Eiq '(^|[[:space:];])(DELETE|TRUNCATE|DROP)([[:space:]]|$)' "$FAKE_DOCKER_LOG"; then
+    fail "부트스트랩 SQL에 파괴적 명령이 포함됨"
+  fi
 }
 
 test_rejects_invalid_email_before_database_call

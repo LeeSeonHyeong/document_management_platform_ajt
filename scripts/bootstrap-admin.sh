@@ -102,6 +102,32 @@ VALUES (
   'APPROVED',
   'ACTIVE'
 );
+INSERT INTO wiki_scope (
+  scope_key,
+  visibility_type,
+  department_refs,
+  index_path,
+  scope_version
+)
+VALUES (
+  'ALL',
+  'ALL',
+  JSON_ARRAY(),
+  'wiki/ALL/index.md',
+  0
+)
+ON DUPLICATE KEY UPDATE scope_key = 'ALL';
+INSERT INTO document_category (
+  scope_key,
+  name,
+  description
+)
+VALUES (
+  'ALL',
+  '일반',
+  '전체 공개 문서 기본 카테고리'
+)
+ON DUPLICATE KEY UPDATE document_category_id = LAST_INSERT_ID(document_category_id);
 COMMIT;
 " >/dev/null
 
