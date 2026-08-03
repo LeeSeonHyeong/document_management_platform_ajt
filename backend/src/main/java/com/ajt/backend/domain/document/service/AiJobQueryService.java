@@ -1,5 +1,6 @@
 package com.ajt.backend.domain.document.service;
 
+import com.ajt.backend.domain.document.api.AiJobListResponse;
 import com.ajt.backend.domain.document.api.AiJobResponse;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
@@ -12,11 +13,17 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AiJobQueryService {
+
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final CurrentMemberProvider currentMemberProvider;
     private final AiJobRepository aiJobRepository;
@@ -37,8 +44,42 @@ public class AiJobQueryService {
         requireAdmin();
         AiJob job = aiJobRepository.findById(jobId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
-        Map<Long, Document> documentsById = documentsById(job.documentIds());
+        return toResponse(job, documentsById(job.documentIds()));
+    }
 
+    /**
+     * AI 작업 이력을 최신순으로 조회합니다(S15P11B106-192).
+     *
+     * <p>관리자 「요약 목록」 화면이 씁니다. 단건 조회는 jobId를 쥐고 있어야 열리므로,
+     * 작업이 끝난 뒤 다시 찾아볼 길이 이 목록뿐입니다.
+     *
+     * <p>문서는 페이지 전체를 한 번에 읽습니다. 작업마다 조회하면 페이지 크기만큼
+     * 질의가 늘어납니다.
+     */
+    @Transactional(readOnly = true)
+    public AiJobListResponse listAiJobs(Integer page, Integer size) {
+        requireAdmin();
+        Page<AiJob> jobs = aiJobRepository.findAllByOrderByCreatedAtDescIdDesc(pageable(page, size));
+        Map<Long, Document> documentsById = documentsById(
+                jobs.getContent().stream().flatMap(job -> job.documentIds().stream()).distinct().toList());
+
+        return AiJobListResponse.from(jobs.map(job -> toResponse(job, documentsById)));
+    }
+
+    private Pageable pageable(Integer page, Integer size) {
+        int safePage = page == null ? 1 : page;
+        int safeSize = size == null ? DEFAULT_PAGE_SIZE : size;
+        if (safePage < 1) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "page는 1 이상이어야 합니다.");
+        }
+        if (safeSize < 1 || safeSize > MAX_PAGE_SIZE) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "size는 1 이상 100 이하여야 합니다.");
+        }
+        // 정렬은 리포지토리 메서드 이름이 정한다. 여기서 Sort 를 주면 둘이 겹쳐 어긋난다.
+        return PageRequest.of(safePage - 1, safeSize);
+    }
+
+    private AiJobResponse toResponse(AiJob job, Map<Long, Document> documentsById) {
         return new AiJobResponse(
                 String.valueOf(job.id()),
                 job.status().name().toLowerCase(),

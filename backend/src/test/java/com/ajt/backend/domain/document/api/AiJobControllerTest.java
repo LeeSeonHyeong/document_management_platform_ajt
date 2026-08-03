@@ -88,6 +88,70 @@ class AiJobControllerTest {
     }
 
     @Test
+    @DisplayName("작업 이력 목록은 items 배열과 페이지 정보를 반환한다")
+    void listsAiJobs() throws Exception {
+        given(aiJobQueryService.listAiJobs(null, null)).willReturn(new AiJobListResponse(
+                List.of(new AiJobResponse(
+                        "42",
+                        "completed",
+                        List.of(new AiJobResponse.DocumentResultResponse(
+                                "15",
+                                1,
+                                "completed",
+                                "wiki_applied",
+                                "인사규정을 Wiki에 반영했습니다.",
+                                null
+                        )),
+                        LocalDateTime.parse("2026-07-26T15:24:00"),
+                        LocalDateTime.parse("2026-07-26T15:24:01"),
+                        LocalDateTime.parse("2026-07-26T15:26:15"),
+                        null
+                )),
+                1,
+                20,
+                1,
+                1
+        ));
+
+        mockMvc.perform(get("/api/v1/ai-jobs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].jobId").value("42"))
+                .andExpect(jsonPath("$.items[0].status").value("completed"))
+                .andExpect(jsonPath("$.items[0].documentResults[0].summary")
+                        .value("인사규정을 Wiki에 반영했습니다."))
+                // 소요 시간은 프론트가 이 둘의 차로 계산한다.
+                .andExpect(jsonPath("$.items[0].startedAt").value("2026-07-26T15:24:01"))
+                .andExpect(jsonPath("$.items[0].finishedAt").value("2026-07-26T15:26:15"))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(20))
+                .andExpect(jsonPath("$.totalCount").value(1))
+                .andExpect(jsonPath("$.totalPages").value(1));
+    }
+
+    @Test
+    @DisplayName("작업이 없으면 빈 배열을 반환한다")
+    void listsEmptyAiJobs() throws Exception {
+        given(aiJobQueryService.listAiJobs(null, null))
+                .willReturn(new AiJobListResponse(List.of(), 1, 20, 0, 0));
+
+        mockMvc.perform(get("/api/v1/ai-jobs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", empty()));
+    }
+
+    @Test
+    @DisplayName("page·size 는 서비스로 그대로 넘어간다")
+    void passesPagingThrough() throws Exception {
+        given(aiJobQueryService.listAiJobs(2, 5))
+                .willReturn(new AiJobListResponse(List.of(), 2, 5, 0, 0));
+
+        mockMvc.perform(get("/api/v1/ai-jobs").param("page", "2").param("size", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(2))
+                .andExpect(jsonPath("$.size").value(5));
+    }
+
+    @Test
     @DisplayName("존재하지 않는 AI 작업은 404 오류를 반환한다")
     void returnsNotFoundForUnknownJob() throws Exception {
         given(aiJobQueryService.getAiJob(42L)).willThrow(new BusinessException(ErrorCode.AI_JOB_NOT_FOUND));
