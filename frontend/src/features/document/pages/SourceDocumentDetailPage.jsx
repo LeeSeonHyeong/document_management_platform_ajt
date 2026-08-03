@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ArrowLeftRight, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
 import { Badge, Button, Spinner, useToast } from '@/components/ui'
-import WikiMarkdown from '@/features/wiki/components/WikiMarkdown'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchDocumentFile } from '../api'
 import { useDocument } from '../queries'
 import DocumentDeleteDialog from '../components/DocumentDeleteDialog'
 import DocumentReplaceDialog from '../components/DocumentReplaceDialog'
+import { DocumentPreview } from '../preview'
 import { readPreviewSourceDocuments, removePreviewDocument } from '../previewStorage'
 
 function formatBytes(bytes) {
@@ -48,6 +48,7 @@ export default function SourceDocumentDetailPage() {
   const [downloading, setDownloading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState(false)
+  const previewRef = useRef(null)
 
   const [previewDocument] = useState(() =>
     readPreviewSourceDocuments().find((document) => document.documentId === documentId),
@@ -118,13 +119,12 @@ export default function SourceDocumentDetailPage() {
             </span>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-bold text-slate-800">{doc.originalFileName}</h1>
-              {/* TODO(API): 문서 페이지 수 필드가 계약에 없어 1페이지로 고정 표시된다. */}
               <p className="mt-0.5 text-xs text-slate-400">
-                {fileExtension(doc.originalFileName)} · {formatBytes(doc.fileSize)} · 1페이지
+                {fileExtension(doc.originalFileName)} · {formatBytes(doc.fileSize)}
               </p>
             </div>
           </div>
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => previewRef.current?.requestFullscreen?.()}>
             <Maximize2 className="size-4" />
             전체 화면
           </Button>
@@ -136,22 +136,14 @@ export default function SourceDocumentDetailPage() {
           </p>
         )}
 
-        <div className="mt-4 flex flex-1 flex-col items-center rounded-2xl bg-slate-50 p-8">
-          <div className="min-h-80 w-full max-w-2xl rounded-md border border-slate-200 bg-white p-10 shadow-sm">
-            {doc.previewContent ? (
-              <WikiMarkdown markdown={doc.previewContent} validWikiIds={new Set()} />
-            ) : (
-              <>
-                <p className="text-center text-lg font-bold text-slate-800">원본 문서 미리보기</p>
-                <p className="mt-8 text-sm font-semibold text-slate-700">{doc.originalFileName}</p>
-                <p className="mt-5 text-sm leading-8 text-slate-500">
-                  파일 미리보기 데이터가 연결되면 이 영역에 실제 문서 내용이 표시됩니다.
-                </p>
-              </>
-            )}
-          </div>
-          {/* TODO(API): 미리보기 본문·페이지 수 필드가 계약에 없어 플레이스홀더와 1 / 1로 둔다. */}
-          <span className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">1 / 1</span>
+        <div ref={previewRef} className="mt-4 flex flex-1 flex-col rounded-2xl bg-slate-50 p-8">
+          <DocumentPreview
+            documentId={doc.documentId}
+            fileName={doc.originalFileName}
+            mimeType={doc.mimeType}
+            sourceFile={doc.sourceFile}
+            localOnly={Boolean(doc.previewOnly)}
+          />
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
