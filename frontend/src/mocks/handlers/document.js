@@ -246,21 +246,56 @@ export const documentHandlers = [
         { status: 404 },
       )
     }
-    const [doc] = documents.splice(index, 1)
+    const doc = documents[index]
+    const now = new Date().toISOString()
+
+    // 걷어낼 근거가 없으면(Wiki에 반영된 적 없음) 즉시 지운다.
+    // 실제 백엔드는 파싱 본문 유무로 가르지만 목 DB에는 그 필드가 없다 — 반영된 Wiki 유무가
+    // 같은 것을 뜻한다(반영된 적 있으면 파싱 본문도 있었다).
+    if (!(doc.documentWikiRefs ?? []).length) {
+      documents.splice(index, 1)
+      return HttpResponse.json(
+        { deleted: true, reprocessRequired: false, jobId: null, scopeKey: doc.scopeKey, status: 'skipped' },
+        { status: 202 },
+      )
+    }
+
+    // S15P11B106-195: 걷어내기가 끝난 뒤에 지운다. 지금은 deleting 으로 두고 작업만 만든다.
+    doc.status = 'deleting'
     const jobId = issueJobId()
+    // 파일명에 '연차'가 들어간 문서는 걷어내기가 실패하도록 둔다 — 실패 화면(원본 유지 +
+    // 다시 삭제)을 목으로도 볼 수 있어야 한다.
+    const fails = (doc.originalFileName ?? '').includes('연차')
+    if (fails) {
+      doc.status = 'failed'
+      doc.failureReason = 'Wiki 걷어내기가 시간 안에 끝나지 않았습니다.'
+    } else {
+      documents.splice(index, 1)
+    }
     aiJobs.push({
       jobId,
       scopeKey: doc.scopeKey,
       requesterId: '2',
-      documentIds: [],
-      status: 'completed',
-      documentResults: [],
-      createdAt: new Date().toISOString(),
-      startedAt: new Date().toISOString(),
-      finishedAt: new Date().toISOString(),
-      failureReason: null,
+      documentIds: [doc.documentId],
+      status: fails ? 'failed' : 'completed',
+      documentResults: [{
+        documentId: doc.documentId,
+        order: 1,
+        status: fails ? 'failed' : 'completed',
+        currentStage: fails ? 'parsing' : 'wiki_applied',
+        summary: fails ? null : `${doc.originalFileName}을(를) 근거로 쓴 위키 문단을 걷어냈습니다.`,
+        failureReason: fails ? 'Wiki 걷어내기가 시간 안에 끝나지 않았습니다.' : null,
+        failureStage: fails ? 'agent_timeout' : null,
+      }],
+      createdAt: now,
+      startedAt: now,
+      finishedAt: now,
+      failureReason: fails ? 'Wiki 걷어내기가 시간 안에 끝나지 않았습니다.' : null,
     })
-    return HttpResponse.json({ jobId, status: 'completed' }, { status: 202 })
+    return HttpResponse.json(
+      { deleted: false, reprocessRequired: true, jobId, scopeKey: doc.scopeKey, status: 'deleting' },
+      { status: 202 },
+    )
   }),
 
   // POST /documents/:documentId/retry — failed/cancelled만 허용

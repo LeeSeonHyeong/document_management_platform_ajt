@@ -39,17 +39,18 @@ export default function DocumentDeleteDialog({
     }
     deleteMutation.mutate(documentId, {
       onSuccess: (data) => {
-        // S15P11B106-93: 삭제 응답은 { deleted, reprocessRequired, jobId, scopeKey, status } 형태다.
+        // 삭제 응답은 { deleted, reprocessRequired, jobId, scopeKey, status } 형태다.
+        // S15P11B106-195: deleted 는 더 이상 항상 true 가 아니다 — 걷어낼 근거가 있으면
+        // Wiki 정리가 끝난 뒤에 지우므로 이 시점에는 아직 문서가 살아 있다(status=deleting).
+        if (data?.reprocessRequired && data.jobId) {
+          setDeletion({ documentId, jobId: data.jobId })
+          return
+        }
+        // 걷어낼 내용이 없어 즉시 지운 경우(deleted=true, jobId=null, status=skipped).
         if (!data?.deleted) {
           toast.error('문서 삭제 응답이 올바르지 않습니다.')
           return
         }
-        // Wiki/AI 재처리 작업이 생성된 경우에만 작업 상태를 폴링한다.
-        if (data.reprocessRequired && data.jobId) {
-          setDeletion({ documentId, jobId: data.jobId })
-          return
-        }
-        // 재처리할 내용이 없는 정상 삭제(reprocessRequired=false, jobId=null, status=skipped).
         toast.success('문서가 삭제되었습니다.')
         onGoToList?.()
       },
@@ -69,6 +70,13 @@ export default function DocumentDeleteDialog({
         failureReason={job?.status === 'completed' ? null : job?.failureReason}
         onViewWiki={onViewWiki}
         onGoToList={onGoToList ?? onBackground ?? onClose}
+        // S15P11B106-195: 걷어내기가 실패하면 문서와 원본 파일이 그대로 남는다.
+        // 같은 삭제 요청을 다시 보내면 재시도된다 — 별도 재시도 API가 없다.
+        onRetry={() => {
+          setDeletion(null)
+          handleDelete()
+        }}
+        retrying={deleteMutation.isPending}
       />
     )
   }
@@ -223,7 +231,7 @@ function DeleteProgressDialog({ open, document, onBackground }) {
 }
 
 // Figma 4-7-4R — 위키 반영까지 끝난 뒤의 완료 화면.
-function DeleteDoneDialog({ document, failureReason, onViewWiki, onGoToList }) {
+function DeleteDoneDialog({ document, failureReason, onViewWiki, onGoToList, onRetry, retrying }) {
   const relatedWikis = document?.relatedWikis ?? []
   const firstWiki = relatedWikis[0] ?? null
   const fileSizeMb = document?.fileSize
@@ -238,23 +246,41 @@ function DeleteDoneDialog({ document, failureReason, onViewWiki, onGoToList }) {
       closeOnOverlay={false}
       footerClassName="grid grid-cols-2 gap-3 bg-slate-50 px-6 py-4"
       footer={
-        <>
-          <Button
-            variant="outline"
-            onClick={() => firstWiki && onViewWiki?.(firstWiki.wikiId)}
-            disabled={!firstWiki}
-            fullWidth
-          >
-            갱신된 위키 보기
-          </Button>
-          <Button variant="primary" onClick={onGoToList} fullWidth>
-            목록으로
-          </Button>
-        </>
+        failureReason ? (
+          <>
+            <Button variant="outline" onClick={onGoToList} fullWidth>
+              목록으로
+            </Button>
+            <Button variant="danger" onClick={onRetry} loading={retrying} fullWidth>
+              다시 삭제
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => firstWiki && onViewWiki?.(firstWiki.wikiId)}
+              disabled={!firstWiki}
+              fullWidth
+            >
+              갱신된 위키 보기
+            </Button>
+            <Button variant="primary" onClick={onGoToList} fullWidth>
+              목록으로
+            </Button>
+          </>
+        )
       }
     >
       <div className="flex flex-col items-center pt-2 text-center">
-        <span className="flex size-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 ring-4 ring-emerald-100">
+        {/* 실패는 실패처럼 보여야 한다 — 예전에는 실패해도 초록 원이라 성공으로 읽혔다. */}
+        <span
+          className={`flex size-14 items-center justify-center rounded-full ring-4 ${
+            failureReason
+              ? 'bg-rose-50 text-rose-500 ring-rose-100'
+              : 'bg-emerald-50 text-emerald-500 ring-emerald-100'
+          }`}
+        >
           {failureReason ? <AlertTriangle className="size-7" /> : <Check className="size-7" strokeWidth={2.6} />}
         </span>
         <h2 className="mt-4 text-xl font-bold text-slate-900">
@@ -287,14 +313,27 @@ function DeleteDoneDialog({ document, failureReason, onViewWiki, onGoToList }) {
           </button>
         )}
 
-        <div className="flex items-center gap-3 rounded-xl bg-emerald-50/60 px-4 py-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-500">
-            <Check className="size-4" strokeWidth={2.6} />
+        {/* 순서가 뒤집혔다(S15P11B106-195) — 원본은 위키 정리가 끝난 뒤에만 지워진다.
+            그래서 실패했으면 원본이 아직 남아 있고, 그렇게 적어야 사실과 맞는다. */}
+        <div
+          className={`flex items-center gap-3 rounded-xl px-4 py-3 ${
+            failureReason ? 'bg-slate-50' : 'bg-emerald-50/60'
+          }`}
+        >
+          <span
+            className={`flex size-9 shrink-0 items-center justify-center rounded-lg bg-white ${
+              failureReason ? 'text-slate-400' : 'text-emerald-500'
+            }`}
+          >
+            {failureReason ? <Circle className="size-4" /> : <Check className="size-4" strokeWidth={2.6} />}
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-800">원본 파일 삭제</p>
+            <p className="text-sm font-bold text-slate-800">
+              {failureReason ? '원본 파일 유지됨' : '원본 파일 삭제'}
+            </p>
             <p className="mt-0.5 truncate text-xs text-slate-400">
               {document?.originalFileName ?? '원본 문서'} · {fileSizeMb}
+              {failureReason && ' · 다시 삭제할 수 있습니다'}
             </p>
           </div>
         </div>
