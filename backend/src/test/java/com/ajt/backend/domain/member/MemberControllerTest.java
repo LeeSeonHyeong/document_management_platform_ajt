@@ -88,6 +88,33 @@ class MemberControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/me는 로그인 후 비활성화된 계정의 기존 토큰을 401로 거절한다(S15P11B106-198)")
+    void meRejectsDeactivatedAccountWithExistingToken() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member employee = memberRepository.save(approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+        Cookie token = accessTokenCookie(employee);
+        // 로그인(토큰 발급) 이후 관리자가 계정을 비활성화한 상황을 재현한다.
+        employee.updateByAdmin(null, null, null, AccountStatus.INACTIVE, null);
+        memberRepository.save(employee);
+
+        mockMvc.perform(get("/api/v1/me").cookie(token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_ACCESS_TOKEN"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/me는 미승인(PENDING) 계정의 토큰을 401로 거절한다(S15P11B106-198)")
+    void meRejectsUnapprovedAccount() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member pending = memberRepository.save(
+                Member.signup(department, "pending@ajt.com", "대기자", passwordEncoder.encode("password123!")));
+
+        mockMvc.perform(get("/api/v1/me").cookie(accessTokenCookie(pending)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_ACCESS_TOKEN"));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/me는 인증 쿠키가 없으면 401 INVALID_ACCESS_TOKEN을 반환한다")
     void meRejectsMissingToken() throws Exception {
         mockMvc.perform(get("/api/v1/me"))
@@ -126,6 +153,22 @@ class MemberControllerTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ADMIN_PERMISSION_REQUIRED"))
                 .andExpect(jsonPath("$.message").value("관리자 권한이 필요합니다."));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/users는 로그인 후 사원으로 강등된 관리자의 기존 토큰을 403으로 거절한다(S15P11B106-198)")
+    void adminApiRejectsDemotedAdminWithExistingToken() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(department));
+        Cookie token = accessTokenCookie(admin);
+        // 로그인(토큰 발급) 이후 최고관리자가 이 계정을 사원(EMPLOYEE)으로 강등한 상황을 재현한다.
+        admin.updateByAdmin(null, null, Role.EMPLOYEE, null, null);
+        memberRepository.save(admin);
+
+        // 토큰에 admin이 남아 있어도, DB 최신 role(EMPLOYEE) 기준으로 권한이 만들어져 관리자 전용 API가 막힌다.
+        mockMvc.perform(get("/api/v1/users").cookie(token))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ADMIN_PERMISSION_REQUIRED"));
     }
 
     @Test

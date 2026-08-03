@@ -229,6 +229,15 @@ public class Member {
                 && accountStatus == AccountStatus.ACTIVE;
     }
 
+    /**
+     * 로그인·인증이 허용되는 계정 상태인지 여부입니다(가입 승인 + 계정 활성).
+     * 로그인 시점 검증과, 발급된 토큰의 매 요청 재검증(S15P11B106-198)이 같은 기준을 공유합니다.
+     */
+    public boolean isLoginAllowed() {
+        return signupStatus == SignupStatus.APPROVED
+                && accountStatus == AccountStatus.ACTIVE;
+    }
+
     @PrePersist
     void prePersist() {
         Instant now = Instant.now();

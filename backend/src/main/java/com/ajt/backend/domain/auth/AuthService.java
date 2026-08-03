@@ -13,7 +13,6 @@ import com.ajt.backend.domain.auth.dto.SignupRequest;
 import com.ajt.backend.domain.auth.dto.SignupResponse;
 import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.department.DepartmentRepository;
-import com.ajt.backend.domain.member.AccountStatus;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.SignupStatus;
@@ -219,8 +218,8 @@ public class AuthService {
     }
 
     private boolean canLogin(Member member) {
-        return member.getSignupStatus() == SignupStatus.APPROVED
-                && member.getAccountStatus() == AccountStatus.ACTIVE;
+        // 로그인 가능 여부 판정은 Member.isLoginAllowed() 한 곳으로 통일한다(인증 필터의 매 요청 재검증과 동일 기준, S15P11B106-198).
+        return member.isLoginAllowed();
     }
 
     // 수정: 6자리 인증번호(000000~999999)를 생성한다.
