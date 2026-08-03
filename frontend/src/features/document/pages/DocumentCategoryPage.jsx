@@ -69,7 +69,7 @@ export default function DocumentCategoryPage() {
 
   function handleAdd() {
     const name = newName.trim()
-    if (!name || createMutation.isPending) return
+    if (!name || newDepartments.length === 0 || createMutation.isPending) return
     const categoryScopeKey =
       newDepartments.includes('ALL') || newDepartments.length === 0
         ? 'ALL'
@@ -133,11 +133,11 @@ export default function DocumentCategoryPage() {
   return (
     <section className="space-y-5">
       <Link
-        to="/admin/documents/source"
+        to="/admin/documents"
         className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-md text-sm font-semibold text-slate-500 hover:text-primary-600"
       >
         <ChevronLeft className="size-4" />
-        원본 문서
+        문서 관리
       </Link>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -179,13 +179,14 @@ export default function DocumentCategoryPage() {
               value={newDepartments}
               departments={departments}
               onChange={setNewDepartments}
+              placeholder="공개 부서 선택"
             />
           </div>
           <Button
             size="sm"
             onClick={handleAdd}
             loading={createMutation.isPending}
-            disabled={!newName.trim()}
+            disabled={!newName.trim() || newDepartments.length === 0}
             className="min-w-16"
           >
             추가
@@ -200,7 +201,7 @@ export default function DocumentCategoryPage() {
             disabled={!scopeFilter}
             className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300"
           >
-            초기화
+            필터 초기화
           </Button>
           <div className="w-56">
             <ScopeCombinationFilter

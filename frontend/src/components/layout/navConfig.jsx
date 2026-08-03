@@ -57,12 +57,14 @@ export function getPageTitle(pathname) {
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return '직원 정보 수정'
   if (/^\/admin\/users\/[^/]+$/.test(pathname)) return '직원 상세'
   if (/^\/admin\/inquiries\/[^/]+$/.test(pathname)) return '문의 상세'
+  if (pathname === '/admin/documents') return '업로드'
   if (pathname === '/admin/documents/source') return '원본 문서'
+  if (pathname === '/admin/documents/summaries') return '요약 목록'
   if (/^\/admin\/documents\/source\/[^/]+$/.test(pathname)) return '원본 문서 상세'
   if (/^\/admin\/documents\/jobs\/[^/]+\/progress$/.test(pathname)) return 'AI 작업 처리 중'
   if (/^\/admin\/documents\/jobs\/[^/]+\/summary$/.test(pathname)) return 'AI 작업 요약'
   if (/^\/admin\/documents\/jobs\/[^/]+$/.test(pathname)) return 'AI 작업 대기'
-  if (pathname === '/admin/documents/categories') return '문서 카테고리'
+  if (pathname === '/admin/documents/categories') return '카테고리 관리'
   if (/^\/wiki\/[^/]+$/.test(pathname)) return '위키'
   return ROUTE_LABELS[pathname] ?? 'AJT'
 }
@@ -74,6 +76,13 @@ export function getPageEyebrow(pathname) {
   if (pathname === '/admin/departments') return 'AJT / 조직 관리'
   if (pathname === '/admin/signup-requests') return 'AJT / 직원 관리'
   if (pathname === '/admin/inquiries') return 'AJT / 지원 관리'
+  if (
+    pathname === '/admin/documents' ||
+    pathname === '/admin/documents/source' ||
+    pathname === '/admin/documents/summaries' ||
+    pathname === '/admin/documents/categories'
+  )
+    return 'AJT / 문서 관리'
   if (pathname.startsWith('/admin/documents')) return 'AJT / 업무 자동화'
   if (pathname === '/admin/schedules') return 'AJT / 일정 관리'
   if (pathname === '/wiki' || pathname.startsWith('/wiki/')) return 'AJT / 지식 관리'
