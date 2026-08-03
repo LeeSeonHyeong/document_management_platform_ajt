@@ -1,6 +1,6 @@
 import { Check, Sparkles } from 'lucide-react'
 import { Button, Modal } from '@/components/ui'
-import { useAiJobPolling } from '../hooks/useAiJobPolling'
+import { useAiJobsPolling } from '../hooks/useAiJobPolling'
 
 // currentStage 값의 진행 순서.
 // 중간 단계 표기가 백엔드(wiki_pending)와 목 핸들러·status.js(wiki_transform)에서 갈려 있고
@@ -40,9 +40,10 @@ function stageStatus(target, slowestIndex) {
 }
 
 // Figma 4-5R — GET /ai-jobs/:jobId 폴링 결과로 실제 진행 단계를 표시한다.
-export default function AiJobProgressDialog({ open, jobId, documentCount = 0, onBackground }) {
+// 업로드가 공개 범위별로 여러 작업으로 쪼개질 수 있어 jobIds 여러 개를 한 모달에 합쳐 보여준다.
+export default function AiJobProgressDialog({ open, jobIds, documentCount = 0, onBackground, onDone }) {
   // 닫혀 있는 동안에는 폴링하지 않는다.
-  const { documentResults, progress, isFinished } = useAiJobPolling(open ? jobId : null)
+  const { documentResults, progress, isFinished } = useAiJobsPolling(open ? jobIds : [])
 
   // 실패·취소된 문서는 더 진행되지 않으므로 단계 계산에서 제외한다.
   const pendingIndexes = documentResults
@@ -58,20 +59,26 @@ export default function AiJobProgressDialog({ open, jobId, documentCount = 0, on
   return (
     <Modal
       open={open}
-      onClose={onBackground}
+      onClose={isFinished ? onDone : onBackground}
       showClose={false}
       closeOnOverlay={false}
       size="md"
       footerClassName="justify-between"
       footer={
-        <>
-          <p className="text-[11px] text-slate-400">
-            창을 닫아도 처리는 계속되며, 완료되면 알림으로 알려드립니다
-          </p>
-          <Button variant="outline" onClick={onBackground} className="shrink-0">
-            백그라운드에서 계속
+        isFinished ? (
+          <Button onClick={onDone} className="w-full">
+            요약 목록 보기
           </Button>
-        </>
+        ) : (
+          <>
+            <p className="text-[11px] text-slate-400">
+              창을 닫아도 처리는 계속되며, 완료되면 알림으로 알려드립니다
+            </p>
+            <Button variant="outline" onClick={onBackground} className="shrink-0">
+              백그라운드에서 계속
+            </Button>
+          </>
+        )
       }
     >
       <div className="pt-2 text-center">
