@@ -8,6 +8,7 @@ import { useStartAiJob, useUploadDocuments, useUploadScheduleSource } from '../q
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobStartDialog from '../components/AiJobStartDialog'
+import AiJobProgressDialog from '../components/AiJobProgressDialog'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
@@ -29,6 +30,9 @@ export default function DocumentListPage() {
   const [previewScheduleFiles, setPreviewScheduleFiles] = useState([])
   const [previewQueueDocuments, setPreviewQueueDocuments] = useState([])
   const [startOpen, setStartOpen] = useState(false)
+  const [progressOpen, setProgressOpen] = useState(false)
+  const [progressJobIds, setProgressJobIds] = useState([])
+  const [progressDocumentCount, setProgressDocumentCount] = useState(0)
   const [queueMetadata, setQueueMetadata] = useState({})
   const uploadDocumentsMutation = useUploadDocuments()
   const uploadScheduleMutation = useUploadScheduleSource()
@@ -217,14 +221,17 @@ export default function DocumentListPage() {
             setStartOpen(false)
             toast.success(`${uploadedIds.size}개 파일의 AI 작업을 시작했습니다.`)
 
-            // 작업이 하나면 그 진행 화면으로 바로 보낸다 — 예전에는 jobId 를 버리고 원본
-            // 문서 목록으로 보내서, 관리자가 진행 상황을 볼 방법이 없었다
-            // (S15P11B106-200). 공개 범위별로 여러 개가 생겼으면 어느 하나를 고를 근거가
-            // 없으므로 요약 목록으로 보낸다 — 거기서 진행 중인 작업이 전부 보인다.
-            if (startedJobIds.length === 1) {
-              navigate(`/admin/documents/jobs/${startedJobIds[0]}/progress`)
-            } else if (startedJobIds.length > 1) {
-              navigate('/admin/documents/summaries')
+            // 페이지 이동 없이 진행 모달을 띄운다. 공개 범위별로 여러 작업으로 쪼개져도
+            // 모든 작업을 한 모달에 합쳐 진행률을 보여주고, 끝나면 요약 목록으로 안내한다
+            // (S15P11B106-210). 일정 파일만 있으면 AI 작업이 없으므로 원본 목록으로 보낸다.
+            if (startedJobIds.length > 0) {
+              const documentTotal = documentGroups.reduce(
+                (total, group) => total + group.documents.length,
+                0,
+              )
+              setProgressJobIds(startedJobIds)
+              setProgressDocumentCount(documentTotal)
+              setProgressOpen(true)
             } else {
               navigate('/admin/documents/source')
             }
@@ -246,6 +253,17 @@ export default function DocumentListPage() {
               })
             }
           }
+        }}
+      />
+
+      <AiJobProgressDialog
+        open={progressOpen}
+        jobIds={progressJobIds}
+        documentCount={progressDocumentCount}
+        onBackground={() => setProgressOpen(false)}
+        onDone={() => {
+          setProgressOpen(false)
+          navigate('/admin/documents/summaries')
         }}
       />
     </section>
