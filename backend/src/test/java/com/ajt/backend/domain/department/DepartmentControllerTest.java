@@ -75,6 +75,20 @@ class DepartmentControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/departments는 명목상 부서('최고관리자')를 제외한다(S15P11B106-183)")
+    void findDepartmentsExcludesNominalDepartment() throws Exception {
+        departmentRepository.save(new Department(Department.NOMINAL_DEPARTMENT_NAME));
+        Department development = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(development, "admin@ajt.com", "AJT-2026-9001"));
+
+        mockMvc.perform(get("/api/v1/departments")
+                        .cookie(accessTokenCookie(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].name").value("개발부"));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/departments는 로그인하지 않으면 401을 반환한다")
     void findDepartmentsRejectsMissingToken() throws Exception {
         mockMvc.perform(get("/api/v1/departments"))

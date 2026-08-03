@@ -25,6 +25,16 @@ public class Department {
     /** 시스템 기본 부서명입니다(S15P11B106-146). 항상 존재하며 이름 변경·삭제가 금지됩니다. */
     public static final String DEFAULT_NAME = "전체";
 
+    /**
+     * 명목상 부서명입니다(S15P11B106-183).
+     *
+     * <p>최고관리자 계정을 소속시키기 위한 부서로, DB에는 존재할 수 있으나 실제 조직 부서가 아니므로
+     * 사용자 화면·API 응답에는 노출하지 않습니다. 부서 목록·회원가입 부서 목록에서 제외되고,
+     * 사용자 응답에서는 소속 부서가 이 부서면 department를 null로 처리합니다.
+     * 명목상 부서 판정은 이 상수와 {@link #isNominal()} 한 곳에서만 관리합니다.
+     */
+    public static final String NOMINAL_DEPARTMENT_NAME = "최고관리자";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "department_id")
@@ -55,6 +65,15 @@ public class Department {
     /** 시스템 기본 부서('전체') 여부입니다. 기본 부서는 이름 변경·삭제가 금지됩니다(S15P11B106-146). */
     public boolean isDefault() {
         return DEFAULT_NAME.equals(name);
+    }
+
+    /**
+     * 명목상 부서('최고관리자') 여부입니다(S15P11B106-183).
+     * 이 부서는 부서 목록·회원가입 부서 목록·사용자 응답에서 숨깁니다(사용자에게 노출하지 않음).
+     * 명목상 부서 판정이 필요한 곳(목록 제외·응답 숨김)은 모두 이 메서드를 재사용합니다.
+     */
+    public boolean isNominal() {
+        return NOMINAL_DEPARTMENT_NAME.equals(name);
     }
 
     /**
