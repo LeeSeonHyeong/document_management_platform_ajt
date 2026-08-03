@@ -25,6 +25,7 @@ from schedule_extractor.config import (DEFAULT_TIMEOUT_SECONDS, PROVIDERS,
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 RUNTIMES = ("claude-code", "deepagents")
+VISION_OCR_PROVIDERS = ("gemini", "anthropic")
 
 
 class ServerSettings(BaseSettings):
@@ -56,6 +57,17 @@ class ServerSettings(BaseSettings):
     openai_api_key: str = Field("", validation_alias="OPENAI_API_KEY")
     openai_base_url: str = Field("", validation_alias="OPENAI_BASE_URL")
 
+    # 스캔 PDF 비전 OCR 이 쓸 프로바이더. 기본은 gemini 다 — GMS 게이트웨이의 요청
+    # 크기 상한(실측 약 100KB)에 200dpi 로 렌더한 실제 스캔 페이지 대부분이 걸려
+    # "model not found" 로 잘못 보고되는 문제가 있었다. Google API 는 GMS 를 거치지
+    # 않아 이 제약이 없다. `anthropic` 으로 명시하면 예전처럼 FAST 티어를 재사용한다.
+    vision_ocr_provider: str = Field("gemini", validation_alias="VISION_OCR_PROVIDER")
+    gemini_api_key: str = Field("", validation_alias="GEMINI_API_KEY")
+    # 비우면 어댑터 코드 기본값(무료 티어에 적합하다고 알려진 이름, 실기동 미검증).
+    gemini_model: str = Field("", validation_alias="GEMINI_MODEL")
+    # 비우면 어댑터가 공개 Google API 주소를 쓴다. 테스트용 프록시가 있을 때만 준다.
+    gemini_base_url: str = Field("", validation_alias="GEMINI_BASE_URL")
+
     # 일정 추출은 에이전트 런타임을 쓰지 않는다 — 상태 없는 단발 구조화 출력이고
     # `completion.complete()` 는 스키마 강제를 하지 않는다. 그래서 자기 어댑터를 고른다.
     # 모델·주소를 비우면 프로바이더별 기본값이 채워진다 (`schedule_extractor/config.py`).
@@ -75,6 +87,16 @@ class ServerSettings(BaseSettings):
             raise ValueError(
                 f"SCHEDULE_EXTRACTOR_PROVIDER 값이 올바르지 않다: {value!r} — "
                 f"{', '.join(PROVIDERS)} 중 하나여야 한다")
+        return value
+
+    @field_validator("vision_ocr_provider")
+    @classmethod
+    def _known_vision_ocr_provider(cls, value: str) -> str:
+        """`AI_RUNTIME` 과 같은 이유로 오타를 기동 시점에 막는다."""
+        if value not in VISION_OCR_PROVIDERS:
+            raise ValueError(
+                f"VISION_OCR_PROVIDER 값이 올바르지 않다: {value!r} — "
+                f"{', '.join(VISION_OCR_PROVIDERS)} 중 하나여야 한다")
         return value
 
     @field_validator("runtime")
@@ -143,15 +165,36 @@ def schedule_settings(settings: ServerSettings) -> ScheduleExtractorSettings:
 
 
 def vision_ocr_engine(settings: ServerSettings):
-    """스캔 PDF OCR 을 GMS 비전 모델로 돌리는 엔진. 설정이 없으면 `None` → 로컬 Tesseract.
+    """스캔 PDF OCR 을 돌리는 엔진을 고른다. 설정이 없으면 `None` → 로컬 Tesseract.
 
     로컬 Tesseract 는 배포 환경에 언어 데이터(kor)를 깔아야 하고, 안 깔린 곳에선 한글
-    스캔 PDF 가 통째로 실패한다 (S15P11B106-180). 저렴한 FAST 티어 모델(`AI_MODEL_FAST`,
-    보통 haiku)과 `anthropic`(GMS) 자격을 재사용해 그 로컬 의존을 없앤다.
+    스캔 PDF 가 통째로 실패한다 (S15P11B106-180).
 
-    `None` 을 돌려주면 `parse_pdf` 가 로컬 Tesseract 로 폴백한다 — 모델·키·주소가 없거나
-    프로바이더가 `anthropic` 이 아니면 그렇게 둔다(오류로 기동을 막지 않는다).
+    기본 프로바이더는 `gemini` 다 — GMS 게이트웨이는 요청 본문 크기를 실측 약 100KB로
+    제한하는데, 200dpi 로 렌더한 실제 스캔 페이지(보통 100~200KB)가 거의 항상 여기
+    걸려 `[GMS 에러] Model not found in request` 로 잘못 보고됐다(모델 이름 문제가
+    아니라 게이트웨이가 큰 요청을 못 읽어서 생기는 오류). Google Generative Language
+    API 는 GMS 를 거치지 않아 이 제약이 없다.
+
+    `anthropic` 으로 명시하면 예전처럼 저렴한 FAST 티어 모델(`AI_MODEL_FAST`, 보통
+    haiku)과 GMS 자격을 재사용한다 — 다만 위 크기 제한을 그대로 물려받는다.
+
+    `None` 을 돌려주면 `parse_pdf` 가 로컬 Tesseract 로 폴백한다 — 키·모델이 없으면
+    그렇게 둔다(오류로 기동을 막지 않는다).
     """
+    if settings.vision_ocr_provider == "gemini":
+        if not settings.gemini_api_key:
+            return None
+        from document_parser.gemini_vision_ocr import GeminiVisionOcr
+        kwargs: dict = {"api_key": settings.gemini_api_key,
+                        "timeout_seconds": settings.schedule_timeout_seconds}
+        if settings.gemini_model:
+            kwargs["model"] = settings.gemini_model
+        if settings.gemini_base_url:
+            kwargs["base_url"] = settings.gemini_base_url
+        return GeminiVisionOcr(**kwargs)
+
+    # anthropic: 기존 FAST 티어(GMS/haiku) 경로.
     model = settings.model_fast
     if not model:
         return None

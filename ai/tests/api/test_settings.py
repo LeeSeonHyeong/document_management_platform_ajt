@@ -26,10 +26,50 @@ def test_reads_values_from_the_env_file(tmp_path):
     assert settings.runtime == "deepagents"
 
 
+def test_vision_ocr_provider_defaults_to_gemini(tmp_path):
+    """GMS 게이트웨이의 요청 크기 상한(실측 약 100KB)에 실제 스캔 페이지 대부분이
+    걸려 잘못된 'model not found' 로 나온다 — Google API 는 그 제약이 없다."""
+    assert ServerSettings(_env_file=_write_env(tmp_path, "")).vision_ocr_provider == "gemini"
+
+
+def test_vision_ocr_engine_is_none_without_a_gemini_key(tmp_path):
+    """gemini 가 기본이어도 키가 없으면 None → parse_pdf 가 로컬 Tesseract 로 폴백한다."""
+    assert vision_ocr_engine(ServerSettings(_env_file=_write_env(tmp_path, ""))) is None
+
+
+def test_vision_ocr_engine_is_built_from_the_gemini_key(tmp_path):
+    env = _write_env(tmp_path, "GEMINI_API_KEY=g-key\n")
+
+    engine = vision_ocr_engine(ServerSettings(_env_file=env))
+
+    assert engine is not None
+    assert engine._api_key == "g-key"
+
+
+def test_vision_ocr_engine_uses_an_explicit_gemini_model_and_base_url(tmp_path):
+    env = _write_env(tmp_path,
+                     "GEMINI_API_KEY=g-key\n"
+                     "GEMINI_MODEL=gemini-1.5-flash\n"
+                     "GEMINI_BASE_URL=https://gemini.example\n")
+
+    engine = vision_ocr_engine(ServerSettings(_env_file=env))
+
+    assert engine._model == "gemini-1.5-flash"
+    assert engine._base_url == "https://gemini.example"
+
+
+def test_rejects_an_unknown_vision_ocr_provider_at_construction(tmp_path):
+    env = _write_env(tmp_path, "VISION_OCR_PROVIDER=azure\n")
+
+    with pytest.raises(ValueError, match="VISION_OCR_PROVIDER"):
+        ServerSettings(_env_file=env)
+
+
 def test_vision_ocr_engine_is_built_from_the_fast_model_and_gms_creds(tmp_path):
-    """스캔 PDF OCR 엔진은 저렴한 FAST 티어 모델과 anthropic(GMS) 자격으로 만든다.
+    """`anthropic` 으로 명시하면 저렴한 FAST 티어 모델과 anthropic(GMS) 자격으로 만든다.
     모델 문자열의 `anthropic:` 접두사는 떼고 이름만 API 에 넘긴다 (S15P11B106-180)."""
     env = _write_env(tmp_path,
+                     "VISION_OCR_PROVIDER=anthropic\n"
                      "AI_MODEL_FAST=anthropic:claude-haiku-4-5-20251001\n"
                      "ANTHROPIC_API_KEY=k\n"
                      "ANTHROPIC_BASE_URL=https://gms.example/api.anthropic.com\n")
@@ -43,7 +83,8 @@ def test_vision_ocr_engine_is_built_from_the_fast_model_and_gms_creds(tmp_path):
 
 def test_vision_ocr_engine_is_none_without_a_fast_model(tmp_path):
     """FAST 모델이 없으면 None → parse_pdf 가 로컬 Tesseract 로 폴백한다."""
-    env = _write_env(tmp_path, "ANTHROPIC_API_KEY=k\n"
+    env = _write_env(tmp_path, "VISION_OCR_PROVIDER=anthropic\n"
+                               "ANTHROPIC_API_KEY=k\n"
                                "ANTHROPIC_BASE_URL=https://gms.example\n")
     assert vision_ocr_engine(ServerSettings(_env_file=env)) is None
 
@@ -51,6 +92,7 @@ def test_vision_ocr_engine_is_none_without_a_fast_model(tmp_path):
 def test_vision_ocr_engine_is_none_without_anthropic_creds(tmp_path):
     """모델은 있어도 키·주소가 없으면 None(오류로 기동을 막지 않는다)."""
     env = _write_env(tmp_path,
+                     "VISION_OCR_PROVIDER=anthropic\n"
                      "AI_MODEL_FAST=anthropic:claude-haiku-4-5-20251001\n")
     assert vision_ocr_engine(ServerSettings(_env_file=env)) is None
 
