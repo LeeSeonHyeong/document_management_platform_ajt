@@ -103,6 +103,7 @@ export const documentHandlers = [
       status: 'waiting',
       documentResults: newDocs.map((d) => ({
         documentId: d.documentId,
+        originalFileName: d.originalFileName,
         order: d._order,
         status: 'uploaded',
         currentStage: null,
@@ -184,7 +185,7 @@ export const documentHandlers = [
       documentIds: [doc.documentId],
       status: 'waiting',
       documentResults: [
-        { documentId: doc.documentId, order: 1, status: doc.status, currentStage: null, summary: null, failureReason: null },
+        { documentId: doc.documentId, originalFileName: doc.originalFileName, order: 1, status: doc.status, currentStage: null, summary: null, failureReason: null },
       ],
       createdAt: new Date().toISOString(),
       startedAt: null,
@@ -284,6 +285,7 @@ export const documentHandlers = [
       status: fails ? 'failed' : 'completed',
       documentResults: [{
         documentId: doc.documentId,
+        originalFileName: doc.originalFileName,
         order: 1,
         status: fails ? 'failed' : 'completed',
         currentStage: fails ? 'parsing' : 'wiki_applied',

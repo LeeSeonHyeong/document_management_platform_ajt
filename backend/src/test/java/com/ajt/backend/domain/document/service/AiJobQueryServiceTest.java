@@ -90,8 +90,8 @@ class AiJobQueryServiceTest {
         failed.completeParsing("wiki/ALL/sources/16/parsed.md");
         failed.failProcessing("Wiki 변환에 실패했습니다.");
         job.finish(List.of(
-                AiJob.DocumentParseResult.succeeded(15L, "휴가 규정을 Wiki에 반영했습니다."),
-                AiJob.DocumentParseResult.failed(16L, "Wiki 변환에 실패했습니다.", "agent_timeout")
+                AiJob.DocumentParseResult.succeeded(15L, "문서-15.pdf", "휴가 규정을 Wiki에 반영했습니다."),
+                AiJob.DocumentParseResult.failed(16L, "문서-16.pdf", "Wiki 변환에 실패했습니다.", "agent_timeout")
         ));
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
@@ -113,6 +113,64 @@ class AiJobQueryServiceTest {
         // 이 문서는 파싱을 끝내고 Wiki 변환에서 죽었으므로 두 값이 갈린다 — 화면은
         // failureStage 를 보여야 한다.
         assertThat(response.documentResults().get(1).currentStage()).isEqualTo("parsing");
+    }
+
+    @Test
+    @DisplayName("문서가 삭제돼도 기록된 파일명이 이력에 남는다")
+    void keepsTheFileNameAfterTheDocumentIsDeleted() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assign(job, "id", 42L);
+        job.start();
+        job.finish(List.of(AiJob.DocumentParseResult.succeeded(
+                15L, "2024_인사규정_최종.pdf", "인사규정을 Wiki에 반영했습니다.")));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        // 문서는 하드 삭제됐다(DR-014) — 조회에서 빠진다.
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of());
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        assertThat(response.documentResults()).singleElement()
+                .satisfies(result -> {
+                    assertThat(result.originalFileName()).isEqualTo("2024_인사규정_최종.pdf");
+                    assertThat(result.summary()).isEqualTo("인사규정을 Wiki에 반영했습니다.");
+                });
+    }
+
+    @Test
+    @DisplayName("기록된 파일명이 살아 있는 문서의 현재 이름보다 우선한다")
+    void prefersTheRecordedSnapshotOverTheCurrentName() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assign(job, "id", 42L);
+        job.start();
+        job.finish(List.of(AiJob.DocumentParseResult.succeeded(15L, "옛이름.pdf", "반영했습니다.")));
+        Document renamed = completedDocument(15L, "새이름.pdf");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(renamed));
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        // 이력은 그때를 가리켜야 한다 — 파일이 교체돼도 그 작업이 처리한 것은 옛 파일이다.
+        assertThat(response.documentResults().get(0).originalFileName()).isEqualTo("옛이름.pdf");
+    }
+
+    @Test
+    @DisplayName("스냅샷이 없는 옛 작업은 살아 있는 문서의 현재 이름으로 메운다")
+    void fallsBackToTheLiveNameForOldRecords() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assign(job, "id", 42L);
+        job.start();
+        // 이 필드가 생기기 전에 저장된 결과 (S15P11B106-202 이전)
+        job.finish(List.of(AiJob.DocumentParseResult.succeeded(15L, null, "반영했습니다.")));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(15L)))
+                .willReturn(List.of(completedDocument(15L, "살아있는이름.pdf")));
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        assertThat(response.documentResults().get(0).originalFileName()).isEqualTo("살아있는이름.pdf");
     }
 
     @Test
@@ -268,7 +326,7 @@ class AiJobQueryServiceTest {
         assign(job, "id", jobId);
         assign(job, "createdAt", LocalDateTime.parse(createdAt));
         job.start();
-        job.finish(List.of(AiJob.DocumentParseResult.succeeded(documentId, summary)));
+        job.finish(List.of(AiJob.DocumentParseResult.succeeded(documentId, "문서.pdf", summary)));
         return job;
     }
 

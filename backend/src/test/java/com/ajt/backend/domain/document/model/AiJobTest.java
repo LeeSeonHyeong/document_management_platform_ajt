@@ -50,8 +50,8 @@ class AiJobTest {
         AiJob job = processingJob();
 
         job.finish(List.of(
-                AiJob.DocumentParseResult.succeeded(3L, "휴가 규정을 Wiki에 반영했습니다."),
-                AiJob.DocumentParseResult.failed(4L, "FastAPI 응답 시간이 초과되었습니다.", "agent_timeout")
+                AiJob.DocumentParseResult.succeeded(3L, "doc-3.md", "휴가 규정을 Wiki에 반영했습니다."),
+                AiJob.DocumentParseResult.failed(4L, "doc-4.md", "FastAPI 응답 시간이 초과되었습니다.", "agent_timeout")
         ));
 
         assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
@@ -76,8 +76,8 @@ class AiJobTest {
         AiJob job = processingJob();
 
         job.finish(List.of(
-                AiJob.DocumentParseResult.failed(3L, "파싱에 실패했습니다.", "context_load"),
-                AiJob.DocumentParseResult.failed(4L, "변환에 실패했습니다.", "agent_error")
+                AiJob.DocumentParseResult.failed(3L, "doc-3.md", "파싱에 실패했습니다.", "context_load"),
+                AiJob.DocumentParseResult.failed(4L, "doc-4.md", "변환에 실패했습니다.", "agent_error")
         ));
 
         assertThat(job.status()).isEqualTo(AiJobStatus.FAILED);
@@ -90,7 +90,7 @@ class AiJobTest {
     void usesDefaultFailureReason() {
         AiJob job = processingJob();
 
-        job.finish(List.of(AiJob.DocumentParseResult.failed(3L, null, null)));
+        job.finish(List.of(AiJob.DocumentParseResult.failed(3L, "doc-3.md", null, null)));
 
         assertThat(job.failureReason()).isEqualTo("문서를 Wiki로 변환하지 못했습니다.");
     }
@@ -112,7 +112,7 @@ class AiJobTest {
     void rejectsFinishOutsideProcessingState() {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(3L));
 
-        assertThatThrownBy(() -> job.finish(List.of(AiJob.DocumentParseResult.succeeded(3L, null))))
+        assertThatThrownBy(() -> job.finish(List.of(AiJob.DocumentParseResult.succeeded(3L, "doc-3.md", null))))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("PROCESSING 상태의 작업만 종료할 수 있습니다.");
         assertThatThrownBy(() -> job.fail("사유"))
@@ -132,7 +132,7 @@ class AiJobTest {
         AiJob job = processingJob();
 
         job.cancel();
-        job.recordResult(AiJob.DocumentParseResult.succeeded(3L, "휴가 규정을 Wiki에 반영했습니다."));
+        job.recordResult(AiJob.DocumentParseResult.succeeded(3L, "doc-3.md", "휴가 규정을 Wiki에 반영했습니다."));
 
         assertThat(job.status()).isEqualTo(AiJobStatus.CANCELLED);
         assertThat(job.documentResults()).extracting(AiJob.DocumentParseResult::documentId)

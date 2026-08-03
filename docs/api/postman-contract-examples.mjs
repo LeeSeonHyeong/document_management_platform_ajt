@@ -1,4 +1,4 @@
-export const contractVersion = "1.12.0";
+export const contractVersion = "1.12.1";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -283,6 +283,7 @@ const contracts = {
           documentResults: [
             {
               documentId: "15",
+              originalFileName: "문서-15.pdf",
               order: 1,
               status: "completed",
               currentStage: "wiki_applied",
@@ -302,6 +303,7 @@ const contracts = {
           documentResults: [
             {
               documentId: "16",
+              originalFileName: "문서-16.pdf",
               order: 1,
               status: "failed",
               currentStage: "parsing",
@@ -332,6 +334,7 @@ const contracts = {
         documentResults: [
           {
             documentId: "15",
+            originalFileName: "문서-15.pdf",
             order: 1,
             status: "completed",
             currentStage: "wiki_applied",
@@ -341,6 +344,7 @@ const contracts = {
           },
           {
             documentId: "16",
+            originalFileName: "문서-16.pdf",
             order: 2,
             status: "processing",
             currentStage: "parsing",

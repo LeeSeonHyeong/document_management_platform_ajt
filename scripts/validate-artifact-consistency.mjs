@@ -370,7 +370,9 @@ const collectionVariable = (collection, key) =>
 // 1.12.0 은 DELETE /documents/{id} 응답의 `deleted` 의미 변경이다 — 걷어내기가 끝난 뒤에
 // 지우도록 순서를 뒤집어(S15P11B106-195) 응답 시점에는 아직 지워지지 않았다. 필드 의미 변경은
 // 하위 호환이 아니라 minor 다.
-const expectedContractVersion = "1.12.0";
+// 1.12.1 은 AI 작업 결과에 originalFileName 스냅샷을 더한 것이다 — 문서를 하드 삭제해도
+// 이력에 무엇이 바뀌었는지 남기기 위해서다(S15P11B106-202). 필드 추가라 patch 다.
+const expectedContractVersion = "1.12.1";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
