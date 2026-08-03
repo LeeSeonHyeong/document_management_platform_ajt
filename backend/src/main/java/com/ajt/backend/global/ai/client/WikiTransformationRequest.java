@@ -34,7 +34,13 @@ public record WikiTransformationRequest(
             throw new IllegalArgumentException("scopeVersion must not be null");
         }
 
-        if (changeType != WikiDocumentChangeType.DOCUMENT_REMOVED) {
+        if (changeType == WikiDocumentChangeType.DOCUMENT_REMOVED) {
+            // 삭제에는 새 본문이 없다. 그래도 null 로 두면 안 된다 — Jackson 이
+            // `"parsedMarkdown": null` 을 실어 보내고, 계약이 이 자리를 문자열로 정의해
+            // FastAPI 가 요청 전체를 400 으로 거부한다(S15P11B106-194). 그러면 걷어내기
+            // 에이전트가 아예 돌지 않아, 원본만 지워지고 Wiki 는 그대로 남는다.
+            parsedMarkdown = parsedMarkdown == null ? "" : parsedMarkdown;
+        } else {
             parsedMarkdown = requireNotBlank(parsedMarkdown, "parsedMarkdown");
         }
         if (changeType != WikiDocumentChangeType.DOCUMENT_ADDED) {

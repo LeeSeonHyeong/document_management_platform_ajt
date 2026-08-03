@@ -637,6 +637,37 @@ def test_added_without_a_body_is_a_400(make_client):
     assert runtime.instructions == [], "에이전트를 부르지 않는다"
 
 
+def test_null_parsed_markdown_is_rejected(make_client):
+    """`parsedMarkdown` 은 문자열 자리다. 생략하거나 `""` 는 되지만 `null` 은 안 된다.
+
+    Spring 이 삭제 요청에서 이 자리를 `null` 로 보내 실서버 삭제가 전부 400 으로 죽었다
+    (S15P11B106-194). 고친 곳은 Spring 이지만 **여기서 계속 거부해야 한다** — 받아주면
+    계약 위반을 조용히 흡수해 다음에 또 어긋났을 때 드러나지 않는다.
+    """
+    runtime = FakeRuntime()
+    response = _post(make_client(runtime),
+                     request_with(changeType="document_removed",
+                                  removedParsedMarkdown=SOURCE_MD,
+                                  parsedMarkdown=None))
+    assert response.status_code == 400, response.json()
+    body = response.json()
+    assert body["code"] == "INVALID_WIKI_TRANSFORMATION_REQUEST"
+    assert [e["field"] for e in body["fieldErrors"]] == ["parsedMarkdown"]
+    assert runtime.instructions == [], "에이전트를 부르지 않는다"
+
+
+def test_removal_omitting_parsed_markdown_is_accepted(make_client):
+    """반대쪽 — 삭제는 새 본문이 없는 게 정상이라 필드를 아예 안 보내도 된다.
+
+    Spring 은 `""` 를 보내지만, 계약이 이 필드를 선택으로 두므로 생략도 같은 뜻이다.
+    """
+    body = request_with(changeType="document_removed", removedParsedMarkdown=SOURCE_MD)
+    body.pop("parsedMarkdown", None)
+
+    response = _post(make_client(FakeRuntime()), body)
+    assert response.status_code == 200, response.json()
+
+
 def test_removal_on_an_empty_scope_fails_before_the_agent(make_client):
     """I3. 지울 문서가 있다는 것은 그 문서로 만든 위키가 있었다는 뜻이다 — 위키가 0장인
     삭제·교체는 모순이다 (설계 4.1).

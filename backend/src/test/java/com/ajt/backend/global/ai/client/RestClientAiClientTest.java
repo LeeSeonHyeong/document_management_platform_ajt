@@ -128,6 +128,40 @@ class RestClientAiClientTest {
     }
 
     @Test
+    @DisplayName("삭제 요청은 parsedMarkdown을 null이 아니라 빈 문자열로 보낸다")
+    void removedDocumentSendsEmptyParsedMarkdownNotNull() {
+        server.expect(requestTo("http://localhost:8000/internal/v1/wiki-transformations"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {
+                          "changeType": "document_removed",
+                          "parsedMarkdown": "",
+                          "removedParsedMarkdown": "# 온보딩 가이드\\n옛 본문..."
+                        }
+                        """))
+                // 계약이 이 자리를 문자열로 정의한다. null 이 실리면 FastAPI 가 요청 전체를
+                // 400 INVALID_WIKI_TRANSFORMATION_REQUEST 로 거부해 걷어내기 에이전트가
+                // 아예 돌지 않는다 (S15P11B106-194).
+                .andExpect(content().string(not(containsString("\"parsedMarkdown\":null"))))
+                .andRespond(withSuccess("""
+                        {
+                          "summary": "온보딩 가이드를 근거로 쓴 문단을 걷어냈습니다.",
+                          "categoryChanges": [],
+                          "wikiChanges": [],
+                          "relationChanges": [],
+                          "indexEntries": []
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        WikiTransformationResponse response = client.transformWiki(new WikiTransformationRequest(
+                "42", "15", "D1-D2", WikiDocumentChangeType.DOCUMENT_REMOVED,
+                null, "# 온보딩 가이드\n옛 본문...", "capability", 47L));
+
+        assertThat(response.summary()).isEqualTo("온보딩 가이드를 근거로 쓴 문단을 걷어냈습니다.");
+        server.verify();
+    }
+
+    @Test
     @DisplayName("허가값이 없으면 변환 요청을 만들 수 없다 — 창구를 못 불러 라이브를 덮는다")
     void wikiCapabilityIsRequired() {
         assertThatThrownBy(() -> new WikiTransformationRequest(
