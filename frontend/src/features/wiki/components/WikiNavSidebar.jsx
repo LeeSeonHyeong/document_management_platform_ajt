@@ -59,7 +59,10 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
   }
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-3">
+    <aside
+      className="flex flex-col rounded-2xl border border-slate-200 bg-white p-3"
+      style={{ flexGrow: 0, flexShrink: 100, flexBasis: '14rem', minWidth: '11rem' }}
+    >
       <div className="flex items-center justify-between px-2 py-2">
         <h2 className="text-base font-bold text-slate-800">부서</h2>
         <span className="text-xs font-semibold text-slate-400">{spaces.length}</span>
