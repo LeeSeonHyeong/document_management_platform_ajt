@@ -180,13 +180,14 @@ def test_credential_table_is_empty_when_nothing_is_configured(tmp_path):
 # ----- 일정 추출 어댑터 설정 ---------------------------------------------------
 
 
-def test_schedule_settings_defaults_to_ollama(tmp_path):
+def test_schedule_settings_defaults_to_anthropic(tmp_path):
+    """기본 프로바이더는 anthropic(GMS) 다 — GPU 없는 배포 서버가 ollama 를 못 띄우므로
+    (S15P11B106-180). 키가 없으면 build_provider 가 기동에서 죽는다."""
     settings = ServerSettings(_env_file=_write_env(tmp_path, ""))
 
     extractor = schedule_settings(settings)
 
-    assert extractor.provider == "ollama"
-    assert extractor.api_key == ""
+    assert extractor.provider == "anthropic"
 
 
 def test_schedule_settings_reuses_the_anthropic_credentials(tmp_path):
@@ -213,8 +214,10 @@ def test_an_explicit_schedule_base_url_wins(tmp_path):
 
 
 def test_the_ollama_adapter_never_receives_the_anthropic_key(tmp_path):
-    """로컬 측정 경로에 배포 키가 실려 나가지 않는다."""
-    env = _write_env(tmp_path, "ANTHROPIC_API_KEY=gms-key\n")
+    """로컬 측정 경로(ollama)에 배포 키가 실려 나가지 않는다.
+    기본은 이제 anthropic 이라 ollama 는 명시로 고른다."""
+    env = _write_env(tmp_path,
+                     "SCHEDULE_EXTRACTOR_PROVIDER=ollama\nANTHROPIC_API_KEY=gms-key\n")
 
     assert schedule_settings(ServerSettings(_env_file=env)).api_key == ""
 
