@@ -1,6 +1,7 @@
 package com.ajt.backend.domain.member;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -69,6 +70,21 @@ class MemberControllerTest {
                 .andExpect(jsonPath("$.accountStatus").value("active"))
                 // 신규: /me 응답에 isSuperAdmin(boolean)이 내려온다(사원이므로 false)
                 .andExpect(jsonPath("$.isSuperAdmin").value(false));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/me는 명목상 부서('최고관리자') 소속이면 부서를 노출하지 않는다(S15P11B106-183)")
+    void meHidesNominalDepartment() throws Exception {
+        Department nominal = departmentRepository.save(new Department(Department.NOMINAL_DEPARTMENT_NAME));
+        Member member = memberRepository.save(
+                approvedEmployee(nominal, "superadmin@ajt.com", "최고관리자", "AJT-2026-9999"));
+
+        mockMvc.perform(get("/api/v1/me")
+                        .cookie(accessTokenCookie(member)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value("superadmin@ajt.com"))
+                // 명목상 부서 소속이어도 부서명이 노출되지 않는다(department = null).
+                .andExpect(jsonPath("$.department").value(nullValue()));
     }
 
     @Test

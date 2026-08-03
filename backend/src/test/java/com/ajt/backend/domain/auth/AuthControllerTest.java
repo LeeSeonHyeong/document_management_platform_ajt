@@ -288,6 +288,18 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/signup-departments 요청은 명목상 부서('최고관리자')를 제외한다(S15P11B106-183)")
+    void signupDepartmentsExcludesNominalDepartment() throws Exception {
+        departmentRepository.save(new Department(Department.NOMINAL_DEPARTMENT_NAME));
+        departmentRepository.save(new Department("개발부"));
+
+        mockMvc.perform(get("/api/v1/signup-departments"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items", hasSize(1)))
+                .andExpect(jsonPath("$.items[0].name").value("개발부"));
+    }
+
+    @Test
     @DisplayName("POST /api/v1/auth/password-reset-requests 요청은 계정 존재 여부와 관계없이 같은 메시지를 반환한다")
     void passwordResetRequestReturnsGenericMessage() throws Exception {
         mockMvc.perform(post("/api/v1/auth/password-reset-requests")

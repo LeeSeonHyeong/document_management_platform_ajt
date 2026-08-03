@@ -46,11 +46,15 @@ public class DepartmentService {
 
     /**
      * DEPT-01 부서 목록 조회 요구사항입니다.
-     * 로그인한 사용자가 전체 부서와 지정 관리자를 확인할 수 있습니다.
+     * 로그인한 사용자가 부서와 지정 관리자를 확인할 수 있습니다.
+     * 수정(S15P11B106-183): 명목상 부서('최고관리자')는 실제 조직 부서가 아니므로 응답에서 제외한다.
      */
     @Transactional(readOnly = true)
     public DepartmentListResponse findDepartments() {
-        return DepartmentListResponse.from(departmentRepository.findAllByOrderByNameAsc());
+        List<Department> visibleDepartments = departmentRepository.findAllByOrderByNameAsc().stream()
+                .filter(department -> !department.isNominal())
+                .toList();
+        return DepartmentListResponse.from(visibleDepartments);
     }
 
     /**

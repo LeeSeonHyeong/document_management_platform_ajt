@@ -76,6 +76,21 @@ class DepartmentServiceTest {
     }
 
     @Test
+    @DisplayName("부서 목록 조회는 명목상 부서('최고관리자')를 제외하고 기본 부서('전체')는 노출한다(S15P11B106-183)")
+    void findDepartmentsExcludesNominalButKeepsDefault() {
+        departmentRepository.save(new Department(Department.NOMINAL_DEPARTMENT_NAME));
+        departmentRepository.save(new Department(Department.DEFAULT_NAME));
+        departmentRepository.save(new Department("개발부"));
+
+        DepartmentListResponse response = departmentService.findDepartments();
+
+        // 명목상 부서만 빠지고 '전체'·'개발부'는 그대로 노출된다.
+        assertThat(response.items()).extracting(item -> item.name())
+                .containsExactlyInAnyOrder(Department.DEFAULT_NAME, "개발부")
+                .doesNotContain(Department.NOMINAL_DEPARTMENT_NAME);
+    }
+
+    @Test
     @DisplayName("부서 생성은 관리자만 수행할 수 있고 선택한 관리자를 함께 지정한다")
     void createDepartmentAssignsManager() {
         Department baseDepartment = departmentRepository.save(new Department("기본부"));
