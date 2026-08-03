@@ -10,7 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 애플리케이션 시작 시 시스템 기본 부서('전체')를 항상 보장합니다(S15P11B106-146).
+ * 애플리케이션 시작 시 시스템 기본 부서('미지정')을 항상 보장합니다(S15P11B106-146).
  *
  * <p>더미데이터 로더(LocalDataInitializer, local 프로필 전용)에 종속되지 않도록, 프로필과 무관하게 서버 기동 시
  * 실행되는 별도 러너에서 보장한다. 이미 있으면 중복 생성하지 않는다(idempotent).

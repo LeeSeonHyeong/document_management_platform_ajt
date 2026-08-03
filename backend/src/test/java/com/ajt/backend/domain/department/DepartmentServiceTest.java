@@ -76,7 +76,7 @@ class DepartmentServiceTest {
     }
 
     @Test
-    @DisplayName("부서 목록 조회는 명목상 부서('최고관리자')를 제외하고 기본 부서('전체')는 노출한다(S15P11B106-183)")
+    @DisplayName("부서 목록 조회는 명목상 부서('최고관리자')를 제외하고 기본 부서('미지정')은 노출한다(S15P11B106-183)")
     void findDepartmentsExcludesNominalButKeepsDefault() {
         departmentRepository.save(new Department(Department.NOMINAL_DEPARTMENT_NAME));
         departmentRepository.save(new Department(Department.DEFAULT_NAME));
@@ -184,7 +184,7 @@ class DepartmentServiceTest {
     }
 
     @Test
-    @DisplayName("기본 부서('전체')는 최고관리자라도 삭제할 수 없다(S15P11B106-146)")
+    @DisplayName("기본 부서('미지정')은 최고관리자라도 삭제할 수 없다(S15P11B106-146)")
     void deleteDefaultDepartmentRejected() {
         Department base = departmentRepository.save(new Department("기본부"));
         Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
@@ -198,7 +198,7 @@ class DepartmentServiceTest {
     }
 
     @Test
-    @DisplayName("기본 부서('전체')는 이름을 변경할 수 없다(S15P11B106-146)")
+    @DisplayName("기본 부서('미지정')은 이름을 변경할 수 없다(S15P11B106-146)")
     void renameDefaultDepartmentRejected() {
         Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
         Member admin = memberRepository.save(approvedAdmin(defaultDept, "admin@ajt.com", "AJT-2026-9001"));
@@ -231,7 +231,7 @@ class DepartmentServiceTest {
     }
 
     @Test
-    @DisplayName("기본 부서('전체')도 관리자 지정 변경은 허용한다(이름만 보호, S15P11B106-146)")
+    @DisplayName("기본 부서('미지정')도 관리자 지정 변경은 허용한다(이름만 보호, S15P11B106-146)")
     void defaultDepartmentAllowsManagerChange() {
         Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
         Member admin = memberRepository.save(approvedAdmin(defaultDept, "admin@ajt.com", "AJT-2026-9001"));
