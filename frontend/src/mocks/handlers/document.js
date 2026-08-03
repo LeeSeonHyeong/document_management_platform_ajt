@@ -49,6 +49,9 @@ function toDetail(doc) {
   }
 }
 
+// 걷어내기가 한 번 실패한 문서. 두 번째 삭제 요청은 성공시켜 재시도 흐름을 볼 수 있게 한다.
+const deleteFailedOnce = new Set()
+
 export const documentHandlers = [
   // POST /documents — 업로드 묶음을 하나의 ai_job으로 생성
   http.post('/api/v1/documents', async ({ request }) => {
@@ -263,9 +266,10 @@ export const documentHandlers = [
     // S15P11B106-195: 걷어내기가 끝난 뒤에 지운다. 지금은 deleting 으로 두고 작업만 만든다.
     doc.status = 'deleting'
     const jobId = issueJobId()
-    // 파일명에 '연차'가 들어간 문서는 걷어내기가 실패하도록 둔다 — 실패 화면(원본 유지 +
-    // 다시 삭제)을 목으로도 볼 수 있어야 한다.
-    const fails = (doc.originalFileName ?? '').includes('연차')
+    // 파일명에 '연차'가 들어간 문서는 걷어내기가 **처음 한 번만** 실패하도록 둔다.
+    // 실패 화면(원본 유지 + 다시 삭제)과, 다시 삭제해서 복구되는 것까지 목으로 볼 수 있어야 한다.
+    const fails = (doc.originalFileName ?? '').includes('연차') && !deleteFailedOnce.has(doc.documentId)
+    if (fails) deleteFailedOnce.add(doc.documentId)
     if (fails) {
       doc.status = 'failed'
       doc.failureReason = 'Wiki 걷어내기가 시간 안에 끝나지 않았습니다.'
