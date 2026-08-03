@@ -55,7 +55,7 @@ export default function CalendarGrid({ monthDate, events = [], selectedDate, onS
           style={{ minHeight: weekMinHeight }}
         >
           {/* 배경: 날짜 셀 7칸 */}
-          <div className="grid h-full grid-cols-7">
+          <div className="absolute inset-0 grid grid-cols-7">
             {week.days.map(({ date, isCurrentMonth, isToday }) => {
               const selected = selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd')
               const dow = date.getDay()
@@ -65,15 +65,15 @@ export default function CalendarGrid({ monthDate, events = [], selectedDate, onS
                   type="button"
                   onClick={() => onSelectDate?.(date)}
                   className={cn(
-                    'focus-ring border-r border-slate-100 text-left last:border-r-0',
+                    'focus-ring relative cursor-pointer border-r border-slate-100 text-left last:border-r-0',
                     !isCurrentMonth && 'bg-slate-50/60',
-                    selected && 'bg-primary-50/60',
+                    selected && 'z-10 bg-primary-50/60 ring-2 ring-inset ring-primary-500',
                   )}
                   style={{ height: '100%' }}
                 >
                   <span
                     className={cn(
-                      'ml-1.5 mt-1 inline-flex size-6 items-center justify-center rounded-full text-xs',
+                      'absolute left-1.5 top-1 inline-flex size-6 items-center justify-center rounded-full text-xs',
                       isToday && 'bg-primary-600 font-semibold text-white',
                       !isToday && !isCurrentMonth && 'text-slate-300',
                       !isToday && isCurrentMonth && dow === 0 && 'text-rose-500',
@@ -89,18 +89,19 @@ export default function CalendarGrid({ monthDate, events = [], selectedDate, onS
           </div>
 
           {/* 오버레이: 멀티데이 밴드 */}
-          <div className="pointer-events-none absolute inset-x-0" style={{ top: DAY_NUM_H }}>
+          <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: DAY_NUM_H }}>
             {week.segments.map((seg) => (
               <button
                 key={`${seg.event.id}-${seg.colStart}`}
                 type="button"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onEventClick?.(seg.event)
-                }}
+                onClick={onEventClick ? (event) => {
+                  event.stopPropagation()
+                  onEventClick(seg.event)
+                } : undefined}
                 title={seg.event.title}
                 className={cn(
-                  'pointer-events-auto absolute flex h-5 items-center truncate px-1.5 text-[11px] font-medium',
+                  'absolute flex h-5 items-center truncate px-1.5 text-[11px] font-medium',
+                  onEventClick && 'pointer-events-auto',
                   VIS_STYLES[seg.event.visibilityType] ?? 'bg-slate-500 text-white',
                   seg.isStart ? 'rounded-l-md' : 'rounded-l-none',
                   seg.isEnd ? 'rounded-r-md' : 'rounded-r-none',

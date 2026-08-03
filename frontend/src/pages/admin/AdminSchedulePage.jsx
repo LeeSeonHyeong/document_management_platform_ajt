@@ -109,9 +109,15 @@ const HOUR_PX = 56
 
 // 공개 범위별 일정 블록 색(좌측 강조선 + 옅은 배경).
 const WEEK_BLOCK = {
-  [SCHEDULE_VISIBILITY.ALL]: 'border-primary-500 bg-primary-50 text-primary-900',
-  [SCHEDULE_VISIBILITY.DEPARTMENT]: 'border-sky-500 bg-sky-50 text-sky-900',
-  [SCHEDULE_VISIBILITY.PERSONAL]: 'border-emerald-500 bg-emerald-50 text-emerald-900',
+  [SCHEDULE_VISIBILITY.ALL]: 'border-primary-500 bg-primary-50',
+  [SCHEDULE_VISIBILITY.DEPARTMENT]: 'border-sky-500 bg-sky-50',
+  [SCHEDULE_VISIBILITY.PERSONAL]: 'border-emerald-500 bg-emerald-50',
+}
+
+const WEEK_BLOCK_TEXT = {
+  [SCHEDULE_VISIBILITY.ALL]: 'text-primary-900',
+  [SCHEDULE_VISIBILITY.DEPARTMENT]: 'text-sky-900',
+  [SCHEDULE_VISIBILITY.PERSONAL]: 'text-emerald-900',
 }
 
 // 이벤트가 해당 날짜 열에서 차지하는 상단 위치(px)와 높이(px). 표시 범위 밖이면 null.
@@ -132,7 +138,7 @@ function blockGeometry(event, date) {
 }
 
 // 주 뷰. 요일 헤더 + 시간대 그리드에 일정을 시간 위치대로 블록으로 배치한다.
-function WeekGrid({ weekDays, events, selectedDate, onSelectDate, onEventClick }) {
+function WeekGrid({ weekDays, events, selectedDate, onSelectDate }) {
   const now = new Date()
   const nowKey = format(now, 'yyyy-MM-dd')
   const gridHeight = (WEEK_END_HOUR - WEEK_START_HOUR) * HOUR_PX
@@ -199,7 +205,19 @@ function WeekGrid({ weekDays, events, selectedDate, onSelectDate, onEventClick }
           return (
             <div
               key={date.toISOString()}
-              className={cn('relative flex-1 border-l border-slate-100', selected && 'bg-primary-50/40')}
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelectDate(date)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onSelectDate(date)
+                }
+              }}
+              className={cn(
+                'focus-ring relative flex-1 cursor-pointer border-l border-slate-100',
+                selected && 'bg-primary-50/40',
+              )}
               style={{ height: gridHeight }}
             >
               {/* 시간별 가로줄 */}
@@ -213,10 +231,11 @@ function WeekGrid({ weekDays, events, selectedDate, onSelectDate, onEventClick }
 
               {/* 현재 시각 표시 */}
               {nowVisible && isNowColumn && (
-                <div className="pointer-events-none absolute inset-x-0 z-20" style={{ top: nowTop }}>
-                  <div className="relative border-t-2 border-rose-500">
-                    <span className="absolute -left-1 top-0 size-2 -translate-y-1/2 rounded-full bg-rose-500" />
-                  </div>
+                <div className="pointer-events-none absolute inset-x-0" style={{ top: nowTop }}>
+                  <div className="absolute inset-x-0 z-20 border-t-2 border-rose-500" />
+                  <span className="absolute -left-9 top-0 z-40 flex h-5 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-rose-500 text-[10px] font-semibold text-white">
+                    현재
+                  </span>
                 </div>
               )}
 
@@ -225,21 +244,29 @@ function WeekGrid({ weekDays, events, selectedDate, onSelectDate, onEventClick }
                 const geo = blockGeometry(event, date)
                 if (!geo) return null
                 return (
-                  <button
+                  <div
                     key={event.id}
-                    type="button"
-                    onClick={() => onEventClick(event)}
                     style={{ top: geo.top, height: geo.height }}
-                    className={cn(
-                      'focus-ring absolute inset-x-1 z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 text-left',
-                      WEEK_BLOCK[event.visibilityType] ?? 'border-slate-400 bg-slate-50 text-slate-800',
-                    )}
+                    className="pointer-events-none absolute inset-x-1"
                   >
-                    <p className="truncate text-xs font-semibold leading-tight">{event.title}</p>
-                    <p className="truncate text-[11px] leading-tight opacity-80">
-                      {format(event.start, 'HH:mm')} – {format(event.end, 'HH:mm')}
-                    </p>
-                  </button>
+                    <div
+                      className={cn(
+                        'absolute inset-0 z-10 rounded-md border-l-4',
+                        WEEK_BLOCK[event.visibilityType] ?? 'border-slate-400 bg-slate-50',
+                      )}
+                    />
+                    <div
+                      className={cn(
+                        'relative z-30 h-full overflow-hidden px-2 py-1 text-left',
+                        WEEK_BLOCK_TEXT[event.visibilityType] ?? 'text-slate-800',
+                      )}
+                    >
+                      <p className="truncate text-xs font-semibold leading-tight">{event.title}</p>
+                      <p className="truncate text-[11px] leading-tight opacity-80">
+                        {format(event.start, 'HH:mm')} – {format(event.end, 'HH:mm')}
+                      </p>
+                    </div>
+                  </div>
                 )
               })}
             </div>
@@ -489,10 +516,6 @@ export default function AdminSchedulePage() {
             events={approvedEvents}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onEventClick={(event) => {
-              setEditing(event)
-              setFormOpen(true)
-            }}
           />
         ) : (
           <WeekGrid
@@ -500,10 +523,6 @@ export default function AdminSchedulePage() {
             events={approvedEvents}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onEventClick={(event) => {
-              setEditing(event)
-              setFormOpen(true)
-            }}
           />
         )}
 
@@ -528,7 +547,7 @@ export default function AdminSchedulePage() {
               <EmptyState
                 title="일정이 없어요"
                 description="이 날에는 승인된 일정이 없습니다."
-                className="py-8"
+                className="h-full rounded-none border-0 bg-transparent px-0 py-0"
               />
             ) : (
               daySchedules.map((e) => (
