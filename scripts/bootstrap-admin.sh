@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ADMIN_EMAIL="${1:-admin@ajt.local}"
+REQUESTED_ADMIN_EMAIL="${1:-}"
 DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-/var/lib/jenkins/ajt-secrets/prod.env}"
 DEPLOY_STATE_DIR="${DEPLOY_STATE_DIR:-/var/lib/jenkins/ajt-deploy}"
 DEPLOY_COMPOSE_FILE="${DEPLOY_COMPOSE_FILE:-${REPO_ROOT}/docker-compose.yml}"
@@ -18,23 +18,6 @@ is_commit_sha() {
   [[ "$1" =~ ^[0-9a-f]{7,40}$ ]]
 }
 
-mysql_exec() {
-  local sql="$1"
-
-  printf '%s\n' "$sql" |
-    DEPLOY_ENV_FILE="$DEPLOY_ENV_FILE" IMAGE_TAG="$IMAGE_TAG" \
-      docker compose \
-        --project-name "$COMPOSE_PROJECT_NAME" \
-        --env-file "$DEPLOY_ENV_FILE" \
-        --file "$DEPLOY_COMPOSE_FILE" \
-        exec -T mysql \
-        sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --batch --skip-column-names --default-character-set=utf8mb4 ajt'
-}
-
-if [[ ! "$ADMIN_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
-  die_config "invalid admin email: $ADMIN_EMAIL"
-fi
-
 [[ -f "$DEPLOY_ENV_FILE" ]] || die_config "deploy env file not found: $DEPLOY_ENV_FILE"
 [[ -f "$DEPLOY_COMPOSE_FILE" ]] || die_config "compose file not found: $DEPLOY_COMPOSE_FILE"
 [[ -f "$STATE_FILE" ]] || die_config "deployed image state not found: $STATE_FILE"
@@ -45,6 +28,45 @@ is_commit_sha "$IMAGE_TAG" || die_config "invalid deployed image tag: $IMAGE_TAG
 command -v docker >/dev/null 2>&1 || die_config "docker command not found"
 command -v openssl >/dev/null 2>&1 || die_config "openssl command not found"
 command -v htpasswd >/dev/null 2>&1 || die_config "htpasswd command not found"
+
+if [[ -n "$REQUESTED_ADMIN_EMAIL" \
+      && ! "$REQUESTED_ADMIN_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+  die_config "invalid admin email: $REQUESTED_ADMIN_EMAIL"
+fi
+
+compose_exec() {
+  DEPLOY_ENV_FILE="$DEPLOY_ENV_FILE" IMAGE_TAG="$IMAGE_TAG" \
+    docker compose \
+      --project-name "$COMPOSE_PROJECT_NAME" \
+      --env-file "$DEPLOY_ENV_FILE" \
+      --file "$DEPLOY_COMPOSE_FILE" \
+      exec -T "$@"
+}
+
+mysql_exec() {
+  local sql="$1"
+
+  printf '%s\n' "$sql" |
+    compose_exec mysql \
+      sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --batch --skip-column-names --default-character-set=utf8mb4 ajt'
+}
+
+configured_admin_email="$(
+  compose_exec backend sh -c 'printf "%s" "${SUPER_ADMIN_EMAIL:-}"' |
+    tr -d '\r\n'
+)"
+
+if [[ ! "$configured_admin_email" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+  die_config "invalid or missing SUPER_ADMIN_EMAIL in deployed backend"
+fi
+
+ADMIN_EMAIL="${REQUESTED_ADMIN_EMAIL:-$configured_admin_email}"
+if [[ ! "$ADMIN_EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
+  die_config "invalid admin email: $ADMIN_EMAIL"
+fi
+if [[ "${ADMIN_EMAIL,,}" != "${configured_admin_email,,}" ]]; then
+  die_config "admin email does not match deployed SUPER_ADMIN_EMAIL"
+fi
 
 existing_count="$(mysql_exec "SELECT COUNT(*) FROM member WHERE email = '${ADMIN_EMAIL}';" | tr -d '[:space:]')"
 if [[ "$existing_count" != "0" ]]; then
@@ -59,7 +81,7 @@ password_hash="$(htpasswd -bnBC 12 "" "$admin_password" | cut -d: -f2 | tr -d '\
 mysql_exec "
 START TRANSACTION;
 INSERT INTO department (name)
-VALUES ('본사')
+VALUES ('최고관리자')
 ON DUPLICATE KEY UPDATE department_id = LAST_INSERT_ID(department_id);
 SET @department_id = LAST_INSERT_ID();
 INSERT INTO member (
