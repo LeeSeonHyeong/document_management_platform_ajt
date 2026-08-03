@@ -78,6 +78,48 @@ async def test_removing_an_uncommitted_page_leaves_nothing_to_hand_over(vault):
     assert [c for c in await fs.pending_changes(scope_id) if c["address"] == address] == []
 
 
+async def test_a_tiny_body_stays_searchable(vault):
+    """~32토큰 미만 본문도 검색 색인에 남아야 한다 — `write` 의 계약 수준 테스트다.
+
+    `chunk_text` 는 `MIN_CHUNK_TOKENS` 미만을 버리므로, 폴백 없이는 청크 0개가 돼
+    `search` 가 조용히 못 찾는다. 프로덕션은 `SpringVaultFS` 의 `_chunks_for_index`
+    폴백으로 top-up 했는데 `LocalVaultFS` 엔 없어 계층 간에 색인 동작이 갈렸다
+    (2026-08-03 divergence 감사 #3).
+
+    **도달 경로를 정직하게 적는다**: `create` 는 frontmatter 를 붙이므로 이 조건에
+    거의 걸리지 않는다(실측: 126자 본문이 frontmatter 포함 235자·청크 1개가 된다).
+    실제로 걸리는 것은 **시드 경로**이고 그것은
+    `test_a_short_source_stays_searchable` 이 검증한다. 이 테스트는 `write` 자체의
+    계약(짧은 본문도 색인된다)을 고정한다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, "연차 이월 규정", title="연차", category="휴가", tags=["휴가"])
+    hits = await fs.search_chunks(scope_id, "연차", limit=5)
+    assert any(h["address"] == address for h in hits)
+
+
+async def test_a_short_source_stays_searchable(tmp_path):
+    """짧은 원본문서를 시드하면 검색돼야 한다 — **하네스에서 실제로 재현된 경로다.**
+
+    `register_source`·`bootstrap_scope` 가 `chunk_text` 를 직접 불러 짧은 원본문서가
+    청크 0개로 등록되고 `search` 가 빈 결과를 냈다(2026-08-03 실측: 하네스 시드에
+    "12월 24일은 휴무다." 를 넣고 `search 휴무` → 0건). 프로덕션 하이드레이션
+    (`SpringVaultFS._insert_live`)은 `_chunks_for_index` 로 top-up 하므로 검색됐다.
+    시드 경로도 같은 폴백을 쓰게 고쳤다."""
+    from wiki_mcp.vaultfs.local import bootstrap_scope, register_source
+
+    await LocalVaultFS.open(tmp_path, SCOPE, JOB_ID)
+    try:
+        await bootstrap_scope(SCOPE)
+        await register_source(SCOPE, "901", "짧은공지.md", "12월 24일은 휴무다.")
+        fs = LocalVaultFS(SCOPE, JOB_ID)
+        scope_id = (await fs.resolve_scope(SCOPE))["id"]
+        hits = await fs.search_chunks(scope_id, "휴무", limit=5)
+        assert [h["address"] for h in hits] == ["sources/901/parsed/content.md"]
+    finally:
+        await LocalVaultFS.close()
+
+
 async def test_removing_a_live_page_becomes_a_tombstone(vault):
     """The live file must survive until the backend commits the removal."""
     root, scope_id, fs = vault

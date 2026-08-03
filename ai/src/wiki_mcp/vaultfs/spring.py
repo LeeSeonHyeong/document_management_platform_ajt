@@ -32,7 +32,7 @@ import re
 import uuid
 from pathlib import Path
 
-from wiki_mcp.services.chunker import Chunk, chunk_text, store_chunks
+from wiki_mcp.services.chunker import store_chunks
 
 from .local import SOURCES_PREFIX, LocalVaultFS, kind_for
 
@@ -116,25 +116,6 @@ class SpringVaultFS(LocalVaultFS):
             (scope_id,),
         )
         await db.commit()
-
-    async def write(self, scope_id: str, address: str, content: str, **kwargs) -> dict:
-        """`LocalVaultFS.write` calls `chunk_text` directly with no fallback, so
-        editing a hydrated page down to a still-tiny body would drop it out of
-        the FTS index — the exact failure this task exists to prevent, just
-        relocated from hydration to the edit path. Delegate to the parent for
-        everything else, then top up the index the same way `_insert_live` does
-        if the write left zero chunks behind.
-        """
-        doc = await super().write(scope_id, address, content, **kwargs)
-        if doc.get("id"):
-            db = self._conn()
-            cursor = await db.execute(
-                "SELECT 1 FROM document_chunks WHERE document_id = ?", (doc["id"],),
-            )
-            if not await cursor.fetchone():
-                await store_chunks(db, doc["id"], self._chunks_for_index(content))
-                await db.commit()
-        return doc
 
     async def live_content(self, scope_id: str, address: str) -> str | None:
         """라이브 층 본문만. 겹쳐 읽기(`get`)와 달리 작업 층을 보지 않는다.
@@ -247,18 +228,3 @@ class SpringVaultFS(LocalVaultFS):
         Wiki 조회 API 모드는 다르다 (`FederatedVaultFS` 가 재정의한다).
         """
         return True
-
-    @staticmethod
-    def _chunks_for_index(content: str) -> list[Chunk]:
-        """`chunk_text` drops anything under `MIN_CHUNK_TOKENS` (~32) — fine for a
-        real document, but a short hydrated page or source (common in tests, and
-        not unheard of for a freshly-created real one) would then index zero
-        chunks, and `search` would silently return nothing for it. Fall back to
-        one chunk holding the whole body so hydration never yields an
-        unsearchable live row.
-        """
-        chunks = chunk_text(content)
-        if not chunks and content and content.strip():
-            chunks = [Chunk(index=0, content=content.strip(), page=None, start_char=0,
-                            token_count=max(1, len(content) // 4))]
-        return chunks
