@@ -59,7 +59,8 @@ def test_build_app_takes_settings_and_injects_the_runtime(monkeypatch):
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = ServerSettings(runtime="claude-code", model="claude-opus-4-6",
-                              internal_api_key="k", backend_base_url="http://localhost:8080")
+                              internal_api_key="k", backend_base_url="http://localhost:8080",
+                              schedule_provider="ollama")
     app = serve.build_app(settings)
 
     assert app.state.runtime.name == "claude-code"
@@ -72,6 +73,7 @@ def test_build_app_injects_the_schedule_provider(monkeypatch, tmp_path):
     from schedule_extractor.providers.anthropic import AnthropicProvider
     from wiki_api import serve
 
+    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = _isolated_settings(monkeypatch, tmp_path, runtime="claude-code",
                                   internal_api_key="k", anthropic_api_key="k",
                                   backend_base_url="http://localhost:8080")
@@ -128,7 +130,8 @@ def test_the_deepagents_runtime_does_not_need_the_cli(monkeypatch):
 
     monkeypatch.setattr(serve, "load_runtime", fake_load)
     settings = ServerSettings(runtime="deepagents", internal_api_key="k",
-                              backend_base_url="http://localhost:8080")
+                              backend_base_url="http://localhost:8080",
+                              schedule_provider="ollama")
     serve.build_app(settings)
     assert called["name"] == "deepagents"
 
@@ -139,7 +142,8 @@ def test_the_cli_check_passes_when_the_cli_is_present(monkeypatch):
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = ServerSettings(runtime="claude-code", model="claude-opus-4-6",
-                              internal_api_key="k", backend_base_url="http://localhost:8080")
+                              internal_api_key="k", backend_base_url="http://localhost:8080",
+                              schedule_provider="ollama")
     app = serve.build_app(settings)
     assert app.state.runtime.name == "claude-code"
 
