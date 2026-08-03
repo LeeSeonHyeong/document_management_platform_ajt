@@ -190,6 +190,7 @@ export default function DocumentListPage() {
             (document) => document.uploadKind === 'schedule',
           )
           const uploadedIds = new Set()
+          const startedJobIds = []
 
           try {
             for (const group of documentGroups) {
@@ -200,6 +201,7 @@ export default function DocumentListPage() {
                 departmentIds: group.departmentIds,
               })
               await startAiJobMutation.mutateAsync(result.jobId)
+              startedJobIds.push(result.jobId)
               group.documents.forEach((document) => uploadedIds.add(document.documentId))
             }
 
@@ -215,7 +217,17 @@ export default function DocumentListPage() {
             setStartOpen(false)
             toast.success(`${uploadedIds.size}개 파일의 AI 작업을 시작했습니다.`)
 
-            navigate('/admin/documents/source')
+            // 작업이 하나면 그 진행 화면으로 바로 보낸다 — 예전에는 jobId 를 버리고 원본
+            // 문서 목록으로 보내서, 관리자가 진행 상황을 볼 방법이 없었다
+            // (S15P11B106-200). 공개 범위별로 여러 개가 생겼으면 어느 하나를 고를 근거가
+            // 없으므로 요약 목록으로 보낸다 — 거기서 진행 중인 작업이 전부 보인다.
+            if (startedJobIds.length === 1) {
+              navigate(`/admin/documents/jobs/${startedJobIds[0]}/progress`)
+            } else if (startedJobIds.length > 1) {
+              navigate('/admin/documents/summaries')
+            } else {
+              navigate('/admin/documents/source')
+            }
           } catch (error) {
             const message =
               error?.response?.data?.message ??

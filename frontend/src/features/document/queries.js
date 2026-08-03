@@ -181,10 +181,23 @@ export function useDeleteDocumentCategory(scopeKey) {
 }
 
 // 작업 이력 목록. 요약 목록 화면이 회차별 묶음으로 그린다.
+//
+// 아직 끝나지 않은 작업이 목록에 있으면 5초마다 다시 읽는다 — 그 화면이 진행 중인 작업도
+// 보여주므로(S15P11B106-200) 갱신이 없으면 끝난 작업이 계속 "처리 중"으로 남는다.
+// 전부 종료됐으면 멈춘다. 단건 폴링(useAiJobPolling, 2초)보다 느슨하게 둔 것은 이 목록이
+// 문서 상세까지 함께 당기기 때문이다.
+const RUNNING_JOB_POLL_MS = 5000
+const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
 export function useAiJobs(filters = {}) {
   return useQuery({
     queryKey: qk.aiJobs.list(filters),
     queryFn: () => fetchAiJobs(filters),
+    refetchInterval: (query) => {
+      const items = query.state.data?.items ?? []
+      const anyRunning = items.some((job) => !TERMINAL_JOB_STATUSES.has(job.status))
+      return anyRunning ? RUNNING_JOB_POLL_MS : false
+    },
   })
 }
 
