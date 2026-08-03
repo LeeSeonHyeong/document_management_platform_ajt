@@ -89,6 +89,30 @@ async def test_rebuild_leaves_no_duplicate_rows(vault):
     assert len(addresses) == len(set(addresses)) == 3
 
 
+async def test_rebuild_does_not_wipe_the_work_layer(vault):
+    """`rebuild_index`'s own docstring promises work layers are not rebuilt
+    (DR-009: a failed job changes nothing) — this pins that the DELETE doesn't
+    wipe them either. Regression: an uncommitted page's file survived on disk
+    but its `documents`/`document_references` rows were deleted outright
+    because the DELETE wasn't scoped to `layer = 'live'` (2026-08-02 하네스 —
+    두 번째 원본문서를 seed하자 이미 만든 위키 페이지가 색인에서 사라짐)."""
+    root, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address, PAGE, title="연차 휴가",
+                   category="휴가 정책", tags=["휴가", "인사"])
+    await sync_references(fs, scope_id, address, PAGE)
+    await LocalVaultFS.close()
+
+    await rebuild_index(root, SCOPE)
+
+    fs2 = LocalVaultFS(SCOPE, JOB_ID)
+    page = await fs2.get(scope_id, address)
+    assert page is not None
+    assert page["title"] == "연차 휴가"
+    cites = await fs2.get_forward_references(scope_id, address)
+    assert [r["footnote_label"] for r in cites if r["reference_type"] == "cites"] == ["1"]
+
+
 async def test_rebuild_reports_source_names_it_cannot_recover(vault):
     """A filename lives only in the DB (DR-016 keeps it out of the path), so a
     rebuild after the index is deleted outright cannot know it — and citations

@@ -1,0 +1,35 @@
+{
+  "slug": "2026-08-02-sonnet46-3docs-stability",
+  "startedAt": "2026-08-02T17:43:40",
+  "runtime": "deepagents",
+  "model": "anthropic:claude-sonnet-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "01-training.md",
+    "08-compensation.md",
+    "10-onboarding.md"
+  ],
+  "purpose": "에이전트 위키 작성 능력·안정성 점검: 소형/중형/대형(과거 타임아웃 사례) 문서 혼합, 배포 기본값(deepagents/in-process/sonnet-4-6)",
+  "dryRun": false,
+  "effort": null,
+  "code": {
+    "guideChars": 4549,
+    "guideSha": "b5444b72e5a4",
+    "schemaSha": "471515caf0ae",
+    "instructionSha": "b73c4ed0b020",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "cliVersion": "2.1.212 (Claude Code)",
+  "settingSources": ""
+}

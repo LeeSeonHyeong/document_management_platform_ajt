@@ -184,7 +184,11 @@ class FakeRuntime:
         body = (PAGE_MD.rstrip() + "\n\n주간 회의는 30분을 넘기지 않는다[^1].\n\n"
                 f'[^1]: {SOURCE_NAME}, 2장 정례 회의 — "주간 회의는 30분을 넘기지 않는다"\n')
         if self.behaviour == "bad_quote":
+            # 2026-08-02: quote 불일치는 error 에서 warn 으로 내렸다 — 위치가 맞으면
+            # 반영을 막지 않는다. 반영을 막는 시나리오가 필요하면 "bad_location" 을 쓴다.
             body = body.replace("30분을 넘기지 않는다\"", "40분을 넘기지 않는다\"")
+        if self.behaviour == "bad_location":
+            body = body.replace("2장 정례 회의", "9장 없는 장")
         body = body.replace("category: 근무 정책", f"category: {self.category}")
 
         await fs.write(scope_id, PAGE_ADDRESS, body, title="커뮤니케이션 가이드",
@@ -329,8 +333,8 @@ def test_no_changes_is_a_200_with_empty_lists(make_client):
 
 
 def test_lint_error_fails_the_request_and_reports_the_stage(make_client):
-    """각주 인용문이 원문과 다르면 반영하지 않는다. 부분 반영은 없다."""
-    response = _post(make_client(FakeRuntime("bad_quote")))
+    """각주 위치가 원문에 없으면 반영하지 않는다. 부분 반영은 없다."""
+    response = _post(make_client(FakeRuntime("bad_location")))
     assert response.status_code == 500
     body = response.json()
     assert body["code"] == "WIKI_TRANSFORMATION_FAILED"
@@ -770,7 +774,7 @@ def test_a_live_page_citing_an_unstaged_source_does_not_block(make_client):
 def test_work_layer_errors_still_block_when_a_live_page_is_unverifiable(make_client):
     """완화가 work 층까지 새면 게이트가 사라진다 — 라이브에 미검증 페이지가 있어도
     이번 요청이 쓴 페이지의 인용 오류는 그대로 500 이다."""
-    response = _post(make_client(FakeRuntime("bad_quote"),
+    response = _post(make_client(FakeRuntime("bad_location"),
                                  make_gateway([LIVE_PAGE, LEGACY_PAGE])))
     assert response.status_code == 500
     assert response.json()["failureStage"] == "lint_failed"
@@ -856,7 +860,7 @@ def test_forty_live_only_errors_cannot_hide_a_work_layer_error(make_client):
     받고(절단 없음), 에이전트용 검사가 라이브 전용 페이지의 내용을 아예 보지 않는다. 그래도
     이 테스트는 남긴다 — 어느 쪽 변경으로도 다시 새면 안 되는 성질이다."""
     response = _post(make_client(
-        FakeRuntime("bad_quote"),
+        FakeRuntime("bad_location"),
         make_gateway([LIVE_PAGE, *_noisy_live_pages(45)])))
     assert response.status_code == 500, response.json()
     assert response.json()["failureStage"] == "lint_failed"

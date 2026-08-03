@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "wiki-harness": {
+      "command": "uv",
+      "args": [
+        "run",
+        "python",
+        "-m",
+        "wiki_mcp.local_server",
+        "--root",
+        "./tools/harness/vault",
+        "--scope",
+        "ALL",
+        "--job-id",
+        "harness"
+      ]
+    }
+  }
+}

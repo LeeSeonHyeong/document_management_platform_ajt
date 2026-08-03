@@ -75,6 +75,23 @@ async def test_quote_with_an_ellipsis_matches_each_segment(vault, scope_row):
     assert "citation-quote-not-found" not in await _lint(fs, scope_row)
 
 
+async def test_a_markdown_link_inside_the_source_quote_still_matches(vault, scope_row):
+    """The source sentence itself may wrap a word in a markdown link
+    (`[Vestwell](https://...)`) — common in scraped handbook text (하네스 실측,
+    2026-08-02~03, 04-benefits.md: 5건). Whether the model keeps the link syntax
+    or copies just the visible text, it is the same claim; only the formatting
+    differs, same as quote-mark style and emphasis."""
+    from wiki_mcp.vaultfs.local import register_source
+
+    _, scope_id, fs = vault
+    await register_source(SCOPE, "102", "복지.pdf",
+                          "401k는 [Vestwell](https://connect-b.vestwell.com/)이 운용한다.")
+    content = GOOD_PAGE.replace("인사규정.pdf, 3장 휴가", "복지.pdf, 401k").replace(
+        '"연차는 입사일을 기준으로 산정한다"', '"401k는 Vestwell이 운용한다"')
+    await _page(fs, scope_id, content)
+    assert "citation-quote-not-found" not in await _lint(fs, scope_row)
+
+
 async def test_location_not_in_the_source_is_an_error(vault, scope_row):
     _, scope_id, fs = vault
     content = GOOD_PAGE.replace("3장 휴가 — ", "7장 특별휴가 — ")

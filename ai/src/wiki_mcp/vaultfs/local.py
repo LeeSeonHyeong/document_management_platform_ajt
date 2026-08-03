@@ -598,11 +598,20 @@ class LocalVaultFS(VaultFS):
 
     async def find_uncited_sources(self, scope_id: str) -> list[dict]:
         db = self._conn()
+        # 인용 엣지는 **보이는** 페이지가 낸 것만 센다. `document_references` 는 페이지를
+        # 지워도(remove→tombstone deleted=1, 또는 work 페이지 삭제) 남는다 — 관계 diff
+        # (changes.py)가 「이 관계가 사라졌다」를 읽으려면 그래야 한다. 그래서 서브쿼리가
+        # source_address 를 `visible_documents` 로 조인해 걸러야, 삭제된 페이지의 `cites`
+        # 엣지가 원본문서를 「아직 인용됨」으로 오판하게 만들지 않는다 — 그 페이지가 유일한
+        # 인용처였다면 어디에도 반영 안 된 원본문서를 놓친다(하네스 실측, 2026-08-03).
+        # get_backlinks·get_forward_references 는 이미 같은 방식으로 가시성을 조인한다.
         cursor = await db.execute(
             "SELECT d.address, d.original_file_name, d.source_id FROM visible_documents d "
             "WHERE d.scope_id = ? AND d.kind = 'source' "
-            "  AND d.address NOT IN (SELECT target_address FROM document_references "
-            "                        WHERE scope_id = ? AND reference_type = 'cites') "
+            "  AND d.address NOT IN (SELECT r.target_address FROM document_references r "
+            "                        JOIN visible_documents s "
+            "                          ON s.scope_id = r.scope_id AND s.address = r.source_address "
+            "                        WHERE r.scope_id = ? AND r.reference_type = 'cites') "
             "ORDER BY d.original_file_name",
             (scope_id, scope_id),
         )
