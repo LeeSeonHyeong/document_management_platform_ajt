@@ -105,6 +105,10 @@ def _reject_if_the_extraction_collapsed(result, markdown: str) -> None:
     `no_schedule` 은 백엔드가 원본·파싱 파일을 지우고 관리자에게 "일정이 없다" 고
     답하는 신호다. 모델이 흘렸을 뿐인데 그렇게 답하면 관리자는 재시도할 이유를
     얻지 못한다.
+
+    `raw_count > 0` 갈래는 **대체값 정책(S15P11B106-79) 이후 정규화로는 닿지 않는다** —
+    빠진 제목·시각을 채워 넣으므로 항목이 떨어지지 않는다. 남겨 두는 이유는
+    `_assert_consistent` 와 같다: 정규화가 다시 탈락을 들이면 여기가 먼저 잡는다.
     """
     if result.schedules:
         return

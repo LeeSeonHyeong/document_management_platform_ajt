@@ -1,13 +1,17 @@
 """정규화 — 모델 출력을 계약 자료형으로.
 
-LLM 을 부르지 않는다. 설계 §3.5 의 시각 규칙과 §3.3 의 탈락·경고 규칙이 전부 여기 있다.
+LLM 을 부르지 않는다. 설계 §3.5 의 시각 규칙과 §3.3 의 경고 규칙이 전부 여기 있다.
+
+**대체값 정책은 S15P11B106-79 에서 「버리기」를 대체했다.** 빠진 제목·시각은 항목을
+떨어뜨리는 대신 `무제`·기준 시각으로 채운다 — 관리자가 고칠 수 있는 초안 한 건이
+없는 일정보다 낫고, DB 가 그 세 칸을 `NOT NULL` 로 잡고 있어 공란도 불가능하다.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from schedule_extractor.normalize import normalize
+from schedule_extractor.normalize import FALLBACK_TITLE, normalize
 
 NOW = datetime(2026, 7, 29, 3, 0, tzinfo=timezone.utc)  # KST 12:00
 
@@ -82,26 +86,72 @@ def test_reference_year_follows_kst():
     assert schedules[0].start_at.year == 2027
 
 
-def test_reversed_period_drops_only_that_item():
+def test_reversed_period_is_pushed_out_not_dropped():
+    """백엔드가 뒤집힌 기간을 거부하므로 그냥 둘 수 없다. 버리는 대신 종료를 민다."""
     raw = _raw()
     raw["schedules"].append({"title": "뒤집힌 일정",
                              "startLocal": "2026-08-20T16:00",
                              "endLocal": "2026-08-20T14:00", "allDay": False})
     schedules, warnings = normalize(raw, now=NOW)
-    assert [item.title for item in schedules] == ["하계 워크샵"]
+
+    assert [item.title for item in schedules] == ["하계 워크샵", "뒤집힌 일정"]
+    reversed_item = schedules[1]
+    assert reversed_item.end_at == reversed_item.start_at + timedelta(hours=1)
     assert any("뒤집힌 일정" in warning for warning in warnings)
 
 
-def test_blank_title_drops_the_item():
+def test_blank_title_becomes_the_fallback_title():
+    """버리면 관리자는 그 일정이 있었다는 사실조차 모른다. `무제` 로 살려 보낸다."""
     schedules, warnings = normalize(_raw(title="   "), now=NOW)
-    assert schedules == ()
+
+    assert len(schedules) == 1
+    assert schedules[0].title == FALLBACK_TITLE
+    assert schedules[0].start_at == datetime(2026, 8, 12, 0, 0, tzinfo=timezone.utc)
     assert any("제목" in warning for warning in warnings)
 
 
-def test_unparseable_date_drops_the_item():
+def test_missing_start_falls_back_to_the_reference_time():
+    """DB 가 start_at 을 NOT NULL 로 잡아 공란으로 둘 수 없다. 기준 시각으로 채운다."""
+    schedules, warnings = normalize(_raw(startLocal=""), now=NOW)
+
+    assert len(schedules) == 1
+    assert schedules[0].start_at == NOW  # KST 12:00 == 03:00Z, 초 이하 없음
+    # 종료는 문서에 있었으므로 그대로 둔다 — 시작 하나가 빠졌다고 나머지를 버리지 않는다.
+    assert schedules[0].end_at == datetime(2026, 8, 13, 9, 0, tzinfo=timezone.utc)
+    assert any("시작 시각을 정하지 못해" in warning for warning in warnings)
+
+
+def test_reference_fallback_drops_seconds():
+    """관리자 화면의 입력칸이 분 단위라 초를 남기면 손대지 않은 초가 저장된다."""
+    ragged = datetime(2026, 7, 29, 3, 0, 41, 987654, tzinfo=timezone.utc)
+    schedules, _ = normalize(_raw(startLocal=""), now=ragged)
+
+    assert schedules[0].start_at.second == 0
+    assert schedules[0].start_at.microsecond == 0
+
+
+def test_unparseable_date_keeps_the_item_and_names_the_text():
+    """읽지 못한 원문을 경고에 싣는다 — 그 원문은 `_parse_local` 밖에 모른다."""
     schedules, warnings = normalize(_raw(startLocal="언젠가"), now=NOW)
-    assert schedules == ()
+
+    assert len(schedules) == 1
+    assert schedules[0].start_at == NOW
     assert any("언젠가" in warning for warning in warnings)
+
+
+def test_an_entirely_empty_item_still_becomes_one_draft():
+    """모델이 껍데기만 낸 경우. 제목·시작·종료 셋 다 대체값으로 채워 초안을 만든다."""
+    schedules, warnings = normalize({"schedules": [{}], "warnings": []}, now=NOW)
+
+    assert len(schedules) == 1
+    assert schedules[0].title == FALLBACK_TITLE
+    assert schedules[0].start_at == NOW
+    assert schedules[0].end_at == NOW + timedelta(hours=1)
+    assert schedules[0].content is None
+    assert schedules[0].target_text is None
+    assert schedules[0].location is None
+    assert any("제목" in warning for warning in warnings)
+    assert any("시작 시각을 정하지 못해" in warning for warning in warnings)
 
 
 def test_missing_content_and_target_are_warnings_not_drops():
@@ -121,18 +171,19 @@ def test_missing_location_is_silent():
 
 
 def test_order_is_renumbered_from_one():
+    """모델이 order 를 안 내므로 정규화가 매긴다. 대체값을 쓴 항목도 자리를 지킨다."""
     raw = _raw()
     raw["schedules"] = [
-        {"title": "셋째", "startLocal": "2026-08-03T10:00",
+        {"title": "첫째", "startLocal": "2026-08-03T10:00",
          "endLocal": "2026-08-03T11:00", "allDay": False},
-        {"title": "버려질 것", "startLocal": "깨진 값",
+        {"title": "시각이 깨진 것", "startLocal": "깨진 값",
          "endLocal": "2026-08-04T11:00", "allDay": False},
-        {"title": "둘째", "startLocal": "2026-08-05T10:00",
+        {"title": "셋째", "startLocal": "2026-08-05T10:00",
          "endLocal": "2026-08-05T11:00", "allDay": False},
     ]
     schedules, _ = normalize(raw, now=NOW)
-    assert [item.order for item in schedules] == [1, 2]
-    assert [item.title for item in schedules] == ["셋째", "둘째"]
+    assert [item.order for item in schedules] == [1, 2, 3]
+    assert [item.title for item in schedules] == ["첫째", "시각이 깨진 것", "셋째"]
 
 
 def test_model_warnings_are_kept():
