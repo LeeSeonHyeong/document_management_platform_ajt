@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { headingId, headingNumberMap } from '../headings'
+import MermaidBlock from './MermaidBlock'
 
 // 본문 내부 링크 패턴: pages/{wikiId}.md (상대/절대 경로 접두 허용)
 const INTERNAL_LINK = /(?:^|\/)pages\/([^/]+)\.md$/
@@ -108,11 +109,21 @@ export default function WikiMarkdown({ markdown, validWikiIds }) {
       code: ({ children }) => (
         <code className="rounded bg-slate-100 px-1 py-0.5 text-[0.85em] text-primary-700">{children}</code>
       ),
-      pre: ({ children }) => (
-        <pre className="my-3 overflow-x-auto rounded-lg bg-slate-900 p-4 text-sm text-slate-100 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
-          {children}
-        </pre>
-      ),
+      pre: ({ children }) => {
+        // 코드블록의 언어가 mermaid 면 다이어그램으로 렌더한다. (그 외 코드는 기존 코드박스)
+        const codeElement = Array.isArray(children) ? children[0] : children
+        const codeClassName = codeElement?.props?.className ?? ''
+        if (/\blanguage-mermaid\b/.test(codeClassName)) {
+          const raw = codeElement.props.children
+          const code = (Array.isArray(raw) ? raw.join('') : String(raw ?? '')).replace(/\n$/, '')
+          return <MermaidBlock code={code} />
+        }
+        return (
+          <pre className="my-3 overflow-x-auto rounded-lg bg-slate-900 p-4 text-sm text-slate-100 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
+            {children}
+          </pre>
+        )
+      },
       table: ({ children }) => (
         <div className="my-3 overflow-x-auto">
           <table className="w-full border-collapse text-sm">{children}</table>
