@@ -16,7 +16,7 @@ class AuthDepartmentResponseTest {
     }
 
     @Test
-    @DisplayName("기본 부서('전체')는 정상 부서이므로 그대로 노출한다")
+    @DisplayName("기본 부서('미지정')은 정상 부서이므로 그대로 노출한다")
     void exposesDefaultDepartment() {
         AuthDepartmentResponse response = AuthDepartmentResponse.from(new Department(Department.DEFAULT_NAME));
 

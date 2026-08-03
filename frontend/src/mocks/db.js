@@ -10,6 +10,7 @@ import {
   INQUIRY_STATUS,
 } from '@/shared/constants/enums'
 
+// users 가 departments[0] 처럼 위치로 참조하므로 항목을 앞에 끼워 넣으면 소속이 밀린다. 추가는 항상 뒤에.
 export const departments = [
   { departmentId: '1', name: '개발팀', manager: { userId: '3', name: '김민수' }, memberCount: 8 },
   { departmentId: '2', name: '인사팀', manager: { userId: '6', name: '최서연' }, memberCount: 3 },
@@ -19,6 +20,10 @@ export const departments = [
   { departmentId: '6', name: '영업팀', manager: null, memberCount: 2 },
   { departmentId: '7', name: '재무팀', manager: null, memberCount: 1 },
   { departmentId: '8', name: '고객지원팀', manager: null, memberCount: 1 },
+  // 시스템 기본 부서('미지정')는 백엔드가 기동 시 항상 보장하므로 목에도 항상 둔다.
+  // 부서 관리·회원가입·직원 소속 변경에는 보이고, 공개 범위를 고르는 화면에서는 숨겨진다
+  // (숨기는 책임은 useDepartments 한 곳 — features/department/defaultDepartment.js 참고).
+  { departmentId: '9', name: '미지정', manager: null, memberCount: 0 },
 ]
 
 export const users = [
@@ -588,6 +593,17 @@ export function findWikiCategoryById(wikiCategoryId) {
 export function buildWikiSpaces() {
   const scopeKeys = [...new Set(wikis.map((w) => w.scopeKey))]
   return scopeKeys.map((scopeKey) => {
+    const wikiCount = wikis.filter((w) => w.scopeKey === scopeKey).length
+    // 전체 공개(ALL)는 부서 범위가 아니다. 표시명도 백엔드 WikiQueryService.displayName과 맞춘다.
+    if (scopeKey === 'ALL') {
+      return {
+        scopeKey,
+        visibilityType: 'all',
+        departments: [],
+        displayName: '전체 공개',
+        wikiCount,
+      }
+    }
     const departmentIds = scopeKey.split('-').map((part) => part.replace('D', ''))
     const scopeDepartments = departmentsByIds(departmentIds)
     return {
@@ -595,7 +611,7 @@ export function buildWikiSpaces() {
       visibilityType: 'department',
       departments: scopeDepartments,
       displayName: scopeDepartments.map((d) => d.name).join(' + '),
-      wikiCount: wikis.filter((w) => w.scopeKey === scopeKey).length,
+      wikiCount,
     }
   })
 }

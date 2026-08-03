@@ -3,6 +3,7 @@ import {
   DEFAULT_DEPARTMENT_NAME,
   isDefaultDepartment,
   canDeleteDepartment,
+  excludeDefaultDepartment,
 } from './defaultDepartment'
 
 describe('기본 부서 판별(S15P11B106-146)', () => {
@@ -30,5 +31,30 @@ describe('기본 부서 판별(S15P11B106-146)', () => {
   it('null/undefined는 기본 부서가 아니다', () => {
     expect(isDefaultDepartment(null)).toBe(false)
     expect(isDefaultDepartment(undefined)).toBe(false)
+  })
+})
+
+describe('공개 범위 선택용 부서 목록(S15P11B106-208)', () => {
+  it('기본 부서만 빼고 순서를 유지한다', () => {
+    const departments = [
+      { departmentId: '1', name: '개발부' },
+      { departmentId: '9', name: '미지정' },
+      { departmentId: '2', name: '인사부' },
+    ]
+    expect(excludeDefaultDepartment(departments)).toEqual([
+      { departmentId: '1', name: '개발부' },
+      { departmentId: '2', name: '인사부' },
+    ])
+  })
+
+  // 개명 전 데이터가 남아 있어도 '전체'는 일반 부서라 걸러내지 않는다.
+  it("예전 이름 '전체'는 걸러내지 않는다", () => {
+    const departments = [{ departmentId: '1', name: '전체' }]
+    expect(excludeDefaultDepartment(departments)).toEqual(departments)
+  })
+
+  it('목록이 없으면 빈 배열을 돌려준다', () => {
+    expect(excludeDefaultDepartment(undefined)).toEqual([])
+    expect(excludeDefaultDepartment(null)).toEqual([])
   })
 })

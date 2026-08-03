@@ -370,7 +370,9 @@ public class WikiQueryService {
 
     private String displayName(WikiScope scope, List<WikiSpaceResponse.Department> departments) {
         if (scope.visibilityType() == WikiScopeVisibilityType.ALL) {
-            return "전체";
+            // 문서 화면과 같은 표기('전체 공개')를 쓴다. 이전 값 '전체'는 Wiki 사이드바의
+            // 스코프 필터 항목('전체 부서')과 나란히 놓였을 때 무엇이 공개 범위인지 구분되지 않았다.
+            return "전체 공개";
         }
         return departments.stream()
                 .map(WikiSpaceResponse.Department::name)

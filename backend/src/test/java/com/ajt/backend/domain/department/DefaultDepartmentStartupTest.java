@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
 /**
- * 더미데이터 로더가 꺼져 있어도(ajt.local-data.enabled=false) 서버 기동 시 기본 부서('전체')가
+ * 더미데이터 로더가 꺼져 있어도(ajt.local-data.enabled=false) 서버 기동 시 기본 부서('미지정')이
  * DefaultDepartmentConfig 러너에 의해 생성되는지 검증한다(S15P11B106-146).
  * ajt.default-department.enabled는 지정하지 않아 기본값(실행)으로 동작한다.
  */
