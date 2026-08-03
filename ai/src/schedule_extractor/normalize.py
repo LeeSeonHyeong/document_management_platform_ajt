@@ -1,10 +1,19 @@
 """모델 출력을 계약 자료형으로. LLM 을 부르지 않는다.
 
 **여기가 계산을 맡는다** — 모델에게 시간 산술을 시키면 틀린다 (설계 §2.1).
-KST→UTC 변환·연도 추론·순서 부여·탈락 판정·누락 경고가 전부 여기 있다.
+KST→UTC 변환·연도 추론·순서 부여·대체값 채우기·누락 경고가 전부 여기 있다.
 
-탈락은 그 항목만 버린다. 문서 전체를 실패로 만들지 않는다 — 관리자가 초안을 건별로
-검토·수정·승인하므로(FR-SCH-002·003) 4건을 살려 보내는 것이 5건을 버리는 것보다 낫다.
+**빠진 값은 버리지 않고 대체값으로 채운다.** 제목이 없으면 `무제`, 시각이 없으면 기준
+시각이다. 관리자가 초안을 건별로 검토·수정·승인하므로(FR-SCH-002·003) 「고칠 초안 한
+건」이 「없는 일정」보다 낫다 — 버리면 관리자는 그 일정이 있었다는 사실조차 모른다.
+
+DB 가 `title`·`start_at`·`end_at` 을 `NOT NULL` 로 잡고 있어(`docs/db/erd.sql`) 공란으로
+둘 수도 없다. 백엔드도 셋 중 하나가 비면 응답 전체를 버린다
+(`RestClientAiClient.isInvalid`).
+
+대체값을 쓴 사유는 전부 `warnings` 에 남는다. **다만 지금 그 경고는 관리자에게 닿지
+않는다** — 백엔드가 응답에 싣지 않는다(`ScheduleSourceService`). 노출은 S15P11B106-79
+인수 기준에 있는 별도 작업이다. 그때까지 관리자가 알아채는 단서는 제목 `무제` 뿐이다.
 """
 
 from __future__ import annotations
@@ -25,6 +34,13 @@ ROLL_FORWARD_MARGIN = timedelta(days=90)
 DEFAULT_DURATION = timedelta(hours=1)
 """시작 시각은 있고 종료가 없을 때 채우는 길이."""
 
+FALLBACK_TITLE = "무제"
+"""제목을 찾지 못했을 때 쓰는 제목.
+
+빈 문자열이 아니라 눈에 띄는 낱말이어야 한다 — 관리자 목록에서 이것만이 「AI 가 못
+채운 초안」이라는 단서다 (모듈 docstring).
+"""
+
 
 def normalize(raw: dict, *,
               now: datetime) -> tuple[tuple[ExtractedSchedule, ...], tuple[str, ...]]:
@@ -33,9 +49,7 @@ def normalize(raw: dict, *,
     kept: list[ExtractedSchedule] = []
 
     for item in raw.get("schedules") or ():
-        schedule = _one(item, reference=reference, warnings=warnings)
-        if schedule is not None:
-            kept.append(schedule)
+        kept.append(_one(item, reference=reference, warnings=warnings))
 
     renumbered = tuple(
         ExtractedSchedule(order=index, title=schedule.title, content=schedule.content,
@@ -62,21 +76,26 @@ def _deduplicated(warnings: list[str]) -> tuple[str, ...]:
 
 
 def _one(item: dict, *, reference: datetime,
-         warnings: list[str]) -> ExtractedSchedule | None:
-    """일정 1건. 살릴 수 없으면 `None` 과 경고 한 줄."""
+         warnings: list[str]) -> ExtractedSchedule:
+    """일정 1건. 무엇이 빠져 있어도 초안 하나를 만든다 (모듈 docstring)."""
     title = _clean(item.get("title"))
     if title is None:
-        warnings.append("제목이 없는 항목을 버렸습니다.")
-        return None
+        title = FALLBACK_TITLE
+        warnings.append(f"제목이 없는 항목의 제목을 '{FALLBACK_TITLE}'(으)로 두었습니다.")
 
     start = _parse_local(item.get("startLocal"), reference=reference, warnings=warnings,
-                         title=title)
+                         title=title, field="시작")
     if start is None:
-        return None
+        # 기준 시각으로 채운다. 초 이하를 떨어뜨리는 것은 관리자 화면의 입력칸이 분
+        # 단위라, 남겨두면 관리자가 손대지 않은 초가 그대로 저장되기 때문이다.
+        start = reference.replace(second=0, microsecond=0)
+        # 「없어」가 아니라 「정하지 못해」다 — 비어 있었을 수도, 읽히지 않았을 수도
+        # 있다. 후자면 `_parse_local` 이 원문을 실은 줄을 이미 남겼다.
+        warnings.append(f"'{title}'의 시작 시각을 정하지 못해 현재 시각으로 두었습니다.")
 
     all_day = bool(item.get("allDay"))
     end = _parse_local(item.get("endLocal"), reference=reference, warnings=warnings,
-                       title=title, quiet=True)
+                       title=title, field="종료")
     if end is None:
         if all_day:
             end = start.replace(hour=23, minute=59, second=59, microsecond=999_999)
@@ -88,8 +107,10 @@ def _one(item: dict, *, reference: datetime,
         end = end.replace(hour=23, minute=59, second=59, microsecond=999_999)
 
     if end < start:
-        warnings.append(f"'{title}'의 종료가 시작보다 앞서 버렸습니다.")
-        return None
+        # 백엔드가 뒤집힌 기간을 거부하므로(`RestClientAiClient.isInvalid`) 그냥 둘 수
+        # 없다. 버리는 대신 종료를 밀어 초안을 살린다 — 관리자가 고칠 수 있다.
+        warnings.append(f"'{title}'의 종료가 시작보다 앞서 시작 후 1시간으로 두었습니다.")
+        end = start + DEFAULT_DURATION
 
     content = _clean(item.get("content"))
     if content is None:
@@ -115,16 +136,19 @@ def _clean(value) -> str | None:
 
 
 def _parse_local(value, *, reference: datetime, warnings: list[str], title: str,
-                 quiet: bool = False) -> datetime | None:
-    """모델이 낸 naive 지역 시각을 KST tz-aware 로.
+                 field: str) -> datetime | None:
+    """모델이 낸 naive 지역 시각을 KST tz-aware 로. 못 읽으면 `None`.
 
     연도가 없는 형태(`MM-DDTHH:MM`)도 받는다 — 모델이 문서를 그대로 옮기다 연도를
     빠뜨리는 경우가 있다. 그때 기준 연도를 넣고 경고를 남긴다.
+
+    **값이 비어 있는 것은 경고하지 않는다.** 그것은 부르는 쪽이 무엇으로 채웠는지까지
+    알고 적어야 할 사실이라, 여기서 한 줄, 저기서 한 줄이 되면 읽는 쪽이 두 문장을
+    맞춰 봐야 한다. 읽었으나 형식이 틀린 경우만 여기서 적는다 — 그 원문은 여기밖에
+    모른다.
     """
     text = _clean(value)
     if text is None:
-        if not quiet:
-            warnings.append(f"'{title}'의 시각이 비어 있어 버렸습니다.")
         return None
 
     naive = _parse_naive(text)
@@ -136,8 +160,7 @@ def _parse_local(value, *, reference: datetime, warnings: list[str], title: str,
         warnings.append(f"'{title}'의 연도가 없어 {inferred.year}년으로 보았습니다.")
         return inferred
 
-    if not quiet:
-        warnings.append(f"'{title}'의 시각을 읽지 못해 버렸습니다: {text}")
+    warnings.append(f"'{title}'의 {field} 시각을 읽지 못했습니다: {text}")
     return None
 
 

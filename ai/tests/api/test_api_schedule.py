@@ -175,25 +175,34 @@ def test_zero_items_with_dates_in_the_document_is_500():
     assert response.json()["code"] == "SCHEDULE_EXTRACTION_FAILED"
 
 
-def test_all_items_dropped_is_500():
-    payload = {"schedules": [{"title": "뒤집힌 일정",
-                              "startLocal": "2026-08-20T16:00",
-                              "endLocal": "2026-08-20T14:00", "allDay": False}],
-               "warnings": []}
-    response = _post(FakeProvider(payload))
-    assert response.status_code == 500
-    assert response.json()["code"] == "SCHEDULE_EXTRACTION_FAILED"
+def test_a_broken_item_is_repaired_not_dropped():
+    """제목·시각이 없어도 초안 한 건이 나간다 (S15P11B106-79 대체값 정책).
+
+    예전에는 이 입력이 전건 탈락이라 500 이었다. 지금은 200 이고, 관리자가 목록에서
+    `무제` 를 보고 고친다 — 500 이면 그 일정이 있었다는 사실 자체가 사라진다.
+    """
+    payload = {"schedules": [{"allDay": False}], "warnings": []}
+    body = _post(FakeProvider(payload)).json()
+
+    assert body["status"] == "extracted"
+    assert [item["title"] for item in body["schedules"]] == ["무제"]
+    assert body["schedules"][0]["startAt"].endswith("Z")
+    assert any("제목" in warning for warning in body["warnings"])
 
 
-def test_partial_failure_keeps_the_survivors():
+def test_every_item_survives_even_when_one_is_malformed():
+    """뒤집힌 기간도 고쳐서 내보낸다 — 백엔드가 뒤집힌 기간을 거부하기 때문이다."""
     payload = {"schedules": [
         ONE_ITEM["schedules"][0],
         {"title": "뒤집힌 일정", "startLocal": "2026-08-20T16:00",
          "endLocal": "2026-08-20T14:00", "allDay": False},
     ], "warnings": []}
     body = _post(FakeProvider(payload)).json()
+
     assert body["status"] == "extracted"
-    assert [item["title"] for item in body["schedules"]] == ["하계 워크샵"]
+    assert [item["title"] for item in body["schedules"]] == ["하계 워크샵", "뒤집힌 일정"]
+    assert body["schedules"][1]["startAt"] == "2026-08-20T07:00:00Z"
+    assert body["schedules"][1]["endAt"] == "2026-08-20T08:00:00Z"
     assert any("뒤집힌 일정" in warning for warning in body["warnings"])
 
 
