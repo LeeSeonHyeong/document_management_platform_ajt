@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -76,6 +77,16 @@ public class AccessTokenAuthenticationFilter extends OncePerRequestFilter {
                     List.of(new SimpleGrantedAuthority("ROLE_" + member.getRole().name()))
             );
             SecurityContextHolder.getContext().setAuthentication(authentication);
+            // 수정(S15P11B106-206): 활동이 있으면 세션을 이어 준다. 남은 수명이 절반 아래면 쿠키를
+            //   새로 내린다. 예전에는 발급 시점 기준 고정 수명이라 계속 쓰고 있어도 그 시간이 지나면
+            //   끊겼다 — FR-USR-005는 「활동이 없는」 세션을 만료하라고 요구한다.
+            //   refreshToken을 만들지 않는다(FR-USR-002 금지). 같은 accessToken 쿠키를 다시 내린다.
+            if (accessTokenService.shouldRenew(tokenData)) {
+                response.addHeader(
+                        HttpHeaders.SET_COOKIE,
+                        authCookieService.createAccessTokenCookie(
+                                accessTokenService.createAccessToken(member)).toString());
+            }
         } catch (RuntimeException exception) {
             SecurityContextHolder.clearContext();
             responseWriter.write(response, ErrorCode.INVALID_ACCESS_TOKEN, request.getRequestURI());
