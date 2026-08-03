@@ -62,6 +62,22 @@ public class AccessTokenService extends SignedTokenSupport {
         return properties.accessTokenExpiration().toSeconds();
     }
 
+    /**
+     * 남은 수명이 절반 아래로 내려갔는지 여부입니다(S15P11B106-206).
+     *
+     * <p>FR-USR-005는 <b>활동이 없는</b> 세션을 만료하라고 요구하지만, 이 토큰은 발급 시점 기준
+     * 고정 수명이라 쓰고 있어도 끊겼다. 인증에 성공한 요청에서 이 값이 참이면 쿠키를 다시 내려
+     * 세션을 이어 준다 — 활동이 있으면 유지되고, 만료 시간만큼 요청이 없으면 만료된다.
+     *
+     * <p>절반을 기준으로 두는 이유는 매 요청에 {@code Set-Cookie}를 남기지 않기 위해서다.
+     * refreshToken을 만들지 않는 것은 FR-USR-002가 금지하기 때문이다 — 같은 accessToken 쿠키를
+     * 다시 내려주는 것뿐이다.
+     */
+    public boolean shouldRenew(AccessTokenData tokenData) {
+        long remaining = tokenData.expiresAt() - clock.instant().getEpochSecond();
+        return remaining < properties.accessTokenExpiration().toSeconds() / 2;
+    }
+
     @Override
     RuntimeException invalidTokenException() {
         return new IllegalArgumentException("접근 토큰이 올바르지 않습니다.");
