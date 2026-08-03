@@ -58,6 +58,7 @@ const inquiry = {
   author: {
     userId: "1",
     name: "홍길동",
+    department,
   },
   assignee: inquiryAssignee,
   attachments: [],
