@@ -367,7 +367,7 @@ const collectionVariable = (collection, key) =>
 // 1.11.0 은 AI 작업 이력 목록 조회 `GET /api/v1/ai-jobs` 신설이다 — 기존 요청은 그대로지만
 // 새 엔드포인트 추가라 minor 다 (S15P11B106-192). 관리자 「요약 목록」 화면이 단건 조회
 // (jobId 를 쥐고 있을 때만 열린다) 말고는 지난 작업의 문서별 변경 요약을 볼 길이 없었다.
-const expectedContractVersion = "1.11.0";
+const expectedContractVersion = "1.11.1";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

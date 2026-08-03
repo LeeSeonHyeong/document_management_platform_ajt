@@ -1,4 +1,4 @@
-export const contractVersion = "1.11.0";
+export const contractVersion = "1.11.1";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -288,6 +288,7 @@ const contracts = {
               currentStage: "wiki_applied",
               summary: "2024 인사규정 문서에서 연차 산정 기준과 경조사 휴가 항목을 추출해 「2024 인사규정 안내」 Wiki를 새로 만들었습니다.",
               failureReason: null,
+              failureStage: null,
             },
           ],
           createdAt: timestamp,
@@ -306,6 +307,7 @@ const contracts = {
               currentStage: "parsing",
               summary: null,
               failureReason: "스캔된 PDF에서 텍스트를 읽지 못했습니다.",
+              failureStage: "context_load",
             },
           ],
           createdAt: "2026-07-25T09:00:00Z",
@@ -335,6 +337,7 @@ const contracts = {
             currentStage: "wiki_applied",
             summary: "휴가 규정을 Wiki에 반영했습니다.",
             failureReason: null,
+            failureStage: null,
           },
           {
             documentId: "16",
@@ -343,6 +346,7 @@ const contracts = {
             currentStage: "parsing",
             summary: null,
             failureReason: null,
+            failureStage: null,
           },
         ],
         createdAt: timestamp,
