@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -11,7 +12,9 @@ import static org.mockito.Mockito.verify;
 
 import com.ajt.backend.domain.department.Department;
 import com.ajt.backend.domain.department.DepartmentRepository;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Role;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.schedule.api.ScheduleSourceUploadResponse;
 import com.ajt.backend.domain.schedule.model.Schedule;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
@@ -52,14 +55,22 @@ class ScheduleSourceServiceTest {
     private final ScheduleRepository scheduleRepository = mock(ScheduleRepository.class);
     private final DepartmentRepository departmentRepository = mock(DepartmentRepository.class);
     private final AiClient aiClient = mock(AiClient.class);
+    private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
 
     private ScheduleSourceFileStorage storage;
     private ScheduleSourceService service;
 
+    // 기존 테스트의 관리자는 전체 접근(최고관리자)으로 취급해 기존 동작을 유지한다(S15P11B106-199).
+    private static DepartmentScopePolicy superAdminScopePolicy() {
+        DepartmentScopePolicy policy = mock(DepartmentScopePolicy.class);
+        given(policy.resolve(anyLong())).willReturn(ScopeAccess.superAdmin());
+        return policy;
+    }
+
     @BeforeEach
     void setUp() {
         storage = new LocalScheduleSourceFileStorage(storageRoot);
-        service = new ScheduleSourceService(scheduleRepository, departmentRepository, storage, aiClient);
+        service = new ScheduleSourceService(scheduleRepository, departmentRepository, storage, aiClient, departmentScopePolicy);
 
         given(aiClient.parseSource(any(SourceParseRequest.class))).willAnswer(invocation -> {
             SourceParseRequest request = invocation.getArgument(0);

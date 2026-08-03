@@ -8,8 +8,10 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.wiki.api.WikiCategoryListResponse;
 import com.ajt.backend.domain.wiki.api.WikiDetailResponse;
 import com.ajt.backend.domain.wiki.api.WikiListResponse;
@@ -65,6 +67,7 @@ public class WikiQueryService {
     private final MemberRepository memberRepository;
     private final DocumentRepository documentRepository;
     private final DepartmentRepository departmentRepository;
+    private final DepartmentScopePolicy departmentScopePolicy;
 
     public WikiQueryService(
             CurrentMemberProvider currentMemberProvider,
@@ -74,7 +77,8 @@ public class WikiQueryService {
             WikiScopeRepository wikiScopeRepository,
             MemberRepository memberRepository,
             DocumentRepository documentRepository,
-            DepartmentRepository departmentRepository
+            DepartmentRepository departmentRepository,
+            DepartmentScopePolicy departmentScopePolicy
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiRepository = wikiRepository;
@@ -84,6 +88,7 @@ public class WikiQueryService {
         this.memberRepository = memberRepository;
         this.documentRepository = documentRepository;
         this.departmentRepository = departmentRepository;
+        this.departmentScopePolicy = departmentScopePolicy;
     }
 
     // ===== WIKI-01 Wiki 목록·검색 =====
@@ -99,10 +104,19 @@ public class WikiQueryService {
     ) {
         CurrentMember currentMember = currentMemberProvider.currentMember();
 
-        // 사원은 접근 가능한 공개범위(전체 + 내 부서)로 제한한다. 관리자는 제한 없음(null).
-        Set<String> allowedScopeKeys = currentMember.isAdmin()
-                ? null
-                : accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
+        // 사원=전체+내 부서, 최고관리자=제한 없음(null), 부서관리자=담당 부서 단일 scope만(S15P11B106-199).
+        Set<String> allowedScopeKeys;
+        if (!currentMember.isAdmin()) {
+            allowedScopeKeys = accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
+        } else {
+            ScopeAccess scope = departmentScopePolicy.resolve(currentMember.memberId());
+            if (scope.isSuperAdmin()) {
+                allowedScopeKeys = null;
+            } else {
+                String managed = scope.managedScopeKey();
+                allowedScopeKeys = managed == null ? Set.of() : Set.of(managed);
+            }
+        }
 
         Pageable pageable = createPageable(page, size, sort);
         Specification<Wiki> specification = wikiSpecification(allowedScopeKeys, scopeKey, wikiCategoryId, keyword);
@@ -186,28 +200,43 @@ public class WikiQueryService {
     // ===== 접근 권한 =====
 
     private AccessScope accessScopeOf(CurrentMember member) {
-        // TODO(팀 협업): 관리자는 모든 Wiki 공간을 조회할 수 있다고 가정한다(FR-ACL-002는 사원 기준만 명시).
-        //  관리자 접근 범위 정책이 확정되면 이 가정을 검토한다.
-        if (member.isAdmin()) {
-            return AccessScope.forAdmin();
+        if (!member.isAdmin()) {
+            return AccessScope.forEmployee(memberDepartmentId(member.memberId()));
         }
-        return AccessScope.forEmployee(memberDepartmentId(member.memberId()));
+        // 수정(S15P11B106-199): 관리자는 최고관리자/부서관리자로 구분한다.
+        //   최고관리자는 모든 Wiki 공간, 부서관리자는 담당 부서 단일 공개 범위만 조회할 수 있다(전체·타부서·복수부서 제외).
+        ScopeAccess scope = departmentScopePolicy.resolve(member.memberId());
+        if (scope.isSuperAdmin()) {
+            return AccessScope.forSuperAdmin();
+        }
+        return AccessScope.forDepartmentManager(scope.managedDepartmentId());
     }
 
-    private record AccessScope(boolean admin, Long departmentId) {
+    private record AccessScope(boolean superAdmin, boolean departmentManager, Long departmentId) {
 
-        static AccessScope forAdmin() {
-            return new AccessScope(true, null);
+        static AccessScope forSuperAdmin() {
+            return new AccessScope(true, false, null);
+        }
+
+        static AccessScope forDepartmentManager(Long managedDepartmentId) {
+            return new AccessScope(false, true, managedDepartmentId);
         }
 
         static AccessScope forEmployee(Long departmentId) {
-            return new AccessScope(false, departmentId);
+            return new AccessScope(false, false, departmentId);
         }
 
         boolean canAccess(WikiScope scope) {
-            if (admin) {
+            if (superAdmin) {
                 return true;
             }
+            if (departmentManager) {
+                // 부서관리자: 담당 부서 단일 부서 공개 범위만(전체·타부서·복수부서 차단).
+                return departmentId != null
+                        && scope.visibilityType() == WikiScopeVisibilityType.DEPARTMENT
+                        && scope.departmentRefs().equals(List.of(departmentId));
+            }
+            // 사원: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위.
             if (scope.visibilityType() == WikiScopeVisibilityType.ALL) {
                 return true;
             }

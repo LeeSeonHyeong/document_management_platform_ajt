@@ -15,6 +15,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.Role;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +56,8 @@ class DocumentManagementServiceScopeAccessTest {
     private CurrentMemberProvider currentMemberProvider;
 
     private long employeeId;
+    private long superAdminId;
+    private long deptManagerId;
     private long department2Id;
     private String scopeD2;
     private String scopeD3;
@@ -66,6 +69,14 @@ class DocumentManagementServiceScopeAccessTest {
         department2Id = department2.getId();
         employeeId = memberRepository.save(Member.approvedEmployee(
                 department2, "emp@ajt.com", "사원", "hash", "AJT-2026-0001")).getId();
+        // 최고관리자(설정 이메일 기본값 superadmin@ajt.com)와 department2 담당 부서관리자 (S15P11B106-199)
+        superAdminId = memberRepository.save(Member.approved(
+                department2, "superadmin@ajt.com", "최고관리자", "hash", "AJT-2026-9999", Role.ADMIN)).getId();
+        Member deptManager = memberRepository.save(Member.approved(
+                department2, "mgr@ajt.com", "부서관리자", "hash", "AJT-2026-0002", Role.ADMIN));
+        department2.assignManager(deptManager);
+        departmentRepository.save(department2);
+        deptManagerId = deptManager.getId();
 
         // 공개범위: 전체(ALL), 2번 부서(D2), 3번 부서(D3)
         wikiScopeRepository.save(WikiScope.all());
@@ -105,7 +116,7 @@ class DocumentManagementServiceScopeAccessTest {
     @DisplayName("관리자는 접근 제한 없이 모든 공개범위의 문서를 본다")
     void adminSeesAllScopes() {
         given(currentMemberProvider.currentMember())
-                .willReturn(new CurrentMember(employeeId, CurrentMemberRole.ADMIN));
+                .willReturn(new CurrentMember(superAdminId, CurrentMemberRole.ADMIN));
 
         DocumentListResponse response = documentManagementService.findDocuments(
                 1, 100, null, null, null, null, null, null, null, null, null);
@@ -120,10 +131,26 @@ class DocumentManagementServiceScopeAccessTest {
     @DisplayName("departmentId로 필터하면 해당 부서 전용 문서만 나오고 전체 공개(ALL)는 제외된다(의도된 동작)")
     void departmentFilterExcludesAllScope() {
         given(currentMemberProvider.currentMember())
-                .willReturn(new CurrentMember(employeeId, CurrentMemberRole.ADMIN));
+                .willReturn(new CurrentMember(superAdminId, CurrentMemberRole.ADMIN));
 
         DocumentListResponse response = documentManagementService.findDocuments(
                 1, 100, null, null, null, null, null, department2Id, null, null, null);
+
+        List<String> scopeKeys = response.items().stream()
+                .map(DocumentSummaryResponse::scopeKey)
+                .toList();
+        assertThat(scopeKeys).containsExactly(scopeD2);
+        assertThat(scopeKeys).doesNotContain("ALL", scopeD3);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 담당 부서(D2) 문서만 보고 전체(ALL)·타부서(D3)는 제외된다(S15P11B106-199)")
+    void departmentManagerSeesOnlyManagedScope() {
+        given(currentMemberProvider.currentMember())
+                .willReturn(new CurrentMember(deptManagerId, CurrentMemberRole.ADMIN));
+
+        DocumentListResponse response = documentManagementService.findDocuments(
+                1, 100, null, null, null, null, null, null, null, null, null);
 
         List<String> scopeKeys = response.items().stream()
                 .map(DocumentSummaryResponse::scopeKey)

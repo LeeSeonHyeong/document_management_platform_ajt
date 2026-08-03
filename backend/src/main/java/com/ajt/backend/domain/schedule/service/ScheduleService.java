@@ -2,8 +2,10 @@ package com.ajt.backend.domain.schedule.service;
 
 import com.ajt.backend.domain.department.DepartmentRepository;
 import com.ajt.backend.domain.schedule.storage.ScheduleSourceFileStorage;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.schedule.api.ScheduleCreateRequest;
 import com.ajt.backend.domain.schedule.api.ScheduleCreateResponse;
 import com.ajt.backend.domain.schedule.api.ScheduleDetailResponse;
@@ -42,6 +44,7 @@ public class ScheduleService {
     private final MemberRepository memberRepository;
     private final DepartmentRepository departmentRepository;
     private final ScheduleSourceFileStorage scheduleSourceFileStorage;
+    private final DepartmentScopePolicy departmentScopePolicy;
 
     /**
      * SCH-CREATE 수동/개인 일정 생성입니다.
@@ -56,6 +59,8 @@ public class ScheduleService {
         }
 
         List<Long> departmentIds = resolveDepartmentIds(visibility, request.departmentIds());
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서(DEPARTMENT) 단독 일정만 생성할 수 있다. 전체(ALL)·타부서·복수부서 차단.
+        requireManageableScope(loginMember, visibility, departmentIds);
         validatePeriod(request.startAt(), request.endAt());
 
         Schedule schedule = Schedule.create(
@@ -82,8 +87,9 @@ public class ScheduleService {
         requireAuthenticated(loginMember);
         Schedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
+        ScopeAccess adminScope = loginMember.isAdmin() ? departmentScopePolicy.resolve(loginMember.memberId()) : null;
         Long memberDepartmentId = loginMember.isAdmin() ? null : currentDepartmentId(loginMember);
-        if (!canAccess(loginMember, schedule, memberDepartmentId)) {
+        if (!canAccess(loginMember, schedule, adminScope, memberDepartmentId)) {
             throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
         }
         // 수정: 사원에게는 원본문서(파일명·다운로드 URL)를 노출하지 않도록 관리자 여부를 전달한다(FR-SCH-009).
@@ -116,6 +122,7 @@ public class ScheduleService {
         Long departmentFilter = parseDepartmentFilter(departmentId);
 
         boolean admin = loginMember.isAdmin();
+        ScopeAccess adminScope = admin ? departmentScopePolicy.resolve(loginMember.memberId()) : null;
         Long memberDepartmentId = admin ? null : currentDepartmentId(loginMember);
 
         // 수정(S15P11B106-146): status=draft이면서 startDate/endDate가 둘 다 비어 있으면 기간 필터를 생략하고
@@ -148,7 +155,7 @@ public class ScheduleService {
                 specification, Sort.by(Sort.Order.asc("startAt"), Sort.Order.asc("id")));
 
         List<Schedule> visible = schedules.stream()
-                .filter(schedule -> canAccess(loginMember, schedule, memberDepartmentId))
+                .filter(schedule -> canAccess(loginMember, schedule, adminScope, memberDepartmentId))
                 .filter(schedule -> departmentFilter == null || schedule.departmentIds().contains(departmentFilter))
                 .toList();
 
@@ -183,6 +190,8 @@ public class ScheduleService {
         }
 
         List<Long> newDepartments = resolveUpdatedDepartments(schedule, request, newVisibility);
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서 범위로만 수정할 수 있다(전체·타부서·복수부서로 변경 차단).
+        requireManageableScope(loginMember, newVisibility, newDepartments);
         String newTitle = request.titlePresent() ? requireTitle(request.title()) : schedule.title();
         String newContent = request.contentPresent() ? request.content() : schedule.content();
         String newTargetText = request.targetTextPresent() ? request.targetText() : schedule.targetText();
@@ -213,6 +222,8 @@ public class ScheduleService {
         requireAdmin(loginMember);
         Schedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND));
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서 일정만 승인할 수 있다(전체·타부서는 존재 숨김 404).
+        requireManageableSchedule(loginMember, schedule);
         try {
             schedule.approve();
         } catch (IllegalStateException exception) {
@@ -312,6 +323,8 @@ public class ScheduleService {
         if (!loginMember.isAdmin()) {
             throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED);
         }
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서 일정만 수정/삭제할 수 있다(전체·타부서는 존재 숨김 404).
+        requireManageableSchedule(loginMember, schedule);
     }
 
     private void requireAdmin(AuthenticatedMember loginMember) {
@@ -337,15 +350,72 @@ public class ScheduleService {
      * personal 일정은 작성자 본인만 접근합니다(관리자도 타인의 personal 일정은 조회할 수 없습니다).
      * all/department 일정은 관리자가 draft 포함 전체를, 사원은 승인된 소속 범위만 접근합니다.
      */
-    private boolean canAccess(AuthenticatedMember loginMember, Schedule schedule, Long memberDepartmentId) {
+    private boolean canAccess(
+            AuthenticatedMember loginMember,
+            Schedule schedule,
+            ScopeAccess adminScope,
+            Long memberDepartmentId
+    ) {
+        boolean superAdmin = adminScope != null && adminScope.isSuperAdmin();
         return switch (schedule.visibilityType()) {
             case PERSONAL -> schedule.authorId() == loginMember.memberId();
-            case ALL -> loginMember.isAdmin() || schedule.status() == ScheduleStatus.APPROVED;
-            case DEPARTMENT -> loginMember.isAdmin()
-                    || (schedule.status() == ScheduleStatus.APPROVED
+            // 수정(S15P11B106-199): 전체(ALL) 일정은 최고관리자·사원만 접근. 부서관리자는 전체 일정을 조회할 수 없다.
+            case ALL -> superAdmin || (adminScope == null && schedule.status() == ScheduleStatus.APPROVED);
+            case DEPARTMENT -> {
+                if (superAdmin) {
+                    yield true;
+                }
+                if (adminScope != null) {
+                    // 부서관리자: 담당 부서 단독 일정만(타부서·복수부서 제외, draft 포함).
+                    yield adminScope.canManageDepartmentScope(schedule.departmentIds());
+                }
+                // 사원: 승인된 소속 부서 일정만.
+                yield schedule.status() == ScheduleStatus.APPROVED
                         && memberDepartmentId != null
-                        && schedule.departmentIds().contains(memberDepartmentId));
+                        && schedule.departmentIds().contains(memberDepartmentId);
+            }
         };
+    }
+
+    /**
+     * 부서관리자 관리 스코프 가드(생성·수정 대상 범위, S15P11B106-199).
+     * 최고관리자는 제한 없음. 부서관리자는 DEPARTMENT 공개 + 담당 부서 단독([managedDeptId])만 허용하고,
+     * 전체(ALL)·타부서·복수 부서는 거절한다. PERSONAL은 작성자 본인 일정이라 제한하지 않는다.
+     */
+    private void requireManageableScope(
+            AuthenticatedMember loginMember,
+            ScheduleVisibility visibility,
+            List<Long> departmentIds
+    ) {
+        if (visibility == ScheduleVisibility.PERSONAL) {
+            return;
+        }
+        ScopeAccess scope = departmentScopePolicy.resolve(loginMember.memberId());
+        if (scope.isSuperAdmin()) {
+            return;
+        }
+        if (visibility != ScheduleVisibility.DEPARTMENT || !scope.canManageDepartmentScope(departmentIds)) {
+            throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED,
+                    "부서관리자는 담당 부서 일정만 관리할 수 있습니다.");
+        }
+    }
+
+    /**
+     * 기존 일정에 대한 부서관리자 스코프 가드(수정·삭제·승인 대상, S15P11B106-199).
+     * 부서관리자가 담당 밖(전체·타부서·복수부서) 일정을 다루려 하면 존재를 숨겨 SCHEDULE_NOT_FOUND로 처리한다.
+     */
+    private void requireManageableSchedule(AuthenticatedMember loginMember, Schedule schedule) {
+        if (schedule.visibilityType() == ScheduleVisibility.PERSONAL) {
+            return;
+        }
+        ScopeAccess scope = departmentScopePolicy.resolve(loginMember.memberId());
+        if (scope.isSuperAdmin()) {
+            return;
+        }
+        if (schedule.visibilityType() != ScheduleVisibility.DEPARTMENT
+                || !scope.canManageDepartmentScope(schedule.departmentIds())) {
+            throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
+        }
     }
 
     private Specification<Schedule> withinRange(Instant windowStart, Instant windowEndExclusive) {

@@ -29,7 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "ajt.local-data.enabled=false"
+        "ajt.local-data.enabled=false",
+        "ajt.super-admin.email=admin@ajt.com"
 })
 @Transactional
 @DisplayName("일정 서비스")
@@ -93,6 +94,58 @@ class ScheduleServiceTest {
         assertThat(response.status()).isEqualTo("approved");
         assertThat(response.departmentIds())
                 .containsExactly(String.valueOf(dev.getId()), String.valueOf(plan.getId()));
+    }
+
+    @Test
+    @DisplayName("부서관리자는 전체(ALL) 일정을 생성할 수 없다(S15P11B106-199)")
+    void departmentManagerCannotCreateAllSchedule() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+
+        assertThatThrownBy(() -> scheduleService.create(
+                authOf(manager),
+                new ScheduleCreateRequest("전사 공지", null, null, null,
+                        "all", List.of(), START, END)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 담당 부서 일정을 생성할 수 있다(S15P11B106-199)")
+    void departmentManagerCreatesOwnDepartmentSchedule() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+
+        ScheduleCreateResponse response = scheduleService.create(
+                authOf(manager),
+                new ScheduleCreateRequest("부서 회의", null, null, null,
+                        "department", List.of(String.valueOf(dev.getId())), START, END));
+
+        assertThat(response.status()).isEqualTo("approved");
+        assertThat(response.departmentIds()).containsExactly(String.valueOf(dev.getId()));
+    }
+
+    @Test
+    @DisplayName("부서관리자는 타부서 일정을 생성할 수 없다(S15P11B106-199)")
+    void departmentManagerCannotCreateOtherDepartmentSchedule() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Department other = departmentRepository.save(new Department("기획부"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+
+        assertThatThrownBy(() -> scheduleService.create(
+                authOf(manager),
+                new ScheduleCreateRequest("타부서 회의", null, null, null,
+                        "department", List.of(String.valueOf(other.getId())), START, END)))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
     }
 
     @Test

@@ -17,8 +17,10 @@ import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.document.service.CurrentMemberRole;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.wiki.api.WikiListResponse;
 import com.ajt.backend.domain.wiki.api.WikiSummaryResponse;
 import com.ajt.backend.domain.wiki.model.Wiki;
@@ -47,6 +49,7 @@ class WikiQueryServiceTest {
     private final MemberRepository memberRepository = mock(MemberRepository.class);
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final DepartmentRepository departmentRepository = mock(DepartmentRepository.class);
+    private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
     private final WikiQueryService service = new WikiQueryService(
             currentMemberProvider,
             wikiRepository,
@@ -55,8 +58,16 @@ class WikiQueryServiceTest {
             wikiScopeRepository,
             memberRepository,
             documentRepository,
-            departmentRepository
+            departmentRepository,
+            departmentScopePolicy
     );
+
+    // 기존 테스트의 관리자는 전체 접근(최고관리자)으로 취급해 기존 동작을 유지한다(S15P11B106-199).
+    private static DepartmentScopePolicy superAdminScopePolicy() {
+        DepartmentScopePolicy policy = mock(DepartmentScopePolicy.class);
+        given(policy.resolve(anyLong())).willReturn(ScopeAccess.superAdmin());
+        return policy;
+    }
 
     @Test
     @DisplayName("관리자는 접근 제한 없이 목록을 조회하고, 요약은 목차에서 채운다")

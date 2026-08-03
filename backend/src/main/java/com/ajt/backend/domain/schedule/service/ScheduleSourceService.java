@@ -1,6 +1,8 @@
 package com.ajt.backend.domain.schedule.service;
 
 import com.ajt.backend.domain.department.DepartmentRepository;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.schedule.api.ScheduleSourceUploadResponse;
 import com.ajt.backend.domain.schedule.model.Schedule;
 import com.ajt.backend.domain.schedule.model.ScheduleVisibility;
@@ -56,6 +58,7 @@ public class ScheduleSourceService {
     private final DepartmentRepository departmentRepository;
     private final ScheduleSourceFileStorage sourceFileStorage;
     private final AiClient aiClient;
+    private final DepartmentScopePolicy departmentScopePolicy;
 
     /**
      * 원본문서를 저장하고 파싱·추출을 동기로 처리합니다.
@@ -72,6 +75,13 @@ public class ScheduleSourceService {
         validateFile(file);
         ScheduleVisibility visibility = parseVisibility(visibilityType);
         List<Long> departmentIds = resolveDepartmentIds(visibility, rawDepartmentIds);
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서(DEPARTMENT) 단독 일정 문서만 업로드할 수 있다. 전체(ALL)·타부서·복수부서 차단.
+        ScopeAccess scope = departmentScopePolicy.resolve(loginMember.memberId());
+        if (!scope.isSuperAdmin()
+                && (visibility != ScheduleVisibility.DEPARTMENT || !scope.canManageDepartmentScope(departmentIds))) {
+            throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED,
+                    "부서관리자는 담당 부서 일정만 관리할 수 있습니다.");
+        }
 
         String sourceGroupKey = generateSourceGroupKey();
         String originalPath = storeOriginal(sourceGroupKey, file);
