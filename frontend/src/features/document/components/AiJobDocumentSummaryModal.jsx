@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { FileText, RotateCcw } from 'lucide-react'
 import { Badge, Button, Modal } from '@/components/ui'
-import { DOC_STATUS_LABEL, DOC_STATUS_TONE, STAGE_LABEL } from '../status'
+import { DOC_STATUS_LABEL, DOC_STATUS_TONE, FAILURE_STAGE_LABEL } from '../status'
 
 const RETRYABLE = new Set(['failed', 'cancelled'])
 
@@ -91,9 +91,12 @@ export default function AiJobDocumentSummaryModal({ open, onClose, job, result, 
           <p className="mt-1.5 text-sm leading-7 text-rose-600">
             {result.failureReason ?? '기록된 실패 사유가 없습니다.'}
           </p>
-          {result.currentStage && (
+          {/* currentStage 를 쓰지 않는다 — 문서 상태에서 역산한 값이라 어디서 죽었든
+              parsing 으로 온다. 실패 지점을 아는 것은 failureStage 뿐이고, 그마저
+              없으면 아는 척하지 않고 줄을 지운다. */}
+          {result.failureStage && (
             <p className="mt-2 text-xs text-slate-400">
-              실패 단계 · {STAGE_LABEL[result.currentStage] ?? result.currentStage}
+              실패 단계 · {FAILURE_STAGE_LABEL[result.failureStage] ?? result.failureStage}
             </p>
           )}
         </div>
