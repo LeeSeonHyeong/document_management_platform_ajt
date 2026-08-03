@@ -22,8 +22,25 @@ import lombok.Getter;
 @Table(name = "department")
 public class Department {
 
-    /** 시스템 기본 부서명입니다(S15P11B106-146). 항상 존재하며 이름 변경·삭제가 금지됩니다. */
-    public static final String DEFAULT_NAME = "전체";
+    /**
+     * 시스템 기본 부서명입니다(S15P11B106-146). 항상 존재하며 이름 변경·삭제가 금지됩니다.
+     *
+     * <p>소속 부서를 아직 정하지 않은 사람이 들어가는 자리다. <b>공개 범위와는 아무 관계가 없다</b> —
+     * 전사 공개는 {@code scope_key = "ALL"} 리터럴이고 부서 목록이 비어 있다({@code ScopeKey}).
+     */
+    public static final String DEFAULT_NAME = "미지정";
+
+    /**
+     * 예전 기본 부서명입니다(S15P11B106-204).
+     *
+     * <p>「전체」는 화면의 다른 두 「전체」와 충돌했다 — 일정 탭의 「전체 부서」(필터)와 공개 범위의
+     * 「전체 공개」(권한)다. 부서 하나가 그 둘과 같은 이름이라, 「부서 공개 + 전체」를 고르면 전사
+     * 공개인 줄 알기 쉬웠다. 실제로는 그 부서 소속자에게만 보인다.
+     *
+     * <p>마이그레이션 도구가 없어 {@code DefaultDepartmentEnsurer}가 기동 때 이 이름을 찾아
+     * 개명한다. 부서 ID는 그대로라 소속 사용자·일정·Wiki 범위는 영향받지 않는다.
+     */
+    public static final String LEGACY_DEFAULT_NAME = "전체";
 
     /**
      * 명목상 부서명입니다(S15P11B106-183).

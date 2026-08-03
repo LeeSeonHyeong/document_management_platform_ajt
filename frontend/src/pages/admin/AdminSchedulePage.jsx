@@ -360,7 +360,9 @@ export default function AdminSchedulePage() {
   }
 
   const tabs = [
-    { value: ALL_TAB, label: '전체 부서' },
+    // '전체 일정'이다 — '전체 부서'는 공개 범위의 '전체 공개'와 헷갈린다(S15P11B106-204).
+    // 이 탭은 무엇을 볼지 고르는 필터이지 일정의 공개 범위가 아니다.
+    { value: ALL_TAB, label: '전체 일정' },
     ...departments.map((d) => ({ value: d.departmentId, label: d.name })),
   ]
 
