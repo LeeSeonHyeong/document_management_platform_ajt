@@ -92,6 +92,24 @@ async def test_a_markdown_link_inside_the_source_quote_still_matches(vault, scop
     assert "citation-quote-not-found" not in await _lint(fs, scope_row)
 
 
+async def test_an_inline_code_span_inside_the_source_quote_still_matches(vault, scope_row):
+    """원문이 채널명·도메인·명령어를 백틱으로 감싸는 경우(`#private-xxxxx`)가 잦은데,
+    모델은 그 백틱을 빼고 인용한다 — 링크·따옴표·강조와 같은 서식 차이다.
+
+    Sonnet 으로 하네스를 돌려 실측한 사례다 (2026-08-03, 12-communication.md 에서 2건:
+    `#private-xxxxx` 채널명과 `posthog.co` 도메인). 백틱을 안 벗기면 정당한 인용이
+    `citation-quote-not-found` 로 뜬다."""
+    from wiki_mcp.vaultfs.local import register_source
+
+    _, scope_id, fs = vault
+    await register_source(SCOPE, "103", "소통.pdf",
+                          "비공개 채널은 `#private-xxxxx` 를 앞에 붙인다.")
+    content = GOOD_PAGE.replace("인사규정.pdf, 3장 휴가", "소통.pdf, 채널 규칙").replace(
+        '"연차는 입사일을 기준으로 산정한다"', '"비공개 채널은 #private-xxxxx 를 앞에 붙인다"')
+    await _page(fs, scope_id, content)
+    assert "citation-quote-not-found" not in await _lint(fs, scope_row)
+
+
 async def test_location_not_in_the_source_is_an_error(vault, scope_row):
     _, scope_id, fs = vault
     content = GOOD_PAGE.replace("3장 휴가 — ", "7장 특별휴가 — ")

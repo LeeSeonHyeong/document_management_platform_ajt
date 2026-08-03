@@ -37,7 +37,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from wiki_mcp.services.chunker import chunk_text, search_query, store_chunks
+from wiki_mcp.services.chunker import Chunk, chunk_text, search_query, store_chunks
 
 from .base import (
     INDEX_ADDRESS,
@@ -423,9 +423,27 @@ class LocalVaultFS(VaultFS):
                  content, date, json.dumps(metadata, ensure_ascii=False) if metadata else None),
             )
 
-        await store_chunks(db, doc_id, chunk_text(content))
+        await store_chunks(db, doc_id, self._chunks_for_index(content))
         await db.commit()
         return await self.get(scope_id, address) or {}
+
+    @staticmethod
+    def _chunks_for_index(content: str) -> list[Chunk]:
+        """`chunk_text` 는 `MIN_CHUNK_TOKENS`(~32) 미만을 전부 버린다 — 실제 문서엔
+        맞지만, 짧은 페이지(테스트나 갓 만든 실제 페이지에서 드물지 않다)나 그렇게
+        줄인 편집은 청크가 0개가 돼 `search` 가 그 페이지를 조용히 못 찾는다. 본문
+        전체를 담은 청크 하나로 폴백해 검색 불가 행을 만들지 않는다.
+
+        예전엔 `SpringVaultFS` 에만 있어(하이드레이션·`_insert_live` 용), 하네스가
+        쓰는 `LocalVaultFS.write` 는 `chunk_text` 를 직접 불러 이 폴백이 없었다 —
+        하네스에서만 짧은 페이지가 검색에서 사라지는 divergence였다(2026-08-03 감사).
+        여기로 내려 상속 계층 전체가 같은 색인 동작을 갖는다.
+        """
+        chunks = chunk_text(content)
+        if not chunks and content and content.strip():
+            chunks = [Chunk(index=0, content=content.strip(), page=None, start_char=0,
+                            token_count=max(1, len(content) // 4))]
+        return chunks
 
     async def remove(self, scope_id: str, address: str) -> bool:
         kind = kind_for(address)
@@ -666,7 +684,9 @@ async def bootstrap_scope(scope_key: str) -> str:
         (doc_id, scope_id, INDEX_ADDRESS, json.dumps(["목차", "허브"], ensure_ascii=False),
          content, date.today().isoformat()),
     )
-    await store_chunks(db, doc_id, chunk_text(content))
+    # 프로덕션 하이드레이션(`SpringVaultFS._insert_live`)과 같은 폴백을 쓴다 — `chunk_text`
+    # 를 직접 부르면 짧은 본문이 청크 0개가 돼 검색에서 사라진다 (2026-08-03 감사 #3).
+    await store_chunks(db, doc_id, LocalVaultFS._chunks_for_index(content))
     await db.commit()
     return scope_id
 
@@ -701,7 +721,9 @@ async def register_source(scope_key: str, document_id: str, original_file_name: 
              Path(original_file_name).stem, text,
              Path(original_file_name).suffix.lstrip(".") or "md", page_count),
         )
-    await store_chunks(db, doc_id, chunk_text(text))
+    # `bootstrap_scope` 와 같은 이유 — 짧은 원본문서(하네스 시드에서 실제로 발생)가
+    # 청크 0개로 등록돼 `search` 에서 조용히 사라지는 것을 막는다 (2026-08-03 감사 #3).
+    await store_chunks(db, doc_id, LocalVaultFS._chunks_for_index(text))
     await db.commit()
     return {"id": doc_id, "address": address, "relativePath": fs.relative_path(address)}
 
