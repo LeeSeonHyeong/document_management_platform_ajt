@@ -72,7 +72,7 @@ class ServerSettings(BaseSettings):
     # `completion.complete()` 는 스키마 강제를 하지 않는다. 그래서 자기 어댑터를 고른다.
     # 모델·주소를 비우면 프로바이더별 기본값이 채워진다 (`schedule_extractor/config.py`).
     schedule_provider: str = Field(
-        "ollama", validation_alias="SCHEDULE_EXTRACTOR_PROVIDER")
+        "anthropic", validation_alias="SCHEDULE_EXTRACTOR_PROVIDER")
     schedule_model: str = Field("", validation_alias="SCHEDULE_EXTRACTOR_MODEL")
     schedule_base_url: str = Field("", validation_alias="SCHEDULE_EXTRACTOR_BASE_URL")
     schedule_timeout_seconds: float = Field(

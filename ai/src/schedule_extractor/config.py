@@ -7,9 +7,9 @@
 `ScheduleExtractorSettings` 는 평범한 dataclass 다. `credential_table` 이 평범한 `dict` 를
 돌려주는 것과 같은 이유로, 이 패키지가 `ServerSettings` 를 몰라도 되게 한다.
 
-배포 모델 기본값이 `claude-opus-4-6` 인 이유: SSAFY GMS 게이트웨이가 프록시하는 목록에
-그 이름까지만 있다 (`src/.env.example` 의 확인 목록, 2026-07-29). 게이트웨이를 우회하는
-자기 키를 쓰면 더 새 모델을 골라도 되므로 값 자체는 설정으로 남긴다.
+배포 모델 기본값이 `claude-haiku-4-5-20251001` 인 이유: 일정 추출은 상태 없는 단발
+구조화 출력이라 값싼 티어로 충분하고(haiku 로 데모 코퍼스 4/4 정확 추출 확인, 2026-08-02),
+GMS 게이트웨이가 프록시하는 목록에도 있다. 더 큰 모델이 필요하면 값 자체는 설정으로 남긴다.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from .provider import JsonCompletionProvider
 
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b-instruct"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
-DEFAULT_ANTHROPIC_MODEL = "claude-opus-4-6"
+DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 DEFAULT_TIMEOUT_SECONDS = 170.0
 """백엔드가 180초에 끊는다(`application.yml` `schedule-extraction-read-timeout`).

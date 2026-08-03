@@ -66,18 +66,18 @@ def test_build_app_takes_settings_and_injects_the_runtime(monkeypatch):
     assert app.state.api_key == "k"
 
 
-def test_build_app_injects_the_schedule_provider(monkeypatch):
-    """`app.state.runtime` 과 같은 이유로 여기서 만든다 — 요청마다 만들지 않는다."""
-    from schedule_extractor.providers.ollama import OllamaProvider
+def test_build_app_injects_the_schedule_provider(monkeypatch, tmp_path):
+    """`app.state.runtime` 과 같은 이유로 여기서 만든다 — 요청마다 만들지 않는다.
+    기본 프로바이더는 anthropic(GMS) 다 — GPU 없는 배포 서버가 ollama 를 못 띄운다."""
+    from schedule_extractor.providers.anthropic import AnthropicProvider
     from wiki_api import serve
-    from wiki_api.settings import ServerSettings
 
-    monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
-    app = serve.build_app(ServerSettings(
-        runtime="claude-code", internal_api_key="k",
-        backend_base_url="http://localhost:8080"))
+    settings = _isolated_settings(monkeypatch, tmp_path, runtime="claude-code",
+                                  internal_api_key="k", anthropic_api_key="k",
+                                  backend_base_url="http://localhost:8080")
+    app = serve.build_app(settings)
 
-    assert isinstance(app.state.schedule_provider, OllamaProvider)
+    assert isinstance(app.state.schedule_provider, AnthropicProvider)
 
 
 def test_build_app_fails_when_the_schedule_adapter_has_no_key(monkeypatch):
@@ -204,7 +204,7 @@ def test_claude_code_stays_quiet_when_no_model_key_is_configured(monkeypatch, ca
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
     settings = _isolated_settings(monkeypatch, tmp_path, runtime="claude-code",
-                                  internal_api_key="k",
+                                  internal_api_key="k", schedule_provider="ollama",
                                   backend_base_url="http://localhost:8080")
 
     serve.build_app(settings)
@@ -316,24 +316,22 @@ def test_present_backend_base_url_passes():
 # ----- 기동 한 줄에 일정 추출 어댑터를 적는다 -----------------------------------
 
 
-def test_the_startup_banner_names_the_schedule_adapter(monkeypatch):
-    """기본값이 로컬 ollama 라서 배포에서 환경변수를 빼먹으면 서버는 정상으로 뜨고
-    첫 일정 문서 업로드만 500 이 된다. 무엇으로 떴는지 기동 로그에 있어야 한다."""
+def test_the_startup_banner_names_the_schedule_adapter(monkeypatch, tmp_path):
+    """배포에서 무엇으로 떴는지 기동 로그에 있어야 한다 — 기본은 anthropic(GMS)/haiku.
+    `backend_base_url` 을 준다 — S15P11B106-175 부터 `build_app` 이 그 값 없이는
+    기동을 거부한다 (위키 변환이 빈 문맥으로 돌아 라이브를 덮는 것을 막는다)."""
     from wiki_api import serve
-    from wiki_api.settings import ServerSettings
 
     monkeypatch.setattr(serve.shutil, "which", lambda name: "/usr/bin/claude")
-    # `backend_base_url` 을 준다 — S15P11B106-175 부터 `build_app` 이 그 값 없이는
-    # 기동을 거부한다 (위키 변환이 빈 문맥으로 돌아 라이브를 덮는 것을 막는다).
-    settings = ServerSettings(runtime="claude-code", internal_api_key="k",
-                              backend_base_url="http://localhost:8080")
+    settings = _isolated_settings(monkeypatch, tmp_path, runtime="claude-code",
+                                  internal_api_key="k", anthropic_api_key="k",
+                                  backend_base_url="http://localhost:8080")
     app = serve.build_app(settings)
 
     banner = serve.startup_banner(app, settings, host="0.0.0.0", port=8000)
 
-    assert "ollama" in banner
-    assert "qwen2.5:7b-instruct" in banner        # 빈 값은 기본값으로 채워 적는다
-    assert "http://localhost:11434" in banner
+    assert "anthropic" in banner
+    assert "claude-haiku-4-5-20251001" in banner   # 빈 값은 기본값으로 채워 적는다
 
 
 def test_the_startup_banner_never_echoes_the_api_key(monkeypatch, tmp_path):

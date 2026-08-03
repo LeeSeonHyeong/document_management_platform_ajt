@@ -28,11 +28,11 @@ def test_timeout_stays_under_the_backend_read_limit():
 def test_anthropic_defaults_are_filled_in_by_the_package():
     """프로바이더를 아는 곳이 여기다 — 위층이 anthropic 기본 모델을 몰라도 된다.
 
-    기본값이 `claude-opus-4-6` 인 이유는 GMS 게이트웨이가 프록시하는 목록이 거기까지라서다
-    (`src/.env.example` 의 확인 목록).
+    기본값이 `claude-haiku-4-5-20251001` 인 이유는 일정 추출이 값싼 티어로 충분하고
+    GMS 게이트웨이가 프록시하는 목록에도 있어서다 (`src/.env.example`).
     """
     settings = ScheduleExtractorSettings(provider="anthropic").resolved()
-    assert settings.model == DEFAULT_ANTHROPIC_MODEL == "claude-opus-4-6"
+    assert settings.model == DEFAULT_ANTHROPIC_MODEL == "claude-haiku-4-5-20251001"
     assert settings.base_url == "https://api.anthropic.com"
 
 
