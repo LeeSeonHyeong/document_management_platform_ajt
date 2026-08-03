@@ -96,6 +96,33 @@ async def test_removing_a_live_page_becomes_a_tombstone(vault):
     assert [c["type"] for c in changes] == ["remove"]
 
 
+async def test_removing_a_page_forgets_its_citations(vault):
+    """remove() 는 페이지의 outgoing 참조(document_references)도 지운다. 안 지우면 삭제된
+    페이지의 `cites` 엣지가 남아, 그 페이지가 유일한 인용처였던 원본문서를
+    `find_uncited_sources` 가 「아직 인용됨」으로 오판해 놓친다 (하네스 실측, 2026-08-03).
+    remove 는 `_save`(→sync_references) 를 안 타므로 이 정리가 remove 안에 있어야 한다."""
+    from wiki_mcp.tools.references import sync_references
+
+    _, scope_id, fs = vault
+    source = "sources/101/parsed/content.md"
+
+    async def source_is_uncited():
+        rows = await fs.find_uncited_sources(scope_id)
+        return source in {r["address"] for r in rows}
+
+    assert await source_is_uncited()       # 아직 아무 페이지도 인용하지 않음
+
+    address = await fs.allocate_page(scope_id)
+    body = ('연차 산정 방식[^1].\n\n'
+            '[^1]: 인사규정.pdf, 3장 휴가 — "연차는 입사일을 기준으로 산정한다"\n')
+    await fs.write(scope_id, address, body, title="연차", category="휴가", tags=["휴가"])
+    await sync_references(fs, scope_id, address, body)
+    assert not await source_is_uncited()   # 이제 이 페이지가 인용한다
+
+    await fs.remove(scope_id, address)
+    assert await source_is_uncited()       # 유일 인용처가 사라졌으니 다시 uncited
+
+
 async def test_commit_promotes_the_work_layer_and_assigns_wiki_ids(vault):
     root, scope_id, fs = vault
     address = await fs.allocate_page(scope_id)

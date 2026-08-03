@@ -352,7 +352,7 @@ class WikiSession:
                 result = await asyncio.wait_for(
                     self.runtime.arun(instruction, fs=self.fs, scope_id=self.scope_id,
                                       root=self._root, scope_key=self.scope_key,
-                                      job_id=self.job_id),
+                                      job_id=self.job_id, timeout=limit_seconds),
                     timeout=limit_seconds)
             else:
                 result = await asyncio.to_thread(

@@ -148,7 +148,12 @@ def test_the_page_comes_from_the_gateway_not_from_the_request():
 
 
 class BadQuoteEditingRuntime(EditingRuntime):
-    """같은 편집을 하지만 각주 인용문이 원본문서에 없는 문장이다."""
+    """같은 편집을 하지만 각주 인용문이 원본문서에 없는 문장이다 (위치는 맞다).
+
+    2026-08-02: `citation-quote-not-found`는 `error`에서 `warn`으로 내렸다 (위치가 맞으면
+    표현이 원문과 완전히 같지 않아도 근거는 있는 것으로 본다 — 실기동에서 에이전트가 리터럴
+    일치를 못 찾아 턴 상한까지 헤매다 실패하는 사례가 나왔다). 그래서 이 클래스는 이제
+    500이 아니라 200 + warn을 낸다."""
 
     async def arun(self, instruction, *, fs, scope_id, **_):
         self.instructions.append(instruction)
@@ -167,6 +172,26 @@ class BadQuoteEditingRuntime(EditingRuntime):
                          tool_calls={"guide": 1, "read": 1, "edit": 1, "lint": 1})
 
 
+class BadLocationEditingRuntime(EditingRuntime):
+    """같은 편집을 하지만 각주 위치가 원본문서에 없는 절이다 — 위치는 여전히 `error`다."""
+
+    async def arun(self, instruction, *, fs, scope_id, **_):
+        self.instructions.append(instruction)
+        from wiki_mcp.tools.references import sync_references
+        await fs.get(scope_id, PAGE_ADDRESS)
+        body = (
+            "---\ntitle: 커뮤니케이션 가이드\ndescription: 비동기 우선 소통\n"
+            "tags: [커뮤니케이션, 회의]\ncategory: 근무 정책\n---\n\n"
+            "회의는 최후의 수단이다[^1].\n\n"
+            '[^1]: 회의운영.pdf, 9장 없는 장 — "주간 회의는 30분을 넘기지 않는다"\n'
+        )
+        await fs.write(scope_id, PAGE_ADDRESS, body, title="커뮤니케이션 가이드",
+                       category="근무 정책", tags=["커뮤니케이션", "회의"])
+        await sync_references(fs, scope_id, PAGE_ADDRESS, body)
+        return RunResult(text="줄였습니다.",
+                         tool_calls={"guide": 1, "read": 1, "edit": 1, "lint": 1})
+
+
 def test_evidence_documents_are_staged_from_the_gateway():
     """근거 문서를 조회 API 에서 읽어 라이브 층에 올린다. lint 는 그것으로 원문 대조한다 —
     스테이징이 안 되면 대조할 원문이 없어 정상 각주가 `unresolved-citation` 이 된다."""
@@ -176,9 +201,16 @@ def test_evidence_documents_are_staged_from_the_gateway():
     assert "회의는 최후의 수단이다" in response.json()["wikiChanges"][0]["contentMarkdown"]
 
 
-def test_a_quote_absent_from_the_evidence_document_fails_lint():
-    """대조가 실제로 일어난다는 증거. 통과만 확인하면 스테이징이 빠져도 테스트가 녹색이다."""
+def test_a_quote_absent_from_the_evidence_document_only_warns():
+    """인용문이 원문과 리터럴로 다르지만 위치는 맞다 — `warn`이라 요청은 통과한다."""
     response = _post(BadQuoteEditingRuntime())
+    assert response.status_code == 200, response.json()
+
+
+def test_a_location_absent_from_the_evidence_document_fails_lint():
+    """대조가 실제로 일어난다는 증거. 통과만 확인하면 스테이징이 빠져도 테스트가 녹색이다.
+    위치 불일치는 여전히 `error`라 요청이 실패한다."""
+    response = _post(BadLocationEditingRuntime())
     assert response.status_code == 500
     body = response.json()
     assert body["code"] == "WIKI_EDIT_FAILED"

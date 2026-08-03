@@ -56,6 +56,7 @@
 - 각 엔드포인트가 낼 수 있는 상태는 계약이 정한 400·401·500뿐이다. 그 밖의 상태를 내면 Spring 분기에서 `UNEXPECTED_STATUS`로 뭉개진다.
 - stage 는 **고친 경로를 하나하나 명시한다.** `git add -A`, `git add .` 를 쓰지 않는다. 커밋 전 `git status` 로 담당 범위 밖 변경(프론트·문서·공개 API 서비스)이 섞이지 않았는지 확인한다. 백엔드와 `ai/` 는 커밋을 나눈다.
 - `.env*`는 커밋하지 않는다 (`src/.env.example`만). 실제 파일은 `src/.env` — `src/wiki_mcp/config.py` 가 그 경로를 읽는다.
+- **위키 작성 능력·안정성을 확인할 때 `experiments/backend_sim.py`를 쓰지 않는다.** Spring + MySQL + AI 세 개를 실제로 띄워서 확인한다. MySQL 데이터는 테스트 후에도 초기화하지 않고 그대로 남겨둔다.
 
 ## 스택과 명령
 

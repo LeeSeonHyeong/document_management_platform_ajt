@@ -47,12 +47,21 @@ async def rebuild_index(root: str | Path, scope_key: str) -> dict:
 
     cursor = await db.execute(
         "SELECT address, wiki_id, source_id, original_file_name, page_count "
-        "FROM documents WHERE scope_id = ?", (scope_id,),
+        "FROM documents WHERE scope_id = ? AND layer = 'live'", (scope_id,),
     )
     remembered = {r["address"]: r for r in _rows_to_dicts(cursor, await cursor.fetchall())}
 
-    await db.execute("DELETE FROM documents WHERE scope_id = ?", (scope_id,))
-    await db.execute("DELETE FROM document_references WHERE scope_id = ?", (scope_id,))
+    # `layer = 'live'`로 좁힌다. 안 좁히면 이 함수 docstring의 약속("Work layers are
+    # not rebuilt")과 달리 진행 중인 작업(work 레이어)의 documents·document_references
+    # row까지 지워버리고 다시 안 만든다 — 파일은 `work/{jobId}/output/`에 그대로
+    # 남는데 색인에서만 사라져 검색·lint가 그 페이지를 못 본다(실측, 2026-08-02
+    # 하네스 — 두 번째 원본문서를 seed한 뒤 이미 만든 위키 페이지가 목록에서 사라짐).
+    await db.execute("DELETE FROM documents WHERE scope_id = ? AND layer = 'live'", (scope_id,))
+    await db.execute(
+        "DELETE FROM document_references WHERE scope_id = ? AND source_address NOT IN "
+        "(SELECT address FROM documents WHERE scope_id = ? AND layer = 'work')",
+        (scope_id, scope_id),
+    )
     await db.commit()
 
     live = fs._live_dir()

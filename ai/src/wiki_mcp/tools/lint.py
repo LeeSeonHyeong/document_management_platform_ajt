@@ -71,7 +71,7 @@ from .write import (
 )
 
 _FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]]+)\]:\s*(.+)$", re.MULTILINE)
-_FOOTNOTE_USE_RE = re.compile(r"\[\^([^\]]+)\](?!:)")
+_FOOTNOTE_ANY_RE = re.compile(r"\[\^([^\]]+)\]")
 _MAX_PER_GROUP = 40
 
 # Below this a "location" is too short to check without false positives.
@@ -79,6 +79,27 @@ _MIN_LOCATION_CHARS = 2
 # A quote shorter than this is a fragment, not a claim; matching it proves little
 # and failing to match it would be noise.
 _MIN_QUOTE_CHARS = 8
+
+# 원본이 스크랩 출처마다 곧은/굽은 따옴표를 섞어 쓰는 경우가 실측으로 확인됐다
+# (2026-08-02, 08-compensation.md: 같은 문서 안에 `won't`·`won't`가 같이 나온다).
+# 모델이 의미는 맞게 인용해도 따옴표 문자 하나 때문에 `citation-quote-not-found`가
+# 나는 걸 막으려고 비교 전에 둘 다 곧은 따옴표로 접는다. 마크다운 강조(`_..._`,
+# `*...*`)도 원문 핵심 단어에 박혀 있는 경우가 있어 같은 이유로 벗겨낸다 — 강조
+# 여부는 서식이지 인용의 정확성과 무관하다.
+_QUOTE_FOLD = str.maketrans({
+    "‘": "'", "’": "'",
+    "“": '"', "”": '"',
+})
+_EMPHASIS_RE = re.compile(r"[_*]")
+# 원문 문장 중간에 마크다운 링크(`[글자](주소)`)가 박혀 있는 경우도 잦다(하네스 실측,
+# 2026-08-02~03 — 04-benefits.md 한 문서에서만 5번). guide.py로 "링크 문법까지 그대로
+# 옮기라"고 지시했지만 반복 관찰돼, 따옴표·강조와 같은 이유로 코드에서도 정규화한다 —
+# 링크로 감쌌는지는 서식이지 인용의 정확성과 무관하다. 대상 텍스트만 남기고 `(주소)`는 버린다.
+_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+
+
+def _fold_quote_marks(text: str) -> str:
+    return _EMPHASIS_RE.sub("", _LINK_RE.sub(r"\1", text).translate(_QUOTE_FOLD))
 
 CheckScope = Literal["all", "wiki", "sources"]
 
@@ -209,7 +230,7 @@ class LintHandler:
             issues.append(LintIssue("error", "missing-title", address, "title이 없다"))
         if not description:
             issues.append(LintIssue("warn", "missing-description", address, "description이 없다"))
-        elif _FOOTNOTE_USE_RE.search(description):
+        elif _FOOTNOTE_ANY_RE.search(description):
             issues.append(LintIssue("error", "footnote-in-frontmatter", address,
                                     "description에 각주 표시가 들어 있다"))
         if not fm_date:
@@ -225,8 +246,15 @@ class LintHandler:
 
     def _lint_footnotes(self, address: str, content: str) -> list[LintIssue]:
         issues: list[LintIssue] = []
-        defined = [fid for fid, _ in _FOOTNOTE_DEF_RE.findall(content)]
-        used = _FOOTNOTE_USE_RE.findall(content)
+        def_matches = list(_FOOTNOTE_DEF_RE.finditer(content))
+        defined = [m.group(1) for m in def_matches]
+        # `[^n]:` 뒤에 콜론이 온다고 정의로 보면, 문장 중간에서 각주 뒤에 목록을
+        # 여는 등 우연히 콜론이 이어지는 정상적인 본문 사용을 오탐한다(실측,
+        # 2026-08-02 하네스 — 각주 바로 뒤 콜론으로 목록을 여는 문장에서
+        # `unused-footnote-definition` 오탐). 줄 시작이라는 위치로만 정의를 가른다.
+        def_starts = {m.start() for m in def_matches}
+        used = [m.group(1) for m in _FOOTNOTE_ANY_RE.finditer(content)
+               if m.start() not in def_starts]
 
         for fid in sorted({f for f in defined if defined.count(f) > 1}, key=self._sort_key):
             issues.append(LintIssue("error", "duplicate-footnote", address,
@@ -276,8 +304,13 @@ class LintHandler:
                     "찾을 수 없다",
                 ))
             if self._quote_missing(parsed["quote"], source_text):
+                # warn, not error: 위치(`citation-location-not-found`)가 이미 날조를 막는
+                # 최소선이다. 인용문 리터럴 일치까지 강제하면 에이전트가 정당한 주장에
+                # 딱 맞는 문장을 못 찾고 계속 다른 표현을 시도하다 턴 상한(GraphRecursionError)
+                # 에 걸려 작업 전체가 실패하는 사례가 실측으로 확인됐다
+                # (2026-08-02, ai/docs/findings/2026-08-02-wiki-e2e-stability-test.md).
                 issues.append(LintIssue(
-                    "error", "citation-quote-not-found", address,
+                    "warn", "citation-quote-not-found", address,
                     f"각주 `^{footnote}`: 인용문 \"{parsed['quote'][:40]}\"이 "
                     f"`{parsed['name']}` 원문에 없다",
                 ))
@@ -315,9 +348,9 @@ class LintHandler:
         """
         if not quote or len(quote) < _MIN_QUOTE_CHARS or not source_text:
             return False
-        haystack = re.sub(r"\s+", " ", source_text).lower()
+        haystack = _fold_quote_marks(re.sub(r"\s+", " ", source_text)).lower()
         for segment in re.split(r"\s*(?:\.\.\.|…)\s*", quote):
-            segment = re.sub(r"\s+", " ", segment).strip().lower()
+            segment = _fold_quote_marks(re.sub(r"\s+", " ", segment)).strip().lower()
             if len(segment) < _MIN_QUOTE_CHARS:
                 continue
             if segment not in haystack:
@@ -408,6 +441,14 @@ class LintHandler:
         if warnings:
             lines.append("\n**Warnings**")
             lines += self._lines(warnings)
+        if not errors:
+            # error가 없으면 여기서 끝이다 — 이 문장이 없으면 모델이 warn 목록도 "고칠 것"으로
+            # 읽고 같은 각주를 표현만 바꿔가며 반복 편집하다 턴 상한(GraphRecursionError)에
+            # 걸린다 (2026-08-02 job 21 실측, 4번째 재현: error 0인 채로 40턴·$2.76 소진).
+            lines.append(
+                "\n**error가 없으니 이걸로 끝이다.** 위 warning은 참고만 한다 — "
+                "고치려고 다시 `edit`·`lint`를 부르지 않는다. 지금 상태로 작업을 마친다."
+            )
         return "\n".join(lines)
 
     def _lines(self, issues: list[LintIssue]) -> list[str]:

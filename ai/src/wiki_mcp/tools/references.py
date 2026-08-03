@@ -34,7 +34,16 @@ _PAGE_RE = re.compile(r"^(?:p\.?\s*(\d+)|(\d+)\s*(?:쪽|페이지|p))$", re.IGNO
 # character class, `"We don't think..."` parsed as `We don` and
 # `"...any of PostHog's IP"` as `...any of PostHog`. English sources hit this
 # almost every time, and the truncated quote then fails verification.
-_QUOTE_RE = re.compile(r"[\"“”]([^\"“”]{4,})[\"“”]")
+#
+# Greedy to the *last* quote mark on the line, not the next one: a verbatim
+# excerpt sometimes contains its own quoted term (`"...not after a "probation
+# period" or similar"`, 08-compensation.md 실측 2026-08-02). A non-greedy match
+# stopped at the first inner quote and truncated the citation mid-sentence,
+# which then failed `citation-quote-not-found` for a quote that was actually
+# correct. One footnote definition is one line with one quoted excerpt by
+# convention (`guide.py`'s citation format), so spanning to the line's last
+# quote mark does not risk merging two unrelated citations.
+_QUOTE_RE = re.compile(r"[\"“”](.{4,})[\"“”]")
 
 
 def parse_citation(raw: str) -> dict:
