@@ -163,6 +163,8 @@ public class AiJobQueryService {
             case UPLOADED -> "waiting";
             case PARSING -> "processing";
             case PROCESSING -> "processing";
+            // 삭제 대기도 처리 중이다 — 걷어내기 작업이 돌고 있다 (S15P11B106-195).
+            case DELETING -> "processing";
             case COMPLETED -> "completed";
             case FAILED -> "failed";
             case CANCELLED -> "cancelled";
@@ -179,6 +181,7 @@ public class AiJobQueryService {
             case UPLOADED -> "waiting";
             case PARSING, FAILED -> "parsing";
             case PROCESSING -> "wiki_pending";
+            case DELETING -> "wiki_pending";
             case COMPLETED -> "wiki_applied";
             case CANCELLED -> "cancelled";
         };

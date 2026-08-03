@@ -2,6 +2,7 @@ package com.ajt.backend.domain.document.service;
 
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
+import com.ajt.backend.domain.document.model.DocumentStatus;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
@@ -22,10 +23,14 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 public class DocumentParseWorker {
+
+    private static final Logger log = LoggerFactory.getLogger(DocumentParseWorker.class);
 
     private final DocumentRepository documentRepository;
     private final AiJobRepository aiJobRepository;
@@ -198,15 +203,63 @@ public class DocumentParseWorker {
             );
             WikiTransformationResult result = transactionService.applyRemovedDocument(
                     documentId, scopeKey, response);
+            // 여기까지 왔으면 Wiki 에서 이 문서의 근거가 걷혔다. 이제 지운다.
+            finishDeletion(documentId);
             return AiJob.DocumentParseResult.succeeded(documentId, result.summary());
         } catch (AiClientException exception) {
+            markDeletionFailed(documentId, failureReason(exception));
             return AiJob.DocumentParseResult.failed(
                     documentId,
                     failureReason(exception),
                     exception.failureStage()
             );
         } catch (RuntimeException exception) {
+            markDeletionFailed(documentId, exception.getMessage());
             return AiJob.DocumentParseResult.failed(documentId, exception.getMessage(), null);
+        }
+    }
+
+    /**
+     * 걷어내기가 끝난 문서의 행과 파일을 지웁니다(S15P11B106-195, DR-014 하드 삭제).
+     *
+     * <p>범위 변경 재처리도 이 경로를 쓰지만 그때 문서는 {@code DELETING}이 아니다 — 이미 새 범위로
+     * 옮겨져 그쪽 작업이 상태를 관리한다. 그래서 {@code DELETING}일 때만 지운다.
+     */
+    private void finishDeletion(long documentId) {
+        documentRepository.findById(documentId).ifPresent(document -> {
+            if (document.status() != DocumentStatus.DELETING) {
+                return;
+            }
+            String originalPath = document.originalPath();
+            String parsedPath = document.parsedPath();
+            documentRepository.delete(document);
+            documentRepository.flush();
+            deleteQuietly(originalPath);
+            deleteQuietly(parsedPath);
+        });
+    }
+
+    /**
+     * 걷어내기에 실패한 삭제를 실패로 남깁니다. 행·파일은 그대로 두어 관리자가 다시 삭제할 수 있다.
+     */
+    private void markDeletionFailed(long documentId, String failureReason) {
+        documentRepository.findById(documentId).ifPresent(document -> {
+            if (document.status() != DocumentStatus.DELETING) {
+                return;
+            }
+            document.failDeleting(failureReason);
+            documentRepository.save(document);
+        });
+    }
+
+    private void deleteQuietly(String storedPath) {
+        if (storedPath == null || storedPath.isBlank()) {
+            return;
+        }
+        try {
+            fileStorage.delete(storedPath);
+        } catch (IOException exception) {
+            log.warn("원본문서 파일 삭제 실패(무시하고 진행): {}", storedPath);
         }
     }
 

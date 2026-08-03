@@ -163,6 +163,34 @@ public class Document {
         this.status = DocumentStatus.FAILED;
     }
 
+    /**
+     * 삭제 요청을 받아 Wiki 걷어내기를 기다리는 상태로 표시합니다(S15P11B106-195).
+     *
+     * <p>행과 파일은 아직 지우지 않는다. 걷어내기가 성공한 뒤에 워커가 지운다.
+     */
+    public void markForDeletion() {
+        if (isInProgress()) {
+            throw new IllegalStateException("처리 중인 문서는 삭제 대상으로 표시할 수 없습니다.");
+        }
+        this.status = DocumentStatus.DELETING;
+        this.failureReason = null;
+    }
+
+    /**
+     * Wiki 걷어내기에 실패한 삭제를 실패 처리합니다(S15P11B106-195).
+     *
+     * <p>{@code failParsing}·{@code failProcessing}을 재사용하지 않는다 — 그 둘은 각각
+     * {@code PARSING}·{@code PROCESSING}만 받는다. 실패 전이가 어느 상태에서 오는지 막아 두어야
+     * 잘못된 순서로 부른 코드가 조용히 통과하지 않는다.
+     */
+    public void failDeleting(String failureReason) {
+        if (status != DocumentStatus.DELETING) {
+            throw new IllegalStateException("DELETING 상태의 문서만 삭제 실패로 처리할 수 있습니다.");
+        }
+        this.failureReason = failureReason;
+        this.status = DocumentStatus.FAILED;
+    }
+
     public void retryParsing() {
         if (status != DocumentStatus.FAILED && status != DocumentStatus.CANCELLED) {
             throw new IllegalStateException("FAILED 또는 CANCELLED 상태의 문서만 재시도할 수 있습니다.");
@@ -199,9 +227,17 @@ public class Document {
         this.fileSize = fileSize;
     }
 
-    /** 처리 중(파싱·변환 진행)인지 여부. 수정·교체·삭제 요청은 처리 중이면 거부한다(409). */
+    /**
+     * 처리 중(파싱·변환·삭제 진행)인지 여부. 수정·교체·삭제 요청은 처리 중이면 거부한다(409).
+     *
+     * <p>{@code DELETING}이 포함된다(S15P11B106-195). 삭제 대기 문서는 걷어내기가 도는 중이므로
+     * 수정·교체를 받으면 안 되고, {@code ensureScopeNotProcessing}이 같은 메서드를 쓰므로 그 범위의
+     * 다른 Wiki 작업도 함께 막힌다 — 걷어내기와 다른 변환이 같은 범위를 동시에 고치면 안 된다.
+     */
     public boolean isInProgress() {
-        return status == DocumentStatus.PARSING || status == DocumentStatus.PROCESSING;
+        return status == DocumentStatus.PARSING
+                || status == DocumentStatus.PROCESSING
+                || status == DocumentStatus.DELETING;
     }
 
     /**

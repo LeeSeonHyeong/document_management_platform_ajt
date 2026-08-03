@@ -405,17 +405,11 @@ public class DocumentManagementService {
     }
 
     /**
-     * 하드 삭제된 문서를 이 범위 Wiki에서 걷어내는 작업을 만듭니다. (DR-014)
+     * 삭제 요청을 받은 문서를 이 범위 Wiki에서 걷어내는 작업을 만듭니다. (DR-014)
      *
-     * <p>문서 행이 이미 지워졌으므로 작업은 문서 ID만 들고 돈다. 워커의 걷어내기 경로는 문서
-     * 엔티티를 읽지 않는다.
-     *
-     * <p>파싱 본문이 없으면 걷어낼 근거가 없어 작업을 만들지 않고 {@code null}을 돌려준다.
-     * 파싱 전이거나 파싱에 실패한 문서는 Wiki에 반영된 적이 없다.
-     *
-     * <p>수정(S15P11B106-93): 이 {@code null}("재처리할 것이 없는 삭제")은 delete()에서
-     * {@code reprocessRequired=false}·{@code jobId=null}·{@code status=skipped}로 응답에 담긴다.
-     * 프론트는 {@code reprocessRequired=true}이고 {@code jobId}가 있을 때만 AI 작업 상태를 조회한다.
+     * <p>수정(S15P11B106-195): <b>이 시점에 문서 행은 아직 살아 있다</b>({@code DELETING}).
+     * 워커가 걷어내기에 성공한 뒤에 행과 파일을 지운다. 호출자가 걷어낼 본문이 있는지 이미
+     * 확인했으므로 이 메서드는 항상 작업을 만든다.
      */
     private AiJob removeDeletedDocumentFromScope(
             long requesterId,
@@ -423,11 +417,6 @@ public class DocumentManagementService {
             String scopeKey,
             String removedParsedMarkdown
     ) {
-        if (removedParsedMarkdown == null || removedParsedMarkdown.isBlank()) {
-            log.info("파싱 본문이 없어 Wiki 걷어내기를 건너뜁니다: documentId={}, scopeKey={}",
-                    documentId, scopeKey);
-            return null;
-        }
         AiJob job = aiJobRepository.save(AiJob.waiting(
                 requesterId,
                 scopeKey,
@@ -494,32 +483,30 @@ public class DocumentManagementService {
         // 같은 공간의 Wiki를 동시에 고치지 않도록 처리 중 문서가 있으면 충돌로 막는다.
         ensureScopeNotProcessing(scopeKey);
 
-        // 파일을 지우기 전에 파싱 본문을 읽어 둔다. 걷어내기 요청의 필수값이다.
         String removedParsedMarkdown = readParsedMarkdownQuietly(document);
 
+        // 수정(S15P11B106-195): 걷어낼 것이 있으면 여기서 지우지 않는다. DELETING 으로 표시만 하고
+        //   워커가 Wiki 걷어내기에 성공한 뒤에 행과 파일을 지운다. 되돌릴 수 없는 일을 마지막에 두어야
+        //   실패했을 때 원본만 사라지고 Wiki 에 근거가 남는 복구 불가능한 상태가 생기지 않는다.
+        if (removedParsedMarkdown != null && !removedParsedMarkdown.isBlank()) {
+            document.markForDeletion();
+            documentRepository.save(document);
+            AiJob job = removeDeletedDocumentFromScope(
+                    admin.memberId(), documentId, scopeKey, removedParsedMarkdown);
+            return new DocumentDeleteResponse(
+                    false, true, String.valueOf(job.id()), scopeKey, "deleting");
+        }
+
+        // 걷어낼 근거가 없는 문서(파싱 전이거나 파싱에 실패해 Wiki 에 반영된 적이 없다)는 Wiki 를
+        // 건드리지 않으므로 미룰 이유가 없다. 지금처럼 즉시 지운다.
+        log.info("파싱 본문이 없어 Wiki 걷어내기를 건너뛰고 즉시 삭제합니다: documentId={}, scopeKey={}",
+                documentId, scopeKey);
         documentRepository.delete(document);
         documentRepository.flush();
-
-        AiJob job = removeDeletedDocumentFromScope(
-                admin.memberId(), documentId, scopeKey, removedParsedMarkdown);
-
-        // 수정(S15P11B106-146): 파일 삭제는 DB 트랜잭션처럼 롤백되지 않으므로, 삭제할 경로만 보관했다가
-        //   커밋이 성공한 뒤에만 실제로 지운다. flush는 커밋이 아니라 여기서 바로 지우면, 이후 걷어내기 작업
-        //   생성 등에서 예외가 나 트랜잭션이 롤백돼도 파일은 이미 사라져 "DB엔 문서, 파일은 없음" 불일치가 생긴다.
-        //   위 DB 작업(문서 삭제 + 걷어내기 작업 생성)이 모두 성공한 뒤에 예약하므로, 그중 무엇이 실패하면
-        //   파일 삭제 예약 자체가 실행되지 않는다.
+        // 파일 삭제는 DB 트랜잭션처럼 롤백되지 않으므로 커밋이 성공한 뒤에만 실제로 지운다
+        // (S15P11B106-146).
         registerAfterCommitFileDelete(originalPath, parsedPath);
-        // 수정(S15P11B106-93): 여기 도달했으면 삭제는 성공(실패는 위에서 예외로 처리됨). 재처리 작업이 생성됐으면
-        //   reprocessRequired=true·waiting·jobId, 재처리할 내용이 없어 작업을 만들지 않았으면 false·skipped·null로
-        //   내려 프론트가 "jobId=null이 정상 상황"임을 구분할 수 있게 한다.
-        boolean reprocessRequired = job != null;
-        return new DocumentDeleteResponse(
-                true,
-                reprocessRequired,
-                reprocessRequired ? String.valueOf(job.id()) : null,
-                scopeKey,
-                reprocessRequired ? job.status().name().toLowerCase() : "skipped"
-        );
+        return new DocumentDeleteResponse(true, false, null, scopeKey, "skipped");
     }
 
     // 문서 한 건만 재처리 대상(UPLOADED)으로 되돌리고 AI 작업을 생성·실행한다(증분: 업로드·재시도와 동일한 패턴).

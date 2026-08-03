@@ -27,6 +27,7 @@ import com.ajt.backend.domain.document.api.DocumentUpdateResponse;
 import com.ajt.backend.domain.document.api.DocumentUploadValidationException;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
+import com.ajt.backend.domain.document.model.DocumentStatus;
 import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.model.WikiScope;
 import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
@@ -949,13 +950,16 @@ class DocumentManagementServiceTest {
 
         DocumentDeleteResponse response = service.delete(15L);
 
-        // 수정(S15P11B106-93): 파싱 본문이 있으면 재처리 작업이 생성되어 reprocessRequired=true·waiting·jobId.
-        assertThat(response.deleted()).isTrue();
+        // 수정(S15P11B106-195): 걷어낼 근거가 있으면 여기서 지우지 않는다. DELETING 으로 표시만 하고
+        //   워커가 Wiki 걷어내기에 성공한 뒤에 행과 파일을 지운다.
+        assertThat(response.deleted()).isFalse();
         assertThat(response.reprocessRequired()).isTrue();
         assertThat(response.jobId()).isEqualTo("42");
         assertThat(response.scopeKey()).isEqualTo("ALL");
-        assertThat(response.status()).isEqualTo("waiting");
-        verify(documentRepository).delete(document);
+        assertThat(response.status()).isEqualTo("deleting");
+        assertThat(document.status()).isEqualTo(DocumentStatus.DELETING);
+        verify(documentRepository, never()).delete(any(Document.class));
+        verify(documentFileStorage, never()).delete(anyString());
 
         ArgumentCaptor<AiJob> jobs = ArgumentCaptor.forClass(AiJob.class);
         ArgumentCaptor<DocumentReprocessPlan> plans = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
@@ -964,11 +968,22 @@ class DocumentManagementServiceTest {
         assertThat(jobs.getValue().documentIds()).containsExactly(15L);
         assertThat(plans.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REMOVED);
         assertThat(plans.getValue().removedParsedMarkdownOf(15L)).isEqualTo("# 취업규칙\n본문");
+    }
 
-        // 파일을 지우기 전에 파싱 본문을 읽어야 한다.
-        org.mockito.InOrder order = org.mockito.Mockito.inOrder(documentFileStorage);
-        order.verify(documentFileStorage).readText("wiki/ALL/sources/15/parsed.md");
-        order.verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
+    @Test
+    @DisplayName("삭제 대기 문서는 같은 범위의 다른 문서 작업도 막는다")
+    void deletingDocumentBlocksTheScope() throws Exception {
+        Document deleting = parsedDocument();
+        assignId(deleting, 15L);
+        deleting.markForDeletion();
+        Document other = parsedDocument();
+        assignId(other, 16L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(16L)).willReturn(Optional.of(other));
+        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(deleting, other));
+
+        assertThatThrownBy(() -> service.delete(16L))
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test
@@ -1030,19 +1045,16 @@ class DocumentManagementServiceTest {
     }
 
     @Test
-    @DisplayName("삭제가 커밋된 뒤에야 originalPath와 parsedPath를 지운다(S15P11B106-146)")
+    @DisplayName("걷어낼 근거가 없는 삭제는 커밋된 뒤에야 파일을 지운다(S15P11B106-146)")
     void deletesFilesOnlyAfterCommit() throws Exception {
-        Document document = parsedDocument(); // originalPath + parsedPath 모두 존재
+        // 수정(S15P11B106-195): 걷어낼 근거가 있는 문서는 이 경로로 오지 않는다 — 워커가 나중에
+        //   지운다. 즉시 삭제는 Wiki 에 반영된 적 없는 문서(파싱 본문 없음)만 탄다.
+        Document document = parsedDocument();
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
-        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업규칙\n본문");
-        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
-            AiJob job = invocation.getArgument(0);
-            assignId(job, 42L);
-            return job;
-        });
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("   ");
 
         TransactionSynchronizationManager.initSynchronization();
         try {
@@ -1055,6 +1067,7 @@ class DocumentManagementServiceTest {
             verify(documentFileStorage).delete("wiki/ALL/sources/15/original.md");
             verify(documentFileStorage).delete("wiki/ALL/sources/15/parsed.md");
             assertThat(response.deleted()).isTrue();
+            assertThat(response.status()).isEqualTo("skipped");
         } finally {
             TransactionSynchronizationManager.clearSynchronization();
         }
@@ -1090,12 +1103,8 @@ class DocumentManagementServiceTest {
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(document));
-        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 취업규칙\n본문");
-        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
-            AiJob job = invocation.getArgument(0);
-            assignId(job, 42L);
-            return job;
-        });
+        // 즉시 삭제 경로만 파일을 지운다 — 걷어낼 근거가 있으면 워커가 나중에 지운다(S15P11B106-195).
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("");
         willThrow(new IOException("파일 삭제 실패")).given(documentFileStorage).delete(anyString());
 
         TransactionSynchronizationManager.initSynchronization();

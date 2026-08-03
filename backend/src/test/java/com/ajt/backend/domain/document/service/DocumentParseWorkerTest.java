@@ -465,6 +465,80 @@ class DocumentParseWorkerTest {
     }
 
     @Test
+    @DisplayName("삭제 대기 문서는 걷어내기가 성공한 뒤에 행과 파일을 지운다")
+    void deletesTheRowAndFilesOnlyAfterTheRemovalSucceeds() throws Exception {
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willReturn(transformationResponse("걷어내기 완료"));
+        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
+
+        // 걷어내기가 끝난 뒤에야 지운다 — 되돌릴 수 없는 일이 마지막이다 (S15P11B106-195).
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(transactionService, documentRepository, fileStorage);
+        order.verify(transactionService).applyRemovedDocument(anyLong(), anyString(), any());
+        order.verify(documentRepository).delete(document);
+        order.verify(fileStorage).delete(document.originalPath());
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("걷어내기가 실패하면 행과 파일을 그대로 두고 문서를 실패로 남긴다")
+    void keepsTheDocumentWhenTheRemovalFails() throws Exception {
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willThrow(timeout());
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
+
+        // 원본이 남아 있어야 관리자가 다시 삭제할 수 있다 — 이것이 이 설계의 요점이다.
+        org.mockito.Mockito.verify(documentRepository, org.mockito.Mockito.never())
+                .delete(any(Document.class));
+        org.mockito.Mockito.verify(fileStorage, org.mockito.Mockito.never()).delete(anyString());
+        assertThat(document.status()).isEqualTo(DocumentStatus.FAILED);
+        assertThat(document.failureReason()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("범위 변경 걷어내기는 문서를 지우지 않는다 — 삭제 대기가 아니다")
+    void scopeChangeRemovalDoesNotDeleteTheDocument() throws Exception {
+        // 범위 변경에서 문서는 이미 새 범위로 옮겨져 DELETING 이 아니다. 지우면 안 된다.
+        Document document = document(15L, "rule.md");
+        setScopeKey(document, "D1-D3");
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willReturn(transformationResponse("걷어내기 완료"));
+        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
+
+        org.mockito.Mockito.verify(documentRepository, org.mockito.Mockito.never())
+                .delete(any(Document.class));
+        assertThat(document.status()).isEqualTo(DocumentStatus.UPLOADED);
+    }
+
+    @Test
     @DisplayName("교체 계획이면 새 파일을 파싱해 교체 전 본문과 함께 document_replaced로 보낸다")
     void sendsReplacedChangeTypeWithBothBodies() throws Exception {
         Document document = document(15L, "updated.md");
