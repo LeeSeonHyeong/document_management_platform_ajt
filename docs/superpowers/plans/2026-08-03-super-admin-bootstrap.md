@@ -221,4 +221,4 @@ Build the latest develop commit, confirm tests and images succeed, then approve 
 
 - [ ] **Step 4: Bootstrap and validate**
 
-Run the bootstrap as `jenkins`, store the one-time password, verify `member=1`, `department=1`, department name `최고관리자`, `manager_id IS NULL`, and confirm login returns `isSuperAdmin=true`.
+Run the bootstrap as `jenkins`, store the one-time password, and verify the complete fresh state: `member=1`, `department=2` (`전체`, `최고관리자`), `wiki_scope=1` (`ALL`), `document_category=1` (`ALL`/`일반`), `document=0`, `wiki=0`, and `ai_job=0`. Verify the super-admin department name is `최고관리자`, its `manager_id IS NULL`, and login returns `isSuperAdmin=true`.
