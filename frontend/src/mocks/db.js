@@ -386,6 +386,7 @@ export const aiJobs = [
         currentStage: 'wiki_applied',
         summary: '취업규칙을 근거로 휴가 규정 Wiki를 생성했습니다.',
         failureReason: null,
+        failureStage: null,
       },
       {
         documentId: '2',
@@ -394,11 +395,37 @@ export const aiJobs = [
         currentStage: 'wiki_applied',
         summary: '연차 사용 안내를 휴가 규정 Wiki에 병합했습니다.',
         failureReason: null,
+        failureStage: null,
       },
     ],
     createdAt: '2026-07-20T08:59:00Z',
     startedAt: '2026-07-20T08:59:02Z',
-    finishedAt: '2026-07-21T09:05:00Z',
+    finishedAt: '2026-07-20T09:01:16Z',
+    failureReason: null,
+  },
+  // 실패한 회차. 요약 목록에서 실패 사유·실패 단계와 재처리 버튼이 뜨는 경로다.
+  {
+    jobId: '4',
+    scopeKey: 'D1',
+    requesterId: '2',
+    documentIds: ['5'],
+    status: AI_JOB_STATUS.COMPLETED,
+    documentResults: [
+      {
+        documentId: '5',
+        order: 1,
+        status: DOCUMENT_STATUS.FAILED,
+        // 파싱을 끝내고 Wiki 변환에서 죽었지만 currentStage 는 parsing 으로 온다.
+        // 화면이 failureStage 를 봐야 하는 이유가 이 조합이다.
+        currentStage: 'parsing',
+        summary: null,
+        failureReason: 'Wiki 변환이 시간 안에 끝나지 않았습니다.',
+        failureStage: 'agent_timeout',
+      },
+    ],
+    createdAt: '2026-07-22T02:10:00Z',
+    startedAt: '2026-07-22T02:10:03Z',
+    finishedAt: '2026-07-22T02:15:44Z',
     failureReason: null,
   },
   {
@@ -415,6 +442,7 @@ export const aiJobs = [
         currentStage: 'wiki_transform',
         summary: null,
         failureReason: null,
+        failureStage: null,
       },
     ],
     createdAt: '2026-07-27T09:00:00Z',
@@ -436,6 +464,7 @@ export const aiJobs = [
         currentStage: 'parsing',
         summary: null,
         failureReason: null,
+        failureStage: null,
       },
     ],
     createdAt: '2026-07-27T09:00:05Z',

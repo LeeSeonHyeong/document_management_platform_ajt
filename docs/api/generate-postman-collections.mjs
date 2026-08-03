@@ -1037,6 +1037,36 @@ const publicFolders = [
       }),
     }),
     request({
+      name: "AI 작업 이력 목록 조회",
+      method: "GET",
+      path: "/api/v1/ai-jobs",
+      query: [
+        { key: "page", value: "1", disabled: true },
+        { key: "size", value: "20", disabled: true },
+      ],
+      description: docs({
+        summary: "종료된 것을 포함한 AI 작업 이력을 최신순으로 조회합니다.",
+        usage: "관리자 문서 관리의 요약 목록 화면에서 사용합니다. 작업 회차별로 묶어 문서별 변경 요약을 보여줍니다.",
+        queryParams: ["`page`, `size`: 페이지네이션"],
+        policy: [
+          "관리자만 조회할 수 있습니다.",
+          "생성 시각 내림차순이며, 같은 시각이면 나중에 만들어진 작업이 앞에 옵니다.",
+          "한 문서를 재처리하면 작업이 새로 생기므로 같은 문서가 여러 회차에 나타납니다.",
+        ],
+        response: [
+          "`items`: 단건 조회와 같은 구조. `jobId`, `status`, `documentResults`, `createdAt`, `startedAt`, `finishedAt`, `failureReason`",
+          "`documentResults[].summary`: 그 회차에 이 문서로 무엇이 바뀌었는지에 대한 AI 작업 요약",
+          "`documentResults[].failureStage`: 실제로 어디서 실패했는지. 실패하지 않았거나 단계를 알 수 없으면 `null`",
+          "`page`, `size`, `totalCount`, `totalPages`",
+        ],
+        errors: [
+          "`400 Bad Request`: page 또는 size 값 오류",
+          "`401 Unauthorized`: accessToken이 유효하지 않음",
+          "`403 Forbidden`: 관리자 권한 없음",
+        ],
+      }),
+    }),
+    request({
       name: "AI 작업 상태 조회",
       method: "GET",
       path: "/api/v1/ai-jobs/:jobId",
@@ -1046,7 +1076,8 @@ const publicFolders = [
         pathParams: ["`jobId`: 조회할 AI 작업 ID"],
         response: [
           "`status`: `waiting`, `processing`, `completed`, `failed`, `cancelled`",
-          "`documentResults`: 문서별 순서, 상태, 현재 단계, 요약과 실패 사유",
+          "`documentResults`: 문서별 순서, 상태, 현재 단계, 요약과 실패 사유·실패 단계",
+          "`documentResults[].currentStage`는 문서 상태에서 역산한 진행 위치라 실패 지점이 아니다. 어디서 실패했는지는 `failureStage`가 알려준다",
           "`createdAt`, `startedAt`, `finishedAt`, `failureReason`",
         ],
         errors: [

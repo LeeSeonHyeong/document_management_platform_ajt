@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -25,6 +26,15 @@ public class AiJobController {
         this.aiJobQueryService = aiJobQueryService;
         this.aiJobCancelService = aiJobCancelService;
         this.aiJobStartService = aiJobStartService;
+    }
+
+    // 작업 이력 목록(S15P11B106-192). 관리자 「요약 목록」이 회차별로 묶어 보여준다.
+    @GetMapping("/api/v1/ai-jobs")
+    public AiJobListResponse listAiJobs(
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "size", required = false) Integer size
+    ) {
+        return aiJobQueryService.listAiJobs(page, size);
     }
 
     @GetMapping("/api/v1/ai-jobs/{jobId}")

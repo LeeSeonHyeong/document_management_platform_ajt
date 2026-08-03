@@ -14,6 +14,7 @@ import {
   updateDocumentCategory,
   deleteDocumentCategory,
   fetchAiJob,
+  fetchAiJobs,
   startAiJob,
   cancelAiJob,
 } from './api'
@@ -176,6 +177,14 @@ export function useDeleteDocumentCategory(scopeKey) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.documentCategories.list(scopeKey) })
     },
+  })
+}
+
+// 작업 이력 목록. 요약 목록 화면이 회차별 묶음으로 그린다.
+export function useAiJobs(filters = {}) {
+  return useQuery({
+    queryKey: qk.aiJobs.list(filters),
+    queryFn: () => fetchAiJobs(filters),
   })
 }
 

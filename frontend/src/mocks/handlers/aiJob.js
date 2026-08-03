@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { findAiJobById, findDocumentById } from '../db'
+import { aiJobs, findAiJobById, findDocumentById } from '../db'
 
 function errorBody(status, code, message, path, fieldErrors = []) {
   return { timestamp: new Date().toISOString(), status, error: code, code, message, path, fieldErrors }
@@ -46,6 +46,25 @@ function advanceJob(job) {
 }
 
 export const aiJobHandlers = [
+  // 작업 이력 목록(최신순). 요약 목록 화면이 회차별 묶음으로 그린다.
+  // 목록은 작업을 전진시키지 않는다 — 폴링은 단건 조회가 맡는다.
+  http.get('/api/v1/ai-jobs', ({ request }) => {
+    const url = new URL(request.url)
+    const page = Number(url.searchParams.get('page') ?? 1)
+    const size = Number(url.searchParams.get('size') ?? 20)
+    const sorted = [...aiJobs].sort(
+      (left, right) => new Date(right.createdAt ?? 0) - new Date(left.createdAt ?? 0),
+    )
+    const start = (page - 1) * size
+    return HttpResponse.json({
+      items: sorted.slice(start, start + size),
+      page,
+      size,
+      totalCount: sorted.length,
+      totalPages: Math.ceil(sorted.length / size),
+    })
+  }),
+
   http.get('/api/v1/ai-jobs/:jobId', ({ params }) => {
     const job = findAiJobById(params.jobId)
     if (!job) {

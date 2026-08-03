@@ -4,7 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
+import com.ajt.backend.domain.document.api.AiJobListResponse;
 import com.ajt.backend.domain.document.api.AiJobResponse;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.Document;
@@ -18,6 +21,8 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 @DisplayName("AI 작업 상태 조회 서비스")
 class AiJobQueryServiceTest {
@@ -103,6 +108,28 @@ class AiJobQueryServiceTest {
         assertThat(response.documentResults().get(1).status()).isEqualTo("failed");
         assertThat(response.documentResults().get(1).summary()).isNull();
         assertThat(response.documentResults().get(1).failureReason()).isEqualTo("Wiki 변환에 실패했습니다.");
+        assertThat(response.documentResults().get(1).failureStage()).isEqualTo("agent_timeout");
+        // currentStage 는 문서 상태에서 역산해 실패한 문서를 전부 parsing 으로 만든다.
+        // 이 문서는 파싱을 끝내고 Wiki 변환에서 죽었으므로 두 값이 갈린다 — 화면은
+        // failureStage 를 보여야 한다.
+        assertThat(response.documentResults().get(1).currentStage()).isEqualTo("parsing");
+    }
+
+    @Test
+    @DisplayName("실패 단계를 모르면 비워 둔다")
+    void leavesFailureStageEmptyWhenUnknown() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assign(job, "id", 42L);
+        job.start();
+        Document processing = uploadedDocument(15L, "first.md");
+        processing.startParsing();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(processing));
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        assertThat(response.documentResults().get(0).failureStage()).isNull();
     }
 
     @Test
@@ -128,6 +155,92 @@ class AiJobQueryServiceTest {
     }
 
     @Test
+    @DisplayName("작업 이력 목록은 최신순으로 문서별 요약까지 함께 돌려준다")
+    void listsAiJobs() throws Exception {
+        AiJob recent = finishedJob(42L, "2026-07-26T15:24:00", 15L, "인사규정을 Wiki에 반영했습니다.");
+        AiJob older = finishedJob(41L, "2026-07-24T10:02:00", 16L, "영업전략을 Wiki에 반영했습니다.");
+        Document first = completedDocument(15L, "2024_인사규정_최종.pdf");
+        Document second = completedDocument(16L, "Q3_영업전략.pdf");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findAllByOrderByCreatedAtDescIdDesc(PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(recent, older), PageRequest.of(0, 20), 2));
+        given(documentRepository.findAllById(List.of(15L, 16L))).willReturn(List.of(first, second));
+
+        AiJobListResponse response = service.listAiJobs(null, null);
+
+        assertThat(response.page()).isEqualTo(1);
+        assertThat(response.size()).isEqualTo(20);
+        assertThat(response.totalCount()).isEqualTo(2);
+        assertThat(response.totalPages()).isEqualTo(1);
+        assertThat(response.items()).extracting(AiJobResponse::jobId).containsExactly("42", "41");
+        assertThat(response.items().get(0).documentResults()).singleElement()
+                .satisfies(result -> {
+                    assertThat(result.documentId()).isEqualTo("15");
+                    assertThat(result.summary()).isEqualTo("인사규정을 Wiki에 반영했습니다.");
+                    assertThat(result.status()).isEqualTo("completed");
+                });
+        assertThat(response.items().get(1).documentResults().get(0).summary())
+                .isEqualTo("영업전략을 Wiki에 반영했습니다.");
+    }
+
+    @Test
+    @DisplayName("목록의 문서는 페이지 전체를 한 번에 읽는다")
+    void loadsDocumentsOncePerPage() throws Exception {
+        AiJob one = finishedJob(42L, "2026-07-26T15:24:00", 15L, "요약 하나");
+        AiJob two = finishedJob(41L, "2026-07-24T10:02:00", 16L, "요약 둘");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findAllByOrderByCreatedAtDescIdDesc(PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(one, two), PageRequest.of(0, 20), 2));
+        given(documentRepository.findAllById(List.of(15L, 16L)))
+                .willReturn(List.of(completedDocument(15L, "a.pdf"), completedDocument(16L, "b.pdf")));
+
+        service.listAiJobs(null, null);
+
+        // 작업마다 조회하면 페이지 크기만큼 질의가 늘어난다.
+        verify(documentRepository).findAllById(List.of(15L, 16L));
+        verifyNoMoreInteractions(documentRepository);
+    }
+
+    @Test
+    @DisplayName("작업이 하나도 없으면 빈 배열을 돌려준다")
+    void listsNothingWhenNoJobs() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findAllByOrderByCreatedAtDescIdDesc(PageRequest.of(0, 20)))
+                .willReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
+
+        AiJobListResponse response = service.listAiJobs(null, null);
+
+        assertThat(response.items()).isEmpty();
+        assertThat(response.totalCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("잘못된 page·size 는 400 오류로 처리한다")
+    void rejectsBadPaging() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+
+        assertThatThrownBy(() -> service.listAiJobs(0, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+        assertThatThrownBy(() -> service.listAiJobs(null, 101))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("관리자가 아니면 작업 이력 목록도 조회할 수 없다")
+    void rejectsNonAdminOnList() {
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+
+        assertThatThrownBy(() -> service.listAiJobs(null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
     @DisplayName("관리자가 아니면 AI 작업 상태를 조회할 수 없다")
     void rejectsNonAdmin() {
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
@@ -148,6 +261,23 @@ class AiJobQueryServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.AI_JOB_NOT_FOUND);
+    }
+
+    private AiJob finishedJob(long jobId, String createdAt, long documentId, String summary) throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/%d".formatted(jobId), List.of(documentId));
+        assign(job, "id", jobId);
+        assign(job, "createdAt", LocalDateTime.parse(createdAt));
+        job.start();
+        job.finish(List.of(AiJob.DocumentParseResult.succeeded(documentId, summary)));
+        return job;
+    }
+
+    private Document completedDocument(long id, String fileName) throws Exception {
+        Document document = uploadedDocument(id, fileName);
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/%d/parsed.md".formatted(id));
+        document.completeProcessing(List.of(101L));
+        return document;
     }
 
     private Document uploadedDocument(long id, String fileName) throws Exception {
