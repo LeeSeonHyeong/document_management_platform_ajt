@@ -31,6 +31,7 @@ export const qk = {
     all: ['documents'],
     list: (filters) => ['documents', 'list', filters ?? {}],
     detail: (documentId) => ['documents', 'detail', String(documentId)],
+    file: (documentId) => ['documents', 'file', String(documentId)],
   },
 
   documentCategories: {

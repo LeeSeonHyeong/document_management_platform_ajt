@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Download, FileText } from 'lucide-react'
 import { Button, Modal, Spinner, useToast } from '@/components/ui'
 import { fetchDocumentFile } from '@/features/document/api'
+import { DocumentPreview } from '@/features/document/preview'
 import { useDocument } from '@/features/document/queries'
 import { useAuth } from '@/hooks/useAuth'
 import { ROLES } from '@/shared/constants/enums'
@@ -91,22 +92,13 @@ export default function WikiSourcePreviewModal({ open, onClose, evidenceDocument
           <Spinner size="sm" />
         </div>
       ) : (
-        <div className="rounded-xl bg-slate-50 p-5">
-          <div className="mx-auto flex min-h-72 max-w-xl flex-col rounded-md border border-slate-200 bg-white px-8 py-7 shadow-sm">
-            <h3 className="text-center text-lg font-bold text-slate-800">{fileName ?? '원본 문서'}</h3>
-            <div className="mt-8 space-y-4 text-sm leading-7 text-slate-500">
-              <p className="font-semibold text-slate-700">원본 문서 미리보기</p>
-              <p>
-                문서 미리보기 데이터가 연결되면 이 영역에 원본 문서의 내용이 표시됩니다.
-              </p>
-            </div>
-          </div>
-          {/* TODO(API): 미리보기 페이지 수·본문 필드가 계약에 없음. 계약에 추가되면 실제 값으로 대체한다. */}
-          <div className="mt-4 flex justify-center">
-            <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
-              1 / 1
-            </span>
-          </div>
+        <div className="max-h-[65vh] overflow-y-auto rounded-xl bg-slate-50 p-5">
+          <DocumentPreview
+            documentId={documentId}
+            fileName={fileName}
+            mimeType={doc?.mimeType}
+            enabled={open}
+          />
         </div>
       )}
     </Modal>

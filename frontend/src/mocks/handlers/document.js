@@ -12,6 +12,41 @@ import {
   issueJobId,
   issueCategoryId,
 } from '../db'
+import { createSamplePdfBlob } from '../fixtures/samplePdf'
+
+// 미리보기 렌더러를 목 모드에서도 실제로 돌려 보기 위한 파일 본문.
+// txt·md·csv·pdf 는 실제로 파싱 가능한 바이트를 내려준다.
+// docx·xlsx 는 zip 컨테이너라 목으로 만들지 않는다 → 미리보기는 "표시할 수 없습니다"로 떨어지고,
+// 실제 파일 확인은 백엔드를 붙여서 한다.
+function mockFileBlob(doc) {
+  const extension = doc.originalFileName?.split('.').pop()?.toLowerCase()
+
+  if (extension === 'pdf') return createSamplePdfBlob(doc.documentId)
+
+  if (extension === 'md') {
+    return new Blob(
+      [
+        `# ${doc.originalFileName}\n\n목 API가 내려주는 마크다운 원본입니다.\n\n## 표\n\n| 항목 | 값 |\n| --- | --- |\n| 문서 ID | ${doc.documentId} |\n| 상태 | ${doc.status} |\n\n- 목록 항목 1\n- 목록 항목 2\n`,
+      ],
+      { type: 'text/markdown' },
+    )
+  }
+
+  if (extension === 'csv') {
+    return new Blob(
+      ['일정명,시작일,종료일,담당부서\n전사 워크샵,2026-09-01,2026-09-02,경영지원\n정기 점검,2026-09-15,2026-09-15,개발\n'],
+      { type: 'text/csv' },
+    )
+  }
+
+  if (extension === 'txt') {
+    return new Blob([`${doc.originalFileName}\n\n목 API가 내려주는 텍스트 원본입니다.\n한글 인코딩 확인용 문장입니다.\n`], {
+      type: 'text/plain',
+    })
+  }
+
+  return new Blob(['mock file content'], { type: doc.mimeType })
+}
 
 function errorBody(status, code, message, path, fieldErrors = []) {
   return { timestamp: new Date().toISOString(), status, error: code, code, message, path, fieldErrors }
@@ -205,10 +240,13 @@ export const documentHandlers = [
         { status: 404 },
       )
     }
-    return new HttpResponse(new Blob(['mock file content'], { type: doc.mimeType }), {
+    const blob = mockFileBlob(doc)
+    return new HttpResponse(blob, {
       headers: {
-        'Content-Type': doc.mimeType,
-        'Content-Disposition': `attachment; filename="${doc.originalFileName}"`,
+        'Content-Type': blob.type || doc.mimeType,
+        // 한글 파일명을 그대로 넣으면 Headers 생성이 ISO-8859-1 위반으로 터진다.
+        // 백엔드(ContentDisposition.filename(name, UTF_8))와 같은 RFC 5987 형식으로 내려준다.
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(doc.originalFileName)}`,
       },
     })
   }),
