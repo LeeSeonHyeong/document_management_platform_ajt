@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { FileText, Sparkles } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ChevronRight, FileText, Loader2, Sparkles } from 'lucide-react'
 import { Badge, Button, EmptyState, Spinner } from '@/components/ui'
 import { useAiJobs, useRetryDocument } from '../queries'
 import { useDocumentDetails } from '../hooks/useDocumentDetails'
@@ -8,8 +8,13 @@ import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobDocumentSummaryModal from '../components/AiJobDocumentSummaryModal'
 import { DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../status'
 
-// 종료된 작업만 요약이 있다. 진행 중인 작업은 진행 화면이 따로 있다.
+// 종료된 작업만 요약이 있다. 진행 중인 작업은 위쪽에 따로 묶어 진행 화면으로 보낸다.
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+const JOB_STATUS_LABEL = {
+  waiting: '대기 중',
+  processing: '처리 중',
+}
 
 function formatDateTime(iso) {
   if (!iso) return '최근 작업'
@@ -39,13 +44,16 @@ function formatDuration(startedAt, finishedAt) {
 }
 
 export default function AiJobSummaryListPage() {
+  // 진행 중인 작업이 있으면 그것도 보여줘야 하므로 짧게 폴링한다. 끝나면 멈춘다.
   const { data, isLoading } = useAiJobs({ page: 1, size: 20 })
   const [selected, setSelected] = useState(null)
 
-  const jobs = (data?.items ?? []).filter((job) => TERMINAL_STATUSES.has(job.status))
+  const allJobs = data?.items ?? []
+  const runningJobs = allJobs.filter((job) => !TERMINAL_STATUSES.has(job.status))
+  const jobs = allJobs.filter((job) => TERMINAL_STATUSES.has(job.status))
   // 문서 상세는 한 번에 모아 요청한다. AI 작업 응답에는 파일명·공개 범위가 없다.
   const documentIds = [
-    ...new Set(jobs.flatMap((job) => job.documentResults.map((result) => result.documentId))),
+    ...new Set(allJobs.flatMap((job) => job.documentResults.map((result) => result.documentId))),
   ]
   const docById = useDocumentDetails(documentIds)
   const totalDocuments = jobs.reduce((sum, job) => sum + job.documentResults.length, 0)
@@ -56,6 +64,10 @@ export default function AiJobSummaryListPage() {
   return (
     <section className="space-y-5">
       <DocumentSectionTabs />
+
+      {/* 진행 중인 작업은 요약이 아직 없다. 그래도 여기 있어야 관리자가 찾아갈 수 있다
+          — 예전에는 작업이 끝날 때까지 화면 어디에도 없었다 (S15P11B106-200). */}
+      {runningJobs.length > 0 && <RunningJobs jobs={runningJobs} docById={docById} />}
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
@@ -84,6 +96,44 @@ export default function AiJobSummaryListPage() {
 
       <SummaryModal selected={selected} docById={docById} onClose={() => setSelected(null)} />
     </section>
+  )
+}
+
+/** 아직 끝나지 않은 작업. 누르면 진행 화면으로 간다 — 그 화면이 문서별 단계를 2초마다 갱신한다. */
+function RunningJobs({ jobs, docById }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-primary-200 bg-primary-50/40">
+      <div className="flex items-center gap-2 border-b border-primary-100 px-5 py-3">
+        <Loader2 className="size-4 animate-spin text-primary-600" />
+        <h2 className="text-sm font-bold text-primary-700">진행 중인 AI 작업 {jobs.length}건</h2>
+      </div>
+      <ul className="divide-y divide-primary-100">
+        {jobs.map((job) => {
+          const names = job.documentResults
+            .map((result) => docById[result.documentId]?.originalFileName)
+            .filter(Boolean)
+          const done = job.documentResults.filter((r) => r.status === 'completed').length
+          return (
+            <li key={job.jobId}>
+              <Link
+                to={`/admin/documents/jobs/${job.jobId}/progress`}
+                className="focus-ring flex items-center gap-3 px-5 py-3 text-sm hover:bg-white/70"
+              >
+                <span className="min-w-0 flex-1 truncate font-semibold text-slate-800">
+                  {names[0] ?? `문서 ${job.documentResults.length}개`}
+                  {names.length > 1 && ` 외 ${names.length - 1}개`}
+                </span>
+                <span className="shrink-0 text-xs text-slate-500">
+                  {done}/{job.documentResults.length} 완료
+                </span>
+                <Badge tone="info">{JOB_STATUS_LABEL[job.status] ?? job.status}</Badge>
+                <ChevronRight className="size-4 shrink-0 text-slate-400" />
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 

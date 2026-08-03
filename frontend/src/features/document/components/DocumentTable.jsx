@@ -8,6 +8,8 @@ const STATUS_TONE = {
   uploaded: 'neutral',
   parsing: 'info',
   processing: 'info',
+  // 삭제 대기 — Wiki 걷어내기가 끝나면 지워진다 (S15P11B106-195).
+  deleting: 'warning',
   completed: 'success',
   failed: 'danger',
   cancelled: 'neutral',
@@ -18,6 +20,7 @@ const STATUS_LABEL = {
   uploaded: '업로드 완료',
   parsing: '파싱 중',
   processing: '처리 중',
+  deleting: '삭제 중',
   completed: '처리 완료',
   failed: '실패',
   cancelled: '취소',
@@ -106,6 +109,17 @@ export default function DocumentTable({
         <span className="font-semibold text-primary-600">
           {doc.relatedWikis?.length ? `● ${doc.relatedWikis.length}건` : '—'}
         </span>
+      ),
+    },
+    {
+      // 이 컬럼이 없어서 관리자가 업로드한 문서가 지금 어느 단계인지 알 수 없었다
+      // (S15P11B106-200). 작업이 끝나 요약 목록에 나타날 때까지 화면 어디에도 없었다.
+      key: 'status',
+      header: '상태',
+      render: (doc) => (
+        <Badge tone={STATUS_TONE[doc.status] ?? 'neutral'}>
+          {STATUS_LABEL[doc.status] ?? doc.status}
+        </Badge>
       ),
     },
     {
