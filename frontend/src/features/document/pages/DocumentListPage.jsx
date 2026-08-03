@@ -8,7 +8,6 @@ import { useStartAiJob, useUploadDocuments, useUploadScheduleSource } from '../q
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobStartDialog from '../components/AiJobStartDialog'
-import { addPreviewSummary } from '../previewStorage'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
@@ -213,9 +212,6 @@ export default function DocumentListPage() {
               uploadedIds.add(document.documentId)
             }
 
-            // API 요청은 공개 범위·카테고리별로 여러 작업이 될 수 있지만,
-            // 요약 목록은 관리자가 누른 "AI 작업 시작" 1회를 한 묶음으로 표시한다.
-            addPreviewSummary(readyDocuments)
             setStartOpen(false)
             toast.success(`${uploadedIds.size}개 파일의 AI 작업을 시작했습니다.`)
 

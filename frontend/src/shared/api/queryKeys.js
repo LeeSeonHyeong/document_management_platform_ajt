@@ -40,6 +40,7 @@ export const qk = {
 
   aiJobs: {
     all: ['ai-jobs'],
+    list: (filters) => ['ai-jobs', 'list', filters ?? {}],
     detail: (jobId) => ['ai-jobs', 'detail', String(jobId)],
   },
 

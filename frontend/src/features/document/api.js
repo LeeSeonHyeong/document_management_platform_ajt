@@ -127,6 +127,13 @@ export async function deleteDocumentCategory(categoryId) {
 
 // ── AI 작업 ──────────────────────────────────────────────────────
 
+// GET /api/v1/ai-jobs — 작업 이력 목록(최신순). 요약 목록 화면이 회차별로 묶어 보여준다.
+// 항목 모양은 단건 조회와 같다.
+export async function fetchAiJobs({ page = 1, size = 20 } = {}) {
+  const { data } = await apiClient.get('/ai-jobs', { params: { page, size } })
+  return data
+}
+
 // GET /api/v1/ai-jobs/:jobId
 export async function fetchAiJob(jobId) {
   const { data } = await apiClient.get(`/ai-jobs/${jobId}`)
