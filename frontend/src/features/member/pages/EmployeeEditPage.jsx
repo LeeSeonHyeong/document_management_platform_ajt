@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui'
 import { ACCOUNT_STATUS, ACCOUNT_STATUS_LABELS, ROLE_LABELS, ROLES } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
 import { useAuth } from '@/hooks/useAuth'
+import { updateDepartment } from '@/features/department/api'
 import { fetchDepartments, fetchUser, updateUser } from '../api'
 
 function formatDate(value) {
@@ -59,7 +60,78 @@ export default function EmployeeEditPage() {
   }, [userQuery.data, isSuperAdmin, user?.userId, toast, navigate, userId])
 
   const mutation = useMutation({
-    mutationFn: () => updateUser(userId, form),
+    mutationFn: async () => {
+      const original = userQuery.data
+      const departments = departmentsQuery.data ?? []
+      const departmentChanged = original.department?.departmentId !== form.departmentId
+      const originalManagedDepartment = departments.find(
+        (department) => department.manager?.userId === original.userId,
+      )
+      const targetDepartment = departments.find(
+        (department) => department.departmentId === form.departmentId,
+      )
+      const displacedManagerId = form.role === ROLES.ADMIN &&
+        targetDepartment?.manager?.userId !== original.userId
+        ? targetDepartment?.manager?.userId ?? null
+        : null
+      let employeeChanged = false
+      let displacedManagerDemoted = false
+
+      try {
+        // 대상 부서에 기존 관리자가 있다면 가장 먼저 강등한다.
+        // 기존 관리자에게 미처리 문의가 있으면 이후 역할 변경과 부서 이동을 시작하지 않는다.
+        if (displacedManagerId) {
+          await updateUser(displacedManagerId, { role: ROLES.EMPLOYEE })
+          displacedManagerDemoted = true
+        }
+
+        // 관리자가 다른 부서로 이동할 때는 먼저 사원으로 강등한다.
+        // 미처리 문의가 있으면 이 요청이 거절되어 이후 부서 이동이 실행되지 않는다.
+        if (original.role === ROLES.ADMIN && departmentChanged) {
+          await updateUser(userId, { role: ROLES.EMPLOYEE })
+          employeeChanged = true
+        }
+
+        if (departmentChanged) {
+          await updateUser(userId, { departmentId: form.departmentId })
+          employeeChanged = true
+        }
+
+        // 이동을 먼저 마친 뒤 최종 역할·이름·계정 상태를 반영한다.
+        await updateUser(userId, form)
+        employeeChanged = true
+
+        if (form.role === ROLES.ADMIN) {
+          await updateDepartment(form.departmentId, { managerId: userId })
+        }
+      } catch (error) {
+        // 순차 요청 중 실패하면 직원과 기존 부서 관리자 상태를 가능한 범위에서 복구한다.
+        try {
+          if (employeeChanged) {
+            await updateUser(userId, {
+              name: original.name,
+              departmentId: original.department?.departmentId,
+              role: original.role,
+              accountStatus: original.accountStatus,
+            })
+            if (originalManagedDepartment) {
+              await updateDepartment(originalManagedDepartment.departmentId, {
+                managerId: original.userId,
+              })
+            }
+          }
+          if (displacedManagerId && displacedManagerDemoted) {
+            await updateUser(displacedManagerId, { role: ROLES.ADMIN })
+            await updateDepartment(form.departmentId, {
+              managerId: displacedManagerId,
+            })
+          }
+        } catch {
+          // 복구 실패보다 최초 저장 실패 원인을 우선 안내한다.
+        }
+        throw error
+      }
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: qk.users.all })
       toast.success('직원 정보가 저장되었습니다.')

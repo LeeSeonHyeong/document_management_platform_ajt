@@ -49,7 +49,6 @@ export default function DepartmentManagementPage() {
   const toast = useToast()
   const { isSuperAdmin } = useAuth()
   const [newName, setNewName] = useState('')
-  const [newManagerId, setNewManagerId] = useState('')
   const [editing, setEditing] = useState(null)
   const [editName, setEditName] = useState('')
   const [editManagerId, setEditManagerId] = useState('')
@@ -82,9 +81,6 @@ export default function DepartmentManagementPage() {
       member.accountStatus === ACCOUNT_STATUS.ACTIVE &&
       member.isSuperAdmin !== true &&
       !SYSTEM_DEPARTMENT_NAMES.has(member.department?.name?.trim()),
-  )
-  const createManagerCandidates = approvedActiveMembers.filter(
-    (member) => member.role === ROLES.ADMIN && !member.isDepartmentManager,
   )
   const editManagerCandidates = editing
     ? approvedActiveMembers.filter(
@@ -119,11 +115,10 @@ export default function DepartmentManagementPage() {
     mutationFn: () =>
       createDepartment({
         name: newName.trim(),
-        managerId: newManagerId || null,
+        managerId: null,
       }),
     onSuccess: async () => {
       setNewName('')
-      setNewManagerId('')
       await refresh()
       toast.success('부서가 추가되었습니다.')
     },
@@ -143,7 +138,7 @@ export default function DepartmentManagementPage() {
       if (managerChanged && !editManagerId && previousManagerId) {
         await updateUser(previousManagerId, { role: ROLES.EMPLOYEE })
         await updateDepartment(editing.departmentId, { name: editName.trim() })
-        return { previousManagerDemotionFailed: false }
+        return null
       }
 
       const promotedNextManager = Boolean(nextManager && nextManager.role !== ROLES.ADMIN)
@@ -259,16 +254,6 @@ export default function DepartmentManagementPage() {
             placeholder="추가할 부서명 입력"
             className="focus-ring h-10 min-w-56 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm"
           />
-          <select
-            value={newManagerId}
-            onChange={(event) => setNewManagerId(event.target.value)}
-            className="focus-ring h-10 min-w-56 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600"
-          >
-            <option value="">부서 관리자 선택 (선택)</option>
-            {createManagerCandidates.map((manager) => (
-              <option key={manager.userId} value={manager.userId}>{manager.name}</option>
-            ))}
-          </select>
           <Button type="submit" loading={createMutation.isPending}>부서 추가</Button>
         </form>}
 
