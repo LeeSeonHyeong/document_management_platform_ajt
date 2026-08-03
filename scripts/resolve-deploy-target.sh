@@ -10,7 +10,8 @@ case "$branch" in
       'DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/develop' \
       'DEPLOY_HEALTHCHECK_URL=https://127.0.0.1:8090/api/v1/health' \
       'COMPOSE_PROJECT_NAME=ajt-develop' \
-      'DEPLOY_TARGET_LABEL=develop 8090'
+      'DEPLOY_TARGET_LABEL=develop 8090' \
+      'DEPLOY_APPROVAL_REQUIRED=false'
     ;;
   master|origin/master|\*/master)
     printf '%s\n' \
@@ -18,7 +19,8 @@ case "$branch" in
       'DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/prod' \
       'DEPLOY_HEALTHCHECK_URL=https://127.0.0.1/api/v1/health' \
       'COMPOSE_PROJECT_NAME=ajt-prod' \
-      'DEPLOY_TARGET_LABEL=master 443'
+      'DEPLOY_TARGET_LABEL=master 443' \
+      'DEPLOY_APPROVAL_REQUIRED=true'
     ;;
   *)
     printf 'ERROR: unsupported deploy branch: %s\n' "${1:-<empty>}" >&2

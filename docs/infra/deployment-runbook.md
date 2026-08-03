@@ -10,8 +10,8 @@
 - 검증 Compose 프로젝트: `ajt-develop`
 - 검증 포트: `8090`
 - 이미지: `ajt-backend:<12자리 Git SHA>`, `ajt-frontend:<12자리 Git SHA>`, `ajt-ai:<12자리 Git SHA>`
-- 자동 실행: GitLab `develop`·`master` push webhook을 Job별로 분리
-- 배포 반영: Jenkins 테스트·이미지 빌드 성공 후 사람의 승인
+- 자동 실행: develop Job은 Poll SCM, master Job은 기존 GitLab push webhook 사용
+- 배포 반영: develop은 Jenkins 테스트·이미지 빌드 성공 후 자동, master는 사람의 승인 후 반영
 - AI: 같은 Compose의 내부 전용 FastAPI 서비스. 호스트 포트는 열지 않고 모든 모델 호출은 SSAFY GMS Anthropic 경로를 사용
 
 `develop`과 `master`에는 직접 push하지 않는다. feature→develop, develop→master MR을 각각 승인 후 Squash merge한다.
@@ -163,7 +163,9 @@ Jenkins에 GitLab clone용 자격증명을 `Username with password` 타입으로
 develop Job
   Job name: S15P11B106-develop
   Branch Specifier: */develop
-  GitLab branch filter: develop
+  Poll SCM: enabled
+  Schedule: H/2 * * * *
+  GitHub hook trigger for GITScm polling: disabled
 
 master Job
   Job name: S15P11B106-pipeline
@@ -173,29 +175,27 @@ master Job
 
 develop 검증이 끝나고 같은 Jenkinsfile이 master에 병합되기 전까지 `S15P11B106-pipeline` Job은 Jenkins 화면에서 Disable한다. 기존 443 컨테이너는 중단하지 않는다.
 
-변경 브랜치의 첫 Jenkins 문법 검증 때만 `S15P11B106-develop`의 Branch Specifier를 `*/codex/jenkins-dual-deploy`로 두고 자동 트리거를 끈다. `Build Now` 실행은 Jenkinsfile 문법을 통과한 뒤 resolver가 지원하지 않는 feature 브랜치를 오류로 거부하면 성공이다. feature 브랜치를 develop 환경으로 위장해 배포하지 않는다. MR이 develop에 병합되면 Branch Specifier를 `*/develop`으로 바꾸고 수동 빌드에서 승인 화면과 8090 배포를 검증한 다음 develop Webhook을 활성화한다.
+feature 브랜치를 develop 환경으로 위장해 배포하지 않는다. MR이 develop에 병합되면 develop Job이 `*/develop`의 변경을 최대 약 2분 안에 감지한다. Backend·Frontend·AI 테스트와 세 이미지 빌드가 모두 성공하면 `Deployment Approval`을 건너뛰고 8090 `ajt-develop` 환경에 자동 배포한다.
 
-Build Triggers에서 `Build when a change is pushed to GitLab`을 활성화한다.
+develop Job의 Build Triggers에서 `Poll SCM`을 활성화한다.
 
 ```text
-Push Events: enabled
-Opened Merge Request Events: disabled
-Accepted Merge Request Events: disabled
-Branch filter type: NameBasedFilter
-Include: 각 Job의 고정 브랜치(`develop` 또는 `master`)
-Exclude: empty
-Secret token: Generate
+Poll SCM: enabled
+Schedule: H/2 * * * *
+GitHub hook trigger for GITScm polling: disabled
 ```
 
-Jenkins 화면에 표시된 webhook URL과 생성한 secret token을 GitLab 프로젝트의 Webhooks에 등록한다.
+Poll SCM은 GitLab에서 Jenkins 8080 포트로 접속하지 않고 Jenkins가 기존 `gitlab-token`으로 변경을 조회한다. Job 설정을 저장한 뒤에는 일반적인 develop MR 병합마다 `Build Now`를 누를 필요가 없다.
+
+master Job의 기존 GitLab push webhook 설정은 변경하지 않는다. master Job에서 Build Triggers의 `Build when a change is pushed to GitLab`을 활성화하고 Jenkins 화면에 표시된 webhook URL과 생성한 secret token을 GitLab 프로젝트의 Webhooks에 등록한다.
 
 ```text
 Trigger: Push events
-Branch filter: Job과 동일한 브랜치
+Branch filter: master
 SSL verification: enabled
 ```
 
-Job별 webhook URL과 secret token을 GitLab에 각각 등록한다. GitLab의 webhook test가 HTTP 2xx를 반환하는지 확인한다. Jenkins를 외부에 공개해야 한다면 Jenkins 포트를 전체 인터넷에 열지 말고 GitLab에서 도달 가능한 범위로 방화벽 또는 보안그룹을 제한한다.
+master webhook test가 HTTP 2xx를 반환하는지 확인한다. Jenkins를 외부에 공개해야 한다면 Jenkins 포트를 전체 인터넷에 열지 말고 GitLab에서 도달 가능한 범위로 방화벽 또는 보안그룹을 제한한다.
 
 ## 6. feature/develop 8090 검증
 
@@ -321,6 +321,15 @@ fi
 Docker의 backend healthcheck도 같은 `/api/v1/health`를 사용한다. `/actuator/health`는 DB뿐 아니라 SMTP 같은 외부 연동 상태까지 포함하므로 컨테이너 기동 판정에는 사용하지 않는다. 비밀번호 재설정 메일을 실제로 사용할 때는 별도로 `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`을 운영 env에 설정한다.
 
 브라우저에서 `https://i15b106.p.ssafy.io:8090`을 확인하고, 컨테이너 재시작 후 `ajt-develop-mysql-data`와 `ajt-develop-files`가 유지되는지 확인한다.
+
+일반 배포 흐름은 다음과 같다.
+
+```text
+develop MR merge -> automatic checkout/test/build -> approval stage skipped -> 8090 deploy
+master Job start -> checkout/test/build -> manual approval -> 443 deploy
+```
+
+develop 자동 배포는 기존 DB와 파일 volume을 유지한다. DB 초기화, volume 삭제, 최고관리자 생성, `ALL` Wiki 부트스트랩은 자동 실행하지 않는다.
 
 검증이 끝난 뒤 feature→develop MR에 아래 결과를 기록한다.
 
@@ -548,7 +557,7 @@ docker volume rm \
   ajt-develop-files
 ```
 
-Jenkins의 develop Job에서 최신 커밋을 빌드하고 `Deployment Approval`을 승인한다. 배포 완료 후 상태를 확인한다.
+데이터 초기화는 SCM 변경이 아니므로 Poll SCM이 새 빌드를 만들지 않는다. Jenkins의 develop Job에서 `Build Now`를 한 번 눌러 현재 최신 커밋을 다시 빌드한다. 테스트와 이미지 빌드가 성공하면 승인 대기 없이 새 volume으로 자동 배포된다. 배포 완료 후 상태를 확인한다.
 
 ```bash
 docker compose ls

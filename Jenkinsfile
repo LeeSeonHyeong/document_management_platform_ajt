@@ -62,9 +62,15 @@ pipeline {
                                     case 'DEPLOY_TARGET_LABEL':
                                         env.DEPLOY_TARGET_LABEL = pair[1]
                                         break
+                                    case 'DEPLOY_APPROVAL_REQUIRED':
+                                        env.DEPLOY_APPROVAL_REQUIRED = pair[1]
+                                        break
                                     default:
                                         error("알 수 없는 배포 대상 설정입니다: ${pair[0]}")
                                 }
+                            }
+                            if (env.DEPLOY_APPROVAL_REQUIRED != 'true' && env.DEPLOY_APPROVAL_REQUIRED != 'false') {
+                                error("지원하지 않는 배포 승인 정책입니다: ${env.DEPLOY_APPROVAL_REQUIRED ?: '<empty>'}")
                             }
                         }
                         echo "검증 대상 이미지 태그: ${env.IMAGE_TAG}"
@@ -120,6 +126,13 @@ pipeline {
 
         stage('Deployment Approval') {
             agent none
+
+            when {
+                beforeInput true
+                expression {
+                    env.DEPLOY_APPROVAL_REQUIRED == 'true'
+                }
+            }
 
             options {
                 timeout(time: 24, unit: 'HOURS')
