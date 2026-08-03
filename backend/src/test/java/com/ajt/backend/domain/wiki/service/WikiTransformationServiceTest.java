@@ -115,7 +115,7 @@ class WikiTransformationServiceTest {
     }
 
     @Test
-    @DisplayName("걷어내기는 제거 전 본문을 실어 보낸다 — 파싱 본문은 없다")
+    @DisplayName("걷어내기는 제거 전 본문을 실어 보낸다 — 새 파싱 본문 자리는 빈 문자열이다")
     void removedDocumentCarriesTheRemovedBody() {
         given(aiClient.transformWiki(any(WikiTransformationRequest.class))).willReturn(emptyResponse());
 
@@ -124,7 +124,10 @@ class WikiTransformationServiceTest {
 
         WikiTransformationRequest request = capturedRequest();
         assertThat(request.changeType()).isEqualTo(WikiDocumentChangeType.DOCUMENT_REMOVED);
-        assertThat(request.parsedMarkdown()).isNull();
+        // 이 단언이 예전에는 null 이었고, 그것이 실서버 삭제를 전부 400 으로 죽였다
+        // (S15P11B106-194). 계약이 이 자리를 문자열로 정의하므로 null 을 실어 보내면
+        // FastAPI 가 요청 전체를 거부한다 — 잡았어야 할 테스트가 버그를 고정하고 있었다.
+        assertThat(request.parsedMarkdown()).isEmpty();
         assertThat(request.removedParsedMarkdown()).isEqualTo("# 옛 취업규칙");
     }
 
