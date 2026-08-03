@@ -116,9 +116,12 @@ CREATE TABLE `document` (
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT `chk_document_file_size`
         CHECK (`file_size` <= 20971520),
+    -- DELETING 은 삭제 요청을 받아 Wiki 걷어내기를 기다리는 상태다(S15P11B106-195).
+    -- 값을 늘릴 때 이 목록을 같이 고쳐야 한다 — 안 고치면 DB 가 거부하고, 애플리케이션에는
+    -- DataIntegrityViolationException → 409 로만 보여 원인이 감춰진다(S15P11B106-205).
     CONSTRAINT `chk_document_status`
         CHECK (`status` IN (
-            'UPLOADED', 'PARSING', 'PROCESSING',
+            'UPLOADED', 'PARSING', 'PROCESSING', 'DELETING',
             'COMPLETED', 'FAILED', 'CANCELLED'
         ))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

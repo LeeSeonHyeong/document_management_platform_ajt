@@ -193,6 +193,45 @@ expect(
   "SQL과 ERD의 테이블 목록이 일치하지 않음",
 );
 
+// CHECK 제약의 열거값과 Java enum 이 어긋나면 실서버에서만 터진다(S15P11B106-205).
+//
+// 백엔드 테스트는 `ddl-auto=create-drop` 으로 엔티티에서 스키마를 만들어 돌기 때문에
+// erd.sql 의 CHECK 제약이 테스트 스키마에 없다. DocumentStatus 에 DELETING 을 더하고
+// erd.sql 을 안 고쳤을 때 83개 테스트 클래스가 전부 통과했고, 실서버에서 문서 삭제가
+// DataIntegrityViolationException → 409 RESOURCE_CONFLICT 로 죽었다. 409 가 원인을
+// 감춰서 상태·범위·FK 를 한참 뒤졌다. 그 왕복을 여기서 끊는다.
+const checkConstraintValues = (constraintName) => {
+  const match = sql.match(
+    new RegExp(`CONSTRAINT \`${constraintName}\`[\\s\\S]*?CHECK \\(\`[^\`]+\` IN \\(([\\s\\S]*?)\\)\\)`),
+  );
+  if (!match) return null;
+  return [...match[1].matchAll(/'([^']+)'/g)].map(([, value]) => value).sort();
+};
+
+const javaEnumConstants = (path) => {
+  const body = read(path).replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const match = body.match(/enum\s+\w+\s*\{([\s\S]*?)\}/);
+  if (!match) return null;
+  return [...match[1].matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*(?:,|;|$)/gm)]
+    .map(([, name]) => name)
+    .sort();
+};
+
+for (const [constraintName, enumPath] of [
+  ["chk_document_status", "backend/src/main/java/com/ajt/backend/domain/document/model/DocumentStatus.java"],
+  ["chk_ai_job_status", "backend/src/main/java/com/ajt/backend/domain/document/model/AiJobStatus.java"],
+]) {
+  const sqlValues = checkConstraintValues(constraintName);
+  const enumValues = javaEnumConstants(enumPath);
+  expect(sqlValues, `SQL에서 ${constraintName} CHECK 열거값을 읽지 못함`);
+  expect(enumValues, `${enumPath} 에서 enum 상수를 읽지 못함`);
+  if (!sqlValues || !enumValues) continue;
+  expect(
+    sqlValues.join(",") === enumValues.join(","),
+    `${constraintName} CHECK 값과 enum이 다름 — SQL [${sqlValues}] vs enum [${enumValues}]`,
+  );
+}
+
 for (const [tableName, columns] of sqlTables) {
   const entity = entityByName.get(tableName);
   if (!entity) continue;

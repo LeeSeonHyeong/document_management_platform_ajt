@@ -636,7 +636,7 @@
           "type": "VARCHAR(30)",
           "defaultValue": "",
           "isAllowNull": false,
-          "comment": "UPLOADED, PARSING, PROCESSING, COMPLETED, FAILED, CANCELLED",
+          "comment": "UPLOADED, PARSING, PROCESSING, DELETING, COMPLETED, FAILED, CANCELLED",
           "relEntity": null,
           "relFieldId": null,
           "relType": null,
