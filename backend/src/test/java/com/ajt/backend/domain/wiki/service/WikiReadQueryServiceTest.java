@@ -38,7 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @SpringBootTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "ajt.local-data.enabled=false"
+        "ajt.local-data.enabled=false",
+        "ajt.super-admin.email=admin@ajt.com"
 })
 @Transactional
 class WikiReadQueryServiceTest {

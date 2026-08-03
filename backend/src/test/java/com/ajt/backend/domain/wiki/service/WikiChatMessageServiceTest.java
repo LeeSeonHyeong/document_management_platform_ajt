@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -20,6 +21,8 @@ import com.ajt.backend.domain.document.model.WikiScope;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.document.service.CurrentMemberRole;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.wiki.api.WikiChatMessageListResponse;
 import com.ajt.backend.domain.wiki.api.WikiChatReplyResponse;
 import com.ajt.backend.domain.wiki.model.Wiki;
@@ -64,6 +67,7 @@ class WikiChatMessageServiceTest {
     private final WikiTransformationApplier applier = mock(WikiTransformationApplier.class);
     private final WikiScopeRepository wikiScopeRepository = mock(WikiScopeRepository.class);
     private final WikiCapabilityService wikiCapabilityService = mock(WikiCapabilityService.class);
+    private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
     private final WikiChatMessageService service = new WikiChatMessageService(
             currentMemberProvider,
             wikiRepository,
@@ -75,8 +79,16 @@ class WikiChatMessageServiceTest {
             aiClient,
             applier,
             wikiScopeRepository,
-            wikiCapabilityService
+            wikiCapabilityService,
+            departmentScopePolicy
     );
+
+    // 기존 테스트의 관리자는 전체 접근(최고관리자)으로 취급해 기존 동작을 유지한다(S15P11B106-199).
+    private static DepartmentScopePolicy superAdminScopePolicy() {
+        DepartmentScopePolicy policy = mock(DepartmentScopePolicy.class);
+        given(policy.resolve(anyLong())).willReturn(ScopeAccess.superAdmin());
+        return policy;
+    }
 
     private final AtomicLong nextMessageId = new AtomicLong(1L);
 

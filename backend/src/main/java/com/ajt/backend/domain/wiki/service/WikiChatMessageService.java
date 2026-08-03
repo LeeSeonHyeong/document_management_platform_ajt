@@ -7,6 +7,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.service.CurrentMember;
 import com.ajt.backend.domain.document.service.CurrentMemberProvider;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.wiki.api.WikiChatMessageListResponse;
 import com.ajt.backend.domain.wiki.api.WikiChatMessageResponse;
 import com.ajt.backend.domain.wiki.api.WikiChatReplyResponse;
@@ -61,6 +62,7 @@ public class WikiChatMessageService {
     private final WikiTransformationApplier applier;
     private final WikiScopeRepository wikiScopeRepository;
     private final WikiCapabilityService wikiCapabilityService;
+    private final DepartmentScopePolicy departmentScopePolicy;
 
     public WikiChatMessageService(
             CurrentMemberProvider currentMemberProvider,
@@ -73,7 +75,8 @@ public class WikiChatMessageService {
             AiClient aiClient,
             WikiTransformationApplier applier,
             WikiScopeRepository wikiScopeRepository,
-            WikiCapabilityService wikiCapabilityService
+            WikiCapabilityService wikiCapabilityService,
+            DepartmentScopePolicy departmentScopePolicy
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiRepository = wikiRepository;
@@ -86,12 +89,14 @@ public class WikiChatMessageService {
         this.applier = applier;
         this.wikiScopeRepository = wikiScopeRepository;
         this.wikiCapabilityService = wikiCapabilityService;
+        this.departmentScopePolicy = departmentScopePolicy;
     }
 
     @Transactional(readOnly = true)
     public WikiChatMessageListResponse getChatMessages(long wikiId) {
-        requireAdmin();
+        CurrentMember currentMember = requireAdmin();
         Wiki wiki = findWiki(wikiId);
+        requireWikiScope(currentMember, wiki);
         return new WikiChatMessageListResponse(
                 wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(wiki.id())
                         .stream()
@@ -104,6 +109,7 @@ public class WikiChatMessageService {
     public WikiChatReplyResponse sendChatMessage(long wikiId, String content) {
         CurrentMember currentMember = requireAdmin();
         Wiki wiki = findWiki(wikiId);
+        requireWikiScope(currentMember, wiki);
         String instruction = requireContent(content);
         requireNoUnfinishedJob(wiki.scopeKey());
 
@@ -125,6 +131,17 @@ public class WikiChatMessageService {
                 WikiChatMessageResponse.from(agentMessage),
                 toDetail(wiki)
         );
+    }
+
+    /**
+     * 부서관리자 스코프 가드입니다(S15P11B106-199).
+     * 부서관리자는 담당 부서 scope의 Wiki만 조회·수정 요청할 수 있고, 담당 밖(전체·타부서) Wiki는 존재를 숨겨
+     * WIKI_NOT_FOUND로 처리한다. 최고관리자는 제한이 없다.
+     */
+    private void requireWikiScope(CurrentMember currentMember, Wiki wiki) {
+        if (!departmentScopePolicy.resolve(currentMember.memberId()).canAccessScopeKey(wiki.scopeKey())) {
+            throw new BusinessException(ErrorCode.WIKI_NOT_FOUND);
+        }
     }
 
     private WikiEditResponse requestEdit(Wiki wiki, String instruction, List<WikiChatMessage> history) {

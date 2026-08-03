@@ -27,8 +27,10 @@ import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.document.storage.DocumentFileMutation;
 import com.ajt.backend.domain.document.storage.StagedOriginalFile;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
@@ -80,6 +82,7 @@ public class DocumentManagementService {
     // 수정(S15P11B106-146): 파일 교체 확정(promote)이 커밋 후 실패하면 작업/문서를 FAILED로 남기기 위한 컴포넌트.
     private final AiJobFailureMarker aiJobFailureMarker;
     private final DocumentFailureMarker documentFailureMarker;
+    private final DepartmentScopePolicy departmentScopePolicy;
 
     public DocumentManagementService(
             CurrentMemberProvider currentMemberProvider,
@@ -92,7 +95,8 @@ public class DocumentManagementService {
             WikiScopeRepository wikiScopeRepository,
             DepartmentRepository departmentRepository,
             AiJobFailureMarker aiJobFailureMarker,
-            DocumentFailureMarker documentFailureMarker
+            DocumentFailureMarker documentFailureMarker,
+            DepartmentScopePolicy departmentScopePolicy
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.documentRepository = documentRepository;
@@ -105,12 +109,14 @@ public class DocumentManagementService {
         this.departmentRepository = departmentRepository;
         this.aiJobFailureMarker = aiJobFailureMarker;
         this.documentFailureMarker = documentFailureMarker;
+        this.departmentScopePolicy = departmentScopePolicy;
     }
 
     @Transactional(readOnly = true)
     public DocumentDetailResponse getDocument(long documentId) {
-        requireAdmin();
+        CurrentMember currentMember = requireAdmin();
         Document document = findDocument(documentId);
+        requireDocumentScope(currentMember, document);
         DocumentCategory category = documentCategoryRepository.findById(document.documentCategoryId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
@@ -124,8 +130,9 @@ public class DocumentManagementService {
      */
     @Transactional(readOnly = true)
     public DocumentFileDownload downloadFile(long documentId) {
-        requireAdmin();
+        CurrentMember currentMember = requireAdmin();
         Document document = findDocument(documentId);
+        requireDocumentScope(currentMember, document);
         // 수정(S15P11B106-146): 파일 교체 확정(promote) 실패 등으로 FAILED가 된 문서는 DB 메타데이터와 실제 파일이
         //   어긋날 수 있으므로(같은 확장자 교체 실패 시 기존 파일이 새 파일처럼 내려갈 수 있음) 다운로드를 막는다.
         if (document.status() == DocumentStatus.FAILED) {
@@ -144,6 +151,7 @@ public class DocumentManagementService {
     public DocumentRetryResponse retry(long documentId) {
         CurrentMember currentMember = requireAdmin();
         Document document = findDocument(documentId);
+        requireDocumentScope(currentMember, document);
         try {
             document.retryParsing();
         } catch (IllegalStateException exception) {
@@ -178,6 +186,7 @@ public class DocumentManagementService {
     public DocumentFileReplaceResponse replaceFile(long documentId, MultipartFile file) {
         CurrentMember admin = requireAdmin();
         Document document = findDocument(documentId);
+        requireDocumentScope(admin, document);
         DocumentUploadRequest.validateReplacementFile(file);
         ensureNotInProgress(document);
 
@@ -322,6 +331,15 @@ public class DocumentManagementService {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, exception.getMessage());
         }
         String newScopeKey = newScope.value();
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서 scope 문서만, 담당 부서 scope로만 수정할 수 있다.
+        //   대상 문서(기존 범위)가 담당 밖이면 존재를 숨겨 404, 담당 밖 범위로의 이동은 403으로 막는다.
+        ScopeAccess updateScope = departmentScopePolicy.resolve(admin.memberId());
+        if (!updateScope.canAccessScopeKey(document.scopeKey())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
+        if (!updateScope.canAccessScopeKey(newScopeKey)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
 
         // 리뷰(#4): 새 카테고리가 없으면 404로 처리한다(계약의 400 "카테고리·범위 조합 오류"로 볼 여지도 있으나 방어적으로 404).
         DocumentCategory category = documentCategoryRepository.findById(request.documentCategoryId())
@@ -476,6 +494,7 @@ public class DocumentManagementService {
     public DocumentDeleteResponse delete(long documentId) {
         CurrentMember admin = requireAdmin();
         Document document = findDocument(documentId);
+        requireDocumentScope(admin, document);
         ensureNotInProgress(document);
         String scopeKey = document.scopeKey();
         String originalPath = document.originalPath();
@@ -650,6 +669,13 @@ public class DocumentManagementService {
         if (!currentMember.isAdmin()) {
             // 사원: 전체 공개(ALL) + 본인 소속 부서를 포함하는 부서 공개 범위만 볼 수 있다.
             allowedScopeKeys = accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
+        } else {
+            // 수정(S15P11B106-199): 부서관리자는 담당 부서 단일 scope 문서만 조회한다(전체·타부서 제외). 최고관리자는 제한 없음.
+            ScopeAccess scope = departmentScopePolicy.resolve(currentMember.memberId());
+            if (scope.isRestricted()) {
+                String managed = scope.managedScopeKey();
+                allowedScopeKeys = managed == null ? Set.of() : Set.of(managed);
+            }
         }
         if (departmentId != null) {
             // departmentId 필터(계약): 해당 부서를 department_refs에 포함하는 공개범위로 좁힌다. 사원이면 기존 접근권한과 교집합.
@@ -856,6 +882,17 @@ public class DocumentManagementService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
         return currentMember;
+    }
+
+    /**
+     * 부서관리자 스코프 가드입니다(S15P11B106-199).
+     * 부서관리자는 담당 부서 scope 문서에만 접근할 수 있고, 담당 밖(전체·타부서) 문서는 존재를 숨겨 404로 처리한다.
+     * 최고관리자는 제한이 없다.
+     */
+    private void requireDocumentScope(CurrentMember currentMember, Document document) {
+        if (!departmentScopePolicy.resolve(currentMember.memberId()).canAccessScopeKey(document.scopeKey())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND);
+        }
     }
 
     private Document findDocument(long documentId) {

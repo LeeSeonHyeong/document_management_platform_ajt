@@ -12,6 +12,7 @@ import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.document.service.CurrentMemberRole;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.Role;
 import com.ajt.backend.domain.wiki.api.WikiListResponse;
 import com.ajt.backend.domain.wiki.api.WikiSummaryResponse;
 import com.ajt.backend.domain.wiki.model.Wiki;
@@ -63,6 +64,8 @@ class WikiQueryServiceScopeAccessTest {
     private WikiFileStorage wikiFileStorage;
 
     private long employeeId;
+    private long superAdminId;
+    private long deptManagerId;
     private String scopeD2;
     private String scopeD3;
 
@@ -72,6 +75,14 @@ class WikiQueryServiceScopeAccessTest {
         Department department3 = departmentRepository.save(new Department("기획부"));
         employeeId = memberRepository.save(Member.approvedEmployee(
                 department2, "emp@ajt.com", "사원", "hash", "AJT-2026-0001")).getId();
+        // 최고관리자(설정 이메일 기본값 superadmin@ajt.com)와 department2 담당 부서관리자 (S15P11B106-199)
+        superAdminId = memberRepository.save(Member.approved(
+                department2, "superadmin@ajt.com", "최고관리자", "hash", "AJT-2026-9999", Role.ADMIN)).getId();
+        Member deptManager = memberRepository.save(Member.approved(
+                department2, "mgr@ajt.com", "부서관리자", "hash", "AJT-2026-0002", Role.ADMIN));
+        department2.assignManager(deptManager);
+        departmentRepository.save(department2);
+        deptManagerId = deptManager.getId();
 
         wikiScopeRepository.save(WikiScope.all());
         scopeD2 = wikiScopeRepository.save(WikiScope.department(List.of(department2.getId()))).scopeKey();
@@ -105,7 +116,7 @@ class WikiQueryServiceScopeAccessTest {
     @DisplayName("관리자는 접근 제한 없이 모든 공개범위의 Wiki를 본다")
     void adminSeesAllScopes() {
         given(currentMemberProvider.currentMember())
-                .willReturn(new CurrentMember(employeeId, CurrentMemberRole.ADMIN));
+                .willReturn(new CurrentMember(superAdminId, CurrentMemberRole.ADMIN));
 
         WikiListResponse response = wikiQueryService.findWikis(1, 100, null, null, null, null);
 
@@ -113,5 +124,20 @@ class WikiQueryServiceScopeAccessTest {
                 .map(WikiSummaryResponse::scopeKey)
                 .toList();
         assertThat(scopeKeys).containsExactlyInAnyOrder("ALL", scopeD2, scopeD3);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 담당 부서(D2) Wiki만 보고 전체(ALL)·타부서(D3)는 제외된다(S15P11B106-199)")
+    void departmentManagerSeesOnlyManagedScope() {
+        given(currentMemberProvider.currentMember())
+                .willReturn(new CurrentMember(deptManagerId, CurrentMemberRole.ADMIN));
+
+        WikiListResponse response = wikiQueryService.findWikis(1, 100, null, null, null, null);
+
+        List<String> scopeKeys = response.items().stream()
+                .map(WikiSummaryResponse::scopeKey)
+                .toList();
+        assertThat(scopeKeys).containsExactly(scopeD2);
+        assertThat(scopeKeys).doesNotContain("ALL", scopeD3);
     }
 }

@@ -3,6 +3,7 @@ package com.ajt.backend.domain.document.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -20,6 +21,8 @@ import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.io.IOException;
@@ -40,14 +43,37 @@ class DocumentUploadServiceTest {
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final AiJobRepository aiJobRepository = mock(AiJobRepository.class);
     private final DocumentFileStorage fileStorage = mock(DocumentFileStorage.class);
+    private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
     private final DocumentUploadService service = new DocumentUploadService(
             currentMemberProvider,
             wikiScopeRepository,
             documentCategoryRepository,
             documentRepository,
             aiJobRepository,
-            fileStorage
+            fileStorage,
+            departmentScopePolicy
     );
+
+    // 기존 테스트의 관리자는 전체 접근(최고관리자)으로 취급해 기존 동작을 유지한다(S15P11B106-199).
+    private static DepartmentScopePolicy superAdminScopePolicy() {
+        DepartmentScopePolicy policy = mock(DepartmentScopePolicy.class);
+        given(policy.resolve(anyLong())).willReturn(ScopeAccess.superAdmin());
+        return policy;
+    }
+
+    @Test
+    @DisplayName("부서관리자는 전체(ALL) 범위로 업로드할 수 없다(S15P11B106-199)")
+    void departmentManagerCannotUploadToAllScope() {
+        DocumentUploadRequest request = DocumentUploadRequest.of(
+                List.of(markdownFile("a.md")), 7L, "all", List.of());
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(departmentScopePolicy.resolve(10L)).willReturn(ScopeAccess.departmentManager(2L));
+
+        assertThatThrownBy(() -> service.upload(request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.FORBIDDEN);
+    }
 
     @Test
     @DisplayName("관리자 업로드는 scope, 문서들, 대기 AI 작업을 생성하고 202 응답 데이터를 반환한다")

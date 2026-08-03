@@ -38,8 +38,10 @@ import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.document.storage.DocumentFileMutation;
 import com.ajt.backend.domain.document.storage.StagedOriginalFile;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -76,6 +78,7 @@ class DocumentManagementServiceTest {
     private final DepartmentRepository departmentRepository = mock(DepartmentRepository.class);
     private final AiJobFailureMarker aiJobFailureMarker = mock(AiJobFailureMarker.class);
     private final DocumentFailureMarker documentFailureMarker = mock(DocumentFailureMarker.class);
+    private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
     private final DocumentManagementService service = new DocumentManagementService(
             currentMemberProvider,
             documentRepository,
@@ -87,8 +90,16 @@ class DocumentManagementServiceTest {
             wikiScopeRepository,
             departmentRepository,
             aiJobFailureMarker,
-            documentFailureMarker
+            documentFailureMarker,
+            departmentScopePolicy
     );
+
+    // 기존 테스트의 관리자는 전체 접근(최고관리자)으로 취급해 기존 동작을 유지한다(S15P11B106-199).
+    private static DepartmentScopePolicy superAdminScopePolicy() {
+        DepartmentScopePolicy policy = mock(DepartmentScopePolicy.class);
+        given(policy.resolve(anyLong())).willReturn(ScopeAccess.superAdmin());
+        return policy;
+    }
 
     @Test
     @DisplayName("관리자는 문서 상세와 처리 상태를 조회할 수 있다")

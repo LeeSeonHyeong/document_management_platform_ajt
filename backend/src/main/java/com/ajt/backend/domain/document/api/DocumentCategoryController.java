@@ -27,8 +27,11 @@ public class DocumentCategoryController {
      * 프론트가 선택한 Wiki 공간(scopeKey)에 맞는 문서 카테고리 목록을 조회합니다.
      */
     @GetMapping("/api/v1/document-categories")
-    public DocumentCategoryListResponse categories(@RequestParam String scopeKey) {
-        return documentCategoryService.findCategories(scopeKey);
+    public DocumentCategoryListResponse categories(
+            @AuthenticationPrincipal AuthenticatedMember loginMember,
+            @RequestParam String scopeKey
+    ) {
+        return documentCategoryService.findCategories(loginMember, scopeKey);
     }
 
     /**

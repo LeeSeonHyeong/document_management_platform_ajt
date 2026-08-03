@@ -3,6 +3,7 @@ package com.ajt.backend.domain.document.service;
 import com.ajt.backend.domain.document.api.DocumentUploadRequest;
 import com.ajt.backend.domain.document.api.DocumentUploadResponse;
 import com.ajt.backend.domain.document.model.AiJob;
+import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.model.WikiScope;
@@ -33,6 +34,7 @@ public class DocumentUploadService {
     private final DocumentRepository documentRepository;
     private final AiJobRepository aiJobRepository;
     private final DocumentFileStorage fileStorage;
+    private final DepartmentScopePolicy departmentScopePolicy;
 
     public DocumentUploadService(
             CurrentMemberProvider currentMemberProvider,
@@ -40,7 +42,8 @@ public class DocumentUploadService {
             DocumentCategoryRepository documentCategoryRepository,
             DocumentRepository documentRepository,
             AiJobRepository aiJobRepository,
-            DocumentFileStorage fileStorage
+            DocumentFileStorage fileStorage,
+            DepartmentScopePolicy departmentScopePolicy
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.wikiScopeRepository = wikiScopeRepository;
@@ -48,6 +51,7 @@ public class DocumentUploadService {
         this.documentRepository = documentRepository;
         this.aiJobRepository = aiJobRepository;
         this.fileStorage = fileStorage;
+        this.departmentScopePolicy = departmentScopePolicy;
     }
 
     @Transactional
@@ -58,6 +62,11 @@ public class DocumentUploadService {
         }
 
         String scopeKey = request.scopeKey().value();
+        // 수정(S15P11B106-199): 부서관리자는 담당 부서 단일 scope로만 업로드할 수 있다.
+        //   전체(ALL)·타부서·복수 부서(scope_key "D1-D2") 업로드는 차단한다. 최고관리자는 제한 없음.
+        if (!departmentScopePolicy.resolve(currentMember.memberId()).canAccessScopeKey(scopeKey)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
         DocumentCategory category = documentCategoryRepository.findById(request.documentCategoryId())
                 .orElseThrow(this::invalidUpload);
         if (!category.belongsToScope(scopeKey)) {
