@@ -393,7 +393,11 @@ curl --insecure --fail --show-error https://127.0.0.1/api/v1/health
 
 ```bash
 cd /home/ubuntu/S15P11B106
-sudo -u jenkins bash scripts/bootstrap-admin.sh admin@ajt.local
+sudo -u jenkins env \
+  DEPLOY_ENV_FILE=/var/lib/jenkins/ajt-secrets/prod.env \
+  DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/prod \
+  COMPOSE_PROJECT_NAME=ajt-prod \
+  bash scripts/bootstrap-admin.sh
 ```
 
 출력된 초기 비밀번호는 안전한 전달 수단에 즉시 저장한다. Git, Wiki, Jenkins 로그, 공동 채팅에는 남기지 않는다.
@@ -478,3 +482,130 @@ sudo -u jenkins env \
   AI_IMAGE=ajt-ai \
   bash scripts/deploy.sh <12자리-SHA>
 ```
+
+## 11. develop 데이터 완전 초기화와 최고관리자 재생성
+
+이 절차는 검증 환경인 `ajt-develop`의 DB와 업로드 파일을 모두 삭제한다. 443 운영 프로젝트
+`s15p11b106`과 그 볼륨은 대상이 아니다. 삭제 전에 컨테이너의 실제 마운트를 확인하고, 아래 두 이름이
+정확히 일치할 때만 진행한다.
+
+```text
+ajt-develop-mysql-data
+ajt-develop-files
+```
+
+환경과 현재 배포 태그를 설정한다.
+
+```bash
+cd /home/ubuntu/S15P11B106
+
+DEVELOP_ENV=/var/lib/jenkins/ajt-secrets/develop.env
+DEVELOP_STATE=/var/lib/jenkins/ajt-deploy/develop
+IMAGE_TAG="$(sudo -u jenkins tr -d '[:space:]' < "${DEVELOP_STATE}/current-image-tag")"
+```
+
+삭제 전 `ajt-develop` 컨테이너와 실제 볼륨 마운트를 확인한다.
+
+```bash
+docker ps -a \
+  --filter label=com.docker.compose.project=ajt-develop \
+  --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+
+docker inspect \
+  ajt-develop-mysql-1 \
+  ajt-develop-backend-1 \
+  --format '{{.Name}} {{range .Mounts}}{{if eq .Type "volume"}}{{.Name}} -> {{.Destination}}{{println}}{{end}}{{end}}'
+
+docker volume inspect \
+  ajt-develop-mysql-data \
+  ajt-develop-files \
+  --format '{{.Name}} project={{index .Labels "com.docker.compose.project"}}'
+```
+
+출력에서 두 볼륨의 프로젝트 라벨이 모두 `ajt-develop`인지 확인한다. 하나라도 다르면 중단한다.
+
+443 운영 컨테이너가 실행 중인지 별도로 기록한다.
+
+```bash
+docker ps \
+  --filter label=com.docker.compose.project=s15p11b106 \
+  --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+```
+
+검증이 끝났으면 `ajt-develop`만 중단하고, 확인한 두 볼륨만 명시적으로 삭제한다.
+`docker volume prune`이나 와일드카드는 사용하지 않는다.
+
+```bash
+DEPLOY_ENV_FILE="$DEVELOP_ENV" IMAGE_TAG="$IMAGE_TAG" \
+docker compose \
+  --project-name ajt-develop \
+  --env-file "$DEVELOP_ENV" \
+  --file docker-compose.yml \
+  down --remove-orphans
+
+docker volume rm \
+  ajt-develop-mysql-data \
+  ajt-develop-files
+```
+
+Jenkins의 develop Job에서 최신 커밋을 빌드하고 `Deployment Approval`을 승인한다. 배포 완료 후 상태를 확인한다.
+
+```bash
+docker compose ls
+
+docker ps \
+  --filter label=com.docker.compose.project=ajt-develop \
+  --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+
+curl --insecure --fail --show-error \
+  https://127.0.0.1:8090/api/v1/health
+```
+
+최고관리자 이메일은 실행 중인 백엔드의 `SUPER_ADMIN_EMAIL`을 기준으로 사용한다. 이메일 인수를 별도로
+전달하지 않아야 설정 불일치가 발생하지 않는다.
+
+```bash
+cd /home/ubuntu/S15P11B106
+
+sudo -u jenkins env \
+  DEPLOY_ENV_FILE=/var/lib/jenkins/ajt-secrets/develop.env \
+  DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/develop \
+  COMPOSE_PROJECT_NAME=ajt-develop \
+  bash scripts/bootstrap-admin.sh
+```
+
+출력된 초기 비밀번호는 다시 조회할 수 없다. 안전한 전달 수단에 즉시 보관하고 공동 채팅이나 Git에 남기지 않는다.
+
+마지막으로 회원·부서 수와 최고관리자 연결 상태를 검증한다.
+
+```bash
+docker exec ajt-develop-mysql-1 sh -c '
+MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot ajt -e "
+SELECT COUNT(*) AS member_count FROM member;
+SELECT COUNT(*) AS department_count FROM department;
+SELECT
+  m.email,
+  m.role,
+  m.signup_status,
+  m.account_status,
+  d.name AS department_name,
+  d.manager_id
+FROM member m
+JOIN department d ON d.department_id = m.department_id;
+"
+'
+```
+
+정상 결과는 다음과 같다.
+
+```text
+member_count=1
+department_count=1
+role=ADMIN
+signup_status=APPROVED
+account_status=ACTIVE
+department_name=최고관리자
+manager_id=NULL
+```
+
+브라우저 로그인 후 `/api/v1/auth/me` 응답의 `isSuperAdmin`이 `true`인지 확인한다.

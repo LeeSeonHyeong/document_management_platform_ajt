@@ -20,8 +20,15 @@ printf '0123456789ab\n' > "${STATE_DIR}/current-image-tag"
 cat > "${FAKE_BIN}/docker" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
+if [[ "$*" == *"exec -T backend"* ]]; then
+  printf '%s' "${FAKE_SUPER_ADMIN_EMAIL:-admin@ajt.local}"
+  exit 0
+fi
+
 sql="$(cat)"
-printf '%s\n---SQL---\n%s\n' "$*" "$sql" >> "$FAKE_DOCKER_LOG"
+printf '%s\n%s\n' '---SQL---' "$sql" >> "$FAKE_DOCKER_LOG"
 
 if [[ "$sql" == *"SELECT COUNT(*)"* ]]; then
   printf '%s\n' "${FAKE_MEMBER_EXISTS:-0}"
@@ -75,6 +82,32 @@ test_rejects_invalid_email_before_database_call() {
   [[ ! -s "$FAKE_DOCKER_LOG" ]] || fail "잘못된 이메일로 DB를 호출함"
 }
 
+test_uses_backend_super_admin_email_when_argument_is_omitted() {
+  local output="${TEST_ROOT}/configured-email.out"
+  : > "$FAKE_DOCKER_LOG"
+
+  FAKE_SUPER_ADMIN_EMAIL=superadmin@ajt.com bash "$BOOTSTRAP_SCRIPT" > "$output"
+
+  assert_equals "1" "$(grep -c '^이메일: superadmin@ajt.com$' "$output")" \
+    "백엔드 최고관리자 이메일 출력 횟수"
+  grep -q "'superadmin@ajt.com'" "$FAKE_DOCKER_LOG" \
+    || fail "백엔드 최고관리자 이메일이 INSERT에 사용되지 않음"
+}
+
+test_rejects_email_that_differs_from_backend_configuration() {
+  : > "$FAKE_DOCKER_LOG"
+
+  set +e
+  FAKE_SUPER_ADMIN_EMAIL=superadmin@ajt.com \
+    bash "$BOOTSTRAP_SCRIPT" admin@ajt.local >/dev/null 2>&1
+  local status=$?
+  set -e
+
+  assert_equals "2" "$status" "설정과 다른 최고관리자 이메일 종료 코드"
+  ! grep -q "INSERT INTO member" "$FAKE_DOCKER_LOG" \
+    || fail "설정과 다른 이메일로 member INSERT를 실행함"
+}
+
 test_existing_admin_does_not_generate_new_password() {
   : > "$FAKE_DOCKER_LOG"
   : > "$FAKE_OPENSSL_LOG"
@@ -100,11 +133,15 @@ test_creates_one_admin_with_random_password() {
   assert_equals "1" "$(grep -c '^초기 비밀번호: 0123456789abcdef0123456789abcdef$' "$output")" \
     "초기 비밀번호 출력 횟수"
   grep -q "INSERT INTO member" "$FAKE_DOCKER_LOG" || fail "member INSERT가 없음"
+  grep -q "VALUES ('최고관리자')" "$FAKE_DOCKER_LOG" \
+    || fail "최고관리자 전용 부서를 생성하지 않음"
   tr -d '[:space:]' < "$FAKE_DOCKER_LOG" | grep -q "'ADMIN','APPROVED','ACTIVE'" \
     || fail "최고관리자 상태값이 잘못됨"
 }
 
 test_rejects_invalid_email_before_database_call
+test_uses_backend_super_admin_email_when_argument_is_omitted
+test_rejects_email_that_differs_from_backend_configuration
 test_existing_admin_does_not_generate_new_password
 test_creates_one_admin_with_random_password
 
