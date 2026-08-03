@@ -172,7 +172,25 @@ class InquiryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(1)))
                 .andExpect(jsonPath("$.page").value(1))
-                .andExpect(jsonPath("$.totalCount").value(1));
+                .andExpect(jsonPath("$.totalCount").value(1))
+                // 수정(S15P11B106-190): 작성자에 소속 부서가 포함된다("이름 · 부서" 표시용).
+                .andExpect(jsonPath("$.items[0].author.name").value("홍길동"))
+                .andExpect(jsonPath("$.items[0].author.department.name").value("인사부"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/inquiries/{inquiryId}는 작성자 부서를 포함해 상세를 반환한다(S15P11B106-190)")
+    void inquiryDetailIncludesAuthorDepartment() throws Exception {
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member employee = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member admin = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        InquiryResponse created = inquiryService.create(login(employee), request(admin.getId()));
+
+        mockMvc.perform(get("/api/v1/inquiries/{inquiryId}", created.inquiryId())
+                        .cookie(accessTokenCookie(employee)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.author.name").value("홍길동"))
+                .andExpect(jsonPath("$.author.department.name").value("인사부"));
     }
 
     @Test

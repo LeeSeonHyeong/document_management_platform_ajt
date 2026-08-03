@@ -422,9 +422,10 @@ public class InquiryService {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // 목록 조회 시 작성자·담당자·담당자 부서를 함께 로딩해 N+1을 방지한다.
+            // 목록 조회 시 작성자·작성자 부서·담당자·담당자 부서를 함께 로딩해 N+1을 방지한다(S15P11B106-190).
             // count 쿼리에서는 fetch를 사용할 수 없으므로 일반 join으로 대체하고,
             // 조회 쿼리에서는 fetch join을 걸어 같은 join을 조건에도 재사용한다.
+            // author.department·assignee.department 모두 단일값(ManyToOne)이라 fetch를 함께 걸어도 행이 늘지 않는다.
             boolean countQuery = query.getResultType() == Long.class || query.getResultType() == long.class;
             Join<Inquiry, Member> authorJoin;
             Join<Inquiry, Member> assigneeJoin;
@@ -433,6 +434,7 @@ public class InquiryService {
                 assigneeJoin = root.join("assignee", JoinType.INNER);
             } else {
                 Fetch<Inquiry, Member> authorFetch = root.fetch("author", JoinType.INNER);
+                authorFetch.fetch("department", JoinType.INNER);
                 Fetch<Inquiry, Member> assigneeFetch = root.fetch("assignee", JoinType.INNER);
                 assigneeFetch.fetch("department", JoinType.INNER);
                 authorJoin = (Join<Inquiry, Member>) authorFetch;

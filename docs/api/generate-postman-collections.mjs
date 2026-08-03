@@ -1609,6 +1609,7 @@ const publicFolders = [
         response: [
           "`201 Created`",
           "`inquiryId`, `priority`, `status`, `createdAt`",
+          "`author`: 작성자 ID, 이름과 소속 부서",
           "`assignee`: 담당자 ID, 이름과 소속 부서",
         ],
         errors: [
@@ -1648,7 +1649,7 @@ const publicFolders = [
           "관리자는 본인이 담당자로 지정된 문의만 조회합니다.",
         ],
         response: [
-          "`items`: 문의 ID, 제목, 작성자, 담당자 이름·부서, 우선순위, 상태와 생성 시각",
+          "`items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각",
           "페이지 정보",
         ],
         errors: [
@@ -1666,7 +1667,7 @@ const publicFolders = [
         usage: "문의 상세 화면에서 사용합니다.",
         pathParams: ["`inquiryId`: 조회할 문의 ID"],
         response: [
-          "문의 제목, 내용, 작성자, 담당자 이름·부서와 상태",
+          "문의 제목, 내용, 작성자 이름·부서, 담당자 이름·부서와 상태",
           "`attachments`: 이미지 파일 정보와 downloadUrl",
           "`answer`: 답변 내용, 관리자와 답변 시각. 미답변이면 null",
         ],
