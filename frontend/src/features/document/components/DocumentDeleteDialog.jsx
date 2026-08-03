@@ -72,10 +72,11 @@ export default function DocumentDeleteDialog({
         onGoToList={onGoToList ?? onBackground ?? onClose}
         // S15P11B106-195: 걷어내기가 실패하면 문서와 원본 파일이 그대로 남는다.
         // 같은 삭제 요청을 다시 보내면 재시도된다 — 별도 재시도 API가 없다.
-        onRetry={() => {
-          setDeletion(null)
-          handleDelete()
-        }}
+        //
+        // 옛 jobId 를 먼저 지우지 않는다. 지우면 새 jobId 가 오기 전까지 이 화면이
+        // 확인 단계("삭제할까요?")로 되돌아가 깜빡인다. 끝난 작업은 폴링도 멈춰 있어
+        // 그대로 들고 있어도 부담이 없다 (useAiJobPolling).
+        onRetry={handleDelete}
         retrying={deleteMutation.isPending}
       />
     )
