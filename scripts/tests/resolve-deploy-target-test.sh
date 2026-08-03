@@ -21,6 +21,7 @@ assert_contains "$develop" 'DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/develop
 assert_contains "$develop" 'DEPLOY_HEALTHCHECK_URL=https://127.0.0.1:8090/api/v1/health'
 assert_contains "$develop" 'COMPOSE_PROJECT_NAME=ajt-develop'
 assert_contains "$develop" 'DEPLOY_TARGET_LABEL=develop 8090'
+assert_contains "$develop" 'DEPLOY_APPROVAL_REQUIRED=false'
 
 origin_develop="$(bash "$RESOLVER" origin/develop)"
 [[ "$origin_develop" == "$develop" ]] || fail 'origin/develop was not normalized to develop'
@@ -31,6 +32,7 @@ assert_contains "$master" 'DEPLOY_STATE_DIR=/var/lib/jenkins/ajt-deploy/prod'
 assert_contains "$master" 'DEPLOY_HEALTHCHECK_URL=https://127.0.0.1/api/v1/health'
 assert_contains "$master" 'COMPOSE_PROJECT_NAME=ajt-prod'
 assert_contains "$master" 'DEPLOY_TARGET_LABEL=master 443'
+assert_contains "$master" 'DEPLOY_APPROVAL_REQUIRED=true'
 
 wildcard_master="$(bash "$RESOLVER" '*/master')"
 [[ "$wildcard_master" == "$master" ]] || fail '*/master was not normalized to master'

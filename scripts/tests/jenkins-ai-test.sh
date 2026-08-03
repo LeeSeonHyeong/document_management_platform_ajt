@@ -18,10 +18,19 @@ grep -q 'scmVars.GIT_BRANCH' "$JENKINSFILE" \
 if grep -Fq 'env[pair[0]]' "$JENKINSFILE"; then
   fail 'dynamic env assignment is blocked by the Jenkins Groovy sandbox'
 fi
-for key in DEPLOY_ENV_FILE DEPLOY_STATE_DIR DEPLOY_HEALTHCHECK_URL COMPOSE_PROJECT_NAME DEPLOY_TARGET_LABEL; do
+for key in DEPLOY_ENV_FILE DEPLOY_STATE_DIR DEPLOY_HEALTHCHECK_URL COMPOSE_PROJECT_NAME DEPLOY_TARGET_LABEL DEPLOY_APPROVAL_REQUIRED; do
   grep -q "env\.${key} = pair\[1\]" "$JENKINSFILE" \
     || fail "explicit Jenkins env assignment is missing: ${key}"
 done
+
+grep -Fq "env.DEPLOY_APPROVAL_REQUIRED != 'true' && env.DEPLOY_APPROVAL_REQUIRED != 'false'" "$JENKINSFILE" \
+  || fail 'deploy approval policy is not validated'
+grep -Fq 'beforeInput true' "$JENKINSFILE" \
+  || fail 'approval condition is not evaluated before input'
+grep -Fq "env.DEPLOY_APPROVAL_REQUIRED == 'true'" "$JENKINSFILE" \
+  || fail 'manual approval is not limited by deployment policy'
+grep -q '^            input {' "$JENKINSFILE" \
+  || fail 'master manual approval input is missing'
 
 grep -q "AI_IMAGE = 'ajt-ai'" "$JENKINSFILE" \
   || fail 'AI image name is not declared'
