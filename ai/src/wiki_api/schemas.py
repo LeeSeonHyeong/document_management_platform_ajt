@@ -198,7 +198,11 @@ class CategoryChange(Strict):
 
 
 class WikiChange(Strict):
-    action: Literal["create", "update", "merge", "remove"]
+    # Spring `WikiTransformationApplier` 의 Wiki 변경 switch(ACTION_CREATE/UPDATE/DELETE)와
+    # 맞춘 값이다. 내부적으로 병합(merge)·삭제(remove)로 구분하는 것은 `changes.py`의
+    # `_WIKI_CHANGE_ACTION`이 여기로 오기 전에 둘 다 `delete`로 접는다 — Spring 쪽 페이지
+    # 삭제 처리는 병합으로 사라지는 것과 그냥 지워지는 것을 구분하지 않는다.
+    action: Literal["create", "update", "delete"]
     tempWikiId: str | None = None
     wikiId: str | None = None
     # `wiki/{scopeKey}/pages/{pageKey}.md`. **`action == "create"` 에만 실린다** (I1).

@@ -129,6 +129,8 @@ def build_router(app: FastAPI) -> APIRouter:
             response = await _assemble(
                 session, summary=result.text.strip() or "변경이 없습니다.",
                 current_categories=_category_map(session.fs.categories))
+            if payload.changeType != "document_added":
+                session.assert_backlinks_were_addressed(affected, response)
             # 사라진 문서를 가리키던 Wiki-원본문서 관계는 더 이상 `relationChanges` 로
             # 걷어내지 않는다 (S15P11B106-157) — 그 관계는 애초에 `wiki_document` 타입
             # 이었고, 이제 위키↔문서 연결은 오직 `wikiChanges[].evidence` 로만 나간다.

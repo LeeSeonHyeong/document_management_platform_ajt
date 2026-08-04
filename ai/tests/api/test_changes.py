@@ -251,7 +251,7 @@ async def test_remove_becomes_a_remove_with_no_wiki_document_unlink(vault, scope
 
     response = await build_response(fs, scope_id, summary="x")
 
-    assert response.wikiChanges[0].action == "remove"
+    assert response.wikiChanges[0].action == "delete"
     assert response.relationChanges == []
 
 
