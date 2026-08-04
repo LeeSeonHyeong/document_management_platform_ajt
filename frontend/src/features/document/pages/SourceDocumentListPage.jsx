@@ -103,8 +103,8 @@ export default function SourceDocumentListPage() {
     <section className="space-y-5">
       <DocumentSectionTabs />
 
-      <div className="flex min-h-[620px] items-stretch gap-4">
-        <aside className="flex w-[clamp(14rem,18%,18rem)] shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="flex min-h-[620px] flex-col items-stretch gap-4 lg:flex-row">
+        <aside className="flex w-full shrink-0 flex-col rounded-2xl border border-slate-200 bg-white p-4 lg:w-[clamp(14rem,18%,18rem)]">
           <div>
             <div className="flex items-center justify-between px-2 py-1">
               <h2 className="font-bold text-slate-800">부서</h2>

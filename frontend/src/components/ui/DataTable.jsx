@@ -75,7 +75,10 @@ export default function DataTable({
                       key={col.key}
                       className={cn(
                         'px-4 py-3',
-                        columnIndex === 0 ? 'text-left' : 'text-center',
+                        // 좁은 화면에서 뱃지·버튼·날짜 등이 세로로 찌그러지지 않게 줄바꿈을 막는다.
+                        // 표 자연 너비가 컨테이너를 넘으면 overflow-x-auto가 가로 스크롤을 만든다.
+                        // 첫 열은 이름+부가정보 같은 2줄 렌더가 있어 줄바꿈을 허용한다.
+                        columnIndex === 0 ? 'text-left' : 'whitespace-nowrap text-center',
                         col.className,
                       )}
                     >

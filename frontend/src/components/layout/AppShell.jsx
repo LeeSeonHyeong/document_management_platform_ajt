@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { ROLES } from '@/shared/constants/enums'
@@ -25,14 +26,25 @@ export default function AppShell() {
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   )
 
+  // 모바일(md 미만) 사이드바 드로어 열림 상태. 페이지를 옮기면 닫는다(S15P11B106-234).
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [pathname])
+
   // AI 작업 대기 목록은 셸이 들고 있는다 — 문서 관리를 벗어나도 올린 파일이 남아야 한다
   // (S15P11B106-230). 로그인 사용자에게만 필요하고 로그아웃하면 셸과 함께 사라진다.
   return (
     <AiJobQueueProvider>
       <div className="flex h-screen overflow-hidden bg-[#eef4ff]">
-        <Sidebar role={role} collapsible />
+        <Sidebar
+          role={role}
+          collapsible
+          mobileOpen={mobileNavOpen}
+          onMobileClose={() => setMobileNavOpen(false)}
+        />
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopBar />
+          <TopBar onOpenNav={() => setMobileNavOpen(true)} />
           {workspace ? (
             <main className="min-h-0 flex-1 overflow-hidden px-4 pb-4">
               <Outlet />
