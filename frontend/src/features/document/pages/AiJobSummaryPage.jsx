@@ -5,6 +5,7 @@ import { RotateCcw } from 'lucide-react'
 import { useAiJob, useRetryDocument } from '../queries'
 import { useDocumentDetails } from '../hooks/useDocumentDetails'
 import { DOC_STATUS_TONE, DOC_STATUS_LABEL } from '../status'
+import SummaryMarkdown from '../components/SummaryMarkdown'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const RETRYABLE = new Set(['failed', 'cancelled'])
@@ -70,7 +71,8 @@ export default function AiJobSummaryPage() {
                     <span className="mr-2 text-slate-400">{r.order}.</span>
                     {doc?.originalFileName ?? `문서 ${r.documentId}`}
                   </p>
-                  {r.summary && <p className="mt-1 text-sm text-slate-600">{r.summary}</p>}
+                  {/* 요약은 표·목록이 섞인 마크다운이다. 원문 그대로 두면 표 기호가 그대로 보인다. */}
+                  {r.summary && <div className="mt-1"><SummaryMarkdown markdown={r.summary} /></div>}
                   {r.status === 'failed' && r.failureReason && (
                     <p className="mt-1 text-sm text-rose-600">실패 사유: {r.failureReason}</p>
                   )}
