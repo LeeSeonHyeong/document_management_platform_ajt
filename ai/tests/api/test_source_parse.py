@@ -92,6 +92,65 @@ def test_the_source_type_is_echoed_back():
     assert body["sourceId"] == "group-7"
 
 
+def test_a_schedule_csv_source_is_accepted():
+    csv_bytes = ("제목,시작,종료\n"
+                 "전사 워크샵,2026-08-05 14:00,2026-08-05 18:00\n").encode("utf-8")
+
+    response = _post(csv_bytes, "일정.csv", sourceType="schedule", sourceId="group-7",
+                     originalFileName="일정.csv", mimeType="text/csv")
+
+    assert response.status_code == 200, response.text
+    assert "전사 워크샵" in response.json()["parsedMarkdown"]
+
+
+def test_a_schedule_xlsx_source_is_accepted(tmp_path):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.append(["제목"])
+    wb.active.append(["전사 워크샵"])
+    path = tmp_path / "일정.xlsx"
+    wb.save(path)
+
+    response = _post(path.read_bytes(), "일정.xlsx", sourceType="schedule",
+                     sourceId="group-7", originalFileName="일정.xlsx",
+                     mimeType="application/vnd.openxmlformats-officedocument"
+                              ".spreadsheetml.sheet")
+
+    assert response.status_code == 200, response.text
+    assert "전사 워크샵" in response.json()["parsedMarkdown"]
+
+
+def test_a_wiki_csv_source_is_still_rejected():
+    """FR-DOC-002 — 위키 원본은 CSV·XLSX 를 허용하지 않는다. 일정만 열었다."""
+    response = _post(b"a,b\n1,2\n", "문서.csv", sourceType="wiki",
+                     originalFileName="문서.csv", mimeType="text/csv")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_SOURCE_PARSE_REQUEST"
+
+
+def test_a_not_tabular_csv_is_a_bad_request_not_a_parse_failure():
+    """공백만 있는 CSV(빈 파일은 아니라 별도 검증에 걸리지 않는다)는 표로 인식될
+    내용이 없다 — 요청 자체의 문제이므로 400 이어야 한다 (Task 7 에서
+    `encoding_undetected`용으로 추가한 테스트와 짝을 이룬다)."""
+    response = _post(b"   \n  \n", "일정.csv", sourceType="schedule", sourceId="group-7",
+                     originalFileName="일정.csv", mimeType="text/csv")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_SOURCE_PARSE_REQUEST"
+
+
+def test_an_encoding_failure_is_a_bad_request_not_a_parse_failure():
+    """인코딩을 못 판별한 것은 요청 자체의 문제다 — 500 이 아니라 400 이어야 한다."""
+    response = _post(b"\x80\x81\x82\x83", "일정.csv", sourceType="schedule",
+                     sourceId="group-7", originalFileName="일정.csv",
+                     mimeType="text/csv")
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_SOURCE_PARSE_REQUEST"
+
+
 # ----- 400: 요청이 잘못된 경우 --------------------------------------------------
 
 
