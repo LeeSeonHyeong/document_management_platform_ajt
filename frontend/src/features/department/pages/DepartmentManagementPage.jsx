@@ -64,13 +64,18 @@ export default function DepartmentManagementPage() {
     queryFn: fetchDepartmentMembers,
   })
 
-  const departments = useMemo(
-    () =>
-      (departmentsQuery.data ?? []).filter(
-        (department) => !SYSTEM_DEPARTMENT_NAMES.has(department.name?.trim()),
-      ),
-    [departmentsQuery.data],
-  )
+  // 기본 부서('미지정')를 맨 위에 둔다 (S15P11B106-250). 부서 없는 사람이 모이는 자리라
+  // 관리자가 가장 먼저 확인해야 하고, 다른 부서와 성격이 달라 섞여 있으면 눈에 띄지 않는다.
+  // 나머지 순서는 서버가 준 그대로 유지한다.
+  const departments = useMemo(() => {
+    const visible = (departmentsQuery.data ?? []).filter(
+      (department) => !SYSTEM_DEPARTMENT_NAMES.has(department.name?.trim()),
+    )
+    return [
+      ...visible.filter(isDefaultDepartment),
+      ...visible.filter((department) => !isDefaultDepartment(department)),
+    ]
+  }, [departmentsQuery.data])
   const members = useMemo(
     () => membersQuery.data ?? [],
     [membersQuery.data],
