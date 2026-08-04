@@ -1221,7 +1221,7 @@ const publicFolders = [
         summary: "관리자와 AI 에이전트가 Wiki에 관해 나눈 대화를 조회합니다.",
         usage: "Wiki 상세 화면의 관리자 수정 대화 영역에서 사용합니다.",
         pathParams: ["`wikiId`: 대화를 조회할 Wiki ID"],
-        policy: ["관리자만 조회할 수 있으며 메시지는 Wiki ID에 연결됩니다."],
+        policy: ["관리자만 조회할 수 있습니다. 메시지 저장은 Wiki ID 단위지만, 조회는 같은 scopeKey(부서) 전체의 대화를 시간순으로 묶어서 돌려줍니다 — 같은 부서 안에서 다른 Wiki로 이동해도 대화가 이어집니다."],
         response: [
           "`items`: messageId, senderType, content, createdAt와 작업 상태",
         ],
@@ -1243,7 +1243,7 @@ const publicFolders = [
         pathParams: ["`wikiId`: 수정할 Wiki ID"],
         requestBody: ["`content`: 자연어 수정 요청"],
         policy: [
-          "AI는 해당 Wiki, 연결 문서와 기존 검수 대화만 사용합니다.",
+          "AI는 해당 Wiki, 연결 문서와 같은 scopeKey(부서)의 기존 검수 대화 전체를 사용합니다.",
           "같은 scopeKey에서 문서 변환 중이면 409 Conflict를 반환합니다.",
           "백엔드가 링크와 관계를 검증한 변경 결과는 별도 승인 없이 현재 Wiki에 반영합니다.",
         ],

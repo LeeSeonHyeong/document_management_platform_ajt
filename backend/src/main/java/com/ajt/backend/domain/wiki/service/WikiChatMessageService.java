@@ -98,7 +98,7 @@ public class WikiChatMessageService {
         Wiki wiki = findWiki(wikiId);
         requireWikiScope(currentMember, wiki);
         return new WikiChatMessageListResponse(
-                wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(wiki.id())
+                chatHistoryForScope(wiki.scopeKey())
                         .stream()
                         .map(WikiChatMessageResponse::from)
                         .toList()
@@ -113,8 +113,7 @@ public class WikiChatMessageService {
         String instruction = requireContent(content);
         requireNoUnfinishedJob(wiki.scopeKey());
 
-        List<WikiChatMessage> history =
-                wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(wiki.id());
+        List<WikiChatMessage> history = chatHistoryForScope(wiki.scopeKey());
         WikiEditResponse response = requestEdit(wiki, instruction, history);
 
         WikiChatMessage adminMessage = wikiChatMessageRepository.save(
@@ -131,6 +130,19 @@ public class WikiChatMessageService {
                 WikiChatMessageResponse.from(agentMessage),
                 toDetail(wiki)
         );
+    }
+
+    /**
+     * 같은 scope(부서)의 위키를 넘나드는 대화 이력입니다(S15P11B106-220).
+     *
+     * <p>메시지는 지금도 위키(wiki_id) 단위로 저장된다(FR-AI-004) — 여기서는 조회만 그 scope에
+     * 속한 위키 전체로 넓힌다. 위키 페이지를 옮겨 다녀도 같은 부서 안이면 한 대화로 이어진다.
+     */
+    private List<WikiChatMessage> chatHistoryForScope(String scopeKey) {
+        List<Long> wikiIdsInScope = wikiRepository.findAllByScopeKey(scopeKey).stream()
+                .map(Wiki::id)
+                .toList();
+        return wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(wikiIdsInScope);
     }
 
     /**
