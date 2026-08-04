@@ -57,7 +57,6 @@ export default function SourceDocumentListPage() {
     return sortOrder === 'latest' ? right - left : left - right
   })
   const allDocuments = [...previewDocuments, ...(allData?.items ?? [])]
-  const visibleDepartments = departments.slice(0, 5)
   const selectedDepartment = departments.find(
     (department) => String(department.departmentId) === String(filters.departmentId),
   )
@@ -108,13 +107,13 @@ export default function SourceDocumentListPage() {
           <div>
             <div className="flex items-center justify-between px-2 py-1">
               <h2 className="font-bold text-slate-800">부서</h2>
-              <span className="text-xs font-semibold text-slate-400">{visibleDepartments.length}</span>
+              <span className="text-xs font-semibold text-slate-400">{departments.length}</span>
             </div>
 
             <DepartmentDropdown
               selectedDepartment={selectedDepartment}
               selectedDepartmentId={filters.departmentId}
-              departments={visibleDepartments}
+              departments={departments}
               documents={allDocuments}
               onSelect={(departmentId) =>
                 updateFilters({ departmentId: departmentId || undefined, categoryId: undefined })
@@ -255,7 +254,7 @@ function DepartmentDropdown({ selectedDepartment, selectedDepartmentId, departme
           <div
             ref={menuRef}
             style={{ position: 'fixed', top: position.top, left: position.left, width: position.width }}
-            className="z-[80] space-y-0.5 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+            className="z-[80] max-h-80 space-y-0.5 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
           >
             <FilterItem
               label="전체 부서"
