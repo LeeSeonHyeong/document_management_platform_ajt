@@ -111,17 +111,10 @@ export default function DocumentTable({
         </span>
       ),
     },
-    {
-      // 이 컬럼이 없어서 관리자가 업로드한 문서가 지금 어느 단계인지 알 수 없었다
-      // (S15P11B106-200). 작업이 끝나 요약 목록에 나타날 때까지 화면 어디에도 없었다.
-      key: 'status',
-      header: '상태',
-      render: (doc) => (
-        <Badge tone={STATUS_TONE[doc.status] ?? 'neutral'}>
-          {STATUS_LABEL[doc.status] ?? doc.status}
-        </Badge>
-      ),
-    },
+    // 상태 컬럼을 두지 않는다 (S15P11B106-248). 이 화면은 「지금 Wiki 의 근거가 무엇인가」를
+    // 보는 곳이고, AI 작업이 어떻게 됐는지는 요약 목록의 관심사다. S15P11B106-200 이 진행
+    // 상황을 볼 곳이 없어 여기에 넣었지만, 그때 요약 목록에도 「진행 중인 AI 작업」 묶음을
+    // 함께 넣어서 지금은 두 곳에 있다 — 제자리인 요약 목록만 남긴다.
     {
       key: 'manage',
       header: '관리',
