@@ -112,7 +112,8 @@ class WikiChatMessageServiceTest {
         adminLoggedIn();
         given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정\n본문");
-        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L))
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
                 .willReturn(List.of(existingAgentMessage(wiki, "이전 응답입니다.")));
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document(15L, "취업규칙.pdf")));
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
@@ -157,7 +158,8 @@ class WikiChatMessageServiceTest {
         adminLoggedIn();
         given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정\n본문");
-        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L))
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
                 .willReturn(List.of(existingAgentMessage(wiki, "이전 응답입니다.")));
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document(15L, "취업규칙.pdf")));
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
@@ -252,7 +254,8 @@ class WikiChatMessageServiceTest {
         adminLoggedIn();
         given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정");
-        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L)).willReturn(List.of());
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L))).willReturn(List.of());
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
         given(aiClient.editWiki(any(WikiEditRequest.class))).willThrow(new AiClientException(
                 AiClientFailureType.SERVER_ERROR,
@@ -278,7 +281,8 @@ class WikiChatMessageServiceTest {
         adminLoggedIn();
         given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정");
-        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L)).willReturn(List.of());
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L))).willReturn(List.of());
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
         given(aiClient.editWiki(any(WikiEditRequest.class))).willThrow(new AiClientException(
                 AiClientFailureType.CONNECTION_FAILED,
@@ -307,8 +311,31 @@ class WikiChatMessageServiceTest {
         assign(admin, "id", 1L);
         assign(admin, "createdAt", java.time.Instant.parse("2026-07-29T09:00:00Z"));
         WikiChatMessage agent = existingAgentMessage(wiki, "반영했습니다.");
-        given(wikiChatMessageRepository.findAllByWikiIdOrderByCreatedAtAscIdAsc(101L))
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
                 .willReturn(List.of(admin, agent));
+
+        WikiChatMessageListResponse response = service.getChatMessages(101L);
+
+        assertThat(response.items())
+                .extracting(item -> item.messageId() + ":" + item.senderType())
+                .containsExactly("1:admin", "2:agent");
+    }
+
+    @Test
+    @DisplayName("같은 scope의 다른 위키에서 나눈 대화도 함께 조회한다(S15P11B106-220)")
+    void getsChatMessagesAcrossWikisInSameScope() throws Exception {
+        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(), List.of());
+        Wiki otherWikiInScope = wiki(108L, 9L, "근태 관리", List.of(), List.of());
+        adminLoggedIn();
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        WikiChatMessage aboutOtherWiki = WikiChatMessage.fromAdmin(otherWikiInScope, 10L, "근태 페이지도 정리해줘.");
+        assign(aboutOtherWiki, "id", 1L);
+        assign(aboutOtherWiki, "createdAt", java.time.Instant.parse("2026-07-29T09:00:00Z"));
+        WikiChatMessage aboutThisWiki = existingAgentMessage(wiki, "휴가 페이지를 반영했습니다.");
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki, otherWikiInScope));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L, 108L)))
+                .willReturn(List.of(aboutOtherWiki, aboutThisWiki));
 
         WikiChatMessageListResponse response = service.getChatMessages(101L);
 

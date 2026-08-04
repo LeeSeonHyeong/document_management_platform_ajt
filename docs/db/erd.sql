@@ -233,6 +233,9 @@ CREATE TABLE `wiki_search_chunk` (
         ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+-- 저장은 wiki_id 단위(FR-AI-004)지만, 조회(GET /wikis/{wikiId}/chat-messages)는 같은
+-- scope_key(부서)의 wiki_id 전체를 묶어서 보여준다(S15P11B106-220) — 위키 페이지를
+-- 옮겨 다녀도 같은 부서 안이면 대화가 이어진다. 스키마·컬럼은 그대로다.
 CREATE TABLE `wiki_chat_message` (
     `message_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `wiki_id` BIGINT UNSIGNED NULL,
