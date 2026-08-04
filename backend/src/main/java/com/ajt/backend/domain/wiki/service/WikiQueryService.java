@@ -11,7 +11,6 @@ import com.ajt.backend.domain.document.service.CurrentMemberProvider;
 import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
-import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.wiki.api.WikiCategoryListResponse;
 import com.ajt.backend.domain.wiki.api.WikiDetailResponse;
 import com.ajt.backend.domain.wiki.api.WikiListResponse;
@@ -49,7 +48,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Wiki 조회 서비스입니다.
  * Wiki 목록·검색(WIKI-01)과 Wiki 공간 목록, 공간별 카테고리 목록, Wiki 상세 조회를 담당합니다.
- * 관리자는 전체를, 사원은 접근 가능한 Wiki(전체 공개 ALL + 본인 소속 부서 공개)만 조회한다(FR-ACL-002).
+ * 최고관리자는 전체를, 부서관리자와 사원은 접근 가능한 Wiki(전체 공개 ALL + 본인 소속 부서 공개)만
+ * 조회한다(FR-ACL-002·003, 조회 범위는 S15P11B106-229에서 부서관리자를 사원과 동일하게 되돌림).
  */
 @Service
 public class WikiQueryService {
@@ -104,19 +104,11 @@ public class WikiQueryService {
     ) {
         CurrentMember currentMember = currentMemberProvider.currentMember();
 
-        // 사원=전체+내 부서, 최고관리자=제한 없음(null), 부서관리자=담당 부서 단일 scope만(S15P11B106-199).
-        Set<String> allowedScopeKeys;
-        if (!currentMember.isAdmin()) {
-            allowedScopeKeys = accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
-        } else {
-            ScopeAccess scope = departmentScopePolicy.resolve(currentMember.memberId());
-            if (scope.isSuperAdmin()) {
-                allowedScopeKeys = null;
-            } else {
-                String managed = scope.managedScopeKey();
-                allowedScopeKeys = managed == null ? Set.of() : Set.of(managed);
-            }
-        }
+        // 조회 권한(S15P11B106-229): 최고관리자만 전체 Wiki 조회(제한 없음, null). 부서관리자는 사원과
+        //   동일하게 전체공개(ALL) + 본인 소속 부서가 포함된 Wiki를 조회한다. (콘텐츠 관리 제한은 별도로 유지.)
+        Set<String> allowedScopeKeys = isSuperAdmin(currentMember)
+                ? null
+                : accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
 
         Pageable pageable = createPageable(page, size, sort);
         Specification<Wiki> specification = wikiSpecification(allowedScopeKeys, scopeKey, wikiCategoryId, keyword);
@@ -200,43 +192,36 @@ public class WikiQueryService {
     // ===== 접근 권한 =====
 
     private AccessScope accessScopeOf(CurrentMember member) {
-        if (!member.isAdmin()) {
-            return AccessScope.forEmployee(memberDepartmentId(member.memberId()));
-        }
-        // 수정(S15P11B106-199): 관리자는 최고관리자/부서관리자로 구분한다.
-        //   최고관리자는 모든 Wiki 공간, 부서관리자는 담당 부서 단일 공개 범위만 조회할 수 있다(전체·타부서·복수부서 제외).
-        ScopeAccess scope = departmentScopePolicy.resolve(member.memberId());
-        if (scope.isSuperAdmin()) {
+        // 수정(S15P11B106-229): Wiki '조회'는 최고관리자만 전체 접근이고, 부서관리자는 사원과 동일하게
+        //   전체공개(ALL) + 본인 소속 부서 포함 Wiki만 조회한다. (콘텐츠 관리 제한은 WikiChatMessageService 등
+        //   관리 경로에서 별도로 유지한다.)
+        if (isSuperAdmin(member)) {
             return AccessScope.forSuperAdmin();
         }
-        return AccessScope.forDepartmentManager(scope.managedDepartmentId());
+        return AccessScope.forEmployee(memberDepartmentId(member.memberId()));
     }
 
-    private record AccessScope(boolean superAdmin, boolean departmentManager, Long departmentId) {
+    // 최고관리자 여부(설정 이메일 기준). 부서관리자·사원은 false → 조회 시 사원과 동일한 범위를 쓴다.
+    private boolean isSuperAdmin(CurrentMember member) {
+        return member.isAdmin() && departmentScopePolicy.resolve(member.memberId()).isSuperAdmin();
+    }
+
+    // 수정(S15P11B106-229): 조회 권한은 '최고관리자 전체' vs '그 외(부서관리자·사원) 동일'만 구분한다.
+    private record AccessScope(boolean superAdmin, Long departmentId) {
 
         static AccessScope forSuperAdmin() {
-            return new AccessScope(true, false, null);
-        }
-
-        static AccessScope forDepartmentManager(Long managedDepartmentId) {
-            return new AccessScope(false, true, managedDepartmentId);
+            return new AccessScope(true, null);
         }
 
         static AccessScope forEmployee(Long departmentId) {
-            return new AccessScope(false, false, departmentId);
+            return new AccessScope(false, departmentId);
         }
 
         boolean canAccess(WikiScope scope) {
             if (superAdmin) {
                 return true;
             }
-            if (departmentManager) {
-                // 부서관리자: 담당 부서 단일 부서 공개 범위만(전체·타부서·복수부서 차단).
-                return departmentId != null
-                        && scope.visibilityType() == WikiScopeVisibilityType.DEPARTMENT
-                        && scope.departmentRefs().equals(List.of(departmentId));
-            }
-            // 사원: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위.
+            // 부서관리자·사원: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위(복수부서 포함).
             if (scope.visibilityType() == WikiScopeVisibilityType.ALL) {
                 return true;
             }

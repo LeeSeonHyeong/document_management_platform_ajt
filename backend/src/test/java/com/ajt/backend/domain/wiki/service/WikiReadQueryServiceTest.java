@@ -226,6 +226,53 @@ class WikiReadQueryServiceTest {
                 .isEqualTo(ErrorCode.WIKI_NOT_FOUND);
     }
 
+    @Test
+    @DisplayName("Wiki 상세는 부서관리자에게 전체 공개(ALL) Wiki를 반환한다(S15P11B106-229)")
+    void getWikiAllowsDepartmentManagerForAllScope() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member manager = departmentManager(dev, "mgr@ajt.com", "김부서장");
+        wikiScopeRepository.save(WikiScope.all());
+        WikiCategory category = wikiCategoryRepository.save(WikiCategory.create("ALL", "공통", null));
+        Wiki wiki = saveWiki("ALL", category.id(), "전사 규정");
+        authenticate(manager);
+
+        WikiDetailResponse response = wikiQueryService.getWiki(wiki.id());
+
+        assertThat(response.title()).isEqualTo("전사 규정");
+        assertThat(response.scopeKey()).isEqualTo("ALL");
+    }
+
+    @Test
+    @DisplayName("Wiki 상세는 부서관리자에게 본인 소속 부서 Wiki를 반환한다(S15P11B106-229)")
+    void getWikiAllowsDepartmentManagerForOwnDepartmentScope() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member manager = departmentManager(dev, "mgr@ajt.com", "김부서장");
+        WikiScope devScope = wikiScopeRepository.save(WikiScope.department(List.of(dev.getId())));
+        Wiki wiki = saveWiki(devScope.scopeKey(), 1L, "개발 규정");
+        authenticate(manager);
+
+        WikiDetailResponse response = wikiQueryService.getWiki(wiki.id());
+
+        assertThat(response.title()).isEqualTo("개발 규정");
+        assertThat(response.scopeKey()).isEqualTo(devScope.scopeKey());
+    }
+
+    @Test
+    @DisplayName("Wiki 상세는 부서관리자에게 타부서 전용 Wiki를 404로 숨긴다(S15P11B106-229)")
+    void getWikiHidesOtherDepartmentScopeFromDepartmentManager() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Department hr = departmentRepository.save(new Department("인사부"));
+        Member manager = departmentManager(dev, "mgr@ajt.com", "김부서장");
+        WikiScope hrScope = wikiScopeRepository.save(WikiScope.department(List.of(hr.getId())));
+        Wiki wiki = saveWiki(hrScope.scopeKey(), 1L, "인사 규정");
+        authenticate(manager);
+
+        assertThatThrownBy(() -> wikiQueryService.getWiki(wiki.id()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.WIKI_NOT_FOUND);
+    }
+
     private Wiki saveWiki(String scopeKey, long categoryId, String title) {
         Wiki wiki = wikiRepository.save(Wiki.create(scopeKey, categoryId, title));
         wiki.assignStoragePath();
@@ -241,6 +288,14 @@ class WikiReadQueryServiceTest {
     private Member admin(Department department, String email, String name) {
         return Member.approved(department, email, name, passwordEncoder.encode("password123!"),
                 "AJT-2026-" + Math.abs(email.hashCode() % 10000), Role.ADMIN);
+    }
+
+    // 부서관리자: 설정 이메일(admin@ajt.com)이 아닌 ADMIN을 만들고 해당 부서의 manager로 지정한다.
+    private Member departmentManager(Department department, String email, String name) {
+        Member manager = memberRepository.save(admin(department, email, name));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        return manager;
     }
 
     private Member employee(Department department, String email, String name, String employeeNo) {

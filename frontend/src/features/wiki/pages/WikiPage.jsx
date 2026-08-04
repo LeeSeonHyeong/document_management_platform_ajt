@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { EmptyState } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
-import { ROLES } from '@/shared/constants/enums'
+import { qk } from '@/shared/api/queryKeys'
+import { fetchDepartments } from '@/api/departments'
 import WikiNavSidebar from '../components/WikiNavSidebar'
 import WikiDetail from '../components/WikiDetail'
 import WikiAgentChat from '../components/WikiAgentChat'
@@ -11,6 +13,8 @@ import WikiArticleBar from '../components/WikiArticleBar'
 import WikiEvidenceSections from '../components/WikiEvidenceSections'
 import ColumnResizer from '../components/ColumnResizer'
 import { CHAT, TREE, clampWidth, loadWidth, saveWidth } from '../panelWidths'
+import { useWiki } from '../queries'
+import { canUseWikiAgentChat } from '../agentChatAccess'
 
 // Figma 6R(관리자)·S2(사원) — Wiki 화면.
 //
@@ -85,8 +89,24 @@ function Drawer({ open, onClose, side, title, width = 'w-[min(20rem,88vw)]', chi
 export default function WikiPage() {
   const { wikiId } = useParams()
   const navigate = useNavigate()
-  const { role } = useAuth()
-  const isAdmin = role === ROLES.ADMIN
+  const { user, isSuperAdmin } = useAuth()
+
+  // AI 수정 대화 패널 노출 판정(S15P11B106-229 후속).
+  // 조회는 넓지만 수정 대화는 관리 권한이라, role=admin이 아니라 최고관리자 여부 + 담당 부서 단일 scope로 판단한다.
+  const { data: wiki } = useWiki(wikiId)
+  const departmentsQuery = useQuery({ queryKey: qk.departments.list, queryFn: fetchDepartments })
+  // 로그인 사용자가 manager로 지정된 부서(= 관리 가능한 담당 부서). 없으면 null.
+  const managedDepartment =
+    (user?.userId &&
+      (departmentsQuery.data ?? []).find(
+        (department) => department.manager && String(department.manager.userId) === String(user.userId),
+      )) ||
+    null
+  const canManageChat = canUseWikiAgentChat({
+    isSuperAdmin,
+    managedDepartmentId: managedDepartment?.departmentId ?? null,
+    scopeKey: wiki?.scopeKey,
+  })
 
   const [treeOpen, setTreeOpen] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
@@ -145,7 +165,7 @@ export default function WikiPage() {
   )
 
   const tree = <WikiNavSidebar selectedWikiId={wikiId} onSelectWiki={selectWiki} />
-  const chat = wikiId && isAdmin ? <WikiAgentChat wikiId={wikiId} /> : null
+  const chat = wikiId && canManageChat ? <WikiAgentChat wikiId={wikiId} /> : null
 
   return (
     <div ref={rowRef} className="flex h-full min-h-0 items-stretch pt-3">
