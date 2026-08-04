@@ -1239,7 +1239,8 @@ const publicFolders = [
         pathParams: ["`wikiId`: 대화를 조회할 Wiki ID"],
         policy: ["관리자만 조회할 수 있습니다. 메시지 저장은 Wiki ID 단위지만, 조회는 같은 scopeKey(부서) 전체의 대화를 시간순으로 묶어서 돌려줍니다 — 같은 부서 안에서 다른 Wiki로 이동해도 대화가 이어집니다."],
         response: [
-          "`items`: messageId, senderType, content, createdAt와 작업 상태",
+          "`items`: messageId, senderType, content, createdAt, wikiId, wikiTitle",
+          "`wikiId`·`wikiTitle`: 해당 메시지가 관계된 Wiki. 관리자 메시지는 보낸 시점에 보고 있던 Wiki, 에이전트 메시지는 그 지시로 실제 변경된 Wiki입니다(여러 Wiki가 바뀌었으면 첫 번째만). Wiki가 하드 삭제되었으면 wikiId는 null입니다.",
         ],
         errors: [
           "`403 Forbidden`: 관리자 권한 없음",
@@ -1265,7 +1266,7 @@ const publicFolders = [
         ],
         response: [
           "`200 OK`",
-          "`adminMessage`, `agentMessage`, `updatedWiki`",
+          "`adminMessage`, `agentMessage`(각각 wikiId·wikiTitle 포함), `updatedWiki`",
         ],
         errors: [
           "`400 Bad Request`: 내용이 비어 있음",

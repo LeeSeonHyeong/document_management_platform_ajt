@@ -414,7 +414,9 @@ const collectionVariable = (collection, key) =>
 // 이력에 무엇이 바뀌었는지 남기기 위해서다(S15P11B106-202). 필드 추가라 patch 다.
 // 1.13.0 은 `GET /api/v1/wikis/{wikiId}/file`(Wiki 본문 다운로드) 신설이다 — 기존 요청은
 // 그대로지만 새 엔드포인트 추가라 minor 다(S15P11B106-231).
-const expectedContractVersion = "1.13.0";
+// 1.13.1 은 Wiki 관리자 대화 메시지 응답에 wikiId·wikiTitle 을 더한 것이다 — 에이전트 메시지가
+// 실제로 어느 Wiki를 바꿨는지 보여주기 위해서다(S15P11B106-243). 필드 추가라 patch 다.
+const expectedContractVersion = "1.13.1";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

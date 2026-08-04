@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.13.0이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.13.1이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -47,7 +47,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.13.0",
+      "value": "1.13.1",
       "type": "string"
     },
     {
@@ -3121,7 +3121,7 @@
                 }
               ]
             },
-            "description": "관리자와 AI 에이전트가 Wiki에 관해 나눈 대화를 조회합니다.\nWiki 상세 화면의 관리자 수정 대화 영역에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 대화를 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 관리자만 조회할 수 있습니다. 메시지 저장은 Wiki ID 단위지만, 조회는 같은 scopeKey(부서) 전체의 대화를 시간순으로 묶어서 돌려줍니다 — 같은 부서 안에서 다른 Wiki로 이동해도 대화가 이어집니다.\n\n### Response\n- `items`: messageId, senderType, content, createdAt와 작업 상태\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 Wiki"
+            "description": "관리자와 AI 에이전트가 Wiki에 관해 나눈 대화를 조회합니다.\nWiki 상세 화면의 관리자 수정 대화 영역에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 대화를 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n- 관리자만 조회할 수 있습니다. 메시지 저장은 Wiki ID 단위지만, 조회는 같은 scopeKey(부서) 전체의 대화를 시간순으로 묶어서 돌려줍니다 — 같은 부서 안에서 다른 Wiki로 이동해도 대화가 이어집니다.\n\n### Response\n- `items`: messageId, senderType, content, createdAt, wikiId, wikiTitle\n- `wikiId`·`wikiTitle`: 해당 메시지가 관계된 Wiki. 관리자 메시지는 보낸 시점에 보고 있던 Wiki, 에이전트 메시지는 그 지시로 실제 변경된 Wiki입니다(여러 Wiki가 바뀌었으면 첫 번째만). Wiki가 하드 삭제되었으면 wikiId는 null입니다.\n\n### Error\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 Wiki"
           },
           "response": [],
           "event": [
@@ -3173,7 +3173,7 @@
                 }
               ]
             },
-            "description": "관리자가 AI 에이전트에게 Wiki 수정 지시를 전송합니다.\nWiki 상세 화면의 관리자 대화 입력 영역에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 수정할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n- `content`: 자연어 수정 요청\n\n### 정책\n- AI는 해당 Wiki, 연결 문서와 같은 scopeKey(부서)의 기존 검수 대화 전체를 사용합니다.\n- 같은 scopeKey에서 문서 변환 중이면 409 Conflict를 반환합니다.\n- 백엔드가 링크와 관계를 검증한 변경 결과는 별도 승인 없이 현재 Wiki에 반영합니다.\n\n### Response\n- `200 OK`\n- `adminMessage`, `agentMessage`, `updatedWiki`\n\n### Error\n- `400 Bad Request`: 내용이 비어 있음\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 Wiki\n- `409 Conflict`: 동일 Wiki 수정 작업이 처리 중",
+            "description": "관리자가 AI 에이전트에게 Wiki 수정 지시를 전송합니다.\nWiki 상세 화면의 관리자 대화 입력 영역에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 수정할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n- `content`: 자연어 수정 요청\n\n### 정책\n- AI는 해당 Wiki, 연결 문서와 같은 scopeKey(부서)의 기존 검수 대화 전체를 사용합니다.\n- 같은 scopeKey에서 문서 변환 중이면 409 Conflict를 반환합니다.\n- 백엔드가 링크와 관계를 검증한 변경 결과는 별도 승인 없이 현재 Wiki에 반영합니다.\n\n### Response\n- `200 OK`\n- `adminMessage`, `agentMessage`(각각 wikiId·wikiTitle 포함), `updatedWiki`\n\n### Error\n- `400 Bad Request`: 내용이 비어 있음\n- `403 Forbidden`: 관리자 권한 없음\n- `404 Not Found`: 존재하지 않는 Wiki\n- `409 Conflict`: 동일 Wiki 수정 작업이 처리 중",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"content\": \"중복된 휴가 규정을 하나로 정리해줘.\"\n}",

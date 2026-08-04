@@ -53,6 +53,9 @@
  * @property {'admin'|'agent'} senderType
  * @property {string} content
  * @property {string} createdAt
+ * @property {string|null} wikiId - 이 메시지가 관계된 Wiki. 관리자 메시지는 보낸 시점에 보던 Wiki,
+ *   에이전트 메시지는 그 지시로 실제 변경된 Wiki. 하드 삭제되었으면 null.
+ * @property {string|null} wikiTitle
  */
 
 /**

@@ -40,8 +40,10 @@ class WikiChatMessageControllerTest {
     @DisplayName("대화 조회는 items에 발신 주체와 내용을 담아 반환한다")
     void getsChatMessages() throws Exception {
         given(wikiChatMessageService.getChatMessages(101L)).willReturn(new WikiChatMessageListResponse(List.of(
-                new WikiChatMessageResponse("1", "admin", "중복 규정을 정리해줘.", Instant.parse("2026-07-29T09:00:00Z")),
-                new WikiChatMessageResponse("2", "agent", "반영했습니다.", Instant.parse("2026-07-29T09:00:30Z"))
+                new WikiChatMessageResponse(
+                        "1", "admin", "중복 규정을 정리해줘.", Instant.parse("2026-07-29T09:00:00Z"), "101", "휴가 규정"),
+                new WikiChatMessageResponse(
+                        "2", "agent", "반영했습니다.", Instant.parse("2026-07-29T09:00:30Z"), "101", "휴가 규정")
         )));
 
         mockMvc.perform(get("/api/v1/wikis/101/chat-messages"))
@@ -50,6 +52,8 @@ class WikiChatMessageControllerTest {
                 .andExpect(jsonPath("$.items[0].senderType").value("admin"))
                 .andExpect(jsonPath("$.items[0].content").value("중복 규정을 정리해줘."))
                 .andExpect(jsonPath("$.items[0].createdAt").value("2026-07-29T09:00:00Z"))
+                .andExpect(jsonPath("$.items[0].wikiId").value("101"))
+                .andExpect(jsonPath("$.items[0].wikiTitle").value("휴가 규정"))
                 .andExpect(jsonPath("$.items[1].senderType").value("agent"));
     }
 
@@ -73,13 +77,17 @@ class WikiChatMessageControllerTest {
                                 "3",
                                 "admin",
                                 "중복 규정을 정리해줘.",
-                                Instant.parse("2026-07-29T09:10:00Z")
+                                Instant.parse("2026-07-29T09:10:00Z"),
+                                "101",
+                                "휴가 규정"
                         ),
                         new WikiChatMessageResponse(
                                 "4",
                                 "agent",
                                 "중복된 연차 항목을 정리했습니다.",
-                                Instant.parse("2026-07-29T09:10:20Z")
+                                Instant.parse("2026-07-29T09:10:20Z"),
+                                "101",
+                                "휴가 규정"
                         ),
                         new WikiDetailResponse(
                                 "101",

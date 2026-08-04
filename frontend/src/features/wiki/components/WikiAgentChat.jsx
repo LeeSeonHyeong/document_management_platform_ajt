@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowRight, Sparkles } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowRight, FileText, Sparkles } from 'lucide-react'
 import { Button, useToast } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
 import { useSendWikiChatMessage, useWiki, useWikiChatMessages, useWikiSpaces } from '../queries'
@@ -22,6 +23,30 @@ function useScopeLabel(wikiId) {
   if (!wiki) return null
   const space = spaces.find((item) => item.scopeKey === wiki.scopeKey)
   return space?.displayName ?? wiki.scopeKey
+}
+
+// 에이전트 메시지가 실제로 바꾼 위키로 가는 태그(S15P11B106-243).
+// 대화는 scope 전체를 넘나들 수 있어 지금 보고 있는 위키와 다를 수 있다 — 눌러서 바로 이동한다.
+function WikiLinkTag({ wikiId, wikiTitle, currentWikiId }) {
+  const navigate = useNavigate()
+  if (!wikiId) return null
+  const isCurrent = wikiId === currentWikiId
+  return (
+    <button
+      type="button"
+      onClick={() => navigate(`/wiki/${wikiId}`)}
+      disabled={isCurrent}
+      className={cn(
+        'mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        isCurrent
+          ? 'cursor-default border-slate-200 text-slate-400'
+          : 'border-primary-200 bg-primary-50 text-primary-700 hover:bg-primary-100',
+      )}
+    >
+      <FileText className="size-3 shrink-0" />
+      <span className="truncate">{wikiTitle ?? '위키'}</span>
+    </button>
+  )
 }
 
 export default function WikiAgentChat({ wikiId }) {
@@ -105,6 +130,13 @@ export default function WikiAgentChat({ wikiId }) {
                   >
                     <ChatMarkdown markdown={message.content} tone={message.senderType} />
                   </div>
+                  {agent && (
+                    <WikiLinkTag
+                      wikiId={message.wikiId}
+                      wikiTitle={message.wikiTitle}
+                      currentWikiId={wikiId}
+                    />
+                  )}
                   <span className="mt-1 block text-right text-[11px] text-slate-300">
                     {formatTime(message.createdAt)}
                   </span>
