@@ -68,6 +68,7 @@ class WikiQueryServiceScopeAccessTest {
     private long deptManagerId;
     private String scopeD2;
     private String scopeD3;
+    private String scopeD2D3;
 
     @BeforeEach
     void seed() {
@@ -87,18 +88,23 @@ class WikiQueryServiceScopeAccessTest {
         wikiScopeRepository.save(WikiScope.all());
         scopeD2 = wikiScopeRepository.save(WikiScope.department(List.of(department2.getId()))).scopeKey();
         scopeD3 = wikiScopeRepository.save(WikiScope.department(List.of(department3.getId()))).scopeKey();
+        // 본인 부서(D2)가 포함된 복수부서 공개 범위(S15P11B106-229). 사원·부서관리자 모두 조회 가능해야 한다.
+        scopeD2D3 = wikiScopeRepository.save(
+                WikiScope.department(List.of(department2.getId(), department3.getId()))).scopeKey();
 
         long categoryAll = wikiCategoryRepository.save(WikiCategory.create("ALL", "공통", null)).id();
         long categoryD2 = wikiCategoryRepository.save(WikiCategory.create(scopeD2, "영업", null)).id();
         long categoryD3 = wikiCategoryRepository.save(WikiCategory.create(scopeD3, "기획", null)).id();
+        long categoryD2D3 = wikiCategoryRepository.save(WikiCategory.create(scopeD2D3, "영업기획", null)).id();
 
         wikiRepository.save(Wiki.create("ALL", categoryAll, "전사 위키"));
         wikiRepository.save(Wiki.create(scopeD2, categoryD2, "영업 위키"));
         wikiRepository.save(Wiki.create(scopeD3, categoryD3, "기획 위키"));
+        wikiRepository.save(Wiki.create(scopeD2D3, categoryD2D3, "영업+기획 위키"));
     }
 
     @Test
-    @DisplayName("사원은 전체 공개(ALL)와 본인 소속 부서(D2) Wiki만 보고, 다른 부서(D3)는 제외된다")
+    @DisplayName("사원은 전체 공개(ALL)·본인 소속 부서(D2)·본인 부서 포함 복수부서(D2+D3) Wiki를 보고, 타부서(D3)는 제외된다")
     void employeeSeesOnlyAccessibleScopes() {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(employeeId, CurrentMemberRole.EMPLOYEE));
@@ -108,12 +114,12 @@ class WikiQueryServiceScopeAccessTest {
         List<String> scopeKeys = response.items().stream()
                 .map(WikiSummaryResponse::scopeKey)
                 .toList();
-        assertThat(scopeKeys).containsExactlyInAnyOrder("ALL", scopeD2);
+        assertThat(scopeKeys).containsExactlyInAnyOrder("ALL", scopeD2, scopeD2D3);
         assertThat(scopeKeys).doesNotContain(scopeD3);
     }
 
     @Test
-    @DisplayName("관리자는 접근 제한 없이 모든 공개범위의 Wiki를 본다")
+    @DisplayName("최고관리자는 접근 제한 없이 모든 공개범위의 Wiki를 본다")
     void adminSeesAllScopes() {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(superAdminId, CurrentMemberRole.ADMIN));
@@ -123,12 +129,12 @@ class WikiQueryServiceScopeAccessTest {
         List<String> scopeKeys = response.items().stream()
                 .map(WikiSummaryResponse::scopeKey)
                 .toList();
-        assertThat(scopeKeys).containsExactlyInAnyOrder("ALL", scopeD2, scopeD3);
+        assertThat(scopeKeys).containsExactlyInAnyOrder("ALL", scopeD2, scopeD3, scopeD2D3);
     }
 
     @Test
-    @DisplayName("부서관리자는 담당 부서(D2) Wiki만 보고 전체(ALL)·타부서(D3)는 제외된다(S15P11B106-199)")
-    void departmentManagerSeesOnlyManagedScope() {
+    @DisplayName("부서관리자는 사원과 동일하게 전체(ALL)·본인 부서(D2)·본인 부서 포함 복수부서(D2+D3)를 보고, 타부서(D3)는 제외된다(S15P11B106-229)")
+    void departmentManagerSeesSameScopesAsEmployee() {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(deptManagerId, CurrentMemberRole.ADMIN));
 
@@ -137,7 +143,7 @@ class WikiQueryServiceScopeAccessTest {
         List<String> scopeKeys = response.items().stream()
                 .map(WikiSummaryResponse::scopeKey)
                 .toList();
-        assertThat(scopeKeys).containsExactly(scopeD2);
-        assertThat(scopeKeys).doesNotContain("ALL", scopeD3);
+        assertThat(scopeKeys).containsExactlyInAnyOrder("ALL", scopeD2, scopeD2D3);
+        assertThat(scopeKeys).doesNotContain(scopeD3);
     }
 }
