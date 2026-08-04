@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import re
 
+from agent_runtime.reply_sanitizer import scrub_internal_tokens
+
 from .schemas import (CategoryChange, Evidence, IndexEntry, RelationChange,
                       TransformResponse, WikiChange)
 
@@ -122,9 +124,16 @@ def parse_index_entries(index_markdown: str, refs: TempRefs) -> list[IndexEntry]
         if not ref or ref in seen:
             continue
         seen.add(ref)
+        # 이 요약이 `wiki.summary` 가 되고, 위키 상세 화면의 **제목 바로 아래**에 뜬다
+        # (프론트 `WikiDetail.jsx`). 에이전트 답변이 아니라 목차 마크다운에서 파싱해 온
+        # 값이라 `sanitize_admin_reply` 를 지나지 않는다 — 그래서 `document-32` 같은 내부
+        # 토큰이 화면까지 그대로 갔다(실측: 위키 8·10·11·12 의 요약). 여기서 걷어낸다.
+        # 제목은 손대지 않는다. 에이전트가 지은 사람 읽는 이름이라 내부 토큰이 들어갈 일이
+        # 없고, 괜히 걸면 정당한 제목을 깎을 위험만 남는다.
         entries.append(IndexEntry(wikiRef=ref, order=len(entries) + 1,
                                   title=title.strip(),
-                                  summary=(summary or "").strip() or None))
+                                  summary=scrub_internal_tokens(
+                                      (summary or "").strip()) or None))
     return entries
 
 
