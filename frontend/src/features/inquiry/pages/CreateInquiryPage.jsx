@@ -39,6 +39,7 @@ export default function CreateInquiryPage() {
   const [assigneeOpen, setAssigneeOpen] = useState(false)
   const [assigneeKeyword, setAssigneeKeyword] = useState('')
   const [attachments, setAttachments] = useState([])
+  const [isDragging, setIsDragging] = useState(false)
   const [createdInquiry, setCreatedInquiry] = useState(null)
   const assigneesQuery = useQuery({
     queryKey: qk.inquiries.assignees,
@@ -95,10 +96,17 @@ export default function CreateInquiryPage() {
             <Textarea label="상세 내용" value={content} onChange={(event) => setContent(event.target.value)} placeholder="문의 내용을 자세히 작성해 주세요..." rows={6} maxLength={2000} />
             <div>
               <p className="mb-2 text-sm font-medium text-slate-700">첨부 파일</p>
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="focus-ring w-full rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-5 text-sm text-slate-500">
-                <Paperclip className="mx-auto mb-2 size-5" />
-                파일을 끌어다 놓거나 클릭하여 첨부
-                <span className="mt-1 block text-xs text-slate-400">PNG, JPG, JPEG / 최대 5개 / 파일당 20MB / 총 100MB</span>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={(event) => { event.preventDefault(); setIsDragging(true) }}
+                onDragLeave={(event) => { event.preventDefault(); setIsDragging(false) }}
+                onDrop={(event) => { event.preventDefault(); setIsDragging(false); addFiles(event.dataTransfer.files) }}
+                className={`focus-ring w-full rounded-xl border border-dashed px-5 py-5 text-sm transition-colors ${isDragging ? 'border-primary-400 bg-primary-50 text-primary-600' : 'border-slate-200 bg-slate-50 text-slate-500'}`}
+              >
+                <Paperclip className="pointer-events-none mx-auto mb-2 size-5" />
+                <span className="pointer-events-none">파일을 끌어다 놓거나 클릭하여 첨부</span>
+                <span className="pointer-events-none mt-1 block text-xs text-slate-400">PNG, JPG, JPEG / 최대 5개 / 파일당 20MB / 총 100MB</span>
               </button>
               <input ref={fileInputRef} type="file" accept=".png,.jpg,.jpeg" multiple hidden onChange={(event) => { addFiles(event.target.files); event.target.value = '' }} />
               {attachments.map((file, index) => (
@@ -156,13 +164,13 @@ export default function CreateInquiryPage() {
         </div>
       </section>
 
-      <Modal open={Boolean(createdInquiry)} onClose={() => navigate('/inquiries')} closeOnOverlay={false} size="md">
+      <Modal open={Boolean(createdInquiry)} onClose={() => navigate('/inquiries', { state: { selectedInquiryId: createdInquiry?.inquiryId } })} closeOnOverlay={false} size="md">
         <div className="py-4 text-center">
           <span className="mx-auto flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-500"><Check className="size-8" /></span>
           <h2 className="mt-5 text-xl font-bold">문의가 접수됐어요</h2>
           <p className="mt-3 text-sm text-slate-500">담당자가 내용을 확인한 뒤 알림으로 답변을 알려드릴게요.</p>
           <p className="mt-5 rounded-xl bg-slate-50 px-4 py-4 text-sm font-semibold">접수번호 {createdInquiry?.displayId ?? `INQ-${createdInquiry?.inquiryId}`} · 예상 답변 1영업일 이내</p>
-          <Button className="mt-4" fullWidth onClick={() => navigate('/inquiries')}>내 문의 확인하기</Button>
+          <Button className="mt-4" fullWidth onClick={() => navigate('/inquiries', { state: { selectedInquiryId: createdInquiry?.inquiryId } })}>내 문의 확인하기</Button>
         </div>
       </Modal>
     </div>
