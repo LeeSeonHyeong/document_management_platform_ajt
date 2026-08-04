@@ -89,12 +89,19 @@ public class WikiTransformationApplier {
      * <p>문서 참조를 자동으로 더하지 않는다 — 빠지는 문서를 근거로 다시 적으면 안 되기 때문이다.
      * 반영이 끝난 뒤 이 범위에 남은 Wiki의 {@code documentRefs}에서 빠진 문서를 지운다. AI가
      * 응답의 근거 배열에 그 문서를 실어 보내도 이 단계에서 정리된다.
+     *
+     * <p>반영 <b>전에</b> 이 문서를 근거로 삼던 Wiki 수를 세어 함께 돌려준다(S15P11B106-225).
+     * 호출자가 「걷어낼 것이 있었는데 AI가 아무것도 안 했다」를 판정하는 근거다. 반영 뒤에 세면
+     * 참조가 이미 지워졌거나 Wiki 자체가 삭제돼 그 구분을 할 수 없다.
      */
-    public List<Long> applyRemovedDocument(
+    public RemovedDocumentResult applyRemovedDocument(
             String scopeKey,
             long documentId,
             WikiTransformationResponse response
     ) {
+        long referencingWikiCount = wikiRepository.findAllByScopeKey(scopeKey).stream()
+                .filter(wiki -> wiki.documentRefs().contains(documentId))
+                .count();
         List<Long> affectedWikiIds = apply(
                 scopeKey,
                 null,
@@ -108,7 +115,20 @@ public class WikiTransformationApplier {
                 wiki.removeDocumentRef(documentId);
             }
         }
-        return affectedWikiIds;
+        return new RemovedDocumentResult(affectedWikiIds, (int) referencingWikiCount);
+    }
+
+    /**
+     * 걷어내기 반영 결과입니다.
+     *
+     * @param affectedWikiIds      반영으로 바뀐 Wiki. 삭제된 Wiki는 여기 들어가지 않는다
+     * @param referencingWikiCount 반영 <b>전에</b> 이 문서를 근거로 삼던 Wiki 수
+     */
+    public record RemovedDocumentResult(List<Long> affectedWikiIds, int referencingWikiCount) {
+
+        public RemovedDocumentResult {
+            affectedWikiIds = List.copyOf(affectedWikiIds);
+        }
     }
 
     /**
