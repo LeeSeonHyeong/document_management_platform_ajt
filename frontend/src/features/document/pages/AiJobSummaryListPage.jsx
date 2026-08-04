@@ -10,6 +10,8 @@ import { DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../status'
 
 // 종료된 작업만 요약이 있다. 진행 중인 작업은 위쪽에 따로 묶어 진행 화면으로 보낸다.
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+// 문서 결과의 종료 상태. 작업이 취소돼도 그때 처리 중이던 문서는 여기 도달할 때까지 계속 돈다.
+const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
 const JOB_STATUS_LABEL = {
   waiting: '대기 중',
@@ -166,6 +168,12 @@ function SummaryModal({ selected, docById, onClose }) {
 
 function JobCard({ job, docById, onOpenSummary }) {
   const duration = formatDuration(job.startedAt, job.finishedAt)
+  // 중단은 「아직 시작하지 않은 문서」만 취소한다. 이미 시작한 문서는 끝까지 처리되고 Wiki에도
+  // 반영된다(AiJob.cancel). 그동안 이 카드는 「취소됨」인데 행은 「처리 중」이라 무슨 일인지
+  // 알 수 없었다 — 지금 무엇이 도는 중인지 말로 적는다.
+  const finishingCount = job.status === 'cancelled'
+    ? job.documentResults.filter((result) => !TERMINAL_DOCUMENT_STATUSES.has(result.status)).length
+    : 0
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -183,6 +191,13 @@ function JobCard({ job, docById, onOpenSummary }) {
         </div>
         {duration && <span className="text-xs text-slate-400">소요 {duration}</span>}
       </div>
+
+      {finishingCount > 0 && (
+        <p className="border-b border-amber-100 bg-amber-50 px-5 py-2.5 text-xs text-amber-700">
+          중단을 요청했습니다. 이미 시작한 문서 {finishingCount}건은 마무리된 뒤 멈춥니다 — 그 문서는
+          Wiki까지 반영됩니다.
+        </p>
+      )}
 
       <div className="grid grid-cols-[minmax(0,2fr)_1fr_1fr_minmax(0,1.4fr)_110px_100px] gap-3 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500">
         <span className="text-center">파일명</span>
