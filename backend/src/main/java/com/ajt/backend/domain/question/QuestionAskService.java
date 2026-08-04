@@ -11,7 +11,6 @@ import com.ajt.backend.domain.question.dto.QuestionAskRequest;
 import com.ajt.backend.domain.question.dto.QuestionAskResponse;
 import com.ajt.backend.domain.question.dto.QuestionAskSourceResponse;
 import com.ajt.backend.domain.question.dto.QuestionEvidenceDocumentResponse;
-import com.ajt.backend.domain.schedule.model.Schedule;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
 import com.ajt.backend.domain.schedule.service.ScheduleVisibilityPolicy;
 import com.ajt.backend.domain.wiki.model.Wiki;
@@ -232,18 +231,6 @@ public class QuestionAskService {
                     .forEach(scopeKeys::add);
         }
         return scopeKeys;
-    }
-
-    /**
-     * 이 사용자가 볼 수 있는 승인된 일정입니다. 전체 공개, 소속 부서 공개, 본인 개인 일정입니다.
-     * 초안(DRAFT)은 관리자 승인 전이라 사용자에게 공개하지 않는다(FR-SCH).
-     */
-    private List<Schedule> accessibleSchedules(Member member) {
-        // 수정(S15P11B106-169): 판정을 ScheduleVisibilityPolicy로 꺼냈다. AI 에이전트용 일정 조회가
-        //   같은 판정을 써야 하는데, 복사해 두면 한쪽만 고쳐져 조용히 어긋난다.
-        return scheduleRepository.findAll().stream()
-                .filter(schedule -> scheduleVisibilityPolicy.isReadableBy(schedule, member))
-                .toList();
     }
 
     /**
