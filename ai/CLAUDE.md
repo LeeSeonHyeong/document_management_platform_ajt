@@ -85,7 +85,7 @@ Spring Boot --HTTP--> wiki_api --> agent_runtime --> (MCP) --> wiki_mcp
 
 | 패키지 | 역할 |
 | --- | --- |
-| `document_parser` | 파일 → Markdown (TXT·MD·DOCX·PDF). 이미지 PDF는 OCR — 실서버는 GMS 비전 모델(`vision_ocr.py`, `AI_MODEL_FAST`), 미설정 시 로컬 Tesseract 폴백 |
+| `document_parser` | 파일 → Markdown (TXT·MD·DOCX·PDF·CSV·XLSX, CSV·XLSX는 일정 원본문서 전용 — 위키 원본은 허용 안 함). 이미지 PDF는 OCR — 실서버는 GMS 비전 모델(`vision_ocr.py`, `AI_MODEL_FAST`), 미설정 시 로컬 Tesseract 폴백 |
 | `wiki_mcp` | 위키 저장 계층(VaultFS)과 편집 에이전트용 MCP 툴 |
 | `agent_runtime` | 에이전트 실행 — claude-code(로컬 전용)·deepagents(기본값, 배포) 런타임, 시간 상한. push 경로가 사라져(S15P11B106-175) `claude-code` 로는 위키 엔드포인트를 하나도 못 쓴다(`session.py._assert_runtime_can_use_the_gateway`) — 그래서 기본값이 `deepagents` 다. `claude-code` 는 `AI_RUNTIME=claude-code` 로 명시했을 때만 뜨고, 그때도 챗봇(`/answers`)은 안 된다(S15P11B106-170 이후 `ClaudeCodeRuntime.run_with_tools`가 `NotImplementedError`, `test_run_with_tools.py`가 이를 고정 검증) — 파싱(`/source-parses`)만 된다(LLM 런타임과 무관한 `document_parser` 모듈이라서). 즉 지금은 위키 요약이든 챗봇 답변이든 claude-code로 돌려서 deepagents와 대조할 방법이 없다 |
 | `wiki_api` | Spring이 부르는 `/internal/v1` 엔드포인트와 기동 진입점 |

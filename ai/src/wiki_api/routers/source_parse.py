@@ -27,15 +27,14 @@ from ..deps import make_api_key_guard, request_id
 from ..errors import InternalError
 from ..schemas import SourceParseResponse
 
-# 계약의 「정책」 절. 일정은 CSV·XLSX 도 받아야 하지만 파서가 아직 지원하지 않는다 —
-# 지원 형식만 여기 적어 두고, 나머지는 미지원 형식과 같은 400 으로 돌려보낸다.
 _ALLOWED_SUFFIXES = {
     "wiki": {".txt", ".md", ".pdf", ".docx"},
-    "schedule": {".txt", ".md", ".pdf", ".docx"},
+    "schedule": {".txt", ".md", ".pdf", ".docx", ".csv", ".xlsx"},
 }
 
 # 파서가 형식·입력을 문제 삼은 경우. 나머지 오류 코드는 추출 실패로 본다.
-_REQUEST_ERROR_CODES = {"unsupported_file_type", "file_not_found", "decode_failed"}
+_REQUEST_ERROR_CODES = {"unsupported_file_type", "file_not_found", "decode_failed",
+                        "encoding_undetected", "not_tabular"}
 
 _BAD_REQUEST = "INVALID_SOURCE_PARSE_REQUEST"
 _PARSE_FAILED = "DOCUMENT_PARSE_FAILED"
