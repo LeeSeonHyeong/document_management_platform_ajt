@@ -199,7 +199,7 @@ export default function HomePage() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_20rem]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
         <CalendarGrid
           monthDate={month}
           events={events}

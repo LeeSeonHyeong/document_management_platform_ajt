@@ -89,7 +89,7 @@ export default function CreateInquiryPage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h2 className="text-xl font-bold">어떤 도움이 필요하신가요?</h2>
         <p className="mt-1 text-sm text-slate-500">문의 내용을 남겨주시면 담당자가 확인 후 빠르게 답변드릴게요.</p>
-        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
           <div className="space-y-5">
             <Input label="제목" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="문의 제목을 입력하세요" maxLength={100} />
             <Textarea label="상세 내용" value={content} onChange={(event) => setContent(event.target.value)} placeholder="문의 내용을 자세히 작성해 주세요..." rows={6} maxLength={2000} />
