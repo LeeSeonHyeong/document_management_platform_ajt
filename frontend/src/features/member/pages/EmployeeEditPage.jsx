@@ -133,7 +133,12 @@ export default function EmployeeEditPage() {
       }
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: qk.users.all })
+      // 역할 변경으로 부서 관리자가 바뀔 수 있으므로 부서 목록 캐시도 함께 무효화한다
+      // (그러지 않으면 부서 관리 화면이 옛 관리자를 계속 보여준다).
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: qk.users.all }),
+        queryClient.invalidateQueries({ queryKey: qk.departments.all }),
+      ])
       toast.success('직원 정보가 저장되었습니다.')
       navigate(`/admin/users/${userId}`)
     },
