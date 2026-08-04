@@ -130,11 +130,8 @@ export default function SourceDocumentDetailPage() {
           </Button>
         </div>
 
-        {doc.status === 'failed' && doc.failureReason && (
-          <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            처리 실패: {doc.failureReason}
-          </p>
-        )}
+        {/* 처리 상태·실패 사유를 여기 두지 않는다 (S15P11B106-248). AI 작업 결과는 요약 목록의
+            관심사이고, 이 화면은 문서 자체를 본다. */}
 
         <div ref={previewRef} className="mt-4 flex flex-1 flex-col rounded-2xl bg-slate-50 p-8">
           <DocumentPreview

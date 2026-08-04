@@ -50,7 +50,12 @@ export default function SourceDocumentListPage() {
     }
     return true
   })
-  const documents = [...matchingPreviewDocuments, ...(data?.items ?? [])]
+  // 삭제를 누른 문서는 목록에서 뺀다 (S15P11B106-248). 관리자 입장에선 이미 치운 것이고,
+  // 같은 문서를 또 삭제하려는 것도 막힌다. 걷어내기가 실패하면 상태가 failed 로 바뀌므로
+  // 다시 보인다 — 숨기는 것은 진행 중(deleting)뿐이다.
+  const documents = [...matchingPreviewDocuments, ...(data?.items ?? [])].filter(
+    (document) => document.status !== 'deleting',
+  )
   const sortedDocuments = [...documents].sort((a, b) => {
     const left = new Date(a.uploadedAt ?? 0).getTime()
     const right = new Date(b.uploadedAt ?? 0).getTime()
