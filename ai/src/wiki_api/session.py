@@ -426,6 +426,23 @@ class WikiSession:
                 "부르지 않아 기존 Wiki 를 덮어쓸 수 있습니다.",
                 FailureStage.AGENT_ERROR)
 
+    def assert_backlinks_were_addressed(self, affected: list[dict], response) -> None:
+        """사라진 문서를 인용하던 페이지가 있는데 아무 것도 안 고친 실행을 막는다.
+
+        `affected` 는 하이드레이션이 받아둔 참조 관계를 뒤집어 **서버가 직접 계산한** 값이라
+        (`citation_backlinks`), 에이전트의 판단이 끼어들 자리가 없다 — 인용이 있으면
+        고칠 곳이 있다는 뜻이고, 없으면 걷어낼 것도 없다는 뜻이다. 그런데 에이전트가 이걸
+        읽고도 `edit`/`delete` 를 한 번도 안 부르면 `pending_changes()` 가 비어 `wikiChanges`
+        가 빈 배열인 성공 응답이 나간다 — Spring 은 이걸 "이 문서는 걷어낼 게 없었다"로
+        받아들이고 조용히 넘어가지만 실제로는 실행이 할 일을 놓친 것이다.
+        """
+        if affected and not response.wikiChanges:
+            raise InternalError(
+                self.error_code,
+                f"이 문서를 인용하던 페이지가 {len(affected)}건 있는데 에이전트가 "
+                "아무 위키도 고치지 않았습니다.",
+                FailureStage.AGENT_ERROR)
+
     async def stage_evidence_documents(self, wiki_id: str) -> int:
         """대상 위키가 근거로 쓴 원본문서를 조회 API 로 읽어 라이브 층에 올린다.
 

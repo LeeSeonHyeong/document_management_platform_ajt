@@ -26,6 +26,17 @@ _CELL_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+?\.md)\)")
 # 표 구분선(`|---|:--:|`). 링크가 없으니 어차피 걸리지 않지만 의도를 적어 둔다.
 _TABLE_RULE = re.compile(r"^[\s|:-]+$")
 
+# 내부 변경 종류(`vaultfs.pending_changes` 의 `type`) → `WikiChange.action` 전송값.
+# Spring `WikiTransformationApplier` 의 Wiki 변경 switch(ACTION_CREATE/UPDATE/DELETE)에
+# `remove`·`merge` 케이스가 없다 — 그 둘은 다른 switch(관계 변경, ACTION_ADD/ACTION_REMOVE)
+# 의 어휘를 그대로 물려받은 것이었고 Spring 쪽 페이지 삭제는 "delete"를 쓴다. 병합으로
+# 사라지는 페이지도 Spring 입장에선 그 페이지를 지우는 것과 같다(`mergedIntoRef`는 Spring
+# ACTION_DELETE 가 읽지 않는다) — 실기동에서 "지원하지 않는 Wiki 변경 동작입니다: remove"
+# 로 job 이 통째로 실패하는 것을 확인했다. 계약에 `wikiChanges[].action` 허용값이 명시돼
+# 있지 않아 생긴 드리프트 — 협의 전 임시 대응이고 MR 본문에 협의 항목으로 남긴다.
+_WIKI_CHANGE_ACTION = {"create": "create", "update": "update",
+                       "remove": "delete", "merge": "delete"}
+
 
 def _page_key(address: str) -> str | None:
     if address.startswith("pages/") and address.endswith(".md"):
@@ -193,7 +204,7 @@ async def build_response(fs, scope_id: str, *, summary: str,
         category_ref = (categories.ref_for(change["category"])
                         if change.get("category") else None)
         wiki_changes.append(WikiChange(
-            action=change["type"],
+            action=_WIKI_CHANGE_ACTION[change["type"]],
             tempWikiId=ref if is_new else None,
             wikiId=None if is_new else ref,
             # 신규에만 실어 보낸다 (I1). 기존 위키의 실제 `wiki_path` 는 Spring 만 알고,

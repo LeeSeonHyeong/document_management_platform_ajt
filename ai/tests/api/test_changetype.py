@@ -300,3 +300,49 @@ def test_instruction_text_for_replacement_mentions_the_new_content():
     text = reconcile_instruction("sources/15/parsed/content.md", SCOPE,
                                  "document_replaced", [])
     assert "교체" in text
+
+
+class DoingNothingRuntime:
+    """backlink 가 있다는 지시문을 받고도 아무 것도 안 고치는 에이전트 자리.
+
+    `affected` 는 서버가 조회 API 관계를 뒤집어 직접 계산한 값이라 에이전트 판단이
+    끼어들 자리가 없다 — 이 실행처럼 읽고 lint 만 부르고 끝내면, 고칠 곳이 있었는데도
+    `pending_changes()` 가 비어 `wikiChanges` 없는 성공 응답이 나갈 뻔했던 경우다.
+    """
+
+    name = "fake-do-nothing"
+
+    async def arun(self, instruction, **_):
+        return RunResult(text="확인했지만 고칠 것이 없다고 판단했다",
+                         tool_calls={"guide": 1, "read": 1, "lint": 1})
+
+
+def test_removal_fails_when_a_real_backlink_is_never_addressed():
+    """S15P11B106-214 후속: 인용하는 페이지가 실재하는데 에이전트가 아무 위키도 고치지
+    않으면, 조용한 빈 배열 성공이 아니라 에이전트 오류로 떨어져야 한다."""
+    response = _post(DoingNothingRuntime())
+    assert response.status_code == 500
+    body = response.json()
+    assert body["code"] == "WIKI_TRANSFORMATION_FAILED"
+    assert body["failureStage"] == "agent_error"
+
+
+def test_addition_never_triggers_the_backlink_check():
+    """`document_added` 에는 `affected` 자체가 없다 — 새 검증이 추가 경로를 막으면 안 된다."""
+
+    class AddingRuntime:
+        name = "fake-add"
+
+        async def arun(self, instruction, *, fs, scope_id, **_):
+            await fs.write(scope_id, await fs.allocate_page(scope_id), PAGE_MD,
+                           title="새 페이지", category="근무 정책", tags=["신규"])
+            return RunResult(text="새 페이지를 만들었다",
+                             tool_calls={"guide": 1, "read": 1, "create": 1, "lint": 1})
+
+    response = _client(AddingRuntime()).post(
+        "/internal/v1/wiki-transformations",
+        json={"jobId": "44", "documentId": "16", "scopeKey": SCOPE,
+              "changeType": "document_added", "parsedMarkdown": SOURCE_MD,
+              "wikiCapability": CAPABILITY, "scopeVersion": SCOPE_VERSION},
+        headers={"X-Internal-API-Key": API_KEY})
+    assert response.status_code == 200, response.json()
