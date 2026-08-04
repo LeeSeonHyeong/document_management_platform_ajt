@@ -231,17 +231,37 @@ class DepartmentServiceTest {
     }
 
     @Test
-    @DisplayName("기본 부서('미지정')도 관리자 지정 변경은 허용한다(이름만 보호, S15P11B106-146)")
-    void defaultDepartmentAllowsManagerChange() {
+    @DisplayName("기본 부서('미지정')에는 관리자를 지정할 수 없다(S15P11B106-250)")
+    void defaultDepartmentRejectsManagerAssignment() {
+        // S15P11B106-146이 이름·삭제만 막아 관리자 지정이 열려 있었다. '미지정'은 부서 없는
+        // 사람을 담는 자리라 관리자를 둘 대상이 아니다.
         Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
         Member admin = memberRepository.save(approvedAdmin(defaultDept, "admin@ajt.com", "AJT-2026-9001"));
         DepartmentUpdateRequest request = new DepartmentUpdateRequest();
         request.setManagerId(String.valueOf(admin.getId()));
 
+        assertThatThrownBy(() -> departmentService.updateDepartment(
+                authenticated(admin), defaultDept.getId(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DEFAULT_DEPARTMENT_PROTECTED);
+    }
+
+    @Test
+    @DisplayName("기본 부서('미지정')의 관리자 해제는 허용한다 — 되돌릴 길을 남긴다(S15P11B106-250)")
+    void defaultDepartmentAllowsManagerClear() {
+        // 이 가드가 생기기 전에 붙은 관리자를 뗄 방법이 없으면 화면에서 되돌릴 수 없다.
+        Department defaultDept = departmentRepository.save(new Department(Department.DEFAULT_NAME));
+        Member admin = memberRepository.save(approvedAdmin(defaultDept, "admin@ajt.com", "AJT-2026-9001"));
+        defaultDept.assignManager(admin);
+        departmentRepository.save(defaultDept);
+        DepartmentUpdateRequest request = new DepartmentUpdateRequest();
+        request.setManagerId(null);
+
         DepartmentResponse response = departmentService.updateDepartment(
                 authenticated(admin), defaultDept.getId(), request);
 
-        assertThat(response.manager().userId()).isEqualTo(String.valueOf(admin.getId()));
+        assertThat(response.manager()).isNull();
         assertThat(response.name()).isEqualTo(Department.DEFAULT_NAME);
     }
 

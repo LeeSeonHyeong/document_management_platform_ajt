@@ -124,8 +124,15 @@ public class DepartmentService {
         }
         if (request.managerIdPresent()) {
             if (request.managerId() == null) {
+                // 해제는 기본 부서에도 허용한다 — 이 가드가 생기기 전에 붙은 관리자를 떼는 길이
+                // 없으면 화면에서 되돌릴 수 없다 (S15P11B106-250).
                 department.clearManager();
             } else {
+                // 수정(S15P11B106-250): 기본 부서('미지정')는 부서 없는 사람을 담는 자리라 관리자를
+                //   둘 대상이 아니다. S15P11B106-146이 이름·삭제만 막아 관리자 지정이 열려 있었다.
+                if (department.isDefault()) {
+                    throw new BusinessException(ErrorCode.DEFAULT_DEPARTMENT_PROTECTED);
+                }
                 department.assignManager(findAssignableManager(request.managerId(), department.getId()));
             }
         }
