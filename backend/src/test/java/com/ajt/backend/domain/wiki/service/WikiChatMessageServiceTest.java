@@ -148,7 +148,40 @@ class WikiChatMessageServiceTest {
             assertThat(relatedWiki.wikiId()).isEqualTo("108");
             assertThat(relatedWiki.title()).isEqualTo("근태 관리");
         });
+        assertThat(response.adminMessage().wikiId()).isEqualTo("101");
+        assertThat(response.adminMessage().wikiTitle()).isEqualTo("휴가 규정");
+        assertThat(response.agentMessage().wikiId()).isEqualTo("101");
+        assertThat(response.agentMessage().wikiTitle()).isEqualTo("휴가 규정");
         verify(applier).apply(eq(SCOPE_KEY), any(WikiEditResponse.class));
+    }
+
+    @Test
+    @DisplayName("에이전트가 실제로 고친 위키가 보고 있던 위키와 다르면 그 위키로 메시지를 연결한다(S15P11B106-243)")
+    void linksAgentMessageToActuallyAffectedWiki() throws Exception {
+        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(), List.of());
+        Wiki affected = wiki(108L, 9L, "근태 관리", List.of(), List.of());
+        adminLoggedIn();
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        given(wikiRepository.findById(108L)).willReturn(Optional.of(affected));
+        given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정");
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L))).willReturn(List.of());
+        given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
+        given(wikiCategoryRepository.findById(9L)).willReturn(Optional.of(category(9L, "휴가 및 근태")));
+        given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(new WikiEditResponse(
+                "근태 관리 위키를 정리했습니다.",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        ));
+        given(applier.apply(eq(SCOPE_KEY), any(WikiEditResponse.class))).willReturn(List.of(108L));
+
+        WikiChatReplyResponse response = service.sendChatMessage(101L, "근태 관리 위키를 정리해줘.");
+
+        assertThat(response.adminMessage().wikiId()).isEqualTo("101");
+        assertThat(response.agentMessage().wikiId()).isEqualTo("108");
+        assertThat(response.agentMessage().wikiTitle()).isEqualTo("근태 관리");
     }
 
     @Test

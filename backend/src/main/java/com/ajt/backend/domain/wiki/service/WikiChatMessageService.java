@@ -119,10 +119,10 @@ public class WikiChatMessageService {
         WikiChatMessage adminMessage = wikiChatMessageRepository.save(
                 WikiChatMessage.fromAdmin(wiki, currentMember.memberId(), instruction)
         );
-        applier.apply(wiki.scopeKey(), response);
         // 수정 반영으로 제목이 바뀔 수 있으므로 에이전트 메시지는 반영 뒤에 만든다.
+        List<Long> affectedWikiIds = applier.apply(wiki.scopeKey(), response);
         WikiChatMessage agentMessage = wikiChatMessageRepository.save(
-                WikiChatMessage.fromAgent(wiki, response.agentMessage())
+                WikiChatMessage.fromAgent(resolveAgentSubjectWiki(wiki, affectedWikiIds), response.agentMessage())
         );
 
         return new WikiChatReplyResponse(
@@ -130,6 +130,26 @@ public class WikiChatMessageService {
                 WikiChatMessageResponse.from(agentMessage),
                 toDetail(wiki)
         );
+    }
+
+    /**
+     * 에이전트 메시지를 어느 위키에 연결할지 정한다(S15P11B106-243).
+     *
+     * <p>{@code applier.apply(...)}가 돌려주는 목록은 이번 지시로 실제 생성·수정된(임시 ID 치환이
+     * 끝난) 위키 ID다 — 관리자가 보던 위키가 아니라 **에이전트가 실제로 고친 위키**를 메시지의
+     * {@code wiki_id}·{@code wiki_title_snapshot}으로 남겨야, 화면에서 그 메시지를 보고 어느
+     * 위키가 바뀌었는지 바로 링크를 따라갈 수 있다.
+     *
+     * <p>{@code wiki_chat_message.wiki_id}는 위키 하나만 가리키는 단일 FK라 여러 위키가 한 번에
+     * 바뀌어도 첫 번째만 연결 대상으로 삼는다 — 나머지는 에이전트의 텍스트 응답 자체에 이미
+     * 나열돼 있어 완전히 못 찾는 것은 아니다. 변경이 하나도 없었으면(예: 이미 반영된 상태) 관리자가
+     * 보던 위키로 되돌아간다.
+     */
+    private Wiki resolveAgentSubjectWiki(Wiki fallback, List<Long> affectedWikiIds) {
+        if (affectedWikiIds.isEmpty()) {
+            return fallback;
+        }
+        return wikiRepository.findById(affectedWikiIds.get(0)).orElse(fallback);
     }
 
     /**
