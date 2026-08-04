@@ -32,10 +32,13 @@ import time
 import sys
 from pathlib import Path
 
+from pydantic import BaseModel, Field
+
 from wiki_mcp.telemetry import read_counts
 from wiki_mcp.vaultfs.query_client import ScopeChangedError
 
 from .base import DEFAULT_COMPLETE_TIMEOUT, FAST, QUALITY, CompletionResult, RunResult
+from .reply_sanitizer import sanitize_admin_reply
 
 logger = logging.getLogger("llmwiki.deepagents")
 
@@ -146,6 +149,25 @@ def verify_mcp_tools(tool_names: set[str]) -> None:
         raise RuntimeError(f"MCP 툴이 빠졌다: {sorted(missing)}")
 
 
+class AgentReport(BaseModel):
+    """`arun()` 마지막 턴의 구조 강제 스키마 (S15P11B106-243 검증 중 실측 대응).
+
+    프롬프트(`base.py`의 `edit_instruction`·`ingest_instruction`)가 이미 "비개발자
+    용어로 쓰라"고 지시하지만, 그건 확률적이라 모델이 가끔 어긴다 — 실제로 lint 도구
+    어휘(error·warn)나 내부 파일 경로(`pages/xxxx.md`)가 관리자 채팅에 그대로 새어나온
+    사례가 있었다. `response_format=ToolStrategy(AgentReport)`로 마지막 답변을 이
+    필드 하나로 강제하면, 자유 텍스트 마지막 메시지보다 그 필드에 잡소리가 섞일 여지가
+    준다 — 완전한 차단은 아니라 `reply_sanitizer`를 이중으로 걸어둔다.
+    """
+
+    summary: str = Field(description=(
+        "비개발자 관리자에게 보여줄 2~3문장 보고. 시스템 용어(scope·frontmatter·lint·"
+        "error·warn 등)나 내부 파일 경로(pages/*.md, document-N, sources/N 등)를 "
+        "쓰지 않는다. 점검이 끝났다는 말로 시작하거나 끝맺지 않고, 첫 단어부터 곧바로 "
+        "반영된 내용을 설명한다."
+    ))
+
+
 class DeepAgentsRuntime:
     """Drives one ingest through a single DeepAgents coordinator."""
 
@@ -154,7 +176,7 @@ class DeepAgentsRuntime:
     # `run()` 은 `_server_config` 로 MCP 서버를 별도 프로세스에 띄우고, `arun()` 은 도구를
     # 이 프로세스에서 만든다. 창구 모드는 후자로만 성립한다 (`base.py::runs_tools_in_process`).
 
-    def __init__(self, model: str = "anthropic:claude-opus-4-6", *,
+    def __init__(self, model: str = "anthropic:claude-sonnet-4-6", *,
                  fast_model: str | None = None, quality_model: str | None = None,
                  credentials: dict[str, tuple[str, str]] | None = None,
                  chat_model=None):
@@ -405,7 +427,11 @@ class DeepAgentsRuntime:
         # 세면 위키도 일정도 읽지 않은 실행이 「조회했다」로 통과한다 (2026-07-31 확인).
         # `counted` 는 우리가 감싼 도구만 세므로 그 문제가 애초에 없다.
         calls = dict(counted)
-        text = _text_of(messages[-1].content) if messages else ""
+        # 안전망(S15P11B106-243 검증 중 실측): 지시문이 개발 용어·내부 파일 경로를 쓰지
+        # 말라고 못 박아도 모델이 가끔 어긴다. 구조 강제가 없는 호출(`response_format`
+        # 미지정)은 여기서 나가는 텍스트가 사용자에게 그대로 보일 수 있어 마지막에 한 번
+        # 더 거른다.
+        text = sanitize_admin_reply(_text_of(messages[-1].content)) if messages else ""
         structured = result.get("structured_response")
         # pydantic 인스턴스로 온다. 계약 조립 쪽은 dict 를 다루므로 여기서 맞춘다 —
         # `agent_runtime` 이 `wiki_api` 의 모델을 알 필요가 없게 하는 경계이기도 하다.
@@ -437,6 +463,7 @@ class DeepAgentsRuntime:
         )
 
         from deepagents.middleware.summarization import SummarizationMiddleware
+        from langchain.agents.structured_output import ToolStrategy
 
         from .wiki_tools import wiki_agent_tools
 
@@ -470,6 +497,7 @@ class DeepAgentsRuntime:
             subagents=[],
             system_prompt="사내 위키 편집 에이전트다. `guide` 도구를 먼저 불러 작업 방식을 확인한다.",
             middleware=[self._summarization_middleware(compaction_backend)],
+            response_format=ToolStrategy(AgentReport),
         )
 
         def elapsed() -> float:
@@ -499,7 +527,16 @@ class DeepAgentsRuntime:
                 error=f"{type(exc).__name__} (마지막 도달 단계: {last}): {exc}")
 
         messages = result.get("messages") or []
-        text = str(getattr(messages[-1], "content", "")) if messages else ""
+        # 구조 강제(`response_format`)가 성공하면 답변은 도구 호출 인자로 온다 —
+        # 자유 텍스트 마지막 메시지보다 잡소리가 섞일 여지가 준다(AgentReport 참고).
+        # 스키마 검증이 끝내 실패해 `structured_response`가 안 채워진 경우에만
+        # 마지막 메시지로 되돌아간다. 어느 경로든 안전망을 한 번 더 건다.
+        structured = result.get("structured_response")
+        if structured is not None:
+            text = getattr(structured, "summary", None) or ""
+        else:
+            text = str(getattr(messages[-1], "content", "")) if messages else ""
+        text = sanitize_admin_reply(text)
         usage = _usage(messages)
         turns = _turns(messages)
         _log_usage(job_id, usage, turns=turns,
@@ -559,7 +596,8 @@ class DeepAgentsRuntime:
         )
 
         messages = result.get("messages") or []
-        text = str(getattr(messages[-1], "content", "")) if messages else ""
+        text = sanitize_admin_reply(
+            str(getattr(messages[-1], "content", "")) if messages else "")
         return text, _usage(messages), _turns(messages)
 
 

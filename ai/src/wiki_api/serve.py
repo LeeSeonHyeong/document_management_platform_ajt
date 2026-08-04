@@ -49,6 +49,7 @@ S15P11B106-175 가 요청 본문으로 위키를 받는 push 경로를 지웠다
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 
@@ -187,10 +188,29 @@ def check_model_credentials(settings: ServerSettings) -> None:
                 f"src/.env 의 {provider.upper()}_API_KEY 를 채우거나 모델을 바꾸십시오.")
 
 
+def configure_langsmith(settings: ServerSettings) -> None:
+    """LangSmith SDK 는 `os.environ` 을 직접 본다 — 이 앱의 설정 객체를 모른다.
+
+    `settings.py` 의 원칙("안쪽 코드가 `os.environ` 을 보지 않는다")과 어긋나 보이지만,
+    이건 우리 코드가 아니라 서드파티 SDK 의 요구사항이다. 그 SDK 를 쓰는 유일한 지점인
+    여기서만 예외적으로, 설정이 확정된 뒤 한 번 `os.environ` 에 되심는다 — 그래야
+    `.env` 값이 조용히 버려지지 않는다(2026-08-04, `ServerSettings` 에 필드가 없어서
+    트레이싱이 항상 꺼져 있었다).
+    """
+    if not settings.langsmith_tracing:
+        return
+    os.environ.setdefault("LANGSMITH_TRACING", "true")
+    if settings.langsmith_api_key:
+        os.environ.setdefault("LANGSMITH_API_KEY", settings.langsmith_api_key)
+    if settings.langsmith_project:
+        os.environ.setdefault("LANGSMITH_PROJECT", settings.langsmith_project)
+
+
 def build_app(settings: ServerSettings):
     assert_runtime_is_usable(settings.runtime)
     assert_backend_base_url_is_set(settings)
     check_model_credentials(settings)
+    configure_langsmith(settings)
     app = create_app(api_key=settings.internal_api_key,
                      backend_base_url=settings.backend_base_url)
     # `claude-code` 는 로그인 세션으로 과금한다 — 모델 API 키를 넘기면 `load_runtime` 이

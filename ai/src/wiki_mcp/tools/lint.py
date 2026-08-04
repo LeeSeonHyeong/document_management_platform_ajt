@@ -431,26 +431,30 @@ class LintHandler:
     # ----- report -----------------------------------------------------------
 
     def _report(self, issues: list[LintIssue], checked: list[dict]) -> str:
+        # 여기 문장은 에이전트가 다음 행동을 정하려고 읽는 내부 신호다 — 최종 답변에 그대로
+        # 옮겨지는 사고가 있었으므로(관리자에게 "error 0건, warn 통과" 식으로 노출) 일부러
+        # "error"·"warn" 같은 개발 용어를 쓰지 않는다. 의미는 severity 필드가 그대로 갖고 있다.
         if not issues:
             return f"**lint 통과** — {self.scope_key} 범위, {len(checked)}건 검사."
         errors = [i for i in issues if i.severity == "error"]
         warnings = [i for i in issues if i.severity == "warn"]
         lines = [
             f"**lint {len(issues)}건** — {self.scope_key} 범위 "
-            f"(error {len(errors)}, warn {len(warnings)}; {len(checked)}건 검사)."
+            f"(반드시 고칠 것 {len(errors)}건, 참고용 {len(warnings)}건; {len(checked)}건 검사)."
         ]
         if errors:
-            lines.append("\n**Errors** — 끝내기 전에 모두 고친다")
+            lines.append("\n**반드시 고칠 것** — 끝내기 전에 모두 고친다")
             lines += self._lines(errors)
         if warnings:
-            lines.append("\n**Warnings**")
+            lines.append("\n**참고용(고치지 않아도 됨)**")
             lines += self._lines(warnings)
         if not errors:
-            # error가 없으면 여기서 끝이다 — 이 문장이 없으면 모델이 warn 목록도 "고칠 것"으로
-            # 읽고 같은 각주를 표현만 바꿔가며 반복 편집하다 턴 상한(GraphRecursionError)에
-            # 걸린다 (2026-08-02 job 21 실측, 4번째 재현: error 0인 채로 40턴·$2.76 소진).
+            # 반드시 고칠 것이 없으면 여기서 끝이다 — 이 문장이 없으면 모델이 참고용 목록도
+            # "고칠 것"으로 읽고 같은 각주를 표현만 바꿔가며 반복 편집하다 턴 상한
+            # (GraphRecursionError)에 걸린다 (2026-08-02 job 21 실측, 4번째 재현: 반드시 고칠
+            # 것 0건인 채로 40턴·$2.76 소진).
             lines.append(
-                "\n**error가 없으니 이걸로 끝이다.** 위 warning은 참고만 한다 — "
+                "\n**반드시 고칠 것이 없으니 이걸로 끝이다.** 위 참고용 항목은 참고만 한다 — "
                 "고치려고 다시 `edit`·`lint`를 부르지 않는다. 지금 상태로 작업을 마친다."
             )
         return "\n".join(lines)

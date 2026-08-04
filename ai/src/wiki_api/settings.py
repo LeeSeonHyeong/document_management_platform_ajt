@@ -57,6 +57,14 @@ class ServerSettings(BaseSettings):
     openai_api_key: str = Field("", validation_alias="OPENAI_API_KEY")
     openai_base_url: str = Field("", validation_alias="OPENAI_BASE_URL")
 
+    # LangSmith 는 이 앱의 설정 객체가 아니라 `os.environ` 을 직접 보는 서드파티 SDK다
+    # (`serve.py::configure_langsmith` 가 유일하게 이 필드들을 예외적으로 `os.environ`에
+    # 되심는다). 여기서 선언하지 않으면 `extra="ignore"` 때문에 `.env` 값이 조용히
+    # 버려진다 — 실제로 그랬다(2026-08-04, 트레이스가 하나도 안 남았는데 원인을 몰랐다).
+    langsmith_tracing: bool = Field(False, validation_alias="LANGSMITH_TRACING")
+    langsmith_api_key: str = Field("", validation_alias="LANGSMITH_API_KEY")
+    langsmith_project: str = Field("", validation_alias="LANGSMITH_PROJECT")
+
     # 스캔 PDF 비전 OCR 이 쓸 프로바이더. 기본은 gemini 다 — GMS 게이트웨이의 요청
     # 크기 상한(실측 약 100KB)에 200dpi 로 렌더한 실제 스캔 페이지 대부분이 걸려
     # "model not found" 로 잘못 보고되는 문제가 있었다. Google API 는 GMS 를 거치지

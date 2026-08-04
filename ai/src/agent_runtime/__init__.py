@@ -7,8 +7,14 @@ __all__ = ["Runtime", "RunResult", "ingest_instruction", "runs_tools_in_process"
 
 # Exact names, not aliases: `opus` and `sonnet` resolve to whatever the CLI calls
 # latest today, which silently breaks a comparison between two runs.
-DEFAULT_CLI_MODEL = "claude-opus-4-6"
-DEFAULT_DEEPAGENTS_MODEL = "anthropic:claude-opus-4-6"
+#
+# Sonnet, not Opus (2026-08-04): a caller that forgets `AI_MODEL`/`--model` used to
+# fall back to Opus silently — the most expensive tier, with no warning. Sonnet is
+# the tier this deployment actually runs on (`src/.env`'s `AI_MODEL`), so an unset
+# override now costs the same as the configured default instead of silently costing
+# more.
+DEFAULT_CLI_MODEL = "claude-sonnet-4-6"
+DEFAULT_DEEPAGENTS_MODEL = "anthropic:claude-sonnet-4-6"
 
 
 def load_runtime(name: str, model: str | None = None, *,
