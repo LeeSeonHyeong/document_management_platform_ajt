@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import DataTable from '@/components/ui/DataTable'
@@ -11,6 +11,7 @@ import { qk } from '@/shared/api/queryKeys'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchDepartments } from '@/api/departments'
 import { fetchInquiries } from '../api'
+import { INQUIRY_STATUS_FILTER, inquiryListTitle, toInquiryStatusParam } from '../statusFilter'
 
 const PRIORITY_META = {
   [INQUIRY_PRIORITY.HIGH]: { label: '높음', className: 'bg-rose-50 text-rose-600' },
@@ -39,14 +40,22 @@ function StatusBadge({ status }) {
   )
 }
 
-function StatCard({ label, value, suffix = '건', tone, caption, badge }) {
+// 상단 카드는 상태 필터 버튼을 겸한다(S15P11B106-226). 선택된 카드만 살짝 강조(ring)한다.
+function StatCard({ label, value, suffix = '건', tone, caption, badge, onClick, active }) {
   const colors = {
     primary: 'bg-primary-50 text-primary-600',
     amber: 'bg-amber-50 text-amber-600',
     green: 'bg-emerald-50 text-emerald-600',
   }[tone]
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`focus-ring w-full rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:border-slate-300 ${
+        active ? 'border-primary-300 ring-2 ring-primary-200' : 'border-slate-200'
+      }`}
+    >
       <div className="flex items-start justify-between">
         <span className={`flex size-9 items-center justify-center rounded-xl ${colors}`}>
           <span className="size-3 rounded bg-current" />
@@ -56,7 +65,7 @@ function StatCard({ label, value, suffix = '건', tone, caption, badge }) {
       <p className="mt-3 text-sm text-slate-500">{label}</p>
       <p className="mt-2 text-3xl font-bold text-slate-900">{value}<span className="ml-1 text-sm font-medium text-slate-400">{suffix}</span></p>
       <p className="mt-3 text-xs text-slate-400">{caption}</p>
-    </div>
+    </button>
   )
 }
 
@@ -75,13 +84,23 @@ export default function InquiryManagementPage() {
   const [keyword, setKeyword] = useState('')
   const [sort, setSort] = useState('priority,desc')
   const [departmentId, setDepartmentId] = useState('')
+  // 상단 카드로 고르는 상태 필터(S15P11B106-226): 'all' | 'pending' | 'done'. 기본 전체.
+  const [statusFilter, setStatusFilter] = useState(INQUIRY_STATUS_FILTER.ALL)
   // 백엔드는 createdAt/updatedAt 정렬만 허용한다. 중요도 정렬은 현재 페이지에서 처리한다.
   const apiSort = sort.startsWith('priority') ? 'createdAt,desc' : sort
-  const params = { page, size: 20, keyword: keyword || undefined, sort: apiSort }
+  // 상태 필터는 백엔드 status 파라미터(pending|done)를 재사용한다. 전체는 파라미터를 생략한다.
+  const status = toInquiryStatusParam(statusFilter)
+  const params = { page, size: 20, keyword: keyword || undefined, sort: apiSort, status }
   const query = useQuery({
     queryKey: qk.inquiries.list(params),
     queryFn: () => fetchInquiries(params),
   })
+
+  // 카드를 누르면 해당 상태로 서버 필터링하고 첫 페이지부터 다시 본다.
+  const handleStatusFilter = (value) => {
+    setStatusFilter(value)
+    setPage(1)
+  }
 
   // 요구사항 FR-USR-006: 전체 관리자와 부서 관리자는 같은 ADMIN 역할이며 별도 플래그가 없다.
   // 따라서 "내가 어느 부서의 관리자로 지정됐는지"로 두 범위를 구분한다(Figma 3R vs 3-1R).
@@ -100,10 +119,30 @@ export default function InquiryManagementPage() {
   const isDepartmentAdmin = Boolean(managedDepartment)
 
   const inquiries = query.data?.items ?? []
-  const pendingCount = inquiries.filter((item) => item.status === INQUIRY_STATUS.PENDING).length
-  const doneCount = inquiries.filter((item) => item.status === INQUIRY_STATUS.DONE).length
-  const totalCount = query.data?.totalCount ?? inquiries.length
+
+  // 카드 카운트는 선택된 상태와 무관하게 항상 전체·미처리·완료를 보여줘야 하므로, 목록과 별개로
+  // 상태별 totalCount만 size=1로 조회한다(EmployeeListPage와 같은 방식). 권한 범위는 백엔드가
+  // 자동 적용하고, 검색어(keyword)는 목록과 맞춰 함께 반영한다.
+  const countQueries = useQueries({
+    queries: [undefined, INQUIRY_STATUS.PENDING, INQUIRY_STATUS.DONE].map((countStatus) => {
+      const countParams = { page: 1, size: 1, keyword: keyword || undefined, status: countStatus }
+      return {
+        queryKey: qk.inquiries.list(countParams),
+        queryFn: () => fetchInquiries(countParams),
+      }
+    }),
+  })
+  const totalCount = countQueries[0].data?.totalCount ?? 0
+  const pendingCount = countQueries[1].data?.totalCount ?? 0
+  const doneCount = countQueries[2].data?.totalCount ?? 0
   const completionRate = totalCount ? Math.round((doneCount / totalCount) * 100) : 0
+  // 목록 제목 옆 배지에 쓸, 현재 선택된 카드의 카운트.
+  const selectedCount =
+    statusFilter === INQUIRY_STATUS_FILTER.PENDING
+      ? pendingCount
+      : statusFilter === INQUIRY_STATUS_FILTER.DONE
+        ? doneCount
+        : totalCount
 
   // 전체 관리자만 쓰는 부서별 필터. 문의 목록 API에 부서 파라미터가 없어 현재 페이지에서 걸러낸다.
   // 계약에 담당자 부서(assignee.department)만 있으므로 담당자 부서를 기준으로 한다.
@@ -153,17 +192,35 @@ export default function InquiryManagementPage() {
           tone="primary"
           badge="주간"
           caption={isDepartmentAdmin ? '이번 주 내 담당' : '이번 주 접수 기준'}
+          onClick={() => handleStatusFilter(INQUIRY_STATUS_FILTER.ALL)}
+          active={statusFilter === INQUIRY_STATUS_FILTER.ALL}
         />
-        <StatCard label="미처리" value={pendingCount} tone="amber" badge="확인 필요" caption="답변 대기 중" />
-        <StatCard label="처리 완료" value={doneCount} tone="green" badge={`${completionRate}%`} caption="완료율" />
+        <StatCard
+          label="미처리"
+          value={pendingCount}
+          tone="amber"
+          badge="확인 필요"
+          caption="답변 대기 중"
+          onClick={() => handleStatusFilter(INQUIRY_STATUS_FILTER.PENDING)}
+          active={statusFilter === INQUIRY_STATUS_FILTER.PENDING}
+        />
+        <StatCard
+          label="처리 완료"
+          value={doneCount}
+          tone="green"
+          badge={`${completionRate}%`}
+          caption="완료율"
+          onClick={() => handleStatusFilter(INQUIRY_STATUS_FILTER.DONE)}
+          active={statusFilter === INQUIRY_STATUS_FILTER.DONE}
+        />
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4 px-5 py-4">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold">대기 중인 문의</h2>
-              <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-600">{pendingCount}</span>
+              <h2 className="text-lg font-bold">{inquiryListTitle(statusFilter)}</h2>
+              <span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-600">{selectedCount}</span>
             </div>
             <p className="mt-1 text-sm text-slate-400">
               {isDepartmentAdmin ? `내 담당 · ${managedDepartment.name} 범위` : '전체 부서 · 전체 관리자 범위'}
