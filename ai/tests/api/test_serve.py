@@ -317,6 +317,40 @@ def test_present_backend_base_url_passes():
     assert assert_backend_base_url_is_set(settings) is None
 
 
+# ----- LangSmith 는 os.environ 에 되심겨야 실제로 켜진다 -------------------------
+
+
+def test_configure_langsmith_does_nothing_when_tracing_is_off(monkeypatch):
+    """`.env` 에 값이 있어도 langsmith_tracing 이 꺼져 있으면 `os.environ` 을 안 건드린다."""
+    from wiki_api.serve import configure_langsmith
+    from wiki_api.settings import ServerSettings
+
+    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    settings = ServerSettings(internal_api_key="k", backend_base_url="http://backend:8080",
+                              langsmith_tracing=False, langsmith_api_key="key",
+                              langsmith_project="proj")
+    configure_langsmith(settings)
+    assert "LANGSMITH_TRACING" not in __import__("os").environ
+
+
+def test_configure_langsmith_sets_environ_when_tracing_is_on(monkeypatch):
+    """켜져 있으면 SDK 가 직접 읽는 `os.environ` 에 세 값을 되심는다."""
+    from wiki_api.serve import configure_langsmith
+    from wiki_api.settings import ServerSettings
+
+    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+    monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
+    settings = ServerSettings(internal_api_key="k", backend_base_url="http://backend:8080",
+                              langsmith_tracing=True, langsmith_api_key="key-1",
+                              langsmith_project="ajt-wiki-verify")
+    configure_langsmith(settings)
+    import os
+    assert os.environ["LANGSMITH_TRACING"] == "true"
+    assert os.environ["LANGSMITH_API_KEY"] == "key-1"
+    assert os.environ["LANGSMITH_PROJECT"] == "ajt-wiki-verify"
+
+
 # ----- 기동 한 줄에 일정 추출 어댑터를 적는다 -----------------------------------
 
 
