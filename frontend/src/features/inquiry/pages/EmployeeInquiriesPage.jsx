@@ -68,7 +68,7 @@ export default function EmployeeInquiriesPage() {
   const countLabel = useMemo(() => `${listQuery.data?.totalCount ?? inquiries.length}건`, [inquiries.length, listQuery.data?.totalCount])
 
   return (
-    <div className="grid min-h-[calc(100vh-124px)] gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid min-h-[calc(100vh-124px)] gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
       <Card className="p-8">
         {detailQuery.isLoading ? (
           <div className="flex h-full items-center justify-center"><Spinner /></div>

@@ -498,7 +498,7 @@ export default function AdminSchedulePage() {
 
       <Tabs items={tabs} value={deptTab} onChange={setDeptTab} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_20rem]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
         {approvedQuery.isError ? (
           <Card>
             <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">

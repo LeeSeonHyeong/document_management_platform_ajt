@@ -8,12 +8,13 @@ import ChatAssistant from '@/features/chat/components/ChatAssistant'
 // 로그인 이후 공통 셸: 좌측 사이드바 + 상단바 + 메인 콘텐츠.
 // 페이지별 플로팅 버튼(Fab)은 각 페이지가 직접 렌더한다(고정 위치).
 //
-// **작업 화면(위키)은 예외로 폭을 전부 쓴다.** 대부분의 화면은 폭이 넓어도 읽기 좋게
-// `max-w-7xl`(1280px)로 묶는 게 맞지만, 위키는 열 세 개(문서 트리·본문·AI 편집)가 폭을
-// 나눠 쓰는 작업 화면이라 폭이 곧 기능이다. 1280px 로 묶으면 그보다 넓은 화면의 남는 폭을
-// 전부 좌우 여백으로 버리면서 정작 본문은 300px 로 눌린다(실측).
-// 같은 이유로 이 화면에서는 사이드바를 56px 로 접고, 스크롤도 페이지가 직접 관리한다 —
-// 셸이 통째로 스크롤하면 열마다 따로 스크롤할 수 없다.
+// 본문은 폭 상한 없이 가용 폭을 전부 쓴다(각 페이지가 유동 비율로 배치). 사이드바를 접으면
+// 그만큼 본문이 넓어져 박스들이 재배치된다.
+//
+// **작업 화면(위키)은 스크롤 처리만 다르다.** 위키는 열 세 개(문서 트리·본문·AI 편집)가
+// 각자 스크롤하는 작업 화면이라 셸이 통째로 스크롤하면 안 된다. 그래서 위키는
+// `overflow-hidden` 으로 두고 페이지가 자기 높이·스크롤을 직접 관리한다. 나머지 화면은
+// 일반 문서 흐름이라 셸(main)이 세로로 스크롤한다.
 const WORKSPACE_PATHS = ['/wiki']
 
 export default function AppShell() {
@@ -25,7 +26,7 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#eef4ff]">
-      <Sidebar role={role} collapsed={workspace} />
+      <Sidebar role={role} collapsible />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
         {workspace ? (
@@ -34,7 +35,7 @@ export default function AppShell() {
           </main>
         ) : (
           <main className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
-            <div className="mx-auto max-w-7xl px-6 py-6">
+            <div className="px-6 py-6 xl:px-8">
               <Outlet />
             </div>
           </main>
