@@ -17,6 +17,10 @@ export const NAV_ITEMS = {
     { to: '/wiki', label: '위키', icon: BookOpen },
     { to: '/inquiries', label: '문의하기', icon: MessageSquare },
   ],
+  // 순서 기준(S15P11B106-253): 관련된 것끼리 붙이고, 수동적 업무는 아래로 둔다.
+  //  - 문서 관리 → 위키: 원본 문서가 위키의 재료다. 관리자가 두 화면을 왕복하며 쓴다
+  //  - 직원 관리 → 부서 관리: 조직 관리
+  //  - 문의 관리: 문의가 들어올 때만 처리하는 수동적 업무라 늘 눈에 둘 필요가 없다
   [ROLES.ADMIN]: [
     {
       to: '/admin/users',
@@ -25,10 +29,10 @@ export const NAV_ITEMS = {
       activePaths: ['/admin/signup-requests'],
     },
     { to: '/admin/departments', label: '부서 관리', icon: Building2 },
-    { to: '/admin/inquiries', label: '문의 관리', icon: Inbox },
     { to: '/admin/documents', label: '문서 관리', icon: FileText },
-    { to: '/admin/schedules', label: '일정 관리', icon: CalendarDays },
     { to: '/wiki', label: '위키', icon: BookOpen },
+    { to: '/admin/schedules', label: '일정 관리', icon: CalendarDays },
+    { to: '/admin/inquiries', label: '문의 관리', icon: Inbox },
   ],
 }
 
