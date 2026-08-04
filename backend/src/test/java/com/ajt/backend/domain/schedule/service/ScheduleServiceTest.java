@@ -149,6 +149,69 @@ class ScheduleServiceTest {
     }
 
     @Test
+    @DisplayName("부서관리자는 승인된 전체(ALL) 일정을 목록에서 조회할 수 있고 draft 전체 일정은 제외된다(S15P11B106-240)")
+    void departmentManagerSeesApprovedAllButNotDraftAllInList() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member superAdmin = memberRepository.save(admin(dev, "admin@ajt.com"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+        scheduleRepository.save(Schedule.create(superAdmin.getId(), "승인 공지", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+        scheduleRepository.save(Schedule.draft(superAdmin.getId(), "초안 공지", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+
+        ScheduleListResponse response = scheduleService.list(authOf(manager), FROM, TO, null, null, null);
+
+        assertThat(response.items()).extracting(ScheduleListResponse.Item::title)
+                .contains("승인 공지")
+                .doesNotContain("초안 공지");
+    }
+
+    @Test
+    @DisplayName("부서관리자는 승인된 전체(ALL) 일정 상세를 조회할 수 있고 draft 전체 일정 상세는 404다(S15P11B106-240)")
+    void departmentManagerReadsApprovedAllDetailButNotDraft() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member superAdmin = memberRepository.save(admin(dev, "admin@ajt.com"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+        Schedule approved = scheduleRepository.save(Schedule.create(superAdmin.getId(), "전사 승인", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+        Schedule draft = scheduleRepository.save(Schedule.draft(superAdmin.getId(), "전사 초안", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+
+        assertThat(scheduleService.getDetail(authOf(manager), approved.id()).title()).isEqualTo("전사 승인");
+        assertThatThrownBy(() -> scheduleService.getDetail(authOf(manager), draft.id()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 승인된 전체(ALL) 일정을 조회만 가능하고 수정·삭제는 여전히 불가하다(S15P11B106-240)")
+    void departmentManagerCannotModifyApprovedAll() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member superAdmin = memberRepository.save(admin(dev, "admin@ajt.com"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+        Schedule approved = scheduleRepository.save(Schedule.create(superAdmin.getId(), "전사 승인", null, null, null,
+                ScheduleVisibility.ALL, START, END));
+        ScheduleUpdateRequest request = new ScheduleUpdateRequest();
+        request.setTitle("무단 변경");
+
+        assertThatThrownBy(() -> scheduleService.update(authOf(manager), approved.id(), request))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
+        assertThatThrownBy(() -> scheduleService.delete(authOf(manager), approved.id()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
+    }
+
+    @Test
     @DisplayName("사원이 department 일정을 생성하려 하면 403으로 거절한다")
     void employeeCannotCreateDepartmentSchedule() {
         Department dev = departmentRepository.save(new Department("개발부"));
