@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { hasUnsettledWork } from './queries'
+import { describe, expect, it, vi } from 'vitest'
+import { qk } from '@/shared/api/queryKeys'
+import { hasUnsettledWork, invalidateAfterAiJob } from './queries'
 
 // 요약 목록의 폴링 중단 판정 (S15P11B106-244).
 // 화면 배지는 작업 상태가 아니라 문서 결과 상태를 그리므로, 둘 다 종료돼야 멈춘다.
@@ -36,5 +37,19 @@ describe('hasUnsettledWork', () => {
   it('목록이 비었거나 문서 결과가 없으면 멈춘다', () => {
     expect(hasUnsettledWork([])).toBe(false)
     expect(hasUnsettledWork([{ jobId: '1', status: 'completed' }])).toBe(false)
+  })
+})
+
+// 작업이 끝난 뒤 위키 화면이 새로고침 없이 반영되려면, 작업을 지켜본 쪽이 위키 캐시를 걷어내야 한다.
+describe('invalidateAfterAiJob', () => {
+  it('문서와 위키(목록·상세·스페이스·카테고리) 캐시를 모두 걷어낸다', () => {
+    const invalidateQueries = vi.fn()
+    invalidateAfterAiJob({ invalidateQueries })
+    const keys = invalidateQueries.mock.calls.map(([arg]) => arg.queryKey)
+    expect(keys).toContainEqual(qk.documents.all)
+    expect(keys).toContainEqual(qk.wikis.all)
+    // spaces·categories 는 `wikis` 접두 밖이라 따로 지우지 않으면 트리가 옛 구조로 남는다.
+    expect(keys).toContainEqual(qk.wikis.spaces)
+    expect(keys).toContainEqual(qk.wikis.categoriesAll)
   })
 })

@@ -48,7 +48,12 @@ export const qk = {
   wikis: {
     all: ['wikis'],
     spaces: ['wiki-spaces'],
+    // spaces·categories 는 `wikis` 접두 밖에 있다. AI 작업이 끝난 뒤 트리까지 한 번에
+    // 무효화하려면 이 접두 키가 따로 필요하다.
+    categoriesAll: ['wiki-categories'],
     categories: (scopeKey) => ['wiki-categories', scopeKey],
+    // 필터별로 캐시가 갈리므로, 목록 전체를 무효화할 때는 접두 키(listAll)를 쓴다.
+    listAll: ['wikis', 'list'],
     list: (filters) => ['wikis', 'list', filters ?? {}],
     detail: (wikiId) => ['wikis', 'detail', String(wikiId)],
     chat: (wikiId) => ['wikis', 'detail', String(wikiId), 'chat'],

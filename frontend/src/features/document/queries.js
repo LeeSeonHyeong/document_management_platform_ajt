@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '@/shared/api/queryKeys'
 import {
@@ -18,6 +19,18 @@ import {
   startAiJob,
   cancelAiJob,
 } from './api'
+
+// AI 작업이 끝나면 그 작업이 바꿔놓은 캐시를 모두 무효화한다.
+//
+// 위키 화면(features/wiki)은 작업을 폴링하지 않으므로, 작업을 지켜보는 쪽에서 위키 캐시를
+// 걷어내지 않으면 편집이 끝난 위키가 새로고침 전까지 옛 내용으로 남는다 — spaces·categories는
+// `wikis` 접두 밖이라 따로 지운다(카테고리가 새로 생기거나 비는 경우가 있다).
+export function invalidateAfterAiJob(queryClient) {
+  queryClient.invalidateQueries({ queryKey: qk.documents.all })
+  queryClient.invalidateQueries({ queryKey: qk.wikis.all })
+  queryClient.invalidateQueries({ queryKey: qk.wikis.spaces })
+  queryClient.invalidateQueries({ queryKey: qk.wikis.categoriesAll })
+}
 
 export function useDocuments(filters) {
   return useQuery({
@@ -97,6 +110,10 @@ export function useDeleteDocument() {
     mutationFn: deleteDocument,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.documents.all })
+      // 삭제는 위키를 걷어내는 재처리 작업(jobId)을 새로 만든다. 이걸 무효화하지 않으면
+      // 요약 목록이 삭제 전 캐시(전부 종료 상태 → 폴링도 꺼짐)를 그대로 그려서,
+      // 방금 시작된 「진행 중인 AI 작업 1건」이 새로고침해야 보인다.
+      queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
   })
 }
@@ -209,12 +226,23 @@ export function hasUnsettledWork(items) {
 }
 
 export function useAiJobs(filters = {}) {
-  return useQuery({
+  const queryClient = useQueryClient()
+  const query = useQuery({
     queryKey: qk.aiJobs.list(filters),
     queryFn: () => fetchAiJobs(filters),
     refetchInterval: (query) =>
       hasUnsettledWork(query.state.data?.items ?? []) ? RUNNING_JOB_POLL_MS : false,
   })
+
+  // 진행 중이던 작업이 전부 끝난 순간 한 번, 그 작업이 바꿔놓은 문서·위키 캐시를 걷어낸다.
+  const unsettled = hasUnsettledWork(query.data?.items ?? [])
+  const wasUnsettled = useRef(false)
+  useEffect(() => {
+    if (wasUnsettled.current && !unsettled) invalidateAfterAiJob(queryClient)
+    wasUnsettled.current = unsettled
+  }, [unsettled, queryClient])
+
+  return query
 }
 
 // 단발 조회. 2초 폴링이 필요한 화면은 hooks/useAiJobPolling을 사용한다.
