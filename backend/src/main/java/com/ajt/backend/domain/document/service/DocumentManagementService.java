@@ -133,11 +133,16 @@ public class DocumentManagementService {
         CurrentMember currentMember = requireAdmin();
         Document document = findDocument(documentId);
         requireDocumentScope(currentMember, document);
-        // 수정(S15P11B106-146): 파일 교체 확정(promote) 실패 등으로 FAILED가 된 문서는 DB 메타데이터와 실제 파일이
-        //   어긋날 수 있으므로(같은 확장자 교체 실패 시 기존 파일이 새 파일처럼 내려갈 수 있음) 다운로드를 막는다.
-        if (document.status() == DocumentStatus.FAILED) {
-            throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS);
-        }
+        // 수정(S15P11B106-247): FAILED 전체를 막지 않는다. S15P11B106-146이 막으려던 것은 파일 교체 확정
+        //   (promote) 실패로 DB 메타데이터와 실제 파일이 어긋난 경우인데, 조건이 상태 전체였던 탓에 원본이
+        //   온전한 AI 변환·파싱 실패까지 함께 막혔다. 그런 문서는 실패 원인을 보려면 원본을 열어야 하는데
+        //   화면 안내가 「다운로드로 확인해주세요」라 안내와 동작이 어긋났다.
+        //
+        //   실패 종류를 구분할 근거가 DB에 없다 — failReplace·failParsing·failProcessing·failDeleting이
+        //   모두 status=FAILED만 남긴다. 그래서 상태가 아니라 **실제 파일이 읽히는지**로 판단한다.
+        //   교체 실패로 파일이 최종 경로에 없으면 아래 isReadable 검사가 404로 막는다.
+        //   (한계: 교체가 실패했는데 옛 파일이 남아 있으면 그 옛 파일이 내려간다. 실패 종류를 DB에
+        //    남기려면 스키마 변경이 필요해 팀 합의 대상으로 남긴다 — S15P11B106-247 참고.)
         Resource resource = documentFileStorage.load(document.originalPath());
         // 작업: DB엔 경로가 있으나 실제 파일이 없으면(유실) 500 대신 404로 안전하게 처리한다.
         if (!resource.isReadable()) {

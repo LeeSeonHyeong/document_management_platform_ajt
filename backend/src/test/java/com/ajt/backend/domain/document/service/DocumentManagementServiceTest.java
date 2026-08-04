@@ -157,20 +157,49 @@ class DocumentManagementServiceTest {
     }
 
     @Test
-    @DisplayName("FAILED 상태 문서는 다운로드를 INVALID_DOCUMENT_STATUS로 거절한다(S15P11B106-146)")
-    void downloadFileRejectsFailedDocument() throws Exception {
+    @DisplayName("실패한 문서라도 원본 파일이 있으면 다운로드할 수 있다(S15P11B106-247)")
+    void downloadFileAllowsFailedDocumentWhenFileSurvives() throws Exception {
+        // AI 변환 실패는 원본을 건드리지 않는다. 실패 원인을 보려면 원본을 열어야 하는데
+        // S15P11B106-146의 상태 가드가 FAILED 전체를 막아 이것까지 막혔다.
         Document document = uploadedDocument();
         assignId(document, 15L);
-        document.failReplace("파일 교체 확정(staging→최종 이동) 실패로 문서 처리에 실패했습니다."); // FAILED로 전환
+        // 변환 실패는 PARSING → PROCESSING 을 거친 뒤에만 성립한다(Document 가 전이를 막는다).
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/15/parsed.md");
+        document.failProcessing("에이전트 실행에 실패했습니다");
+        Resource resource = new ByteArrayResource("hello".getBytes());
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.load("wiki/ALL/sources/15/original.md")).willReturn(resource);
+
+        DocumentFileDownload download = service.downloadFile(15L);
+
+        assertThat(download.fileName()).isEqualTo("rule.md");
+        assertThat(download.resource()).isSameAs(resource);
+    }
+
+    @Test
+    @DisplayName("파일 교체가 실패해 원본이 없어졌으면 404로 막는다(S15P11B106-247)")
+    void downloadFileRejectsReplaceFailureWhenFileGone() throws Exception {
+        // 교체 확정(promote) 실패는 최종 경로에 파일이 없다. 상태가 아니라 이 사실로 막는다 —
+        // 실패 종류를 구분할 근거가 DB에 없기 때문이다.
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.failReplace("파일 교체 확정(staging→최종 이동) 실패로 문서 처리에 실패했습니다.");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.load("wiki/ALL/sources/15/original.md"))
+                .willReturn(new ByteArrayResource("x".getBytes()) {
+                    @Override
+                    public boolean isReadable() {
+                        return false;
+                    }
+                });
 
         assertThatThrownBy(() -> service.downloadFile(15L))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
-                .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
-        // 상태 확인이 파일 로드보다 앞서므로 저장소 접근 자체를 하지 않는다.
-        verify(documentFileStorage, never()).load(any());
+                .isEqualTo(ErrorCode.NOT_FOUND);
     }
 
     @Test
