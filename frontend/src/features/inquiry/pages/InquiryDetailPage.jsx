@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, FileImage, Info } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { ChevronLeft, FileImage, Info, MessageSquareText } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import ConfirmDialog from '@/components/ui/ConfirmDialog'
+import Modal from '@/components/ui/Modal'
 import EmptyState from '@/components/ui/EmptyState'
 import Spinner from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui'
@@ -21,6 +21,7 @@ function formatDate(value) {
 
 export default function InquiryDetailPage() {
   const { inquiryId } = useParams()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const toast = useToast()
   const [answer, setAnswer] = useState('')
@@ -40,6 +41,7 @@ export default function InquiryDetailPage() {
       setConfirmOpen(false)
       await queryClient.invalidateQueries({ queryKey: qk.inquiries.all })
       toast.success('답변이 등록되었습니다.')
+      navigate('/admin/inquiries')
     },
     onError: (error) => {
       setConfirmOpen(false)
@@ -93,7 +95,7 @@ export default function InquiryDetailPage() {
               <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs text-slate-400">{answer.length} / 2000자</span>
             </div>
             <textarea value={answer} onChange={(event) => setAnswer(event.target.value.slice(0, 2000))} rows={7} placeholder="요청자에게 전달할 답변을 입력해주세요." className="focus-ring mt-4 w-full resize-none rounded-xl border border-primary-300 bg-slate-50 p-4 text-sm leading-6" />
-            <p className="mt-3 flex items-center gap-2 rounded-lg bg-primary-50 px-4 py-3 text-xs text-slate-500"><Info className="size-4 text-primary-500" /> 등록하면 요청자에게 알림 메일이 발송되고 상태가 처리완료로 변경됩니다.</p>
+            <p className="mt-3 flex items-center gap-2 rounded-lg bg-primary-50 px-4 py-3 text-xs text-slate-500"><Info className="size-4 text-primary-500" /> 등록하면 요청자에게 답변이 저장되고 문의 상태가 처리완료로 변경됩니다.</p>
             <div className="mt-4 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setAnswer('')}>취소</Button>
               <Button disabled={!answer.trim()} onClick={() => setConfirmOpen(true)}>{pending ? '답변 등록' : '답변 수정'}</Button>
@@ -121,15 +123,38 @@ export default function InquiryDetailPage() {
         </Card>
       </div>
 
-      <ConfirmDialog
+      <Modal
         open={confirmOpen}
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={() => mutation.mutate()}
-        title="답변을 등록할까요?"
-        description={`등록하면 요청자(${inquiry.author?.name} · ${inquiry.author?.department?.name})에게 작성한 답변과 함께 알림 메일이 발송되고, 문의 상태가 자동으로 처리완료로 변경됩니다.`}
-        confirmLabel="등록하기"
-        loading={mutation.isPending}
-      />
+        onClose={mutation.isPending ? undefined : () => setConfirmOpen(false)}
+        size="md"
+        closeOnOverlay={!mutation.isPending}
+        showClose={false}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={mutation.isPending}>취소</Button>
+            <Button onClick={() => mutation.mutate()} loading={mutation.isPending}>{pending ? '등록하기' : '수정하기'}</Button>
+          </>
+        }
+      >
+        <div className="px-2 pt-4 text-center">
+          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 text-white">
+            <MessageSquareText className="size-7" />
+          </span>
+          <h2 className="mt-5 text-lg font-bold text-slate-900">{pending ? '답변을 등록할까요?' : '답변을 수정할까요?'}</h2>
+          <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
+            {pending
+              ? '아래 요청자에게 작성한 답변이 저장되고, 문의 상태가 자동으로 처리완료로 변경됩니다.'
+              : '아래 요청자에게 저장된 답변이 수정됩니다.'}
+          </p>
+          <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3 text-left">
+            <p className="text-xs text-slate-400">요청자</p>
+            <p className="mt-0.5 font-semibold text-slate-800">
+              {inquiry.author?.name}
+              {inquiry.author?.department?.name && ` · ${inquiry.author.department.name}`}
+            </p>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
