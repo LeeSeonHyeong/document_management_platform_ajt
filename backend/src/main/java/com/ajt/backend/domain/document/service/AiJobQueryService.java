@@ -3,6 +3,7 @@ package com.ajt.backend.domain.document.service;
 import com.ajt.backend.domain.document.api.AiJobListResponse;
 import com.ajt.backend.domain.document.api.AiJobResponse;
 import com.ajt.backend.domain.document.model.AiJob;
+import com.ajt.backend.domain.document.model.AiJobStatus;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentStatus;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
@@ -83,7 +84,7 @@ public class AiJobQueryService {
         return new AiJobResponse(
                 String.valueOf(job.id()),
                 job.status().name().toLowerCase(),
-                documentResults(job.documentIds(), documentsById, recordedResultsById(job)),
+                documentResults(job.status(), job.documentIds(), documentsById, recordedResultsById(job)),
                 job.createdAt(),
                 job.startedAt(),
                 job.finishedAt(),
@@ -115,12 +116,14 @@ public class AiJobQueryService {
     }
 
     private List<AiJobResponse.DocumentResultResponse> documentResults(
+            AiJobStatus jobStatus,
             List<Long> documentIds,
             Map<Long, Document> documentsById,
             Map<Long, AiJob.DocumentParseResult> recordedResultsById
     ) {
         return documentIds.stream()
                 .map(documentId -> toDocumentResult(
+                        jobStatus,
                         documentId,
                         documentsById.get(documentId),
                         recordedResultsById.get(documentId),
@@ -131,12 +134,13 @@ public class AiJobQueryService {
     }
 
     private AiJobResponse.DocumentResultResponse toDocumentResult(
+            AiJobStatus jobStatus,
             long documentId,
             Document document,
             AiJob.DocumentParseResult recordedResult,
             List<Long> orderedDocumentIds
     ) {
-        DocumentStatus status = document == null ? statusOfMissingDocument(recordedResult) : document.status();
+        DocumentStatus status = statusOf(jobStatus, document, recordedResult);
         return new AiJobResponse.DocumentResultResponse(
                 String.valueOf(documentId),
                 fileNameOf(document, recordedResult),
@@ -144,9 +148,44 @@ public class AiJobQueryService {
                 responseStatus(status),
                 currentStage(status),
                 recordedResult == null ? null : recordedResult.summary(),
-                failureReasonOf(document, recordedResult),
+                failureReasonOf(jobStatus, document, recordedResult),
                 recordedResult == null ? null : recordedResult.failureStage()
         );
+    }
+
+    /**
+     * 이력에 그릴 문서 상태입니다.
+     *
+     * <p><b>끝난 작업은 그때 기록한 결과를 따른다.</b> 문서의 현재 상태로 그리면 같은 문서를
+     * 처리한 과거 작업들의 상태가 한꺼번에 바뀐다 — 문서를 다시 지우는 중이면 지난달 업로드
+     * 작업까지 「처리 중」이 된다. 이력은 그 회차에 무엇이 일어났는지를 가리켜야 한다.
+     *
+     * <p>진행 중인 작업만 문서의 현재 상태로 그린다. 아직 기록이 없어 그것이 유일한 근거이고,
+     * 화면도 그 값으로 진행 단계를 보여준다.
+     *
+     * <p>기록이 없는 옛 작업은 종전대로 문서의 현재 상태를 쓴다(판단 근거가 없다).
+     */
+    private DocumentStatus statusOf(
+            AiJobStatus jobStatus,
+            Document document,
+            AiJob.DocumentParseResult recordedResult
+    ) {
+        if (document == null) {
+            return statusOfMissingDocument(recordedResult);
+        }
+        if (recordedResult == null || !isSettled(jobStatus)) {
+            return document.status();
+        }
+        if (recordedResult.success()) {
+            return DocumentStatus.COMPLETED;
+        }
+        return jobStatus == AiJobStatus.CANCELLED ? DocumentStatus.CANCELLED : DocumentStatus.FAILED;
+    }
+
+    private boolean isSettled(AiJobStatus jobStatus) {
+        return jobStatus == AiJobStatus.COMPLETED
+                || jobStatus == AiJobStatus.FAILED
+                || jobStatus == AiJobStatus.CANCELLED;
     }
 
     /**
@@ -185,14 +224,24 @@ public class AiJobQueryService {
      * 예전에는 곧바로 「문서를 찾을 수 없습니다」로 덮어써서, 걷어내기가 실제로 왜 실패했는지
      * 화면에서 볼 수 없었다. 기록도 문서도 없을 때만 그 문구로 남긴다.
      *
-     * <p>문서 행이 살아 있으면 기존 우선순위를 유지한다 — 문서의 현재 실패 사유가 먼저다.
+     * <p>끝난 작업은 상태와 같은 근거를 쓴다 — 그때 기록한 사유다. 문서의 현재 사유를 얹으면
+     * 성공했던 과거 회차에 나중에 난 오류가 붙는다.
+     *
+     * <p>진행 중인 작업만 문서의 현재 실패 사유를 먼저 본다(아직 기록이 없다).
      */
-    private String failureReasonOf(Document document, AiJob.DocumentParseResult recordedResult) {
+    private String failureReasonOf(
+            AiJobStatus jobStatus,
+            Document document,
+            AiJob.DocumentParseResult recordedResult
+    ) {
         if (document == null) {
             if (recordedResult != null) {
                 return recordedResult.failureReason();
             }
             return "문서를 찾을 수 없습니다.";
+        }
+        if (recordedResult != null && isSettled(jobStatus)) {
+            return recordedResult.failureReason();
         }
         if (document.failureReason() != null) {
             return document.failureReason();

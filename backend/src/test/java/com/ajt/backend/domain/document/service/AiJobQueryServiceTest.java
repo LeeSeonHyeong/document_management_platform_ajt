@@ -384,8 +384,8 @@ class AiJobQueryServiceTest {
     }
 
     @Test
-    @DisplayName("문서 행이 살아 있으면 문서의 실패 사유를 그대로 우선한다")
-    void livingDocumentKeepsExistingPrecedence() throws Exception {
+    @DisplayName("끝난 작업은 문서가 살아 있어도 그때 기록한 사유를 보여준다")
+    void settledJobKeepsRecordedFailureReason() throws Exception {
         AiJob job = finishedJob(53L, 33L, AiJob.DocumentParseResult.failed(
                 33L, "규정.docx", "기록된 사유", "wiki_transform"));
         Document document = uploadedDocument(33L, "규정.docx");
@@ -397,7 +397,45 @@ class AiJobQueryServiceTest {
 
         AiJobResponse.DocumentResultResponse result = service.getAiJob(53L).documentResults().getFirst();
 
-        assertThat(result.failureReason()).isEqualTo("문서의 현재 사유");
+        // 문서의 현재 사유를 얹으면 나중에 난 오류가 지난 회차 이력에 붙는다.
+        assertThat(result.failureReason()).isEqualTo("기록된 사유");
+    }
+
+    @Test
+    @DisplayName("끝난 작업의 상태는 문서의 현재 상태를 따라가지 않는다")
+    void settledJobKeepsRecordedStatus() throws Exception {
+        // 같은 문서를 다시 지우는 중이면, 예전에 성공한 작업까지 「처리 중」으로 바뀌던 증상이다.
+        AiJob job = finishedJob(54L, 34L, AiJob.DocumentParseResult.succeeded(
+                34L, "규정.docx", "휴가 규정 Wiki를 만들었습니다."));
+        Document document = completedDocument(34L, "규정.docx");
+        document.markForDeletion();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(54L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(34L))).willReturn(List.of(document));
+
+        AiJobResponse.DocumentResultResponse result = service.getAiJob(54L).documentResults().getFirst();
+
+        assertThat(result.status()).isEqualTo("completed");
+        assertThat(result.currentStage()).isEqualTo("wiki_applied");
+    }
+
+    @Test
+    @DisplayName("진행 중인 작업은 문서의 현재 상태로 진행 단계를 보여준다")
+    void runningJobFollowsDocumentStatus() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/55", List.of(35L));
+        assign(job, "id", 55L);
+        assign(job, "createdAt", LocalDateTime.parse("2026-08-03T15:32:00"));
+        job.start();
+        Document document = uploadedDocument(35L, "규정.docx");
+        document.startParsing();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(55L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(35L))).willReturn(List.of(document));
+
+        AiJobResponse.DocumentResultResponse result = service.getAiJob(55L).documentResults().getFirst();
+
+        assertThat(result.status()).isEqualTo("processing");
+        assertThat(result.currentStage()).isEqualTo("parsing");
     }
 
     private AiJob finishedJob(long jobId, long documentId, AiJob.DocumentParseResult result) throws Exception {
