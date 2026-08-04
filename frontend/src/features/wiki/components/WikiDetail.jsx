@@ -112,7 +112,9 @@ export default function WikiDetail({ wikiId }) {
         </div>
       </div>
 
-      <article className="min-w-0 flex-1 py-1">
+      {/* 본문 폭을 제한한다. 넓은 화면에서 한 줄이 100자를 넘어가면 눈이 줄을 놓친다 —
+          읽기 편한 한 줄은 65자 안팎이다. 표·다이어그램은 아래에서 폭을 되찾는다. */}
+      <article className="min-w-0 max-w-[72ch] flex-1 py-1">
         <WikiMarkdown markdown={wiki.contentMarkdown} validWikiIds={validWikiIds} />
       </article>
     </div>

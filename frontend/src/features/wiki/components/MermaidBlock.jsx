@@ -57,7 +57,9 @@ export default function MermaidBlock({ code }) {
   // mermaid 는 securityLevel 'strict' 에서 출력 SVG 를 정화(sanitize)한다.
   return (
     <div
-      className="my-3 flex justify-center overflow-x-auto"
+      // 다이어그램을 카드로 감싼다. 배경·여백이 없으면 본문 텍스트와 경계가 흐려
+      // "그림"으로 읽히지 않는다. 표와 같은 이유로 본문 폭을 넘어도 된다.
+      className="my-4 flex justify-center overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/50 p-4"
       // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: svg }}
     />
