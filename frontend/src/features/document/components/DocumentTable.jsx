@@ -103,13 +103,18 @@ export default function DocumentTable({
     },
     { key: 'uploadedAt', header: '업로드일', render: (doc) => formatDate(doc.uploadedAt) },
     {
+      // 「위키」만으로는 무엇을 세는 값인지 알 수 없었고, 「—」는 0개인지 알 수 없음인지
+      // 모호했다 (S15P11B106-252). 이 문서를 근거로 만들어진 Wiki 문서 수다.
       key: 'wiki',
-      header: '위키',
-      render: (doc) => (
-        <span className="font-semibold text-primary-600">
-          {doc.relatedWikis?.length ? `● ${doc.relatedWikis.length}건` : '—'}
-        </span>
-      ),
+      header: '관련 위키',
+      render: (doc) => {
+        const count = doc.relatedWikis?.length ?? 0
+        return (
+          <span className={count ? 'font-semibold text-primary-600' : 'text-slate-400'}>
+            {count ? `● ${count}개` : '0개'}
+          </span>
+        )
+      },
     },
     // 상태 컬럼을 두지 않는다 (S15P11B106-248). 이 화면은 「지금 Wiki 의 근거가 무엇인가」를
     // 보는 곳이고, AI 작업이 어떻게 됐는지는 요약 목록의 관심사다. S15P11B106-200 이 진행
