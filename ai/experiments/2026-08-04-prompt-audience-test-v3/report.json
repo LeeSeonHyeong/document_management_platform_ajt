@@ -1,0 +1,245 @@
+{
+  "scope": "ALL",
+  "runtime": "via-api",
+  "model": null,
+  "order": [
+    "annual-leave-notice.md"
+  ],
+  "documents": [
+    {
+      "seq": 1,
+      "jobId": "9001",
+      "documentId": "101",
+      "document": "annual-leave-notice.md",
+      "path": "wiki/ALL/sources/101/parsed/content.md",
+      "viaApi": true,
+      "toolCalls": {},
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "turns": 0,
+      "costUsd": 0.0,
+      "error": null,
+      "reply": "연차 휴가 관련 인사 공지를 바탕으로, 전 직원이 참고할 수 있는 '연차 휴가 산정 및 이월 규정' 페이지를 위키에 새로 작성했습니다. 입사 시기별 연차 발생 기준, 미사용 연차의 이월 한도(다음 해 3월 말 자동 소멸), 사내 근태 시스템을 통한 신청 절차까지 한 곳에서 볼 수 있도록 정리했으며, 목차 페이지도 해당 내용을 반영해 함께 갱신했습니다.",
+      "changes": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "evidence": []
+        },
+        {
+          "type": "create",
+          "address": "pages/b3bdfe035abb.md",
+          "wikiPath": "wiki/ALL/pages/b3bdfe035abb.md",
+          "title": "연차 휴가 산정 및 이월 규정",
+          "category": "휴가 정책",
+          "tags": [],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "1",
+              "location": "연차 발생 기준",
+              "quote": "연차는 입사일을 기준으로 매년 산정합니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "2",
+              "location": "연차 발생 기준",
+              "quote": "입사 1년 미만 근로자는 1개월 개근 시 1일의 유급휴가를 부여하며, 입사 1년 이상 근로자는 근속연수에 따라 15일부터 최대 25일까지 부여됩니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "3",
+              "location": "이월 규정",
+              "quote": "당해 연도에 사용하지 않은 연차는 다음 해 3월 말까지만 이월하여 사용할 수 있습니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "4",
+              "location": "이월 규정",
+              "quote": "3월 말까지 사용하지 않은 이월 연차는 자동 소멸되며, 별도의 수당으로 보전되지 않습니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "5",
+              "location": "신청 절차",
+              "quote": "연차는 사용 희망일로부터 최소 3영업일 전에 사내 근태 시스템을 통해 신청해야 하며, 팀장의 승인을 받아야 최종 확정됩니다.",
+              "page": null
+            }
+          ]
+        }
+      ],
+      "committed": [
+        {
+          "type": "update",
+          "address": "index.md",
+          "wikiPath": "wiki/ALL/index.md",
+          "title": "위키 목차",
+          "category": "목차",
+          "tags": [
+            "목차",
+            "허브"
+          ],
+          "evidence": [],
+          "wikiId": "3001",
+          "committed": true
+        },
+        {
+          "type": "create",
+          "address": "pages/b3bdfe035abb.md",
+          "wikiPath": "wiki/ALL/pages/b3bdfe035abb.md",
+          "title": "연차 휴가 산정 및 이월 규정",
+          "category": "휴가 정책",
+          "tags": [],
+          "evidence": [
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "1",
+              "location": "연차 발생 기준",
+              "quote": "연차는 입사일을 기준으로 매년 산정합니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "2",
+              "location": "연차 발생 기준",
+              "quote": "입사 1년 미만 근로자는 1개월 개근 시 1일의 유급휴가를 부여하며, 입사 1년 이상 근로자는 근속연수에 따라 15일부터 최대 25일까지 부여됩니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "3",
+              "location": "이월 규정",
+              "quote": "당해 연도에 사용하지 않은 연차는 다음 해 3월 말까지만 이월하여 사용할 수 있습니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "4",
+              "location": "이월 규정",
+              "quote": "3월 말까지 사용하지 않은 이월 연차는 자동 소멸되며, 별도의 수당으로 보전되지 않습니다.",
+              "page": null
+            },
+            {
+              "documentId": "101",
+              "documentName": "document-101",
+              "footnote": "5",
+              "location": "신청 절차",
+              "quote": "연차는 사용 희망일로부터 최소 3영업일 전에 사내 근태 시스템을 통해 신청해야 하며, 팀장의 승인을 받아야 최종 확정됩니다.",
+              "page": null
+            }
+          ],
+          "wikiId": "3002",
+          "committed": true
+        }
+      ],
+      "response": {
+        "summary": "연차 휴가 관련 인사 공지를 바탕으로, 전 직원이 참고할 수 있는 '연차 휴가 산정 및 이월 규정' 페이지를 위키에 새로 작성했습니다. 입사 시기별 연차 발생 기준, 미사용 연차의 이월 한도(다음 해 3월 말 자동 소멸), 사내 근태 시스템을 통한 신청 절차까지 한 곳에서 볼 수 있도록 정리했으며, 목차 페이지도 해당 내용을 반영해 함께 갱신했습니다.",
+        "categoryChanges": [
+          {
+            "action": "create",
+            "tempCategoryId": "category-temp-1",
+            "wikiCategoryId": null,
+            "name": "휴가 정책",
+            "description": null
+          }
+        ],
+        "wikiChanges": [
+          {
+            "action": "create",
+            "tempWikiId": "wiki-temp-1",
+            "wikiId": null,
+            "wikiPath": "wiki/ALL/pages/b3bdfe035abb.md",
+            "title": "연차 휴가 산정 및 이월 규정",
+            "contentMarkdown": "---\ntitle: 연차 휴가 산정 및 이월 규정\ndescription: 입사일 기준 연차 발생, 이월 규칙, 신청 절차 안내\ndate: 2026-08-01\ntags: [휴가, 연차, 근태, 인사]\ncategory: 휴가 정책\n---\n\n2026년 하반기 기준으로 전 직원에게 적용되는 연차 휴가 산정 기준, 이월 규정, 신청 절차를 정리한다.\n\n## 연차 발생 기준\n\n연차는 입사일을 기준으로 매년 산정된다[^1]. 근속 기간에 따라 부여 일수가 달라진다[^2].\n\n| 근속 기간 | 연차 부여 방식 |\n|---|---|\n| 입사 1년 미만 | 1개월 개근 시 1일 유급휴가 |\n| 입사 1년 이상 | 근속연수에 따라 15일 ~ 최대 25일 |\n\n## 이월 규정\n\n당해 연도에 사용하지 않은 연차는 다음 해 3월 말까지만 이월하여 사용할 수 있다[^3]. 3월 말까지 사용하지 않은 이월 연차는 자동 소멸되며, 별도의 수당으로 보전되지 않는다[^4].\n\n```mermaid\ngraph LR\n    A[\"당해 연도 미사용 연차\"] --> B[\"다음 해 3월 말까지 이월 사용 가능\"]\n    B --> C{\"3월 말까지 사용 여부\"}\n    C -- 사용 --> D[\"소진\"]\n    C -- 미사용 --> E[\"자동 소멸 (수당 보전 없음)\"]\n```\n\n## 신청 절차\n\n연차 신청은 사용 희망일 최소 3영업일 전에 사내 근태 시스템을 통해 제출해야 하며, 팀장의 승인을 받아야 최종 확정된다[^5].\n\n```mermaid\ngraph LR\n    A[\"사용 희망일 3영업일 전\"] --> B[\"근태 시스템 신청\"]\n    B --> C[\"팀장 승인\"]\n    C --> D[\"연차 확정\"]\n```\n\n[^1]: document-101, 연차 발생 기준 — \"연차는 입사일을 기준으로 매년 산정합니다.\"\n[^2]: document-101, 연차 발생 기준 — \"입사 1년 미만 근로자는 1개월 개근 시 1일의 유급휴가를 부여하며, 입사 1년 이상 근로자는 근속연수에 따라 15일부터 최대 25일까지 부여됩니다.\"\n[^3]: document-101, 이월 규정 — \"당해 연도에 사용하지 않은 연차는 다음 해 3월 말까지만 이월하여 사용할 수 있습니다.\"\n[^4]: document-101, 이월 규정 — \"3월 말까지 사용하지 않은 이월 연차는 자동 소멸되며, 별도의 수당으로 보전되지 않습니다.\"\n[^5]: document-101, 신청 절차 — \"연차는 사용 희망일로부터 최소 3영업일 전에 사내 근태 시스템을 통해 신청해야 하며, 팀장의 승인을 받아야 최종 확정됩니다.\"\n",
+            "wikiCategoryRef": "category-temp-1",
+            "mergedIntoRef": null,
+            "evidence": [
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "1",
+                "location": "연차 발생 기준",
+                "quote": "연차는 입사일을 기준으로 매년 산정합니다.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "2",
+                "location": "연차 발생 기준",
+                "quote": "입사 1년 미만 근로자는 1개월 개근 시 1일의 유급휴가를 부여하며, 입사 1년 이상 근로자는 근속연수에 따라 15일부터 최대 25일까지 부여됩니다.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "3",
+                "location": "이월 규정",
+                "quote": "당해 연도에 사용하지 않은 연차는 다음 해 3월 말까지만 이월하여 사용할 수 있습니다.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "4",
+                "location": "이월 규정",
+                "quote": "3월 말까지 사용하지 않은 이월 연차는 자동 소멸되며, 별도의 수당으로 보전되지 않습니다.",
+                "page": null
+              },
+              {
+                "documentId": "101",
+                "documentName": "document-101",
+                "footnote": "5",
+                "location": "신청 절차",
+                "quote": "연차는 사용 희망일로부터 최소 3영업일 전에 사내 근태 시스템을 통해 신청해야 하며, 팀장의 승인을 받아야 최종 확정됩니다.",
+                "page": null
+              }
+            ]
+          }
+        ],
+        "relationChanges": [],
+        "indexEntries": [
+          {
+            "wikiRef": "wiki-temp-1",
+            "order": 1,
+            "title": "연차 휴가 산정 및 이월 규정",
+            "summary": "입사일 기준 연차 발생, 이월 한도(다음 해 3월 말), 신청 절차"
+          }
+        ]
+      },
+      "relationChanges": [],
+      "categoryChanges": [
+        {
+          "action": "create",
+          "tempCategoryId": "category-temp-1",
+          "wikiCategoryId": null,
+          "name": "휴가 정책",
+          "description": null
+        }
+      ],
+      "elapsedSeconds": 47.3,
+      "lint": "**lint 통과** — ALL 범위, 3건 검사.",
+      "outcome": "committed"
+    }
+  ]
+}
