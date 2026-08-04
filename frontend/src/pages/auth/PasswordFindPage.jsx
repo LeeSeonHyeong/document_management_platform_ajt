@@ -6,6 +6,7 @@ import { requestPasswordReset, verifyPasswordResetCode } from '@/api/auth'
 import { passwordResetRequestSchema, passwordResetVerifySchema } from '@/shared/validation/auth'
 import { applyFieldErrors } from '@/shared/lib/fieldErrors'
 import { Button, Input } from '@/components/ui'
+import { RESEND_SUCCESS_MESSAGE, resendErrorMessage } from './passwordResetMessages'
 
 // S0 비밀번호 찾기. 이메일 입력 → 6자리 인증번호 확인의 2단계로 진행한다.
 // 계정 존재 여부와 무관하게 동일 안내를 보여준다(존재 노출 방지).
@@ -13,6 +14,9 @@ export default function PasswordFindPage() {
   const navigate = useNavigate()
   const [step, setStep] = useState('email') // 'email' | 'code'
   const [email, setEmail] = useState('')
+  // 인증번호 재발송 UX 상태(S15P11B106-219): 요청 중 로딩, 성공/실패 안내 메시지.
+  const [resending, setResending] = useState(false)
+  const [resendFeedback, setResendFeedback] = useState(null) // { type: 'success' | 'error', text }
 
   const emailForm = useForm({
     resolver: zodResolver(passwordResetRequestSchema),
@@ -46,14 +50,23 @@ export default function PasswordFindPage() {
     }
   }
 
-  // 인증번호 재발송.
+  // 인증번호 재발송(S15P11B106-219). 백엔드는 같은 발송 API를 그대로 재호출한다.
+  // 요청 중 버튼을 비활성화하고, 성공/실패를 사용자에게 명확히 안내한다.
   const onResend = async () => {
+    if (resending) return
+    setResending(true)
+    setResendFeedback(null)
     try {
       await requestPasswordReset({ email })
-    } catch {
-      // 무시: 항상 동일 안내.
+      // 성공 시 입력값을 비우고(요구사항) 성공 안내를 보여준다.
+      codeForm.reset({ code: '' })
+      setResendFeedback({ type: 'success', text: RESEND_SUCCESS_MESSAGE })
+    } catch (err) {
+      // 429(TOO_MANY_REQUESTS) 등은 안내로 노출한다. (계정 존재 여부는 성공/실패 모두 동일 문구라 노출되지 않음)
+      setResendFeedback({ type: 'error', text: resendErrorMessage(err) })
+    } finally {
+      setResending(false)
     }
-    codeForm.reset({ code: '' })
   }
 
   if (step === 'code') {
@@ -96,6 +109,7 @@ export default function PasswordFindPage() {
             onClick={() => {
               setStep('email')
               codeForm.reset({ code: '' })
+              setResendFeedback(null)
             }}
             className="font-medium text-slate-500 hover:text-slate-700"
           >
@@ -104,11 +118,25 @@ export default function PasswordFindPage() {
           <button
             type="button"
             onClick={onResend}
-            className="font-medium text-primary-600 hover:text-primary-700"
+            disabled={resending}
+            aria-busy={resending}
+            className="font-medium text-primary-600 hover:text-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            인증번호 재발송
+            {resending ? '재발송 중…' : '인증번호 재발송'}
           </button>
         </div>
+
+        {resendFeedback && (
+          <p
+            role="status"
+            aria-live="polite"
+            className={`mt-3 text-sm ${
+              resendFeedback.type === 'success' ? 'text-emerald-600' : 'text-red-600'
+            }`}
+          >
+            {resendFeedback.text}
+          </p>
+        )}
 
         <p className="mt-6 text-center text-sm text-slate-500">
           <Link to="/login" className="font-medium text-primary-600 hover:text-primary-700">
