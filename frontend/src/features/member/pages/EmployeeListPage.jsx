@@ -10,6 +10,7 @@ import { ACCOUNT_STATUS, ROLES, SIGNUP_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchSignupRequests, fetchUsers } from '../api'
+import { canManageUserAccounts } from '../userAccessPolicy'
 import { AccountBadge, EmployeeAvatar, RoleBadge, StatCard } from '../components/MemberUi'
 
 const FILTERS = [
@@ -30,6 +31,8 @@ export default function EmployeeListPage() {
   const navigate = useNavigate()
   // 사용자 목록 조회는 모든 admin이 가능하지만, 가입 승인 관련 기능은 최고관리자 전용이다(S15P11B106-104).
   const { isSuperAdmin } = useAuth()
+  // 상세·수정 진입(상세보기 버튼·행 클릭)도 최고관리자 전용이다(S15P11B106-222).
+  const canManageUsers = canManageUserAccounts(isSuperAdmin)
   const [searchInput, setSearchInput] = useState('')
   const [keyword, setKeyword] = useState('')
   const [filter, setFilter] = useState('all')
@@ -109,22 +112,28 @@ export default function EmployeeListPage() {
     { key: 'department', header: '부서', render: (employee) => employee.department?.name ?? '-' },
     { key: 'role', header: '역할', render: (employee) => <RoleBadge role={employee.role} /> },
     { key: 'accountStatus', header: '상태', render: (employee) => <AccountBadge status={employee.accountStatus} /> },
-    {
-      key: 'manage',
-      header: '관리',
-      render: (employee) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(event) => {
-            event.stopPropagation()
-            navigate(`/admin/users/${employee.userId}`)
-          }}
-        >
-          상세보기
-        </Button>
-      ),
-    },
+    // 상세보기(상세·수정 화면 진입)는 최고관리자 전용이다(S15P11B106-222).
+    // 부서관리자는 목록만 볼 수 있으므로 '관리' 열 자체를 숨긴다.
+    ...(canManageUsers
+      ? [
+          {
+            key: 'manage',
+            header: '관리',
+            render: (employee) => (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  navigate(`/admin/users/${employee.userId}`)
+                }}
+              >
+                상세보기
+              </Button>
+            ),
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -187,7 +196,10 @@ export default function EmployeeListPage() {
           rows={employees}
           rowKey="userId"
           loading={query.isLoading}
-          onRowClick={(employee) => navigate(`/admin/users/${employee.userId}`)}
+          // 행 클릭 상세 진입도 최고관리자만. 부서관리자는 목록 조회만 가능(S15P11B106-222).
+          onRowClick={
+            canManageUsers ? (employee) => navigate(`/admin/users/${employee.userId}`) : undefined
+          }
           emptyState={<EmptyState title="조건에 맞는 직원이 없습니다." />}
         />
         {(query.data?.totalPages ?? 1) > 1 && (

@@ -190,7 +190,7 @@ const publicFolders = [
           "`Set-Cookie`: `AJT_ACCESS_TOKEN` JWT HttpOnly 쿠키 (`Secure`, `SameSite=Lax`, `Path=/`)",
           "`expiresIn`: 토큰 만료까지 남은 초",
           "`user`: 로그인 사용자 ID, 이름, 역할, 부서, 계정 상태와 최고관리자 여부(`isSuperAdmin`)",
-          "`user.isSuperAdmin`: `true`=최고관리자(가입 승인/거절 가능), `false`=부서관리자 또는 일반 사원(가입 승인/거절 불가). 직원 목록/상세/수정은 `role=admin`이면 가능합니다.",
+          "`user.isSuperAdmin`: `true`=최고관리자, `false`=부서관리자 또는 일반 사원. 직원 목록 조회는 `role=admin`이면 가능하지만, 직원 상세 조회·수정과 가입 승인/거절은 `isSuperAdmin=true`만 가능합니다(S15P11B106-222).",
         ],
         errors: [
           "`400 Bad Request`: 이메일 또는 비밀번호 형식 오류",
@@ -392,7 +392,7 @@ const publicFolders = [
         response: [
           "`userId`, `email`, `name`, `employeeNo`, `role`",
           "`department`: 소속 부서 ID와 이름",
-          "`isSuperAdmin`: 가입 승인/거절 등 최고관리자 전용 작업 가능 여부. 직원 목록/상세/수정은 `role=admin`이면 가능하고, 가입 승인/거절은 `isSuperAdmin=true`만 가능",
+          "`isSuperAdmin`: 최고관리자 전용 작업 가능 여부. 직원 목록 조회는 `role=admin`이면 가능하고, 직원 상세 조회·수정과 가입 승인/거절은 `isSuperAdmin=true`만 가능(S15P11B106-222)",
           "`signupStatus`, `accountStatus`, `createdAt`, `updatedAt`",
         ],
         errors: ["`401 Unauthorized`: accessToken이 유효하지 않음"],
@@ -455,7 +455,7 @@ const publicFolders = [
           "`keyword`: 이름 또는 이메일 검색어",
           "`sort`: 정렬필드와 방향",
         ],
-        policy: ["관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 부서관리자는 사원 계정만 관리할 수 있으나 목록 조회 자체는 가능합니다."],
+        policy: ["관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222)."],
         response: [
           "`items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부",
           "`page`, `size`, `totalCount`, `totalPages`",
@@ -472,11 +472,11 @@ const publicFolders = [
       method: "GET",
       path: "/api/v1/users/:userId",
       description: docs({
-        summary: "관리자가 특정 사용자 한 명의 최신 상세 정보를 조회합니다.",
+        summary: "최고관리자가 특정 사용자 한 명의 최신 상세 정보를 조회합니다.",
         usage: "사용자 관리 상세·수정 화면에서 대상 사용자를 불러올 때 사용합니다.",
         pathParams: ["`userId`: 조회할 사용자 ID"],
         policy: [
-          "관리자(최고관리자·부서관리자)는 사용자 단건 상세를 조회할 수 있습니다.",
+          "사용자 단건 상세 조회는 최고관리자만 가능합니다(S15P11B106-222). 부서관리자는 목록만 조회할 수 있으며, 상세 조회 API를 직접 호출하면 403(`ADMIN_PERMISSION_REQUIRED`)으로 거절합니다.",
           "`PATCH /api/v1/users/{userId}` 수정 화면과 짝이 되는 조회 API입니다.",
         ],
         response: [
@@ -485,7 +485,7 @@ const publicFolders = [
         ],
         errors: [
           "`401 Unauthorized`: accessToken이 유효하지 않음",
-          "`403 Forbidden`: 관리자 권한 없음",
+          "`403 Forbidden`: 최고관리자 권한 없음(부서관리자·사원 포함)",
           "`404 Not Found`: 존재하지 않는 사용자",
         ],
       }),
@@ -502,7 +502,7 @@ const publicFolders = [
         accountStatus: "active",
       }),
       description: docs({
-        summary: "관리자가 사용자 이름, 역할, 소속 부서와 계정 상태를 수정합니다.",
+        summary: "최고관리자가 사용자 이름, 역할, 소속 부서와 계정 상태를 수정합니다.",
         usage: "사용자 관리 상세 화면에서 사용합니다.",
         pathParams: ["`userId`: 수정할 사용자 ID"],
         requestBody: [
@@ -512,19 +512,18 @@ const publicFolders = [
           "`accountStatus`: `active` 또는 `inactive`",
         ],
         policy: [
-          "관리자(최고관리자·부서관리자)는 수정 화면에 접근할 수 있습니다. 단, 부서관리자는 사원 계정만 수정할 수 있고 다른 관리자 계정(다른 부서관리자·최고관리자)은 수정할 수 없습니다.",
-          "부서관리자는 사원 계정의 이름과 부서만 수정할 수 있습니다. 역할(`role`)과 계정 상태(`accountStatus`) 변경은 최고관리자만 가능하며, 부서관리자가 직접 API 호출로 변경을 시도하면 403으로 거절합니다(요청 값이 현재 값과 실제로 달라질 때만 거절, 기존 값 재전송은 허용).",
+          "사용자 수정은 최고관리자만 가능합니다(S15P11B106-222). 부서관리자는 목록만 조회할 수 있으며, 수정 API를 직접 호출하면 403(`ADMIN_PERMISSION_REQUIRED`)으로 거절합니다.",
           "전달하지 않은 필드는 변경하지 않습니다.",
           "사용자는 삭제하지 않고 비활성화합니다.",
           "처리되지 않은 문의가 남은 담당자의 비활성화 또는 employee 전환은 허용하지 않습니다.",
-          "관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.",
+          "최고관리자는 자기 자신을 employee로 강등하거나 비활성화할 수 없습니다.",
           "최고관리자는 부서관리자를 employee로 강등하거나 비활성화할 수 있습니다.",
           "사용자 비밀번호는 이 API에서 변경하지 않고 이메일 재설정으로만 변경합니다.",
         ],
         response: ["수정된 사용자 전체 정보(`isSuperAdmin` 포함)."],
         errors: [
           "`400 Bad Request`: 필드값 또는 부서가 유효하지 않음",
-          "`403 Forbidden`: 관리자 권한 없음, 또는 부서관리자가 다른 관리자 계정을 수정하거나 사원의 역할·계정 상태를 변경하려는 경우(`DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN`)",
+          "`403 Forbidden`: 최고관리자 권한 없음(부서관리자·사원 포함, `ADMIN_PERMISSION_REQUIRED`)",
           "`404 Not Found`: 존재하지 않는 사용자",
           "`409 Conflict`: 변경할 수 없는 사용자 상태(미승인 계정·자기 강등/비활성화·미처리 문의 담당자 강등 등)",
         ],

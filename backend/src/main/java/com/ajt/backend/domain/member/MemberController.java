@@ -66,7 +66,8 @@ public class MemberController {
 
     /**
      * GET /api/v1/users/{userId}
-     * 관리자가 사용자 상세/수정 화면에서 특정 사용자 한 명의 최신 정보를 조회합니다(S15P11B106-78).
+     * 최고관리자가 사용자 상세/수정 화면에서 특정 사용자 한 명의 최신 정보를 조회합니다(S15P11B106-78).
+     * 부서관리자는 목록만 볼 수 있고 상세 조회는 최고관리자 전용이다(S15P11B106-222).
      */
     @GetMapping("/api/v1/users/{userId}")
     public UserResponse user(
@@ -78,7 +79,8 @@ public class MemberController {
 
     /**
      * PATCH /api/v1/users/{userId}
-     * 관리자가 사용자 이름, 역할, 부서, 계정 상태를 필요한 항목만 수정합니다.
+     * 최고관리자가 사용자 이름, 역할, 부서, 계정 상태를 필요한 항목만 수정합니다.
+     * 부서관리자는 수정할 수 없다(최고관리자 전용, S15P11B106-222).
      */
     @PatchMapping("/api/v1/users/{userId}")
     public UserResponse updateUser(

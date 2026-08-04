@@ -201,14 +201,14 @@ class MemberControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/users/{userId}는 관리자에게 사용자 단건 상세를 반환한다")
-    void userDetailReturnsForAdmin() throws Exception {
+    @DisplayName("GET /api/v1/users/{userId}는 최고관리자에게 사용자 단건 상세를 반환한다(S15P11B106-222)")
+    void userDetailReturnsForSuperAdmin() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        Member superAdmin = memberRepository.save(superAdmin(department));
         Member employee = memberRepository.save(approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
 
         mockMvc.perform(get("/api/v1/users/{userId}", employee.getId())
-                        .cookie(accessTokenCookie(admin)))
+                        .cookie(accessTokenCookie(superAdmin)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(String.valueOf(employee.getId())))
                 .andExpect(jsonPath("$.email").value("employee@ajt.com"))
@@ -216,13 +216,28 @@ class MemberControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/users/{userId}는 부서관리자에게 403을 반환한다(상세는 최고관리자만, S15P11B106-222)")
+    void userDetailRejectsDepartmentManager() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        Member employee = memberRepository.save(approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+
+        mockMvc.perform(get("/api/v1/users/{userId}", employee.getId())
+                        .cookie(accessTokenCookie(manager)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ADMIN_PERMISSION_REQUIRED"));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/users/{userId}는 존재하지 않는 사용자에 404를 반환한다")
     void userDetailNotFound() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        Member superAdmin = memberRepository.save(superAdmin(department));
 
         mockMvc.perform(get("/api/v1/users/{userId}", Long.MAX_VALUE)
-                        .cookie(accessTokenCookie(admin)))
+                        .cookie(accessTokenCookie(superAdmin)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MEMBER_NOT_FOUND"));
     }
@@ -240,10 +255,33 @@ class MemberControllerTest {
     }
 
     @Test
-    @DisplayName("PATCH /api/v1/users/{userId}는 관리자가 자기 자신을 사원으로 강등하면 409를 반환한다")
+    @DisplayName("PATCH /api/v1/users/{userId}는 부서관리자에게 403을 반환한다(수정은 최고관리자만, S15P11B106-222)")
+    void updateUserRejectsDepartmentManager() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(approvedAdmin(department));
+        department.assignManager(manager);
+        departmentRepository.save(department);
+        Member employee = memberRepository.save(approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
+
+        mockMvc.perform(patch("/api/v1/users/{userId}", employee.getId())
+                        .cookie(accessTokenCookie(manager))
+                        .cookie(csrfCookie())
+                        .header(CsrfTokenService.CSRF_HEADER_NAME, CSRF_TOKEN)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "새이름"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ADMIN_PERMISSION_REQUIRED"));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/v1/users/{userId}는 최고관리자가 자기 자신을 사원으로 강등하면 409를 반환한다")
     void updateUserRejectsSelfDemotion() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        Member admin = memberRepository.save(superAdmin(department));
 
         mockMvc.perform(patch("/api/v1/users/{userId}", admin.getId())
                         .cookie(accessTokenCookie(admin))
@@ -292,7 +330,8 @@ class MemberControllerTest {
     @DisplayName("PATCH /api/v1/users/{userId}는 잘못된 계정 상태를 한글 메시지로 거절한다")
     void updateUserRejectsInvalidAccountStatus() throws Exception {
         Department department = departmentRepository.save(new Department("개발부"));
-        Member admin = memberRepository.save(approvedAdmin(department));
+        // 수정(S15P11B106-222): 수정은 최고관리자 전용 → 설정 이메일 계정을 액터로 사용한다.
+        Member admin = memberRepository.save(superAdmin(department));
         Member employee = memberRepository.save(approvedEmployee(department, "employee@ajt.com", "홍길동", "AJT-2026-0001"));
 
         mockMvc.perform(patch("/api/v1/users/{userId}", employee.getId())
