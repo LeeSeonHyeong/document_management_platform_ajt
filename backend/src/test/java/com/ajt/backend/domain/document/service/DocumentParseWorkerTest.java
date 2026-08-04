@@ -539,6 +539,57 @@ class DocumentParseWorkerTest {
     }
 
     @Test
+    @DisplayName("걷어낼 근거가 있었는데 Wiki 변경이 비면 문서를 지우지 않고 실패로 남긴다")
+    void keepsTheDocumentWhenTheRemovalChangedNothing() throws Exception {
+        // 원본만 사라지고 Wiki 에 근거가 남는 복구 불가능한 상태를 막는다 (S15P11B106-225).
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        // AI 가 변경을 하나도 주지 않았다.
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willReturn(transformationResponse("걷어낼 내용을 찾지 못했습니다"));
+        // 그런데 이 문서를 근거로 삼던 Wiki 가 2건 있었다.
+        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(), "걷어낼 내용을 찾지 못했습니다", 2));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
+
+        org.mockito.Mockito.verify(documentRepository, org.mockito.Mockito.never())
+                .delete(any(Document.class));
+        org.mockito.Mockito.verify(fileStorage, org.mockito.Mockito.never()).delete(anyString());
+        assertThat(document.status()).isEqualTo(DocumentStatus.FAILED);
+        assertThat(document.failureReason()).contains("걷어낼 내용을 찾지 못했습니다");
+    }
+
+    @Test
+    @DisplayName("근거로 삼던 Wiki가 없으면 변경이 비어도 걷어내기를 성공으로 보고 문서를 지운다")
+    void deletesTheDocumentWhenNoWikiReferencedIt() throws Exception {
+        // 파싱은 됐지만 Wiki 에 반영된 적이 없는 문서다. 걷어낼 것이 애초에 없다.
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willReturn(transformationResponse("걷어낼 내용이 없습니다"));
+        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(), "걷어낼 내용이 없습니다", 0));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
+
+        org.mockito.Mockito.verify(documentRepository).delete(document);
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+    }
+
+    @Test
     @DisplayName("교체 계획이면 새 파일을 파싱해 교체 전 본문과 함께 document_replaced로 보낸다")
     void sendsReplacedChangeTypeWithBothBodies() throws Exception {
         Document document = document(15L, "updated.md");

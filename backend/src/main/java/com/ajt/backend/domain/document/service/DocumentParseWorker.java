@@ -32,6 +32,10 @@ public class DocumentParseWorker {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentParseWorker.class);
 
+    /** 걷어낼 근거가 있었는데 AI 가 Wiki 변경을 주지 않았을 때의 실패 사유입니다(S15P11B106-225). */
+    private static final String EMPTY_REMOVAL_REASON =
+            "AI가 Wiki에서 걷어낼 내용을 찾지 못했습니다. 원본문서는 지우지 않았습니다 — 재처리해 주세요.";
+
     private final DocumentRepository documentRepository;
     private final AiJobRepository aiJobRepository;
     private final DocumentFileStorage fileStorage;
@@ -208,6 +212,21 @@ public class DocumentParseWorker {
             );
             WikiTransformationResult result = transactionService.applyRemovedDocument(
                     documentId, scopeKey, response);
+
+            // 수정(S15P11B106-225): 예외가 없다고 걷어낸 것은 아니다. AI 가 Wiki 변경을 하나도
+            //   주지 않으면 아무것도 반영되지 않는데, 그대로 두면 원본만 사라지고 Wiki 에 근거가
+            //   남는다 — 원본이 없어 다시 걷어낼 수도, 무엇이 근거였는지 볼 수도 없는 상태다.
+            //   근거로 삼던 Wiki 가 있었는데 변경이 0건이면 지우지 않고 실패로 남긴다.
+            //   참조가 애초에 없었으면(파싱은 됐지만 Wiki 에 반영된 적 없는 문서) 걷어낼 것이
+            //   없었던 것이므로 지금처럼 성공이다.
+            if (result.referencingWikiCount() > 0 && response.wikiChanges().isEmpty()) {
+                log.warn("걷어내기 변경이 비어 문서를 지우지 않습니다: documentId={}, scopeKey={}, 참조 Wiki={}건",
+                        documentId, scopeKey, result.referencingWikiCount());
+                markDeletionFailed(documentId, EMPTY_REMOVAL_REASON);
+                return AiJob.DocumentParseResult.failed(
+                        documentId, fileName, EMPTY_REMOVAL_REASON, null);
+            }
+
             // 여기까지 왔으면 Wiki 에서 이 문서의 근거가 걷혔다. 이제 지운다.
             finishDeletion(documentId);
             return AiJob.DocumentParseResult.succeeded(documentId, fileName, result.summary());

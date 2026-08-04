@@ -48,14 +48,28 @@ public class DocumentWikiTransformationTransactionService {
             String scopeKey,
             WikiTransformationResponse response
     ) {
-        List<Long> affectedWikiIds = applier.applyRemovedDocument(scopeKey, documentId, response);
-        return new WikiTransformationResult(affectedWikiIds, response.summary());
+        WikiTransformationApplier.RemovedDocumentResult removed =
+                applier.applyRemovedDocument(scopeKey, documentId, response);
+        return new WikiTransformationResult(
+                removed.affectedWikiIds(), response.summary(), removed.referencingWikiCount());
     }
 
-    public record WikiTransformationResult(List<Long> affectedWikiIds, String summary) {
+    /**
+     * @param referencingWikiCount 걷어내기 <b>전에</b> 이 문서를 근거로 삼던 Wiki 수입니다.
+     *                             걷어내기가 아닌 반영에서는 0입니다(S15P11B106-225).
+     */
+    public record WikiTransformationResult(
+            List<Long> affectedWikiIds,
+            String summary,
+            int referencingWikiCount
+    ) {
 
         public WikiTransformationResult {
             affectedWikiIds = List.copyOf(affectedWikiIds);
+        }
+
+        public WikiTransformationResult(List<Long> affectedWikiIds, String summary) {
+            this(affectedWikiIds, summary, 0);
         }
     }
 }
