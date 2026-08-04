@@ -27,6 +27,7 @@ import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,6 +38,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -178,6 +181,27 @@ public class WikiQueryService {
 
     @Transactional(readOnly = true)
     public WikiDetailResponse getWiki(long wikiId) {
+        return toDetail(findAccessibleWiki(wikiId));
+    }
+
+    // ===== Wiki 파일 다운로드 =====
+
+    /**
+     * Wiki 본문을 Markdown 파일로 내려준다. 위키 상세(getWiki)와 같은 접근 권한 검사를 쓴다.
+     * 원본문서 다운로드({@code GET /documents/:documentId/file})와 달리 실제 저장 파일이 아니라
+     * 조회 시점의 본문을 그대로 메모리에서 파일로 감싼다 — Wiki 본문은 하나의 정본 파일(DR-001)이라
+     * 별도 다운로드 사본을 저장소에 두지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public WikiFileDownload downloadFile(long wikiId) {
+        Wiki wiki = findAccessibleWiki(wikiId);
+        String content = readWikiContent(wiki);
+        Resource resource = new ByteArrayResource(content.getBytes(StandardCharsets.UTF_8));
+        String fileName = wiki.title().replace("/", "_") + ".md";
+        return new WikiFileDownload(resource, fileName, "text/markdown; charset=UTF-8");
+    }
+
+    private Wiki findAccessibleWiki(long wikiId) {
         AccessScope access = accessScopeOf(currentMemberProvider.currentMember());
         Wiki wiki = wikiRepository.findById(wikiId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.WIKI_NOT_FOUND));
@@ -186,7 +210,7 @@ public class WikiQueryService {
         if (!access.canAccess(scope)) {
             throw new BusinessException(ErrorCode.WIKI_NOT_FOUND);
         }
-        return toDetail(wiki);
+        return wiki;
     }
 
     // ===== 접근 권한 =====

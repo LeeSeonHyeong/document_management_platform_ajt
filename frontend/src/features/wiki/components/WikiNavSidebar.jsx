@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { SearchBar, Select, Spinner } from '@/components/ui'
+import { SearchBar, Select } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
 import { useWikiCategories, useWikis, useWikiSpaces } from '../queries'
 
@@ -95,10 +95,12 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
         className="mb-2"
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="thin-scroll min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Spinner size="sm" />
+          <div className="animate-pulse space-y-1 px-2 py-1">
+            {Array.from({ length: 7 }, (_, index) => (
+              <div key={index} className="h-8 rounded-lg bg-slate-100" style={{ width: `${85 - (index % 3) * 12}%` }} />
+            ))}
           </div>
         ) : searching ? (
           <ul className="space-y-1">

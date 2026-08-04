@@ -1,20 +1,37 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, Sparkles } from 'lucide-react'
-import { Button, Spinner } from '@/components/ui'
+import { Button, useToast } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
-import { useSendWikiChatMessage, useWikiChatMessages } from '../queries'
+import { useSendWikiChatMessage, useWiki, useWikiChatMessages, useWikiSpaces } from '../queries'
+import ChatMarkdown from './ChatMarkdown'
 
 function formatTime(iso) {
   if (!iso) return ''
   return new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 }
 
+// 지금 열려 있는 위키가 실제로 속한 scope(부서)를 그대로 보여준다.
+//
+// 사이드바의 "부서" 드롭다운으로 짐작하게 두지 않는다 — 검색 결과·관련 위키 링크·직접
+// 진입처럼 드롭다운을 거치지 않는 경로가 많아서, 드롭다운 상태와 실제로 열린 위키의
+// scope가 항상 같다는 보장이 없다. 이 채팅은 같은 scope의 위키를 넘나들며 이어지므로
+// (S15P11B106-220), "지금 어느 방에 들어와 있는지"를 위키 자신의 scopeKey로 고정해 보여준다.
+function useScopeLabel(wikiId) {
+  const { data: wiki } = useWiki(wikiId)
+  const { data: spaces = [] } = useWikiSpaces()
+  if (!wiki) return null
+  const space = spaces.find((item) => item.scopeKey === wiki.scopeKey)
+  return space?.displayName ?? wiki.scopeKey
+}
+
 export default function WikiAgentChat({ wikiId }) {
+  const toast = useToast()
   const [content, setContent] = useState('')
   const listRef = useRef(null)
   const { data: messages = [], isLoading } = useWikiChatMessages(wikiId)
   const sendMutation = useSendWikiChatMessage(wikiId)
   const sending = sendMutation.isPending
+  const scopeLabel = useScopeLabel(wikiId)
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight
@@ -23,32 +40,45 @@ export default function WikiAgentChat({ wikiId }) {
   function handleSend() {
     const trimmed = content.trim()
     if (!trimmed || sending) return
-    sendMutation.mutate(trimmed, { onSuccess: () => setContent('') })
+    setContent('')
+    sendMutation.mutate(trimmed, {
+      onError: () => toast.error('메시지 전송에 실패했습니다. 다시 시도해주세요.'),
+    })
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <header className="flex shrink-0 items-center gap-3 border-b border-slate-200 px-4 py-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 text-white">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 text-white">
           <Sparkles className="size-5" />
         </span>
-        <div>
+        <div className="min-w-0">
           <h2 className="text-sm font-bold text-slate-800">AI 문서 편집 에이전트</h2>
-          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            온라인 · 문서 편집 도우미
+          <p className="mt-0.5 flex items-center gap-1.5 truncate text-[11px] text-slate-400">
+            <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+            {scopeLabel ? `${scopeLabel} 공유 중` : '문서 편집 도우미'}
           </p>
         </div>
       </header>
 
-      <div ref={listRef} className="flex-1 space-y-4 overflow-y-auto p-5">
+      <div ref={listRef} className="thin-scroll flex-1 space-y-4 overflow-y-auto p-5">
         {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Spinner size="sm" />
+          <div className="animate-pulse space-y-4">
+            <div className="flex gap-2">
+              <div className="size-7 shrink-0 rounded-lg bg-slate-100" />
+              <div className="h-16 w-2/3 rounded-2xl rounded-bl-md bg-slate-100" />
+            </div>
+            <div className="flex justify-end">
+              <div className="h-10 w-1/2 rounded-2xl rounded-br-md bg-slate-100" />
+            </div>
+            <div className="flex gap-2">
+              <div className="size-7 shrink-0 rounded-lg bg-slate-100" />
+              <div className="h-12 w-3/5 rounded-2xl rounded-bl-md bg-slate-100" />
+            </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <span className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 text-white">
+            <span className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-primary-700 text-white">
               <Sparkles className="size-6" />
             </span>
             <p className="mt-4 text-sm font-semibold text-slate-700">수정할 내용을 알려주세요.</p>
@@ -60,20 +90,20 @@ export default function WikiAgentChat({ wikiId }) {
             return (
               <div key={message.messageId} className={cn('flex gap-2', agent ? 'justify-start' : 'justify-end')}>
                 {agent && (
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 text-white">
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 text-white">
                     <span className="text-[10px] font-bold">AI</span>
                   </span>
                 )}
                 <div className="max-w-[78%]">
                   <div
                     className={cn(
-                      'rounded-2xl px-4 py-3 text-sm leading-6',
+                      'rounded-2xl px-4 py-3 text-sm',
                       agent
                         ? 'rounded-bl-md border border-slate-200 bg-white text-slate-600'
-                        : 'rounded-br-md bg-gradient-to-r from-blue-500 to-violet-600 text-white',
+                        : 'rounded-br-md bg-gradient-to-r from-primary-500 to-primary-700 text-white',
                     )}
                   >
-                    {message.content}
+                    <ChatMarkdown markdown={message.content} tone={message.senderType} />
                   </div>
                   <span className="mt-1 block text-right text-[11px] text-slate-300">
                     {formatTime(message.createdAt)}
@@ -85,9 +115,15 @@ export default function WikiAgentChat({ wikiId }) {
         )}
 
         {sending && (
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <Spinner size="sm" />
-            에이전트가 수정 사항을 반영하고 있습니다.
+          <div className="flex justify-start gap-2">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 text-white">
+              <span className="text-[10px] font-bold">AI</span>
+            </span>
+            <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md border border-slate-200 bg-white px-4 py-3">
+              <i className="size-1.5 animate-bounce rounded-full bg-slate-400" />
+              <i className="size-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:120ms]" />
+              <i className="size-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:240ms]" />
+            </div>
           </div>
         )}
       </div>

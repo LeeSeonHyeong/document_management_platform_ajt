@@ -92,7 +92,7 @@ export default function WikiSourcePreviewModal({ open, onClose, evidenceDocument
           <Spinner size="sm" />
         </div>
       ) : (
-        <div className="max-h-[65vh] overflow-y-auto rounded-xl bg-slate-50 p-5">
+        <div className="thin-scroll max-h-[65vh] overflow-y-auto rounded-xl bg-slate-50 p-5">
           <DocumentPreview
             documentId={documentId}
             fileName={fileName}

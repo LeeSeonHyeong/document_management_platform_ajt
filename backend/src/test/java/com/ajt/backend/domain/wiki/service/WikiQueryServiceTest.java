@@ -1,6 +1,7 @@
 package com.ajt.backend.domain.wiki.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
@@ -28,15 +29,20 @@ import com.ajt.backend.domain.wiki.model.WikiCategory;
 import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
 import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.storage.WikiFileStorage;
+import com.ajt.backend.global.error.BusinessException;
+import com.ajt.backend.global.error.ErrorCode;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.util.StreamUtils;
 
 @DisplayName("Wiki 목록·검색 서비스")
 class WikiQueryServiceTest {
@@ -123,6 +129,48 @@ class WikiQueryServiceTest {
         assertThat(response.items().get(0).summary()).isEqualTo("부서 전용 규정");
         verify(memberRepository).findById(20L);
         verify(wikiScopeRepository).findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT);
+    }
+
+    @Test
+    @DisplayName("접근 가능한 Wiki는 본문을 Markdown 파일로 내려준다")
+    void downloadsWikiFileForAccessibleWiki() throws Exception {
+        Wiki wiki = wiki("ALL", 9L, "휴가 규정", 101L);
+        wiki.assignStoragePath();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        WikiScope scope = mock(WikiScope.class);
+        given(wikiScopeRepository.findById("ALL")).willReturn(Optional.of(scope));
+        given(wikiFileStorage.readWikiMarkdown(wiki.wikiPath())).willReturn("# 휴가 규정\n연차 안내");
+
+        WikiFileDownload download = service.downloadFile(101L);
+
+        assertThat(download.fileName()).isEqualTo("휴가 규정.md");
+        assertThat(download.contentType()).isEqualTo("text/markdown; charset=UTF-8");
+        String content = StreamUtils.copyToString(download.resource().getInputStream(), StandardCharsets.UTF_8);
+        assertThat(content).isEqualTo("# 휴가 규정\n연차 안내");
+    }
+
+    @Test
+    @DisplayName("접근 권한이 없는 부서 공개범위의 Wiki는 다운로드에서도 404로 감춘다")
+    void rejectsDownloadForInaccessibleScope() throws Exception {
+        Wiki wiki = wiki("D2", 9L, "부서 규정", 202L);
+        wiki.assignStoragePath();
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
+        Department department = mock(Department.class);
+        given(department.getId()).willReturn(3L);
+        Member member = mock(Member.class);
+        given(member.getDepartment()).willReturn(department);
+        given(memberRepository.findById(20L)).willReturn(Optional.of(member));
+        given(wikiRepository.findById(202L)).willReturn(Optional.of(wiki));
+        WikiScope scope = mock(WikiScope.class);
+        given(scope.visibilityType()).willReturn(WikiScopeVisibilityType.DEPARTMENT);
+        given(scope.departmentRefs()).willReturn(List.of(2L));
+        given(wikiScopeRepository.findById("D2")).willReturn(Optional.of(scope));
+
+        assertThatThrownBy(() -> service.downloadFile(202L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.WIKI_NOT_FOUND);
     }
 
     private Wiki wiki(String scopeKey, long categoryId, String title, long id) throws Exception {

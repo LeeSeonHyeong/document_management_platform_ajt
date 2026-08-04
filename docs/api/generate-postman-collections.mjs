@@ -1214,6 +1214,22 @@ const publicFolders = [
       }),
     }),
     request({
+      name: "Wiki 파일 다운로드",
+      method: "GET",
+      path: "/api/v1/wikis/:wikiId/file",
+      description: docs({
+        summary: "Wiki 본문을 Markdown 파일로 다운로드합니다.",
+        usage: "Wiki 상세 화면의 다운로드 동작에서 사용합니다.",
+        pathParams: ["`wikiId`: 다운로드할 Wiki ID"],
+        policy: ["사용자는 접근 가능한 Wiki만 다운로드할 수 있습니다."],
+        response: ["Wiki 본문 Markdown 파일 스트림과 `{제목}.md` 파일명"],
+        errors: [
+          "`401 Unauthorized`: accessToken이 유효하지 않음",
+          "`404 Not Found`: Wiki가 없거나 접근 권한이 없음",
+        ],
+      }),
+    }),
+    request({
       name: "Wiki 관리자 대화 조회",
       method: "GET",
       path: "/api/v1/wikis/:wikiId/chat-messages",
@@ -2697,6 +2713,7 @@ let publicCollectionEvent = [];
     "Wiki 카테고리 목록 조회": "super",
     "Wiki 목록 조회": "super",
     "Wiki 상세 조회": "super",
+    "Wiki 파일 다운로드": "super",
     "Wiki 관리자 대화 조회": "super",
     "Wiki 수정 대화 전송": "super",
     "Wiki 또는 일정 질문": "employee",
@@ -2796,6 +2813,7 @@ let publicCollectionEvent = [];
     "Wiki 카테고리 목록 조회": [200],
     "Wiki 목록 조회": [200],
     "Wiki 상세 조회": [200],
+    "Wiki 파일 다운로드": [200],
     "Wiki 관리자 대화 조회": [200],
     "Wiki 수정 대화 전송": [200, 201, 202, 503],
     "Wiki 또는 일정 질문": [200, 503],
