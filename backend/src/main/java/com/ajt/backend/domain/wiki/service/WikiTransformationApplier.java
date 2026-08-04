@@ -169,7 +169,12 @@ public class WikiTransformationApplier {
                     allowedWikiAddresses,
                     fileMutation
             );
-            applyRelationChanges(scopeKey, nullSafe(relationChanges), wikiResult.wikiIdsByRef());
+            applyRelationChanges(
+                    scopeKey,
+                    nullSafe(relationChanges),
+                    wikiResult.wikiIdsByRef(),
+                    wikiResult.deletedWikiIds()
+            );
             writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex, fileMutation);
             incrementScopeVersionIfChanged(scopeKey, categoryChanges, wikiChanges, relationChanges, indexEntries);
             completeFileMutationAfterTransaction(fileMutation);
@@ -303,14 +308,29 @@ public class WikiTransformationApplier {
         }
     }
 
+    /**
+     * Wiki 사이 관계 변경을 반영합니다.
+     *
+     * <p>같은 응답에서 삭제된 Wiki를 가리키는 관계는 건너뜁니다. AI는 지우는 페이지의 나가는 링크도
+     * {@code remove} 관계로 함께 실어 보내는데, 그 시점에 원본 Wiki는 이미 사라져 찾을 수 없다.
+     * 이것을 오류로 보면 문서 삭제 걷어내기가 통째로 실패해 문서를 영영 지울 수 없다
+     * (「같은 Wiki 공간에서 찾을 수 없는 Wiki입니다」로 실패, S15P11B106-195 후속).
+     * 삭제된 Wiki를 가리키던 참조는 {@link #removeDanglingWikiRefs}가 이미 정리했으므로 할 일도 없다.
+     * 삭제되지 않은 Wiki를 가리키는 잘못된 참조는 여전히 오류로 남긴다 — 다른 공간 침범을 막는 검증이다.
+     */
     private void applyRelationChanges(
             String scopeKey,
             List<RelationChange> changes,
-            Map<String, Long> wikiIdsByRef
+            Map<String, Long> wikiIdsByRef,
+            Set<Long> deletedWikiIds
     ) {
         for (RelationChange change : changes) {
-            Wiki source = findWiki(scopeKey, resolveWikiRef(change.sourceWikiRef(), wikiIdsByRef));
+            long sourceWikiId = resolveWikiRef(change.sourceWikiRef(), wikiIdsByRef);
             long targetWikiId = resolveWikiRef(change.targetWikiRef(), wikiIdsByRef);
+            if (deletedWikiIds.contains(sourceWikiId) || deletedWikiIds.contains(targetWikiId)) {
+                continue;
+            }
+            Wiki source = findWiki(scopeKey, sourceWikiId);
             requireWikiInScope(scopeKey, targetWikiId);
             switch (action(change.action())) {
                 case ACTION_ADD -> source.addWikiRef(targetWikiId);
