@@ -188,16 +188,32 @@ export function useDeleteDocumentCategory(scopeKey) {
 // 문서 상세까지 함께 당기기 때문이다.
 const RUNNING_JOB_POLL_MS = 5000
 const TERMINAL_JOB_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+// 문서 결과의 종료 상태. 작업 상태와 값이 겹치지만 다른 축이라 따로 둔다 —
+// 문서는 uploaded·parsing·processing 을 더 거친다(status.js).
+const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+// 작업이 끝나도 그 문서들이 아직 종료 상태가 아니면 계속 읽는다 (S15P11B106-244).
+//
+// 화면이 그리는 배지는 작업 상태가 아니라 **문서 상태**다(`AiJobSummaryListPage` 의
+// `result.status`, 백엔드가 `document.status()` 로 만든다). 작업이 종료로 바뀌는 시점과
+// 문서가 완료로 바뀌는 시점 사이에 틈이 있어서, 작업 상태만 보고 끊으면 그 틈에 받은
+// 응답이 그대로 굳는다 — 끝난 작업이 「처리 중」으로 남아 새로고침해야 바뀌었다.
+export function hasUnsettledWork(items) {
+  return items.some(
+    (job) =>
+      !TERMINAL_JOB_STATUSES.has(job.status) ||
+      (job.documentResults ?? []).some(
+        (result) => !TERMINAL_DOCUMENT_STATUSES.has(result.status),
+      ),
+  )
+}
 
 export function useAiJobs(filters = {}) {
   return useQuery({
     queryKey: qk.aiJobs.list(filters),
     queryFn: () => fetchAiJobs(filters),
-    refetchInterval: (query) => {
-      const items = query.state.data?.items ?? []
-      const anyRunning = items.some((job) => !TERMINAL_JOB_STATUSES.has(job.status))
-      return anyRunning ? RUNNING_JOB_POLL_MS : false
-    },
+    refetchInterval: (query) =>
+      hasUnsettledWork(query.state.data?.items ?? []) ? RUNNING_JOB_POLL_MS : false,
   })
 }
 
