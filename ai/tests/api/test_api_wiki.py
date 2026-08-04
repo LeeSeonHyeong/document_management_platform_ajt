@@ -16,8 +16,11 @@
 이 파일의 라이브 페이지 시나리오가 전부 공허해진다.
 
 기존 페이지의 주소는 조회 API 목록의 `wikiPath` 에서 오고, 없으면 `pages/{wikiId}.md` 다.
-원본문서는 요청의 `parsedMarkdown` 을 그대로 얹으므로 파일명이 없다 — `stage_source` 가
-`document-{documentId}` 를 쓰고 각주도 그 이름을 가리킨다.
+
+**각주에 쓸 파일명은 조회 API 가 준다** (S15P11B106-245) — 요청의 `parsedMarkdown` 에는
+파일명이 없으므로 `GET /documents/{id}/parsed` 로 따로 받아 온다. 이 파일의 기본 게이트웨이는
+그 값을 `null` 로 주므로 `stage_source` 의 폴백(`document-{documentId}` = `SOURCE_NAME`)이
+걸린다 — 폴백이 아닌 경로는 `test_각주용_문서명은_조회_API_의_파일명이다` 가 본다.
 """
 
 import httpx
@@ -77,8 +80,8 @@ REQUEST = {
     "scopeVersion": SCOPE_VERSION,
 }
 
-# 요청이 준 원본문서에는 파일명이 없다 — `stage_source` 가 이 이름을 붙이고, 각주는
-# 파일명으로 문서를 가리키므로 에이전트도 이 이름으로 인용한다.
+# 기본 게이트웨이가 `originalFileName: None` 을 주므로 `stage_source` 의 폴백이 붙는 이름이다.
+# 각주는 파일명으로 문서를 가리키므로 에이전트도 이 이름으로 인용한다.
 SOURCE_NAME = "document-15"
 
 
@@ -153,9 +156,13 @@ class FakeRuntime:
 
     name = "fake"
 
-    def __init__(self, behaviour="edit_existing", category="근무 정책"):
+    def __init__(self, behaviour="edit_existing", category="근무 정책",
+                 source_name=None):
         self.behaviour = behaviour
         self.category = category
+        # 각주가 가리킬 원본문서명. 실제 에이전트는 `read` 가 알려주는 값을 쓰므로
+        # 스테이징된 이름과 같아야 `lint` 의 `unresolved-citation` 을 통과한다.
+        self.source_name = source_name or SOURCE_NAME
         self.instructions: list[str] = []
 
     @staticmethod
@@ -182,7 +189,8 @@ class FakeRuntime:
             return RunResult(text="변경 없음", tool_calls={"guide": 1, "search": 2, "read": 1})
 
         body = (PAGE_MD.rstrip() + "\n\n주간 회의는 30분을 넘기지 않는다[^1].\n\n"
-                f'[^1]: {SOURCE_NAME}, 2장 정례 회의 — "주간 회의는 30분을 넘기지 않는다"\n')
+                f'[^1]: {self.source_name}, 2장 정례 회의 — '
+                '"주간 회의는 30분을 넘기지 않는다"\n')
         if self.behaviour == "bad_quote":
             # 2026-08-02: quote 불일치는 error 에서 warn 으로 내렸다 — 위치가 맞으면
             # 반영을 막지 않는다. 반영을 막는 시나리오가 필요하면 "bad_location" 을 쓴다.
@@ -1064,6 +1072,70 @@ def test_only_dangling_link_blocks_on_a_live_only_page():
     from wiki_api.session import _LIVE_ONLY_BLOCKING_CODES
 
     assert _LIVE_ONLY_BLOCKING_CODES == frozenset({"dangling-link"})
+
+
+# ----- 각주에 쓸 문서명은 조회 API 가 준다 (S15P11B106-245) --------------------
+
+
+def test_각주용_문서명은_조회_API_의_파일명이다(make_client):
+    """변환 경로도 파일명을 조회해 각주에 쓴다.
+
+    이것이 없으면 `stage_source` 의 폴백이 걸려 각주가 `document-15` 같은 내부 ID 를
+    가리키고, 그 문자열이 위키 마크다운에 그대로 저장돼 사용자가 무슨 근거인지 알 수 없다.
+    표시 계층에서는 고칠 수 없다 — 생성 시점에 이름이 정해진다.
+
+    편집 경로는 이미 같은 조회 API 를 쓴다 (`stage_evidence_documents`).
+    """
+    gateway = make_gateway(documents={"15": {
+        "documentId": "15", "originalFileName": "인사규정.pdf",
+        "parsedMarkdown": SOURCE_MD}})
+    runtime = FakeRuntime(source_name="인사규정.pdf")
+    client = make_client(runtime=runtime, gateway=gateway)
+
+    response = _post(client)
+
+    # 200 자체가 절반의 증거다 — 각주가 스테이징된 이름과 어긋나면 `lint` 의
+    # `unresolved-citation`(error) 이 반영을 막아 500 이 된다.
+    assert response.status_code == 200, response.text
+    evidence = [e for change in response.json()["wikiChanges"]
+                for e in change["evidence"]]
+    assert evidence, "각주가 evidence 로 나와야 한다"
+    assert all(e["documentId"] == "15" for e in evidence)
+
+
+def test_파일명이_없으면_기존_폴백으로_떨어진다(make_client):
+    """조회 API 가 파일명을 안 주는 경우(`null`)에도 죽지 않는다.
+
+    폴백 이름(`document-{id}`)은 그대로 남는다 — 이름이 없는 것보다는 낫고, 각주가
+    가리킬 무언가가 있어야 `find_source` 가 성립한다.
+    """
+    client = make_client()          # 기본 게이트웨이는 `originalFileName: None` 을 준다
+
+    response = _post(client)
+
+    assert response.status_code == 200, response.text
+
+
+def test_삭제_재조정은_파싱본_조회가_404_여도_진행된다(make_client):
+    """`document_removed` 는 문서가 Spring 에서 이미 사라져 조회가 실패할 수 있다.
+
+    파일명은 각주 표시용 편의값이므로, 그것을 못 얻었다고 걷어내기 작업 전체를
+    실패시키면 안 된다 (DR-014 하드 삭제).
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/parsed"):
+            return httpx.Response(404, json={"code": "DOCUMENT_NOT_FOUND",
+                                             "message": "없습니다"})
+        return _base_handler(request)
+
+    _base_handler = make_gateway(pages=[LIVE_PAGE, LEGACY_PAGE]).handler
+    client = make_client(gateway=httpx.MockTransport(handler))
+
+    response = _post(client, request_with(changeType="document_removed",
+                                          parsedMarkdown="",
+                                          removedParsedMarkdown=SOURCE_MD))
+
+    assert response.status_code == 200, response.text
 
 
 # ----- push 경로의 흔적이 남아 있지 않다 -------------------------------------

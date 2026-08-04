@@ -100,16 +100,22 @@ def build_router(app: FastAPI) -> APIRouter:
             **_session_args(app, payload),
         ) as session:
             affected: list[dict] = []
+            # 각주는 파일명으로 문서를 가리키는데 요청은 파일명을 싣지 않는다 — 조회 API 에서
+            # 따로 받아 온다 (S15P11B106-245). 못 얻으면 `None` 이고 `stage_source` 의
+            # 폴백(`document-{id}`)으로 떨어진다.
+            file_name = await session.original_file_name_for(payload.documentId)
             if payload.changeType == "document_added":
                 address = await session.load_source(payload.documentId,
-                                                    payload.parsedMarkdown)
+                                                    payload.parsedMarkdown,
+                                                    file_name)
                 instruction = ingest_instruction(address, payload.scopeKey)
                 limit = time_limit_seconds(len(payload.parsedMarkdown))
             else:
                 # 사라진 문서의 **옛** 본문을 먼저 얹는다. `stage_source` 가 참조 그래프를
                 # 다시 채우므로(`SpringVaultFS._sync_page_references`) 하이드레이션된
                 # 페이지의 각주가 바로 이 시점에 풀리고, 그래야 backlink 가 잡힌다.
-                address = await session.load_source(payload.documentId, removed)
+                address = await session.load_source(payload.documentId, removed,
+                                                    file_name)
                 affected = [
                     {"address": edge["address"], "footnote": edge["footnote_label"],
                      "location": edge["location"], "quote": edge["quote"]}

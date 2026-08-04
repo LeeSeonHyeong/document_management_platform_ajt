@@ -313,6 +313,28 @@ class WikiSession:
                 self._locked = False
                 _SESSION_LOCK.release()
 
+    async def original_file_name_for(self, document_id: str) -> str | None:
+        """각주에 쓸 사람이 읽는 파일명. 못 얻으면 `None` — 호출부가 폴백을 쓴다.
+
+        요청은 파일명을 싣지 않는다 (`TransformRequest` 에 그 필드가 없다). 그래서 이름을
+        조회 API 에서 따로 받아 온다 — 안 하면 `stage_source` 의 폴백이 걸려 각주가
+        `document-37` 같은 내부 ID 를 가리키고, **그 문자열이 위키 마크다운에 그대로
+        저장돼** 표시 계층에서 고칠 수 없다 (S15P11B106-245).
+
+        실패를 삼킨다. 이름은 표시용 편의값이고 `document_removed` 는 문서가 Spring 에서
+        이미 하드 삭제돼(DR-014) 404 가 정상이다 — 그것 때문에 걷어내기 작업 전체를
+        실패시키면 안 된다. 다만 범위 변경과 우리가 이미 단계를 붙인 오류는 그대로 올린다.
+        """
+        if self._query_client is None:
+            return None
+        try:
+            body = await self._query_client.parsed_document(document_id)
+        except (InternalError, ScopeChangedError):
+            raise
+        except Exception:
+            return None
+        return body.get("originalFileName") or None
+
     async def load_source(self, document_id: str, text: str,
                           original_file_name: str | None = None) -> str:
         """이번 요청의 원본문서를 라이브 층에 올리고 주소를 돌려준다.

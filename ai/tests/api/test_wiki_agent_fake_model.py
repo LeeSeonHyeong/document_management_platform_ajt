@@ -54,6 +54,10 @@ HYDRATION_PATHS = {
     f"/internal/v1/wiki-spaces/{SCOPE}/index",
 }
 
+# 하이드레이션이 아니라 **이번 문서 1건**의 파일명 조회다 (S15P11B106-245). 각주가 파일명으로
+# 문서를 가리키는데 요청이 그것을 싣지 않아 여기서 받아 온다. 위키 장수와 무관한 상수 1회다.
+SOURCE_NAME_PATH = f"/internal/v1/documents/{REQUEST['documentId']}/parsed"
+
 
 def recording_gateway(paths: list[str], **kwargs) -> httpx.MockTransport:
     """`make_gateway` 를 감싸 호출 경로를 순서대로 `paths` 에 적는다."""
@@ -125,16 +129,19 @@ def post(call_paths):
     return send
 
 
-def test_hydration_calls_the_gateway_four_times(post, call_paths):
-    """카탈로그·목차·카테고리·범위 관계. **위키 장수와 무관하게 각 1회다.**
+def test_hydration_calls_the_gateway_once_per_kind(post, call_paths):
+    """카탈로그·목차·카테고리·범위 관계에 각주용 파일명 하나. **위키 장수와 무관하게 각 1회다.**
 
     이 상수가 조회 API 전환의 핵심이다. 장수에 비례하면 100장짜리 범위에서 하이드레이션만으로
     수백 회가 나가고, 그때는 지연 적재(S15P11B106-151)가 무의미해진다.
+
+    5회째는 하이드레이션이 아니라 이번 문서의 파일명 조회다(`SOURCE_NAME_PATH`) — 문서 1건당
+    1회이므로 이 불변식을 깨지 않는다. 늘어난 것이 이 하나임을 여기서 못박는다.
     """
     assert post(pages=THREE_PAGES).status_code == 200, call_paths
 
-    assert set(call_paths) == HYDRATION_PATHS, call_paths
-    assert len(call_paths) == 4, call_paths
+    assert set(call_paths) == HYDRATION_PATHS | {SOURCE_NAME_PATH}, call_paths
+    assert len(call_paths) == 5, call_paths
 
 
 def test_hydration_does_not_pull_bodies(post, call_paths):
