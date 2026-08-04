@@ -286,36 +286,46 @@ export default function DepartmentManagementPage() {
                       </td>
                       <td className="px-5 py-3 text-center font-semibold text-slate-700">{count}명</td>
                       <td className="px-5 py-3 text-center">
-                        <div className="inline-flex items-center gap-2">
-                          <span
-                            className={cn(
-                              'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
-                              department.manager
-                                ? 'bg-primary-600 text-white'
-                                : 'border border-dashed border-slate-300 bg-white text-slate-400',
-                            )}
-                          >
-                            {department.manager ? (
-                              department.manager.name.slice(0, 1)
-                            ) : (
-                              <UserRound className="size-4" />
-                            )}
-                          </span>
-                          <span className={department.manager ? 'font-medium text-slate-700' : 'text-slate-400'}>
-                            {department.manager?.name ?? '관리자 미지정'}
-                          </span>
-                        </div>
+                        {/* 기본 부서('미지정')는 관리자를 둘 자리가 아니다 — 「관리자 미지정」은
+                            '지정할 수 있는데 안 했다'로 읽히므로 「—」로 둔다 (S15P11B106-250). */}
+                        {isDefaultDepartment(department) ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <div className="inline-flex items-center gap-2">
+                            <span
+                              className={cn(
+                                'flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                                department.manager
+                                  ? 'bg-primary-600 text-white'
+                                  : 'border border-dashed border-slate-300 bg-white text-slate-400',
+                              )}
+                            >
+                              {department.manager ? (
+                                department.manager.name.slice(0, 1)
+                              ) : (
+                                <UserRound className="size-4" />
+                              )}
+                            </span>
+                            <span className={department.manager ? 'font-medium text-slate-700' : 'text-slate-400'}>
+                              {department.manager?.name ?? '관리자 미지정'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       {isSuperAdmin && (
                         <td className="px-5 py-3 text-center">
                           <div className="flex flex-nowrap items-center justify-center gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEditModal(department)}
-                            >
-                              수정
-                            </Button>
+                            {/* 기본 부서는 이름도 관리자도 바꿀 수 없다 — 눌러도 실패하는 버튼을
+                                두지 않는다 (S15P11B106-250). 삭제 버튼을 감추는 것과 같은 처리다. */}
+                            {!isDefaultDepartment(department) && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openEditModal(department)}
+                              >
+                                수정
+                              </Button>
+                            )}
 
                             {isDefaultDepartment(department) ? (
                               // 시스템 기본 부서('전체')는 삭제할 수 없어 삭제 버튼을 렌더링하지 않는다(S15P11B106-146).
