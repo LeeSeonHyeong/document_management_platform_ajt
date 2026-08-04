@@ -40,3 +40,45 @@ body {
       0 0 0 4px var(--color-primary-500);
   }
 }
+
+/* 얇고 평소엔 투명한 스크롤바. 막대 자체는 항상 그 자리에 있지만(레이아웃이 안 흔들림),
+   스크롤 중이거나 위에 마우스를 올렸을 때만 색이 올라온다. */
+@utility thin-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  &:hover {
+    scrollbar-color: var(--color-slate-300) transparent;
+  }
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent;
+    border-radius: 9999px;
+  }
+  &:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-slate-300);
+  }
+  /* 위아래 화살표 버튼(Windows Chrome·Edge 기본 스크롤바에 있는 ^ v 버튼)은 막대 하나만
+     남기려는 의도와 안 맞아 없앤다. display:none만으로는 자리를 그대로 차지하는 브라우저가
+     있어 크기·배경까지 명시적으로 0/투명으로 만든다. */
+  &::-webkit-scrollbar-button {
+    display: none !important;
+    appearance: none;
+    background-color: transparent;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  &::-webkit-scrollbar-button:start:decrement,
+  &::-webkit-scrollbar-button:end:increment {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}

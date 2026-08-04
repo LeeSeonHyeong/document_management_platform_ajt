@@ -182,7 +182,7 @@ export default function WikiMarkdown({ markdown, validWikiIds }) {
           return <MermaidBlock code={code} />
         }
         return (
-          <pre className="my-3 overflow-x-auto rounded-lg bg-slate-900 p-4 text-sm text-slate-100 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
+          <pre className="thin-scroll my-3 overflow-x-auto rounded-lg bg-slate-900 p-4 text-sm text-slate-100 [&_code]:bg-transparent [&_code]:p-0 [&_code]:text-inherit">
             {children}
           </pre>
         )
@@ -190,7 +190,7 @@ export default function WikiMarkdown({ markdown, validWikiIds }) {
       // 표는 본문 폭을 넘어도 된다 — 수치 표가 좁은 단에 갇히면 줄바꿈으로 읽기 어려워진다.
       // `tabular-nums` 로 숫자 폭을 고정해 열이 흔들리지 않게 한다.
       table: ({ children }) => (
-        <div className="my-3 overflow-x-auto">
+        <div className="thin-scroll my-3 overflow-x-auto">
           <table className="w-full border-collapse text-sm">{children}</table>
         </div>
       ),

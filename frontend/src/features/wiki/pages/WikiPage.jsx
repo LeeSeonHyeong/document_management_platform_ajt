@@ -187,7 +187,7 @@ export default function WikiPage() {
         className="hidden lg:flex"
       />
 
-      <section className="min-w-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white px-5 pb-6 sm:px-6">
+      <section className="thin-scroll min-w-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white px-5 pb-6 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_4px_12px_rgba(15,23,42,0.05)] sm:px-6">
         {wikiId ? (
           <>
             <WikiArticleBar

@@ -1,6 +1,13 @@
 package com.ajt.backend.domain.wiki.api;
 
+import com.ajt.backend.domain.wiki.service.WikiFileDownload;
 import com.ajt.backend.domain.wiki.service.WikiQueryService;
+import java.nio.charset.StandardCharsets;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -63,5 +70,31 @@ public class WikiQueryController {
     @GetMapping("/api/v1/wikis/{wikiId}")
     public WikiDetailResponse wikiDetail(@PathVariable long wikiId) {
         return wikiQueryService.getWiki(wikiId);
+    }
+
+    /**
+     * GET /api/v1/wikis/{wikiId}/file
+     * Wiki 본문을 Markdown 파일로 다운로드합니다. 권한 검사는 서비스가 하고,
+     * 여기선 파일명·타입 헤더만 구성한다(DocumentUploadController.downloadFile과 같은 패턴).
+     */
+    @GetMapping("/api/v1/wikis/{wikiId}/file")
+    public ResponseEntity<Resource> downloadWikiFile(@PathVariable long wikiId) {
+        WikiFileDownload download = wikiQueryService.downloadFile(wikiId);
+        MediaType mediaType;
+        try {
+            mediaType = MediaType.parseMediaType(download.contentType());
+        } catch (RuntimeException exception) {
+            mediaType = MediaType.APPLICATION_OCTET_STREAM;
+        }
+        return ResponseEntity.ok()
+                .contentType(mediaType)
+                .header(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment()
+                                .filename(download.fileName(), StandardCharsets.UTF_8)
+                                .build()
+                                .toString()
+                )
+                .body(download.resource());
     }
 }

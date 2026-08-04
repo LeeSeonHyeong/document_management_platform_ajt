@@ -49,13 +49,32 @@ export function useWikiChatMessages(wikiId) {
 }
 
 // 응답에 이미 수정 반영된 Wiki(updatedWiki)가 함께 오므로, 상세 캐시는 재조회 없이 바로 채운다.
+//
+// 관리자 메시지는 응답을 기다리지 않고 낙관적으로 먼저 그린다 — 왕복 지연 동안 화면에
+// 아무것도 안 뜨면 사용자가 입력이 씹혔다고 오해한다. 실패하면 그 임시 메시지만 걷어낸다.
 export function useSendWikiChatMessage(wikiId) {
   const queryClient = useQueryClient()
+  const chatKey = qk.wikis.chat(wikiId)
   return useMutation({
     mutationFn: (content) => sendWikiChatMessage(wikiId, content),
+    onMutate: async (content) => {
+      await queryClient.cancelQueries({ queryKey: chatKey })
+      const previousMessages = queryClient.getQueryData(chatKey)
+      const optimisticMessage = {
+        messageId: `optimistic-${Date.now()}`,
+        senderType: 'admin',
+        content,
+        createdAt: new Date().toISOString(),
+      }
+      queryClient.setQueryData(chatKey, (current = []) => [...current, optimisticMessage])
+      return { previousMessages }
+    },
+    onError: (error, content, context) => {
+      if (context?.previousMessages) queryClient.setQueryData(chatKey, context.previousMessages)
+    },
     onSuccess: (reply) => {
       queryClient.setQueryData(qk.wikis.detail(wikiId), reply.updatedWiki)
-      queryClient.invalidateQueries({ queryKey: qk.wikis.chat(wikiId) })
+      queryClient.invalidateQueries({ queryKey: chatKey })
     },
   })
 }
