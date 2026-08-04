@@ -7,6 +7,7 @@ import { FILE_ACCEPT } from '@/shared/constants/enums'
 import { useStartAiJob, useUploadDocuments, useUploadScheduleSource } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
+import { useAiJobQueue } from '../useAiJobQueue'
 import AiJobStartDialog from '../components/AiJobStartDialog'
 import AiJobProgressDialog from '../components/AiJobProgressDialog'
 
@@ -28,12 +29,19 @@ export default function DocumentListPage() {
   const navigate = useNavigate()
   const [previewUploadFiles, setPreviewUploadFiles] = useState([])
   const [previewScheduleFiles, setPreviewScheduleFiles] = useState([])
-  const [previewQueueDocuments, setPreviewQueueDocuments] = useState([])
   const [startOpen, setStartOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressJobIds, setProgressJobIds] = useState([])
   const [progressDocumentCount, setProgressDocumentCount] = useState(0)
-  const [queueMetadata, setQueueMetadata] = useState({})
+  // 대기 목록은 셸(AiJobQueueProvider)이 들고 있다 — 이 페이지의 상태로 두면 다른 화면에
+  // 갔다 오는 사이 언마운트돼 올린 파일이 사라진다 (S15P11B106-230).
+  const {
+    queueDocuments: previewQueueDocuments,
+    queueMetadata,
+    addDocuments,
+    updateMetadata,
+    removeDocuments,
+  } = useAiJobQueue()
   const uploadDocumentsMutation = useUploadDocuments()
   const uploadScheduleMutation = useUploadScheduleSource()
   const startAiJobMutation = useStartAiJob()
@@ -67,7 +75,7 @@ export default function DocumentListPage() {
           onFilesSelected={setPreviewUploadFiles}
           onUploadComplete={async (files, batch) => {
             const documents = await createPreviewDocuments(files, user, 'document')
-            setPreviewQueueDocuments((current) => [...documents, ...current])
+            addDocuments(documents)
             if (batch.isLast) {
               const extraCount = batch.files.length - 1
               toast.success(
@@ -89,7 +97,7 @@ export default function DocumentListPage() {
           onFilesSelected={setPreviewScheduleFiles}
           onUploadComplete={async (files, batch) => {
             const documents = await createPreviewDocuments(files, user, 'schedule')
-            setPreviewQueueDocuments((current) => [...documents, ...current])
+            addDocuments(documents)
             if (batch.isLast) {
               const extraCount = batch.files.length - 1
               toast.success(
@@ -127,10 +135,7 @@ export default function DocumentListPage() {
           documents={waitingDocuments}
           loading={false}
           onQueueMetadataChange={(documentId, changes) =>
-            setQueueMetadata((current) => ({
-              ...current,
-              [documentId]: { ...current[documentId], ...changes },
-            }))
+            updateMetadata(documentId, changes)
           }
           renderAction={(doc) => (
             <button
@@ -138,9 +143,7 @@ export default function DocumentListPage() {
               aria-label={`${doc.originalFileName} 대기 목록에서 삭제`}
               onClick={(event) => {
                 event.stopPropagation()
-                setPreviewQueueDocuments((current) =>
-                  current.filter((document) => document.documentId !== doc.documentId),
-                )
+                removeDocuments([doc.documentId])
               }}
               className="focus-ring flex size-8 items-center justify-center rounded-lg bg-slate-100 text-slate-400 hover:bg-rose-50 hover:text-rose-500"
             >
@@ -243,14 +246,7 @@ export default function DocumentListPage() {
             toast.error(message)
           } finally {
             if (uploadedIds.size > 0) {
-              setPreviewQueueDocuments((current) =>
-                current.filter((document) => !uploadedIds.has(document.documentId)),
-              )
-              setQueueMetadata((current) => {
-                const next = { ...current }
-                uploadedIds.forEach((documentId) => delete next[documentId])
-                return next
-              })
+              removeDocuments(uploadedIds)
             }
           }
         }}
