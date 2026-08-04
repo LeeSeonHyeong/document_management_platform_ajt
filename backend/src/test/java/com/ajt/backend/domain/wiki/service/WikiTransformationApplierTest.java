@@ -271,6 +271,51 @@ class WikiTransformationApplierTest {
     }
 
     @Test
+    @DisplayName("같은 응답에서 삭제된 Wiki를 가리키는 관계 변경은 건너뛴다")
+    void skipsRelationChangesTouchingWikiDeletedInSameResponse() throws Exception {
+        // AI는 지우는 페이지의 나가는 링크도 remove 관계로 함께 실어 보낸다. 이것을 오류로 보면
+        // 문서 삭제 걷어내기가 통째로 실패해 문서를 지울 수 없었다.
+        Wiki removed = existingWiki(101L, 10L, "폐지된 규정");
+        Wiki survivor = existingWiki(108L, 10L, "근태 관리");
+        removed.addWikiRef(108L);
+        survivor.addWikiRef(101L);
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(),
+                List.of(new WikiChange("delete", "101", null, null, null, null, List.of())),
+                List.of(
+                        new RelationChange("remove", "101", "108"),
+                        new RelationChange("remove", "108", "101")
+                ),
+                List.of(new IndexEntry("108", 1, "근태 관리", null))
+        );
+
+        List<Long> affectedWikiIds = applier.apply(SCOPE_KEY, DOCUMENT_ID, response);
+
+        assertThat(affectedWikiIds).isEmpty();
+        // 삭제된 Wiki를 가리키던 참조는 removeDanglingWikiRefs가 이미 정리한다.
+        assertThat(survivor.wikiRefs()).isEmpty();
+        then(wikiRepository).should().delete(removed);
+    }
+
+    @Test
+    @DisplayName("삭제되지 않은 Wiki를 가리키는 잘못된 관계는 여전히 반영하지 않는다")
+    void stillRejectsRelationToWikiOutsideScope() throws Exception {
+        existingWiki(101L, 10L, "휴가 규정");
+        WikiTransformationResponse response = new WikiTransformationResponse(
+                "요약",
+                List.of(),
+                List.of(),
+                List.of(new RelationChange("add", "101", "999")),
+                List.of()
+        );
+
+        assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("같은 Wiki 공간에서 찾을 수 없는 Wiki");
+    }
+
+    @Test
     @DisplayName("목차가 비어 오면 기존 목차를 유지하고 삭제된 Wiki 항목만 걷어낸다")
     void keepsPreviousIndexWhenNoIndexEntries() throws Exception {
         existingWiki(101L, 10L, "폐지된 규정");
