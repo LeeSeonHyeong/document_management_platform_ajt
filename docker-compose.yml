@@ -36,6 +36,14 @@ services:
       SCHEDULE_EXTRACTOR_MODEL: "claude-haiku-4-5-20251001"
       ANTHROPIC_BASE_URL: "https://gms.ssafy.io/gmsapi/api.anthropic.com"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
+      # 스캔 PDF OCR 은 Google Gemini 비전으로 읽는다 — GMS 게이트웨이의 ~100KB 본문
+      # 제한 때문에 실제 스캔 페이지가 anthropic 경로에선 거의 다 실패한다(settings.py).
+      # 키가 비면(:-) 코드가 로컬 Tesseract 로 폴백하므로 배포가 죽지는 않는다.
+      VISION_OCR_PROVIDER: "gemini"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      # 코드 기본값(_DEFAULT_MODEL, gemini_vision_ocr.py)과 맞춘다 — 무료 티어에서
+      # 실제 통과하는 모델명이 바뀌면 양쪽을 함께 갱신한다.
+      GEMINI_MODEL: "gemini-flash-lite-latest"
     expose:
       - "8000"
     healthcheck:
