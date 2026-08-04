@@ -191,6 +191,36 @@ class InquiryServiceTest {
     }
 
     @Test
+    @DisplayName("문의 목록은 status로 미처리(pending)·처리완료(done)를 구분해 필터링한다(S15P11B106-226)")
+    void findInquiriesFiltersByStatus() {
+        // 담당자가 같은 두 문의 중 하나만 답변해 DONE으로 만든 뒤, status 필터가 각각만 조회하는지 확인한다.
+        // 권한 스코프(담당자=본인 담당) 위에 status 필터가 함께 적용된다.
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        InquiryResponse done = inquiryService.create(login(author), request(assignee.getId(), List.of()));
+        inquiryService.upsertAnswer(login(assignee), Long.parseLong(done.inquiryId()), "규정에 따라 처리했습니다");
+
+        // status 없이 조회하면 담당 문의 둘 다 보인다.
+        assertThat(inquiryService.findInquiries(
+                login(assignee), null, null, null, null, null, null, null, null).totalCount())
+                .isEqualTo(2);
+
+        // 미처리(pending)만 — 답변하지 않은 문의 1건.
+        InquiryListResponse pendingOnly = inquiryService.findInquiries(
+                login(assignee), null, null, "pending", null, null, null, null, null);
+        assertThat(pendingOnly.totalCount()).isEqualTo(1);
+        assertThat(pendingOnly.items().getFirst().status()).isEqualTo("pending");
+
+        // 처리완료(done)만 — 답변한 문의 1건.
+        InquiryListResponse doneOnly = inquiryService.findInquiries(
+                login(assignee), null, null, "done", null, null, null, null, null);
+        assertThat(doneOnly.totalCount()).isEqualTo(1);
+        assertThat(doneOnly.items().getFirst().status()).isEqualTo("done");
+    }
+
+    @Test
     @DisplayName("문의 상세 조회는 권한이 없는 사용자에게 404로 존재를 숨긴다")
     void getInquiryHidesFromUnauthorizedUser() {
         // 작성자도 담당자도 아닌 제3자는 문의 존재 자체를 알 수 없도록 404가 나야 한다.
