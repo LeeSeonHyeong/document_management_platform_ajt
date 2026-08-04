@@ -76,13 +76,15 @@ export const router = createBrowserRouter([
             element: <RoleRoute allowedRoles={[ROLES.ADMIN]} />,
             children: [
               { path: 'admin', element: <AdminPage /> },
+              // 사용자 목록은 부서관리자도 볼 수 있다(S15P11B106-104).
               { path: 'admin/users', element: <EmployeeListPage /> },
-              { path: 'admin/users/:userId', element: <EmployeeDetailPage /> },
-              { path: 'admin/users/:userId/edit', element: <EmployeeEditPage /> },
-              // 가입 신청 조회/승인/거절은 최고관리자 전용(S15P11B106-104). 부서관리자는 403.
+              // 가입 신청과 사용자 상세·수정은 최고관리자 전용(S15P11B106-104, -222).
+              // 부서관리자가 URL로 직접 들어오면 403으로 보낸다.
               {
                 element: <SuperAdminRoute />,
                 children: [
+                  { path: 'admin/users/:userId', element: <EmployeeDetailPage /> },
+                  { path: 'admin/users/:userId/edit', element: <EmployeeEditPage /> },
                   { path: 'admin/signup-requests', element: <SignupRequestsPage /> },
                 ],
               },

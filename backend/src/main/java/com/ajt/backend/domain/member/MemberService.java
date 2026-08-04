@@ -120,8 +120,9 @@ public class MemberService {
      */
     @Transactional(readOnly = true)
     public UserResponse findUser(AuthenticatedMember loginMember, Long userId) {
-        // 수정(S15P11B106-104): 사용자 단건 조회도 부서관리자 허용(requireAdmin으로 완화).
-        requireAdmin(loginMember);
+        // 수정(S15P11B106-222): 사용자 상세 조회는 최고관리자 전용으로 강화한다. 부서관리자는 목록(findUsers)만
+        //   접근할 수 있고, 상세는 최고관리자만 볼 수 있다. 부서관리자가 API를 직접 호출하면 403으로 막는다.
+        requireSuperAdmin(loginMember, "사용자 상세 조회는 최고관리자만 가능합니다.");
         Member member = findMember(userId);
         return UserResponse.from(member, superAdminChecker.isSuperAdmin(member));
     }
@@ -132,15 +133,11 @@ public class MemberService {
      */
     @Transactional
     public UserResponse updateUser(AuthenticatedMember loginMember, Long userId, UserUpdateRequest request) {
-        // 수정(S15P11B106-104): 사용자 수정 진입은 부서관리자 포함 모든 ADMIN 허용(requireAdmin으로 완화).
-        //   대상 제한은 아래 세부 가드로 처리한다.
-        requireAdmin(loginMember);
+        // 수정(S15P11B106-222): 사용자 수정은 최고관리자 전용으로 강화한다. 부서관리자는 목록만 볼 수 있고,
+        //   수정 API를 직접 호출하면 403으로 막는다. 진입에서 최고관리자만 통과시키므로, 예전에 부서관리자를
+        //   대상으로 두던 세부 가드(다른 관리자 수정 차단·역할/상태 변경 차단)는 더 이상 필요 없어 제거했다.
+        requireSuperAdmin(loginMember, "사용자 정보 수정은 최고관리자만 가능합니다.");
         Member member = findMember(userId);
-
-        // 수정(S15P11B106-104): 가드 0 — 부서관리자(최고관리자 아님)는 사원 계정만 관리할 수 있다. 다른 관리자
-        //   계정(다른 부서관리자·최고관리자) 수정은 403으로 막는다. 자기 자신(ADMIN)은 이 가드에서 제외하고
-        //   아래 자기보호 가드(가드 3, 409)로 처리해, "부서관리자 자기 강등/비활성화"는 409로 응답한다.
-        rejectNonSuperAdminModifyingAnotherAdmin(loginMember, member);
 
         // 수정(S15P11B106-71): 가드 1 — 가입 승인(APPROVED)된 사용자만 이 API로 수정할 수 있다(FR-USR-007:
         //   "관리자는 승인된 사용자 계정을 조회·수정"). PENDING/REJECTED 계정을 여기서 ACTIVE·ADMIN으로 바꾸면
@@ -159,13 +156,6 @@ public class MemberService {
         Department department = findDepartmentOrNull(request.departmentId());
         Role role = parseRoleOrNull(request.role());
         AccountStatus accountStatus = parseAccountStatusOrNull(request.accountStatus());
-
-        // 수정(S15P11B106-86): 가드 0-b — 부서관리자(최고관리자 아님)는 사원 계정의 이름·부서만 수정할 수 있고,
-        //   역할(role)·계정 상태(accountStatus) 변경은 최고관리자만 가능하다. 프론트는 화면에서 막지만 Postman·
-        //   개발자도구로 직접 호출하면 뚫릴 수 있어 백엔드에서 막는다. 다른 관리자 대상은 위 가드 0에서 이미 403,
-        //   자기 자신은 자기보호 가드(409)가 처리하므로 여기선 제외한다. 프론트가 기존 값을 그대로 보낼 수 있으므로
-        //   "요청 값이 현재 값과 실제로 달라질 때"만 막는다(같은 값 재전송은 허용).
-        rejectNonSuperAdminChangingRoleOrStatus(loginMember, member, role, accountStatus);
 
         // 수정(S15P11B106-78): 가드 3 — 관리자가 자기 자신을 사원으로 강등(EMPLOYEE)하거나 비활성화(INACTIVE)하면
         //   본인이 관리자 권한을 잃어 관리자 화면에 못 들어가는 운영 사고가 나므로 409로 거절한다. 이름·부서 등
@@ -310,50 +300,15 @@ public class MemberService {
     //   부서관리자면 같은 403 코드로 거절하되 메시지로 구분한다(에러 코드·상태는 유지해 프론트/계약 충돌을 피한다).
     //   (사용자 목록/상세/수정은 -104에서 requireAdmin으로 완화됐고, 이 게이트는 가입 신청 API에만 남는다.)
     private void requireSuperAdmin(AuthenticatedMember loginMember) {
+        requireSuperAdmin(loginMember, "가입 신청 관리는 최고관리자만 사용할 수 있습니다.");
+    }
+
+    // 수정(S15P11B106-222): 최고관리자 전용 게이트에 상황별 안내 메시지를 붙일 수 있게 오버로드한다. 사용자
+    //   상세·수정도 이 게이트를 재사용하되 안내 문구만 다르게 준다(에러 코드·상태 403은 동일하게 유지).
+    private void requireSuperAdmin(AuthenticatedMember loginMember, String message) {
         requireAdmin(loginMember);
         if (!superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin())) {
-            throw new BusinessException(
-                    ErrorCode.ADMIN_PERMISSION_REQUIRED,
-                    "가입 신청 관리는 최고관리자만 사용할 수 있습니다."
-            );
-        }
-    }
-
-    // 수정(S15P11B106-104): 부서관리자(최고관리자가 아닌 ADMIN)는 사원 계정만 관리할 수 있다. 수정 대상이 다른
-    //   관리자 계정(다른 부서관리자·최고관리자)이면 403으로 막는다. 자기 자신은 여기서 제외해, 부서관리자의 자기
-    //   강등/비활성화는 자기보호 가드(rejectSelfPrivilegeRemoval, 409)로 처리되게 한다. 최고관리자 actor는 이
-    //   제한을 받지 않는다(부서관리자 강등/비활성화 가능).
-    private void rejectNonSuperAdminModifyingAnotherAdmin(AuthenticatedMember loginMember, Member target) {
-        boolean actorIsSuperAdmin =
-                superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin());
-        boolean targetIsSelf = target.getId().equals(loginMember.memberId());
-        if (!actorIsSuperAdmin && !targetIsSelf && target.getRole() == Role.ADMIN) {
-            throw new BusinessException(ErrorCode.DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN);
-        }
-    }
-
-    // 수정(S15P11B106-86): 부서관리자(최고관리자 아님)는 사원의 이름·부서만 수정할 수 있다. 역할(role)·계정
-    //   상태(accountStatus)를 실제로 바꾸려 하면 403으로 막는다(최고관리자 전용). 최고관리자 actor·자기 자신은
-    //   제외한다(자기 강등/비활성화는 자기보호 가드 409). 프론트가 기존 값을 그대로 재전송하는 것은 변경이 아니므로
-    //   허용하고, "요청 값이 대상의 현재 값과 실제로 달라질 때"만 거절한다(전달되지 않은 필드 null은 변경 아님).
-    private void rejectNonSuperAdminChangingRoleOrStatus(
-            AuthenticatedMember loginMember, Member target, Role newRole, AccountStatus newAccountStatus) {
-        boolean actorIsSuperAdmin =
-                superAdminChecker.isSuperAdmin(loginMember.email(), loginMember.isAdmin());
-        if (actorIsSuperAdmin) {
-            return;
-        }
-        boolean targetIsSelf = target.getId().equals(loginMember.memberId());
-        if (targetIsSelf) {
-            return;
-        }
-        boolean roleChanges = newRole != null && newRole != target.getRole();
-        boolean statusChanges = newAccountStatus != null && newAccountStatus != target.getAccountStatus();
-        if (roleChanges || statusChanges) {
-            throw new BusinessException(
-                    ErrorCode.DEPARTMENT_MANAGER_CANNOT_MANAGE_ADMIN,
-                    "부서관리자는 사원의 이름·부서만 수정할 수 있습니다. 역할·계정 상태 변경은 최고관리자만 가능합니다."
-            );
+            throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED, message);
         }
     }
 
