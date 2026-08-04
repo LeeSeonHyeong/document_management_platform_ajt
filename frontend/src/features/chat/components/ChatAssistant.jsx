@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Send, Sparkles, X } from 'lucide-react'
+import ColumnResizer from '@/features/wiki/components/ColumnResizer'
 import { askQuestion } from '../api'
+
+// 대화창 폭(px). 최소 390, 최대 화면 절반(50vw). 조정값은 localStorage로 유지한다.
+// 패널이 우측에 고정돼 있어 왼쪽 가장자리 손잡이를 왼쪽으로 끌면 넓어진다(ColumnResizer invert).
+const MIN_WIDTH = 390
+const WIDTH_STORAGE_KEY = 'chat-assistant-width'
+const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth / 2))
+const clampWidth = (value) => Math.min(Math.max(value, MIN_WIDTH), maxWidth())
 
 const WELCOME_MESSAGE = {
   id: 'welcome',
@@ -54,6 +62,13 @@ export default function ChatAssistant() {
   const [question, setQuestion] = useState('')
   const [conversationId, setConversationId] = useState(null)
   const [messages, setMessages] = useState([WELCOME_MESSAGE])
+  const [width, setWidth] = useState(() => {
+    const stored = Number(globalThis.localStorage?.getItem(WIDTH_STORAGE_KEY))
+    return clampWidth(Number.isFinite(stored) && stored > 0 ? stored : MIN_WIDTH)
+  })
+  const widthRef = useRef(width)
+  widthRef.current = width
+  const persistWidth = (value) => globalThis.localStorage?.setItem(WIDTH_STORAGE_KEY, String(value))
 
   const mutation = useMutation({
     mutationFn: (text) => askQuestion(text, conversationId),
@@ -108,8 +123,20 @@ export default function ChatAssistant() {
       <aside
         aria-label="AI 검색 어시스턴트"
         aria-hidden={!open}
-        className={`fixed bottom-4 right-4 top-4 z-50 flex w-[390px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'}`}
+        style={{ width }}
+        className={`fixed bottom-4 right-4 top-4 z-50 flex max-w-[50vw] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl transition-transform duration-300 ease-out ${open ? 'translate-x-0' : 'translate-x-[calc(100%+2rem)]'}`}
       >
+        <ColumnResizer
+          label="어시스턴트 폭 조절"
+          value={width}
+          min={MIN_WIDTH}
+          max={maxWidth()}
+          invert
+          onChange={(next) => setWidth(clampWidth(next))}
+          onCommit={() => persistWidth(widthRef.current)}
+          onReset={() => { setWidth(MIN_WIDTH); persistWidth(MIN_WIDTH) }}
+          className="absolute inset-y-0 left-0 z-10"
+        />
         <header className="flex h-[76px] shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4">
           <span className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 text-white"><Sparkles className="size-5" /></span>
           <div className="min-w-0 flex-1">
