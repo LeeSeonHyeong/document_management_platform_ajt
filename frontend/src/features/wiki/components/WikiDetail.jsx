@@ -1,7 +1,9 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Badge, EmptyState } from '@/components/ui'
 import { useWiki, useWikis } from '../queries'
 import WikiMarkdown from './WikiMarkdown'
+import WikiRelationGraph from './WikiRelationGraph'
+import WikiSourcePreviewModal from './WikiSourcePreviewModal'
 
 function formatDate(iso) {
   if (!iso) return '-'
@@ -13,6 +15,7 @@ function formatDate(iso) {
 }
 
 export default function WikiDetail({ wikiId }) {
+  const [previewDoc, setPreviewDoc] = useState(null)
   const { data: wiki, isLoading, isError } = useWiki(wikiId)
   const { data: scopeWikiPage } = useWikis(wiki ? { scopeKey: wiki.scopeKey, size: 100 } : undefined)
 
@@ -80,11 +83,24 @@ export default function WikiDetail({ wikiId }) {
         </div>
       </div>
 
+      <WikiRelationGraph
+        wikiId={wikiId}
+        height={220}
+        className="mt-6"
+        onDocumentClick={setPreviewDoc}
+      />
+
       {/* 본문 폭을 제한한다. 넓은 화면에서 한 줄이 100자를 넘어가면 눈이 줄을 놓친다 —
           읽기 편한 한 줄은 65자 안팎이다. 표·다이어그램은 아래에서 폭을 되찾는다. */}
       <article className="min-w-0 max-w-[72ch] flex-1 py-1">
         <WikiMarkdown markdown={wiki.contentMarkdown} validWikiIds={validWikiIds} />
       </article>
+
+      <WikiSourcePreviewModal
+        open={Boolean(previewDoc)}
+        evidenceDocument={previewDoc}
+        onClose={() => setPreviewDoc(null)}
+      />
     </div>
   )
 }
