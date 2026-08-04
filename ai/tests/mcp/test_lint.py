@@ -182,3 +182,64 @@ async def test_index_is_never_reported_stale(vault, scope_row):
     address = await _page(fs, scope_id)
     await fs.propagate_staleness(scope_id, address)
     assert "stale-page" not in await _lint(fs, scope_row)
+
+
+# ----- 표에 근거가 없는 경우 (S15P11B106-251) --------------------------------
+#
+# 실측(하네스 13장)에서 표 데이터 26행·17행짜리 페이지가 각주 0개로 `error 0건` 을 통과했다.
+# `_lint_citations` 는 **있는 각주가 원문과 맞는지**만 보고 **사실에 각주가 있는지**는 보지
+# 않아서다. 표는 사실이 가장 밀집된 곳인데 그곳이 검사 밖이었다.
+#
+# **`warn` 으로 둔다.** `error` 로 하면 에이전트가 표 행마다 각주를 맞추려고 돌다 턴 상한에
+# 걸린다 — 인용문 리터럴 일치를 `error` 로 강제했을 때 실제로 그랬다(2026-08-02 job 21,
+# error 0인 채로 40턴·$2.76 소진). 사람이 보고 판단할 신호로만 남긴다.
+
+BIG_TABLE_ROWS = "\n".join(f"| 도구{n} | 용도{n} |" for n in range(1, 7))
+BIG_TABLE_PAGE = """\
+---
+title: 연차 휴가
+description: 입사일 기준 연차 발생과 이월
+date: 2026-07-27
+tags: [휴가, 인사]
+category: 휴가 정책
+---
+
+연차는 입사일을 기준으로 산정한다[^1].
+
+## 도구
+
+| 도구 | 용도 |
+|---|---|
+%s
+
+[^1]: 인사규정.pdf, 3장 휴가 — "연차는 입사일을 기준으로 산정한다"
+""" % BIG_TABLE_ROWS
+
+
+async def test_a_big_table_without_a_nearby_citation_warns(vault, scope_row):
+    """표 6행에 근거가 하나도 없으면 참고용으로 알린다."""
+    _, scope_id, fs = vault
+    await _page(fs, scope_id, BIG_TABLE_PAGE)
+    report = await _lint(fs, scope_row)
+    assert "table-without-citation" in report, report
+    # 막지는 않는다 — 반드시 고칠 것 0건이어야 한다
+    assert "반드시 고칠 것 0건" in report, report
+
+
+async def test_a_big_table_introduced_by_a_cited_sentence_does_not_warn(vault, scope_row):
+    """표를 소개하는 문장에 각주가 있으면 그것으로 충분하다 — `guide` 가 요구하는 모양이다."""
+    _, scope_id, fs = vault
+    content = BIG_TABLE_PAGE.replace(
+        "## 도구\n\n| 도구 | 용도 |",
+        "## 도구\n\n부서별로 쓰는 도구는 다음과 같다[^1].\n\n| 도구 | 용도 |")
+    await _page(fs, scope_id, content)
+    report = await _lint(fs, scope_row)
+    assert "table-without-citation" not in report, report
+
+
+async def test_a_small_table_never_warns(vault, scope_row):
+    """작은 표는 알리지 않는다 — 한두 행짜리 표까지 걸면 소음만 늘어난다."""
+    _, scope_id, fs = vault
+    await _page(fs, scope_id)          # GOOD_PAGE: 표 데이터 1행
+    report = await _lint(fs, scope_row)
+    assert "table-without-citation" not in report, report

@@ -74,6 +74,12 @@ _FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]]+)\]:\s*(.+)$", re.MULTILINE)
 _FOOTNOTE_ANY_RE = re.compile(r"\[\^([^\]]+)\]")
 _MAX_PER_GROUP = 40
 
+# 표 구분선(`|---|:--:|`). 데이터 행을 셀 때 빼야 한다.
+_TABLE_RULE_RE = re.compile(r"^[\s|:-]+$")
+# 표 앞에서 각주를 찾아볼 범위. 표를 소개하는 문장은 바로 위 문단에 있다 — 그보다 멀리
+# 보면 페이지 어딘가의 무관한 각주를 근거로 착각한다.
+_TABLE_LEAD_IN_LINES = 3
+
 # Below this a "location" is too short to check without false positives.
 _MIN_LOCATION_CHARS = 2
 # A quote shorter than this is a fragment, not a claim; matching it proves little
@@ -214,9 +220,43 @@ class LintHandler:
         issues = self._lint_frontmatter(address, meta)
         issues += self._lint_footnotes(address, content)
         issues += await self._lint_citations(address, content)
+        issues += self._lint_uncited_tables(address, content)
         issues += self._lint_links(address, content, wiki_docs)
         if include_graph and address != INDEX_ADDRESS:
             issues += await self._lint_orphan(doc, len(wiki_docs))
+        return issues
+
+    # 이보다 작은 표는 알리지 않는다. 한두 행짜리 표까지 걸면 소음만 늘고, 그런 표는 대개
+    # 앞 문단의 각주가 이미 덮는다.
+    _TABLE_ROWS_WORTH_A_CITATION = 5
+
+    def _lint_uncited_tables(self, address: str, content: str) -> list[LintIssue]:
+        """표에 근거가 하나도 없으면 알린다.
+
+        `_lint_citations` 는 **있는 각주가 원문과 맞는지**만 본다. 그래서 사실이 가장 밀집된
+        곳(표)에 각주가 0개여도 통과했다 — 실측(하네스 13장)에서 26행·17행짜리 표가 각주 0으로
+        `error 0건` 을 받았다. 근거 기반 생성(NFR-AI-002)이 표에서 비어 있던 것이다.
+
+        **`warn` 이다.** `error` 로 하면 에이전트가 표 행마다 각주를 맞추려 돌다 턴 상한에
+        걸린다 — 인용문 리터럴 일치를 `error` 로 강제했을 때 실제로 그랬다(2026-08-02 job 21:
+        error 0인 채로 40턴·$2.76 소진). `guide` 는 「표를 소개하는 문장에 각주 하나」를
+        요구하므로, 그 하나가 있으면 이 검사는 조용하다.
+        """
+        issues: list[LintIssue] = []
+        for lead_in, block in _table_blocks(content):
+            data_rows = [row for row in block
+                         if not _TABLE_RULE_RE.match(row.strip())]
+            # 첫 행은 헤더다
+            if len(data_rows) - 1 < self._TABLE_ROWS_WORTH_A_CITATION:
+                continue
+            window = "\n".join(lead_in) + "\n" + "\n".join(block)
+            if _FOOTNOTE_ANY_RE.search(window):
+                continue
+            issues.append(LintIssue(
+                "warn", "table-without-citation", address,
+                f"표({len(data_rows) - 1}행)에 근거 각주가 없다 — 표를 소개하는 문장에 "
+                f"각주 하나를 달아 어느 절에서 온 표인지 밝힌다",
+            ))
         return issues
 
     def _lint_frontmatter(self, address: str, meta: dict) -> list[LintIssue]:
@@ -474,6 +514,28 @@ class LintHandler:
 
     def _sort_key(self, value: str) -> tuple[int, str]:
         return (0, f"{int(value):08d}") if value.isdigit() else (1, value)
+
+
+def _table_blocks(content: str) -> list[tuple[list[str], list[str]]]:
+    """마크다운 표마다 `(앞 몇 줄, 표 줄들)`.
+
+    앞 몇 줄을 함께 돌려주는 이유는 표를 소개하는 문장에 각주가 붙기 때문이다 — `guide` 가
+    요구하는 모양이 그것이고, 표 안만 보면 그 각주를 놓친다.
+    """
+    lines = content.splitlines()
+    blocks: list[tuple[list[str], list[str]]] = []
+    index = 0
+    while index < len(lines):
+        if not lines[index].lstrip().startswith("|"):
+            index += 1
+            continue
+        start = index
+        while index < len(lines) and lines[index].lstrip().startswith("|"):
+            index += 1
+        lead_in = [line for line in lines[max(0, start - _TABLE_LEAD_IN_LINES):start]
+                   if line.strip()]
+        blocks.append((lead_in, lines[start:index]))
+    return blocks
 
 
 def register(mcp: FastMCP, get_scope_key, fs_factory) -> None:
