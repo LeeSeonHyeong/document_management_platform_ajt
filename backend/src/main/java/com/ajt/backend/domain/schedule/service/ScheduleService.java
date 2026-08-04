@@ -346,9 +346,10 @@ public class ScheduleService {
     }
 
     /**
-     * 일정 접근 권한입니다.
+     * 일정 접근(조회) 권한입니다.
      * personal 일정은 작성자 본인만 접근합니다(관리자도 타인의 personal 일정은 조회할 수 없습니다).
-     * all/department 일정은 관리자가 draft 포함 전체를, 사원은 승인된 소속 범위만 접근합니다.
+     * 전체(ALL) 일정은 최고관리자가 draft 포함 전체를, 부서관리자·사원은 승인된 것을 조회합니다(S15P11B106-240).
+     * 부서(DEPARTMENT) 일정은 최고관리자가 전체를, 부서관리자는 담당 부서 단독(draft 포함), 사원은 승인된 소속 부서만 접근합니다.
      */
     private boolean canAccess(
             AuthenticatedMember loginMember,
@@ -359,8 +360,10 @@ public class ScheduleService {
         boolean superAdmin = adminScope != null && adminScope.isSuperAdmin();
         return switch (schedule.visibilityType()) {
             case PERSONAL -> schedule.authorId() == loginMember.memberId();
-            // 수정(S15P11B106-199): 전체(ALL) 일정은 최고관리자·사원만 접근. 부서관리자는 전체 일정을 조회할 수 없다.
-            case ALL -> superAdmin || (adminScope == null && schedule.status() == ScheduleStatus.APPROVED);
+            // 수정(S15P11B106-240): 전체(ALL) 일정은 최고관리자가 draft 포함 전체를, 그 외(부서관리자·사원)는 승인된
+            //   것만 조회한다. 부서관리자도 승인된 전체 공개 일정을 볼 수 있어야 한다(조회만 — 생성·수정·삭제는
+            //   requireManageableScope/requireManageableSchedule가 담당 부서로 계속 제한한다).
+            case ALL -> superAdmin || schedule.status() == ScheduleStatus.APPROVED;
             case DEPARTMENT -> {
                 if (superAdmin) {
                     yield true;
