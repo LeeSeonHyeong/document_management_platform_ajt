@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react'
 import { Button, Modal } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
 import { FAILURE_STAGE_LABEL } from '../status'
+import SummaryMarkdown from './SummaryMarkdown'
 
 const RETRYABLE = new Set(['failed', 'cancelled'])
 
@@ -102,9 +103,12 @@ export default function AiJobDocumentSummaryModal({ open, onClose, job, result, 
         <>
           <div className="pt-4">
             <p className="text-sm text-slate-500">반영 내용</p>
-            <p className="mt-1.5 text-sm leading-7 text-slate-700">
-              {result.summary ?? '이 작업에 기록된 요약이 없습니다.'}
-            </p>
+            {/* 요약은 표·목록·링크가 섞인 마크다운으로 온다. 원문 그대로 두면 표 기호가 그대로 보인다. */}
+            <div className="mt-1.5">
+              {result.summary
+                ? <SummaryMarkdown markdown={result.summary} />
+                : <p className="text-sm leading-7 text-slate-700">이 작업에 기록된 요약이 없습니다.</p>}
+            </div>
           </div>
 
           {relatedWikis.length > 0 && (
