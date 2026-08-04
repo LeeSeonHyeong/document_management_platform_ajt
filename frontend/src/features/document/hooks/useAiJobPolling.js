@@ -1,9 +1,22 @@
+import { useEffect } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '@/shared/api/queryKeys'
+import { invalidateAfterAiJob } from '../queries'
 import { fetchAiJob, cancelAiJob } from '../api'
 
 const POLL_INTERVAL_MS = 2000
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+// 폴링하던 작업이 끝나는 순간 문서·위키 캐시를 걷어낸다.
+// 이게 없으면 「갱신된 위키 보기」로 넘어간 화면이 편집 전 위키를 그대로 보여준다 —
+// 위키 화면은 작업을 지켜보지 않으므로 스스로 다시 읽을 계기가 없다.
+// 인자는 끝난 작업(들)을 가리키는 문자열 키. 작업이 바뀌면 키도 바뀌어 다시 무효화된다.
+function useInvalidateOnFinish(finishedKey) {
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (finishedKey) invalidateAfterAiJob(queryClient)
+  }, [finishedKey, queryClient])
+}
 
 // jobId가 있는 동안 GET /ai-jobs/:jobId 를 2초 간격으로 폴링하고,
 // 작업이 종료 상태(completed/failed/cancelled)에 도달하면 자동으로 멈춘다.
@@ -29,6 +42,7 @@ export function useAiJobPolling(jobId) {
 
   const job = query.data ?? null
   const isFinished = Boolean(job && TERMINAL_STATUSES.has(job.status))
+  useInvalidateOnFinish(isFinished ? String(jobId) : null)
   const documentResults = [...(job?.documentResults ?? [])].sort((a, b) => a.order - b.order)
 
   const progress = documentResults.reduce(
@@ -73,6 +87,7 @@ export function useAiJobsPolling(jobIds) {
   const jobs = results.map((result) => result.data).filter(Boolean)
   const allLoaded = ids.length > 0 && jobs.length === ids.length
   const isFinished = allLoaded && jobs.every((job) => TERMINAL_STATUSES.has(job.status))
+  useInvalidateOnFinish(isFinished ? ids.join(',') : null)
 
   const documentResults = jobs
     .flatMap((job) => job.documentResults ?? [])

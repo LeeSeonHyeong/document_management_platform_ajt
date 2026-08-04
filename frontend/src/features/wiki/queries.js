@@ -75,6 +75,8 @@ export function useSendWikiChatMessage(wikiId) {
     onSuccess: (reply) => {
       queryClient.setQueryData(qk.wikis.detail(wikiId), reply.updatedWiki)
       queryClient.invalidateQueries({ queryKey: chatKey })
+      // 제목·수정일은 목록에도 실린다. 목록을 걷어내지 않으면 왼쪽 트리가 수정 전 제목을 계속 건다.
+      queryClient.invalidateQueries({ queryKey: qk.wikis.listAll })
     },
   })
 }
