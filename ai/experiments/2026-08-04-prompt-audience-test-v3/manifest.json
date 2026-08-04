@@ -1,0 +1,34 @@
+{
+  "slug": "2026-08-04-prompt-audience-test-v3",
+  "startedAt": "2026-08-04T01:00:01",
+  "runtime": "deepagents",
+  "model": "anthropic:claude-sonnet-4-6",
+  "scope": "ALL",
+  "corpus": [
+    "annual-leave-notice.md"
+  ],
+  "purpose": "점검결과 언급 금지 강화 재확인",
+  "dryRun": false,
+  "effort": null,
+  "code": {
+    "guideChars": 5993,
+    "guideSha": "02a89651228e",
+    "schemaSha": "471515caf0ae",
+    "instructionSha": "c94068fb8d2f",
+    "tools": [
+      "append",
+      "create",
+      "delete",
+      "edit",
+      "guide",
+      "lint",
+      "list_scopes",
+      "merge",
+      "read",
+      "search"
+    ]
+  },
+  "cliVersion": "2.1.220 (Claude Code)",
+  "settingSources": "",
+  "finishedAt": "2026-08-04T01:00:49"
+}
