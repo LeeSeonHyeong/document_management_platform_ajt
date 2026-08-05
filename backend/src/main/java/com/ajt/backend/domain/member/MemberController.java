@@ -48,6 +48,7 @@ public class MemberController {
             @RequestParam(required = false) String signupStatus,
             @RequestParam(required = false) String role,
             @RequestParam(required = false) Boolean managerAssignable,
+            @RequestParam(required = false) String departmentId,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String sort
     ) {
@@ -59,6 +60,7 @@ public class MemberController {
                 signupStatus,
                 role,
                 managerAssignable,
+                departmentId,
                 keyword,
                 sort
         );

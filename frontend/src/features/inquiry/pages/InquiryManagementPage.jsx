@@ -8,6 +8,7 @@ import Pagination from '@/components/ui/Pagination'
 import SearchBar from '@/components/ui/SearchBar'
 import { INQUIRY_PRIORITY, INQUIRY_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
+import { cn } from '@/shared/lib/cn'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchDepartments } from '@/api/departments'
 import { fetchInquiries } from '../api'
@@ -40,30 +41,34 @@ function StatusBadge({ status }) {
   )
 }
 
-// 상단 카드는 상태 필터 버튼을 겸한다(S15P11B106-226). 선택된 카드만 살짝 강조(ring)한다.
+// 상단 카드는 상태 필터 버튼을 겸한다(S15P11B106-226). 선택된 카드는 직원 관리 화면과 동일하게 강하게 강조한다.
 function StatCard({ label, value, suffix = '건', tone, caption, badge, onClick, active }) {
   const colors = {
     primary: 'bg-primary-50 text-primary-600',
     amber: 'bg-amber-50 text-amber-600',
     green: 'bg-emerald-50 text-emerald-600',
   }[tone]
+  // active면 아이콘 칩·badge를 솔리드 primary로 바꿔 진한 배경 위에서도 묻히지 않게 한다.
+  const chipClass = active ? 'bg-primary-600 text-white' : colors
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`focus-ring w-full rounded-2xl border bg-white p-5 text-left shadow-sm transition hover:border-slate-300 ${
-        active ? 'border-primary-300 ring-2 ring-primary-200' : 'border-slate-200'
-      }`}
+      className={cn(
+        'focus-ring w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-primary-300 hover:shadow-md',
+        active &&
+          'scale-[1.03] border-primary-500 bg-primary-50 shadow-xl ring-2 ring-primary-500 ring-offset-2 ring-offset-white',
+      )}
     >
       <div className="flex items-start justify-between">
-        <span className={`flex size-9 items-center justify-center rounded-xl ${colors}`}>
+        <span className={cn('flex size-9 items-center justify-center rounded-xl', chipClass)}>
           <span className="size-3 rounded bg-current" />
         </span>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${colors}`}>{badge}</span>
+        <span className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', chipClass)}>{badge}</span>
       </div>
-      <p className="mt-3 text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-bold text-slate-900">{value}<span className="ml-1 text-sm font-medium text-slate-400">{suffix}</span></p>
+      <p className={cn('mt-3 text-sm text-slate-500', active && 'font-semibold text-primary-700')}>{label}</p>
+      <p className={cn('mt-2 text-3xl font-bold text-slate-900', active && 'text-primary-700')}>{value}<span className="ml-1 text-sm font-medium text-slate-400">{suffix}</span></p>
       <p className="mt-3 text-xs text-slate-400">{caption}</p>
     </button>
   )

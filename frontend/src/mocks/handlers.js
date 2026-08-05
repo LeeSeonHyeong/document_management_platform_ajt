@@ -146,6 +146,7 @@ export const handlers = [
     const role = url.searchParams.get('role')
     const status = url.searchParams.get('status')
     const signupStatus = url.searchParams.get('signupStatus')
+    const departmentId = url.searchParams.get('departmentId')
     const page = Math.max(1, Number(url.searchParams.get('page')) || 1)
     const size = Math.max(1, Number(url.searchParams.get('size')) || 100)
     const filtered = users.filter((employee) => {
@@ -157,6 +158,7 @@ export const handlers = [
         && (!role || employee.role === role)
         && (!status || employee.accountStatus === status)
         && (!signupStatus || employee.signupStatus === signupStatus)
+        && (!departmentId || employee.department?.departmentId === departmentId)
     })
     const start = (page - 1) * size
     return HttpResponse.json({

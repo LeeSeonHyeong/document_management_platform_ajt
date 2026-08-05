@@ -92,6 +92,7 @@ public class MemberService {
             String signupStatus,
             String role,
             Boolean managerAssignable,
+            String departmentId,
             String keyword,
             String sort
     ) {
@@ -100,12 +101,16 @@ public class MemberService {
         //   승인 사용자를 조회할 수 있다(부서 스코프 제한은 후속 과제).
         requireAdmin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
+        // 수정(S15P11B106-260): 부서별 필터(departmentId)를 지원한다. 잘못된 값은 여기서 먼저 400으로 거른다.
+        Long departmentIdValue = departmentId == null || departmentId.isBlank()
+                ? null
+                : parseId(departmentId, "부서 ID는 숫자 문자열이어야 합니다.");
         // 수정: 부서장 여부를 역할(ADMIN)이 아니라 department.manager_id 지정으로 판단하도록 변경(FR-USR-006).
         //       회원마다 개별 조회하면 N+1이 되므로, 부서장으로 지정된 회원 ID를 한 번에 모아 집합으로 비교한다.
         //       수정(S15P11B106-146): managerAssignable 후보에서 최고관리자·이미 지정된 부서장을 제외하는 데도 재사용한다.
         Set<Long> managerMemberIds = new HashSet<>(departmentRepository.findManagerMemberIds());
         Specification<Member> specification = userSpecification(
-                status, signupStatus, role, managerAssignable, keyword,
+                status, signupStatus, role, managerAssignable, departmentIdValue, keyword,
                 superAdminChecker.superAdminEmail(), managerMemberIds);
         Page<UserSummaryResponse> result = memberRepository.findAll(specification, pageable)
                 // 수정: from(member) → from(member, 부서장여부)로 인자 추가.
@@ -388,6 +393,7 @@ public class MemberService {
             String signupStatus,
             String role,
             Boolean managerAssignable,
+            Long departmentId,
             String keyword,
             String superAdminEmail,
             Set<Long> alreadyAssignedManagerIds
@@ -402,6 +408,10 @@ public class MemberService {
             }
             if (role != null && !role.isBlank()) {
                 predicates.add(criteriaBuilder.equal(root.get("role"), parseRole(role)));
+            }
+            // 수정(S15P11B106-260): 부서별 필터. Member.department는 NOT NULL이라 id 비교로 안전하다.
+            if (departmentId != null) {
+                predicates.add(criteriaBuilder.equal(root.get("department").get("id"), departmentId));
             }
             if (Boolean.TRUE.equals(managerAssignable)) {
                 predicates.add(criteriaBuilder.equal(root.get("role"), Role.ADMIN));
