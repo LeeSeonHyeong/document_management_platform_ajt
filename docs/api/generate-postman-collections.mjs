@@ -1942,6 +1942,7 @@ const internalFolders = [
         instruction: "중복된 휴가 규정을 하나로 정리해줘.",
         wikiCapability: "{{wikiCapability}}",
         scopeVersion: 47,
+        adminInstructionDocumentId: "817",
         chatHistory: [],
       }),
       description: docs({
@@ -1954,6 +1955,7 @@ const internalFolders = [
           "`chatHistory`: 해당 Wiki 관리자 대화",
           "`wikiCapability`: Wiki 조회 API 호출에 실을 요청 단위 열람 허가. **필수입니다.** 빠지면 에이전트가 수정 대상 본문을 전혀 읽지 못한 채 수정하게 됩니다",
           "`scopeVersion`: 요청 시작 시점의 `wiki_scope.scope_version`. **필수입니다.** 조회 응답의 값과 다르면 FastAPI가 중단합니다",
+          "`adminInstructionDocumentId`: 이번 관리자 지시를 저장한 원본문서 ID. `wikiChanges[].evidence[].documentId`가 이 값을 인용해야 합니다. **필수 문자열입니다.**",
         ],
         policy: [
           "관련 없는 로그와 다른 scopeKey 자료는 전달하지 않습니다.",

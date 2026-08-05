@@ -28,6 +28,14 @@ function flattenRequests(collection) {
   );
 }
 
+function findRequest(collection, method, path) {
+  return flattenRequests(collection).find(
+    (item) =>
+      item.request.method === method &&
+      item.request.url?.raw?.endsWith(path),
+  );
+}
+
 function validateCollection(collection, expectedPathPrefix) {
   const errors = [];
   const requests = flattenRequests(collection);
@@ -89,10 +97,33 @@ const environmentErrors = requiredEnvironmentKeys
   .filter((key) => !environmentKeys.has(key))
   .map((key) => `Environment 변수 누락: ${key}`);
 
+const wikiEditRequest = findRequest(
+  internalCollection,
+  "POST",
+  "/internal/v1/wiki-edits",
+);
+const wikiEditBody = wikiEditRequest?.request.body?.raw
+  ? JSON.parse(wikiEditRequest.request.body.raw)
+  : {};
+const wikiEditErrors = [];
+if (wikiEditBody.adminInstructionDocumentId !== "817") {
+  wikiEditErrors.push(
+    "Wiki 관리자 수정: adminInstructionDocumentId 필수 문자열 예시 누락",
+  );
+}
+if (
+  !wikiEditRequest?.request.description?.includes("adminInstructionDocumentId")
+) {
+  wikiEditErrors.push(
+    "Wiki 관리자 수정: adminInstructionDocumentId 요청 설명 누락",
+  );
+}
+
 const errors = [
   ...publicResult.errors,
   ...internalResult.errors,
   ...environmentErrors,
+  ...wikiEditErrors,
 ];
 
 console.log(

@@ -164,7 +164,8 @@ def build_router(app: FastAPI) -> APIRouter:
                 await session.content_length_for(address) + evidence_length)
             result = await session.run_agent(
                 edit_instruction(address, payload.scopeKey, payload.instruction,
-                                 [m.model_dump() for m in payload.chatHistory]),
+                                 [m.model_dump() for m in payload.chatHistory],
+                                 payload.adminInstructionDocumentId),
                 limit)
             session.assert_the_agent_looked_at_the_wiki(result)
             await session.assert_lint_clean()

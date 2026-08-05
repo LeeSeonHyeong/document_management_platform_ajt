@@ -2,6 +2,7 @@ package com.ajt.backend.domain.document.storage;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +40,18 @@ class LocalDocumentFileStorageTest {
 
         assertThat(storedPath).isEqualTo("wiki/ALL/sources/15/parsed.md");
         assertThat(Files.readString(storageRoot.resolve(storedPath))).isEqualTo("# 취업규칙");
+    }
+
+    @Test
+    @DisplayName("합성한 원문 Markdown을 문서별 original.md 경로에 저장한다")
+    void storesSynthesizedOriginalUnderDocumentPath() throws Exception {
+        LocalDocumentFileStorage storage = new LocalDocumentFileStorage(storageRoot);
+
+        String path = storage.storeSynthesizedOriginal("ALL", 817L, "# 관리자 지시\n\n> 4일로 변경");
+
+        assertThat(path).isEqualTo("wiki/ALL/sources/817/original.md");
+        assertThat(Files.readString(storageRoot.resolve(path), StandardCharsets.UTF_8))
+                .isEqualTo("# 관리자 지시\n\n> 4일로 변경");
     }
 
     @Test

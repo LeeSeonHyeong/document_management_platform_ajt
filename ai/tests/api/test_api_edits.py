@@ -25,6 +25,7 @@ REQUEST = {
     "instruction": "회의 문단을 한 문장으로 줄여줘.",
     "wikiCapability": CAPABILITY,
     "scopeVersion": SCOPE_VERSION,
+    "adminInstructionDocumentId": "817",
     "chatHistory": [{"senderType": "admin", "content": "회의 부분이 너무 길어."},
                     {"senderType": "agent", "content": "어느 문단을 말씀하시나요?"}],
 }
@@ -339,6 +340,43 @@ def test_instruction_includes_the_admin_words_and_history():
     assert PAGE_ADDRESS in text
 
 
+def test_admin_instruction_document_id_is_included_in_prompt():
+    """이번 요청에서 신뢰할 관리자 지시 원본문서 ID가 프롬프트까지 전달된다."""
+    runtime = EditingRuntime()
+
+    response = _post(runtime)
+
+    assert response.status_code == 200, response.json()
+    assert "817" in runtime.instructions[0]
+
+
+def test_missing_admin_instruction_document_id_is_rejected():
+    """신뢰할 관리자 지시 원본문서가 없으면 편집을 시작할 수 없다."""
+    payload = dict(REQUEST)
+    payload.pop("adminInstructionDocumentId")
+
+    response = _post(EditingRuntime(), payload)
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_WIKI_EDIT_REQUEST"
+
+
+def test_empty_admin_instruction_document_id_is_rejected():
+    """빈 문자열은 신뢰할 원본문서 식별자가 될 수 없다."""
+    response = _post(EditingRuntime(), dict(REQUEST, adminInstructionDocumentId=""))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_WIKI_EDIT_REQUEST"
+
+
+def test_whitespace_admin_instruction_document_id_is_rejected():
+    """공백뿐인 값도 기존 Wiki 수정 요청 검증 오류 계약으로 거절한다."""
+    response = _post(EditingRuntime(), dict(REQUEST, adminInstructionDocumentId="   "))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "INVALID_WIKI_EDIT_REQUEST"
+
+
 def test_instruction_text_limits_scope_to_the_named_page():
-    text = edit_instruction(PAGE_ADDRESS, SCOPE, "줄여줘", [])
+    text = edit_instruction(PAGE_ADDRESS, SCOPE, "줄여줘", [], "817")
     assert "요청과 무관한" in text        # FR-AI-006 부분 재작성

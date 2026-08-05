@@ -83,6 +83,15 @@ public class LocalDocumentFileStorage implements DocumentFileStorage {
     }
 
     @Override
+    public String storeSynthesizedOriginal(String scopeKey, long documentId, String markdown) throws IOException {
+        String storedPath = "wiki/" + scopeKey + "/sources/" + documentId + "/original.md";
+        Path target = resolve(storedPath);
+        Files.createDirectories(target.getParent());
+        Files.writeString(target, markdown, StandardCharsets.UTF_8);
+        return storedPath;
+    }
+
+    @Override
     public String readText(String storedPath) throws IOException {
         return Files.readString(resolve(storedPath), StandardCharsets.UTF_8);
     }
