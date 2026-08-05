@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Search } from 'lucide-react'
 import { Button } from '@/components/ui'
@@ -48,18 +48,30 @@ export function QueueVisibilityDropdown({ item, onApplied, localOnly = false }) 
     setDisplayDepartments(item.departments ?? [])
   }, [item.departments, item.documentId, item.visibilityType])
 
-  useEffect(() => {
+  // 팝업 위치는 '실제로 렌더된 높이'를 재서 정한다(S15P11B106-266).
+  //   예전에는 높이를 342px로 고정 가정해, 부서 항목이 적어 팝업이 짧을 때 openUpward가 과하게 걸리고
+  //   버튼보다 342px나 위로 올려 배치돼, 팝업이 버튼과 떨어진 채 화면 상단에 둥둥 떠 보였다.
+  //   이제 popupRef의 실제 높이로 아래/위를 정하고, 렌더 전에(useLayoutEffect) 배치해 깜빡임도 없앤다.
+  useLayoutEffect(() => {
     if (!open) return
-    const popupHeight = 342
 
     function updatePosition() {
       const rect = buttonRef.current?.getBoundingClientRect()
-      if (!rect) return
-      const openUpward = rect.bottom + popupHeight > window.innerHeight - 12
+      const popup = popupRef.current
+      if (!rect || !popup) return
+      const height = popup.getBoundingClientRect().height
+      const gap = 6
+      const pad = 12
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      // 아래에 충분하면 아래로, 아니면 공간이 더 넓은 쪽으로 연 뒤 뷰포트 안에 가둔다.
+      const openDown = spaceBelow >= height + pad || spaceBelow >= spaceAbove
+      const rawTop = openDown ? rect.bottom + gap : rect.top - height - gap
+      const width = Math.max(264, rect.width)
       setPosition({
-        top: openUpward ? Math.max(12, rect.top - popupHeight - 6) : rect.bottom + 6,
-        left: Math.min(rect.left, window.innerWidth - Math.max(264, rect.width) - 12),
-        width: Math.max(264, rect.width),
+        top: Math.min(Math.max(pad, rawTop), Math.max(pad, window.innerHeight - height - pad)),
+        left: Math.min(rect.left, window.innerWidth - width - pad),
+        width,
       })
     }
 
@@ -75,7 +87,8 @@ export function QueueVisibilityDropdown({ item, onApplied, localOnly = false }) 
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, true)
     }
-  }, [open])
+    // departments 로드로 목록 높이가 바뀌면 다시 잰다.
+  }, [open, departments.length])
 
   const previewDepartments = open
     ? departments.filter((department) => selectedIds.includes(department.departmentId))
