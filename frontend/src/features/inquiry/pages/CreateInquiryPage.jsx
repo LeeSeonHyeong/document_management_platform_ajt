@@ -82,7 +82,10 @@ export default function CreateInquiryPage() {
     setAttachments((current) => [...current, ...files])
   }
 
-  const canSubmit = title.trim() && content.trim() && assigneeId
+  // 제목 이모지 차단(물음표·느낌표 등 일반 문장부호는 허용). 이모지가 있으면 빨간 경고를 띄우고 제출을 막는다.
+  const titleError = /\p{Extended_Pictographic}/u.test(title) ? '제목에 이모지는 사용할 수 없습니다.' : ''
+
+  const canSubmit = title.trim() && content.trim() && assigneeId && !titleError
 
   return (
     <div className="space-y-5">
@@ -92,8 +95,8 @@ export default function CreateInquiryPage() {
         <p className="mt-1 text-sm text-slate-500">문의 내용을 남겨주시면 담당자가 확인 후 빠르게 답변드릴게요.</p>
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)]">
           <div className="space-y-5">
-            <Input label="제목" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="문의 제목을 입력하세요" maxLength={100} />
-            <Textarea label="상세 내용" value={content} onChange={(event) => setContent(event.target.value)} placeholder="문의 내용을 자세히 작성해 주세요..." rows={6} maxLength={2000} />
+            <Input label="제목" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="문의 제목을 입력하세요" maxLength={30} error={titleError} />
+            <Textarea label="상세 내용" value={content} onChange={(event) => setContent(event.target.value)} placeholder="문의 내용을 자세히 작성해 주세요..." rows={6} maxLength={500} />
             <div>
               <p className="mb-2 text-sm font-medium text-slate-700">첨부 파일</p>
               <button
