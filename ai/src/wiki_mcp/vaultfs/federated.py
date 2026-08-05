@@ -53,6 +53,16 @@ class _Catalog:
         # 하이드레이션이 받은 카테고리. 본문 지연 적재가 이걸 다시 넘겨야 한다 —
         # 안 넘기면 프론트매터에 category 가 없는 페이지에서 NULL 로 덮인다.
         self.category_by_address: dict[str, str | None] = {}
+        # 페이지별 한 줄 요약. 조회 API 가 목록 응답에 이미 실어 주는데
+        # (`InternalWikiQueryService.WikiPage.summary`) 예전에는 버렸다. 그러면 `search`
+        # 의 목록이 주소와 제목뿐이라, 에이전트가 「출장 식비가 어느 페이지에 있나」를
+        # 제목만 보고 추측해야 한다 — 실측(2026-08-05, job 33)에서 그 추측을 `search` 35회로
+        # 했고 대부분 0건이었다. 본문을 당기지 않고 답할 수 있는 유일한 필드다.
+        #
+        # 행(`documents.metadata`)이 아니라 카탈로그에 두는 이유: 페이지 행의 metadata 는
+        # 본문 frontmatter 가 정본이고(`spring.py::_insert_live`), 본문 지연 적재가 그것을
+        # 덮어쓴다. 그때 요약이 조용히 사라진다.
+        self.summary_by_address: dict[str, str | None] = {}
         # 본문을 당긴 주소. 조회 절약이 아니라 **재귀 차단**이 본래 역할이다 —
         # 이유는 `_ensure_body` 의 가드 주석에 있다. 걷어내지 않는다.
         self.hydrated_bodies: set[str] = set()
@@ -166,6 +176,7 @@ class FederatedVaultFS(SpringVaultFS):
             catalog.wiki_id_by_address[address] = wiki_id
             catalog.address_by_wiki_id[wiki_id] = address
             catalog.category_by_address[address] = page.get("categoryName")
+            catalog.summary_by_address[address] = page.get("summary")
             # 본문은 빈 문자열이다. 메타데이터만 있어도 browse·목록·주소 해석이 된다.
             await self._insert_live(
                 scope_id, address, "", wiki_id=wiki_id,
@@ -224,6 +235,24 @@ class FederatedVaultFS(SpringVaultFS):
                  in enumerate(catalog.wiki_id_by_address)}
         for addresses in catalog.wikis_by_document.values():
             addresses.sort(key=lambda a: order.get(a, len(order)))
+
+    async def list_documents(self, scope_id: str, with_content: bool = False) -> list[dict]:
+        """부모 목록에 하이드레이션이 받은 한 줄 요약을 붙인다.
+
+        **본문을 당기지 않는다.** 요약은 목록 응답에 이미 실려 온 값이라 조회가 늘지 않는다.
+        이것이 없으면 `search(mode="list")` 가 주소와 제목만 주고, 에이전트는 어느 페이지가
+        무엇을 다루는지 알아내려고 검색을 반복한다 (`_Catalog.summary_by_address` 주석).
+
+        작업 층에 새로 쓴 페이지에는 요약이 없다 — 그건 아직 조회 API 가 모르는 페이지다.
+        그때는 키가 없고 호출자가 빈 값으로 읽는다.
+        """
+        docs = await super().list_documents(scope_id, with_content)
+        summaries = self._catalog.summary_by_address
+        for doc in docs:
+            summary = summaries.get(doc.get("address"))
+            if summary:
+                doc["summary"] = summary
+        return docs
 
     async def _ensure_body(self, scope_id: str, address: str) -> None:
         """이 주소의 본문을 아직 안 당겼으면 당겨 채운다."""

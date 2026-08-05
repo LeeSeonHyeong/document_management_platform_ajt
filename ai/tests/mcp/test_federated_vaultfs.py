@@ -622,3 +622,25 @@ async def test_citation_backlinks_drop_pages_without_the_footnote(tmp_path):
         assert client.body_fetches >= 1
     finally:
         await FederatedVaultFS.close()
+
+
+async def test_the_catalog_carries_the_one_line_summary_without_pulling_bodies(
+        federated):
+    """조회 API 목록 응답의 `summary` 를 목록에 실어 준다 (2026-08-05 도구 검토).
+
+    예전에는 `title`·`categoryName` 만 읽고 버렸다. 그러면 `search(mode="list")` 가 주소와
+    제목뿐이라 에이전트가 어느 페이지가 무엇을 다루는지 검색으로 알아내려 한다 — 실측(job 33)
+    에서 `search` 35회, 대부분 0건이었다.
+
+    **본문을 당기지 않는다.** 이미 받은 응답의 필드라 조회가 늘지 않는 것이 요점이다.
+    """
+    fs, scope_id, client = federated
+    docs = await fs.list_documents(scope_id)
+
+    pages = {d["address"]: d for d in docs if d["kind"] == "page"}
+    assert pages, docs
+    assert any(d.get("summary") for d in pages.values()), pages
+    assert pages["pages/a3f2c1d4.md"]["summary"] == "연차와 반차 사용 기준"
+    # 본문은 여전히 비어 있어야 한다 — 요약이 지연 적재를 유발하면 안 된다.
+    assert all(not (d.get("content") or "") for d in pages.values()), pages
+    assert client.body_fetches == 0

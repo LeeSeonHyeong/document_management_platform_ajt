@@ -78,3 +78,61 @@ async def test_push_search_with_no_matches_reports_the_empty_message():
     result = await handler.search("없는말", "*", None, 10)
 
     assert result == "`없는말`에 해당하는 것이 D1-D2 범위에 없다."
+
+
+# ---- 목록에 한 줄 요약 (2026-08-05) -----------------------------------------
+#
+# 목록이 주소와 제목만 주면 에이전트가 어느 페이지가 무엇을 다루는지 검색으로 알아내려 한다.
+# 실측(job 33): 라이브 10페이지의 제목만 받은 뒤 `search` 35회, 대부분 0건. 조회 API 는 목록
+# 응답에 요약을 이미 실어 주므로(`InternalWikiQueryService.WikiPage.summary`) 공짜다.
+# spec: 도구 검토 2026-08-05
+
+
+class ListFS:
+    """`fs.list_documents` 표면만 흉내 낸다."""
+
+    def __init__(self, docs):
+        self.docs = docs
+
+    async def list_documents(self, scope_id, with_content=False):
+        return self.docs
+
+
+def _page(address, title, **extra):
+    return {"address": address, "title": title, "kind": "page",
+            "category": "경비 정산", **extra}
+
+
+async def test_the_listing_shows_the_one_line_summary():
+    handler = SearchHandler(ListFS([
+        _page("pages/8300a3625b5f.md", "출장비(여비) 정산 안내",
+              summary="교통비 실비 기준, 출장 식비 정액, 법인카드 사용 범위"),
+    ]), SCOPE_ROW)
+
+    result = await handler.browse("*", None)
+
+    assert "출장비(여비) 정산 안내" in result
+    # 제목만으로는 「출장 식비」가 여기 있다는 것을 알 수 없다. 요약이 그것을 말한다.
+    assert "출장 식비 정액" in result
+
+
+async def test_the_listing_falls_back_to_the_frontmatter_description():
+    """작업 층에 방금 쓴 페이지는 조회 API 가 모른다 — 본문 frontmatter 가 유일한 출처다."""
+    content = ("---\ntitle: 연차유급휴가 규정\ndescription: 연간 20일 부여, 경과규정\n"
+               "tags: [연차]\ncategory: 휴가 정책\n---\n\n본문.\n")
+    handler = SearchHandler(ListFS([
+        _page("pages/new.md", "연차유급휴가 규정", content=content),
+    ]), SCOPE_ROW)
+
+    result = await handler.browse("*", None)
+
+    assert "연간 20일 부여, 경과규정" in result
+
+
+async def test_a_page_without_any_summary_renders_as_before():
+    """요약이 없으면 줄이 늘지 않는다 — 형식을 함부로 바꾸지 않는다."""
+    handler = SearchHandler(ListFS([_page("pages/x.md", "제목만 있는 페이지")]), SCOPE_ROW)
+
+    result = await handler.browse("*", None)
+
+    assert result.rstrip().endswith("pages/x.md — 제목만 있는 페이지")
