@@ -15,4 +15,6 @@ public interface DocumentCategoryRepository extends JpaRepository<DocumentCatego
     boolean existsByScopeKeyAndName(String scopeKey, String name);
 
     boolean existsByScopeKeyAndNameAndIdNot(String scopeKey, String name, Long id);
+
+    void deleteAllByScopeKey(String scopeKey);
 }

@@ -33,6 +33,8 @@ public interface WikiRepository extends JpaRepository<Wiki, Long>, JpaSpecificat
 
     boolean existsByWikiCategoryId(long wikiCategoryId);
 
+    void deleteAllByScopeKey(String scopeKey);
+
     /**
      * 공간별 Wiki 개수 집계 결과 프로젝션입니다.
      */

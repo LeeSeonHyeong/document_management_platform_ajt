@@ -10,9 +10,12 @@ import Spinner from '@/components/ui/Spinner'
 import { useToast } from '@/components/ui'
 import { ACCOUNT_STATUS, ACCOUNT_STATUS_LABELS, ROLE_LABELS, ROLES } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
+import { sanitizePlainName } from '@/shared/lib/sanitizePlainName'
 import { useAuth } from '@/hooks/useAuth'
 import { updateDepartment } from '@/features/department/api'
 import { fetchDepartments, fetchUser, updateUser } from '../api'
+
+const MEMBER_NAME_MAX_LENGTH = 50
 
 function formatDate(value) {
   return value
@@ -160,7 +163,18 @@ export default function EmployeeEditPage() {
             <span className="text-xs text-slate-400">* 필수 항목</span>
           </div>
           <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={(event) => { event.preventDefault(); mutation.mutate() }}>
-            <Input label="사용자명" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+            <Input
+              label="사용자명"
+              required
+              value={form.name}
+              maxLength={MEMBER_NAME_MAX_LENGTH}
+              error={
+                form.name.length >= MEMBER_NAME_MAX_LENGTH
+                  ? `* 사용자명은 최대 ${MEMBER_NAME_MAX_LENGTH}자까지 입력할 수 있습니다.`
+                  : undefined
+              }
+              onChange={(event) => setForm({ ...form, name: sanitizePlainName(event.target.value) })}
+            />
             <Input label="사번" value={employee?.employeeNo ?? ''} disabled />
             <Select
               label="부서"

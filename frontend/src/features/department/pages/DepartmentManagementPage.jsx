@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth'
 import { ACCOUNT_STATUS, ROLES, SIGNUP_STATUS } from '@/shared/constants/enums'
 import { qk } from '@/shared/api/queryKeys'
 import { cn } from '@/shared/lib/cn'
+import { sanitizePlainName } from '@/shared/lib/sanitizePlainName'
 import { updateUser } from '@/features/member/api'
 import {
   createDepartment,
@@ -35,6 +36,7 @@ const AVATAR_TONES = [
 
 const SYSTEM_DEPARTMENT_NAMES = new Set(['최고관리자'])
 const KEEP_CURRENT_MANAGER = '__keep_current_manager__'
+const DEPARTMENT_NAME_MAX_LENGTH = 50
 
 function DepartmentAvatar({ department, index }) {
   return (
@@ -253,12 +255,21 @@ export default function DepartmentManagementPage() {
             </span>
             부서 추가
           </div>
-          <input
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            placeholder="추가할 부서명 입력"
-            className="focus-ring h-10 min-w-56 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm"
-          />
+          <div className="min-w-56 flex-1">
+            <input
+              value={newName}
+              maxLength={DEPARTMENT_NAME_MAX_LENGTH}
+              onChange={(event) => setNewName(sanitizePlainName(event.target.value))}
+              placeholder="추가할 부서명 입력"
+              aria-invalid={newName.length >= DEPARTMENT_NAME_MAX_LENGTH}
+              className="focus-ring h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+            />
+            {newName.length >= DEPARTMENT_NAME_MAX_LENGTH && (
+              <p className="mt-1 text-xs text-rose-600">
+                * 부서명은 최대 {DEPARTMENT_NAME_MAX_LENGTH}자까지 입력할 수 있습니다.
+              </p>
+            )}
+          </div>
           <Button type="submit" loading={createMutation.isPending}>부서 추가</Button>
         </form>}
 

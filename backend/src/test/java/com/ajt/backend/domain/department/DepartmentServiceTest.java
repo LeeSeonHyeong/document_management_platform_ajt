@@ -303,8 +303,8 @@ class DepartmentServiceTest {
     }
 
     @Test
-    @DisplayName("부서 공개 일정이 참조하는 부서는 삭제할 수 없다")
-    void deleteDepartmentRejectsDepartmentReferencedBySchedule() {
+    @DisplayName("소속 회원이 없으면 일정의 부서 공개 연결을 제거하고 부서를 삭제한다")
+    void deleteDepartmentRemovesScheduleReference() {
         Department adminDepartment = departmentRepository.save(new Department("인사부"));
         Department referenced = departmentRepository.save(new Department("개발부"));
         Member admin = memberRepository.save(approvedAdmin(adminDepartment, "admin@ajt.com", "AJT-2026-9001"));
@@ -321,24 +321,42 @@ class DepartmentServiceTest {
         schedule.replaceDepartments(List.of(referenced.getId()));
         scheduleRepository.save(schedule);
 
-        assertThatThrownBy(() -> departmentService.deleteDepartment(authenticated(admin), referenced.getId()))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.DEPARTMENT_IN_USE);
+        departmentService.deleteDepartment(authenticated(admin), referenced.getId());
+
+        assertThat(departmentRepository.findById(referenced.getId())).isEmpty();
+        assertThat(scheduleRepository.findById(schedule.id()).orElseThrow().departmentIds()).isEmpty();
     }
 
     @Test
-    @DisplayName("부서 공개 위키 범위가 참조하는 부서는 삭제할 수 없다")
-    void deleteDepartmentRejectsDepartmentReferencedByWikiScope() {
+    @DisplayName("단독 Wiki 범위와 기본 카테고리를 함께 삭제한 뒤 부서를 삭제한다")
+    void deleteDepartmentRemovesExclusiveWikiScope() {
         Department adminDepartment = departmentRepository.save(new Department("인사부"));
         Department referenced = departmentRepository.save(new Department("개발부"));
         Member admin = memberRepository.save(approvedAdmin(adminDepartment, "admin@ajt.com", "AJT-2026-9001"));
-        wikiScopeRepository.save(WikiScope.department(List.of(referenced.getId())));
+        WikiScope scope = wikiScopeRepository.save(WikiScope.department(List.of(referenced.getId())));
+        documentCategoryRepository.save(DocumentCategory.create(scope.scopeKey(), "업무 가이드", null));
 
-        assertThatThrownBy(() -> departmentService.deleteDepartment(authenticated(admin), referenced.getId()))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.DEPARTMENT_IN_USE);
+        departmentService.deleteDepartment(authenticated(admin), referenced.getId());
+
+        assertThat(departmentRepository.findById(referenced.getId())).isEmpty();
+        assertThat(wikiScopeRepository.findById(scope.scopeKey())).isEmpty();
+        assertThat(documentCategoryRepository.findAllByScopeKeyOrderByNameAsc(scope.scopeKey())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("공유 Wiki 범위는 유지하고 삭제한 부서의 참조만 제거한다")
+    void deleteDepartmentKeepsSharedWikiScope() {
+        Department adminDepartment = departmentRepository.save(new Department("인사부"));
+        Department deleted = departmentRepository.save(new Department("개발부"));
+        Department retained = departmentRepository.save(new Department("기획부"));
+        Member admin = memberRepository.save(approvedAdmin(adminDepartment, "admin@ajt.com", "AJT-2026-9001"));
+        WikiScope shared = wikiScopeRepository.save(WikiScope.department(List.of(deleted.getId(), retained.getId())));
+
+        departmentService.deleteDepartment(authenticated(admin), deleted.getId());
+
+        assertThat(departmentRepository.findById(deleted.getId())).isEmpty();
+        assertThat(wikiScopeRepository.findById(shared.scopeKey()).orElseThrow().departmentRefs())
+                .containsExactly(retained.getId());
     }
 
     @Test

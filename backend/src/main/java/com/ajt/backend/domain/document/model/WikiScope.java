@@ -77,4 +77,11 @@ public class WikiScope {
     public void incrementScopeVersion() {
         scopeVersion++;
     }
+
+    /** 부서 삭제 시 공유 공간은 유지하면서 삭제 대상 부서의 접근 참조만 제거합니다. */
+    public void removeDepartmentRef(long departmentId) {
+        departmentRefs = departmentRefs.stream()
+                .filter(ref -> ref != departmentId)
+                .toList();
+    }
 }

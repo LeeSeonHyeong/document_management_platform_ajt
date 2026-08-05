@@ -16,4 +16,6 @@ public interface WikiCategoryRepository extends JpaRepository<WikiCategory, Long
     List<WikiCategory> findAllByScopeKeyOrderByNameAsc(String scopeKey);
 
     boolean existsByScopeKeyAndName(String scopeKey, String name);
+
+    void deleteAllByScopeKey(String scopeKey);
 }

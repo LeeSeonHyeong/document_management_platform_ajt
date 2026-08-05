@@ -22,6 +22,10 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long>, JpaSp
      */
     boolean existsByDepartments_DepartmentId(long departmentId);
 
+    /** 부서 삭제 시 해당 부서를 공개 대상으로 둔 일정의 연결만 제거합니다. */
+    @Query("select distinct s from Schedule s left join fetch s.departments d where d.departmentId = :departmentId")
+    List<Schedule> findAllByDepartmentIdWithDepartments(@Param("departmentId") long departmentId);
+
     /**
      * 수정(S15P11B106-87): 일정 수정 시 동시 저장을 직렬화하려고 행에 짧은 쓰기 락(FOR UPDATE)을 건다.
      * 락은 수정 트랜잭션 동안만 유지되며(화면 진입부터 잡지 않음), 락 획득 후 최신 updated_at을 읽어

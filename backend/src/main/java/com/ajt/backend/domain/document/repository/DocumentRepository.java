@@ -10,4 +10,6 @@ public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSp
     boolean existsByDocumentCategoryId(long documentCategoryId);
 
     List<Document> findByScopeKey(String scopeKey);
+
+    void deleteAllByScopeKey(String scopeKey);
 }
