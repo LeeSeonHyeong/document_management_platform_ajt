@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowDown, ArrowLeftRight, FileText, Info, Upload, X } from 'lucide-react'
 import { Button, Modal, useToast } from '@/components/ui'
+import { FILE_MIME_TYPES } from '@/shared/constants/enums'
 import { useReplaceDocumentFile } from '../queries'
 
 const ALLOWED_EXTENSIONS = ['pdf', 'docx', 'txt', 'md', 'csv', 'xlsx']
@@ -20,24 +21,17 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
   const toast = useToast()
   const fileInputRef = useRef(null)
   const [file, setFile] = useState(null)
-  const [progress, setProgress] = useState(0)
+  // progress=null이면 아직 업로드 전. 값이 있으면 axios가 보고한 실제 전송률(%)이다.
+  const [progress, setProgress] = useState(null)
   const replaceMutation = useReplaceDocumentFile(document?.documentId)
-  const preparing = Boolean(file) && progress < 100
+  const uploading = replaceMutation.isPending
 
   useEffect(() => {
     if (!open) {
       setFile(null)
-      setProgress(0)
+      setProgress(null)
     }
   }, [open])
-
-  useEffect(() => {
-    if (!file || progress >= 100) return undefined
-    const timer = window.setInterval(() => {
-      setProgress((current) => Math.min(100, current + 20))
-    }, 120)
-    return () => window.clearInterval(timer)
-  }, [file, progress])
 
   function selectFile(nextFile) {
     if (!nextFile) return
@@ -46,31 +40,47 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
       toast.error('PDF, DOCX, TXT, MD, CSV, XLSX 파일만 선택할 수 있습니다.')
       return
     }
+    // 확장자만 바꿔치기한 파일 차단. 브라우저가 type을 비워 보낼 수 있어 값이 있을 때만 본다.
+    const allowedMimeTypes = FILE_MIME_TYPES[extension] ?? []
+    if (nextFile.type && !allowedMimeTypes.includes(nextFile.type)) {
+      toast.error('확장자와 실제 파일 형식이 다릅니다.')
+      return
+    }
     if (nextFile.size > MAX_FILE_SIZE) {
       toast.error('파일은 최대 20MB까지 선택할 수 있습니다.')
       return
     }
     setFile(nextFile)
-    setProgress(1)
+    setProgress(null)
   }
 
   function handleClose() {
-    if (replaceMutation.isPending) return
+    if (uploading) return
     setFile(null)
-    setProgress(0)
+    setProgress(null)
     onClose?.()
   }
 
   function handleReplace() {
-    if (!file || preparing || replaceMutation.isPending) return
-    replaceMutation.mutate(file, {
+    if (!file || uploading) return
+    setProgress(0)
+    const payload = {
+      file,
+      onUploadProgress: (event) => {
+        const total = event.total ?? file.size
+        if (!total) return
+        setProgress(Math.min(100, Math.round((event.loaded / total) * 100)))
+      },
+    }
+    replaceMutation.mutate(payload, {
       onSuccess: (result) => {
         toast.success('원본 문서 교체 작업을 시작했습니다.')
         setFile(null)
-        setProgress(0)
+        setProgress(null)
         onStarted?.(result)
       },
       onError: (error) => {
+        setProgress(null)
         if (error?.response?.status === 409) {
           toast.error('현재 처리 중인 문서는 교체할 수 없습니다.')
         } else if (error?.response?.status === 400) {
@@ -93,20 +103,20 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
     <Modal
       open={open}
       onClose={handleClose}
-      closeOnOverlay={!replaceMutation.isPending}
+      closeOnOverlay={!uploading}
       showClose={false}
       size="lg"
       footerClassName="grid grid-cols-2 gap-3 bg-slate-50 px-6 py-4"
       footer={
         <>
-          <Button variant="outline" onClick={handleClose} disabled={replaceMutation.isPending} fullWidth>
+          <Button variant="outline" onClick={handleClose} disabled={uploading} fullWidth>
             취소
           </Button>
           <Button
             variant="danger"
             onClick={handleReplace}
-            disabled={!file || preparing}
-            loading={replaceMutation.isPending}
+            disabled={!file}
+            loading={uploading}
             fullWidth
           >
             교체
@@ -153,7 +163,7 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
       </div>
 
       <p className="text-xs font-semibold text-slate-400">
-        새로 등록되는 문서{preparing ? ' · 업로드 중' : ''}
+        새로 등록되는 문서{uploading ? ' · 업로드 중' : ''}
       </p>
       {!file ? (
         <button
@@ -188,18 +198,18 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
                 {fileExtension(file.name).toUpperCase()} · {formatBytes(file.size)}
               </p>
             </div>
-            {preparing ? (
+            {progress !== null ? (
               <span className="text-xs font-bold text-primary-600">{progress}%</span>
             ) : (
               <>
                 <span className="rounded-lg bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-600">
-                  업로드 완료
+                  선택 완료
                 </span>
                 <button
                   type="button"
                   onClick={() => {
                     setFile(null)
-                    setProgress(0)
+                    setProgress(null)
                   }}
                   className="focus-ring rounded-md p-1 text-slate-400 hover:bg-slate-100"
                   aria-label="선택 파일 변경"
@@ -209,7 +219,7 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
               </>
             )}
           </div>
-          {preparing && (
+          {progress !== null && (
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-600 transition-[width]"

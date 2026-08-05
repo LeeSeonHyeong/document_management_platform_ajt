@@ -90,6 +90,24 @@ export const FILE_ACCEPT = Object.freeze({
   INQUIRY_IMAGE: Object.freeze(['png', 'jpg', 'jpeg']),
 })
 
+// 확장자별 허용 MIME — 백엔드 DocumentUploadRequest·ScheduleSourceService의
+// ALLOWED_MIME_TYPES와 같은 값이다. 확장자만 바꿔치기한 파일을 걸러내는 데 쓴다.
+// 브라우저가 type을 못 채우는 경우가 있어(특히 .md), 값이 비어 있으면 검사하지 않는다.
+export const FILE_MIME_TYPES = Object.freeze({
+  txt: Object.freeze(['text/plain']),
+  md: Object.freeze(['text/markdown', 'text/plain']),
+  pdf: Object.freeze(['application/pdf']),
+  docx: Object.freeze([
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ]),
+  csv: Object.freeze(['text/csv', 'text/plain', 'application/vnd.ms-excel']),
+  xlsx: Object.freeze(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']),
+})
+
+// 백엔드 DocumentUploadRequest의 MAX_FILE_COUNT·MAX_TOTAL_SIZE와 같은 값.
+export const MAX_UPLOAD_FILE_COUNT = 20
+export const MAX_UPLOAD_TOTAL_SIZE_BYTES = 100 * 1024 * 1024
+
 export const INQUIRY_ATTACHMENT_MAX_COUNT = 5
 
 // 한글 라벨 — 화면에서 badge·select 표기에 사용한다.

@@ -96,7 +96,9 @@ export function useUpdateDocument(documentId) {
 export function useReplaceDocumentFile(documentId) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (file) => replaceDocumentFile(documentId, file),
+    // payload: { file, onUploadProgress } — 진행률은 axios 업로드 이벤트를 그대로 넘긴다.
+    mutationFn: ({ file, onUploadProgress }) =>
+      replaceDocumentFile(documentId, file, { onUploadProgress }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.documents.detail(documentId) })
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })

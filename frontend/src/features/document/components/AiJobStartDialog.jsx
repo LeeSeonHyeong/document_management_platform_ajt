@@ -17,7 +17,14 @@ export default function AiJobStartDialog({
   onConfirm,
   documents = [],
   pending = false,
+  uploadProgress = null,
 }) {
+  // uploadProgress = { loaded, total } — axios가 보고한 실제 전송 바이트.
+  const percent =
+    uploadProgress?.total > 0
+      ? Math.min(100, Math.round((uploadProgress.loaded / uploadProgress.total) * 100))
+      : null
+
   return (
     <Modal
       open={open}
@@ -41,7 +48,7 @@ export default function AiJobStartDialog({
             disabled={pending}
             className="min-w-28 shadow-lg shadow-primary-200"
           >
-            {pending ? '시작 중…' : 'AI 작업 시작'}
+            {pending ? (percent === null ? '시작 중…' : `업로드 중 ${percent}%`) : 'AI 작업 시작'}
           </Button>
         </>
       }
@@ -73,6 +80,21 @@ export default function AiJobStartDialog({
             </li>
           ))}
         </ul>
+
+        {percent !== null && (
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500">
+              <span>파일 업로드 중</span>
+              <span className="text-primary-600">{percent}%</span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-blue-500 to-violet-600 transition-[width]"
+                style={{ width: `${percent}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   )

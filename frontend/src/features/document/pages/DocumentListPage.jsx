@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { Upload, FileText, CalendarDays, X, AlertTriangle, Check } from 'lucide-react'
 import { Button, EmptyState, useToast } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
-import { FILE_ACCEPT } from '@/shared/constants/enums'
+import {
+  FILE_ACCEPT,
+  FILE_MIME_TYPES,
+  MAX_FILE_SIZE_BYTES,
+  MAX_UPLOAD_FILE_COUNT,
+  MAX_UPLOAD_TOTAL_SIZE_BYTES,
+} from '@/shared/constants/enums'
 import { useStartAiJob, useUploadDocuments, useUploadScheduleSource } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
@@ -33,6 +39,8 @@ export default function DocumentListPage() {
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressJobIds, setProgressJobIds] = useState([])
   const [progressDocumentCount, setProgressDocumentCount] = useState(0)
+  // 실제 파일 전송률. axios onUploadProgress가 보고한 누적 바이트로만 계산한다.
+  const [uploadProgress, setUploadProgress] = useState(null)
   // 대기 목록은 셸(AiJobQueueProvider)이 들고 있다 — 이 페이지의 상태로 두면 다른 화면에
   // 갔다 오는 사이 언마운트돼 올린 파일이 사라진다 (S15P11B106-230).
   const {
@@ -58,6 +66,11 @@ export default function DocumentListPage() {
   const readyDocuments = waitingDocuments.filter(isAssigned)
   const allAssigned = waitingDocuments.length > 0 && readyDocuments.length === waitingDocuments.length
   const unassignedCount = waitingDocuments.filter((document) => !isAssigned(document)).length
+  // 업로드 카드가 개수·총합 제한을 판단할 때 쓴다.
+  const queuedBytes = waitingDocuments.reduce(
+    (total, document) => total + (document.fileSize ?? 0),
+    0,
+  )
 
   return (
     <section className="space-y-5">
@@ -73,6 +86,8 @@ export default function DocumentListPage() {
           accept={FILE_ACCEPT.WIKI_SOURCE}
           selectedFiles={previewUploadFiles}
           onFilesSelected={setPreviewUploadFiles}
+          queuedCount={waitingDocuments.length}
+          queuedBytes={queuedBytes}
           onUploadComplete={async (files, batch) => {
             const documents = await createPreviewDocuments(files, user, 'document')
             addDocuments(documents)
@@ -95,6 +110,8 @@ export default function DocumentListPage() {
           accept={FILE_ACCEPT.SCHEDULE}
           selectedFiles={previewScheduleFiles}
           onFilesSelected={setPreviewScheduleFiles}
+          queuedCount={waitingDocuments.length}
+          queuedBytes={queuedBytes}
           onUploadComplete={async (files, batch) => {
             const documents = await createPreviewDocuments(files, user, 'schedule')
             addDocuments(documents)
@@ -183,6 +200,7 @@ export default function DocumentListPage() {
         open={startOpen}
         documents={readyDocuments}
         pending={isStarting}
+        uploadProgress={uploadProgress}
         onClose={() => {
           if (!isStarting) setStartOpen(false)
         }}
@@ -198,15 +216,36 @@ export default function DocumentListPage() {
           )
           const uploadedIds = new Set()
           const startedJobIds = []
+          // 전체 바이트 대비 전송된 바이트로 진행률을 만든다. 요청이 여러 번 나가므로
+          // 끝난 요청의 바이트(sentBytes)에 진행 중인 요청의 loaded를 더한다.
+          const totalBytes = localDocuments.reduce(
+            (total, document) => total + (document.sourceFile?.size ?? 0),
+            0,
+          )
+          let sentBytes = 0
+          setUploadProgress({ loaded: 0, total: totalBytes })
+          const trackUpload = (event) => {
+            setUploadProgress({
+              loaded: Math.min(totalBytes, sentBytes + (event.loaded ?? 0)),
+              total: totalBytes,
+            })
+          }
+          const commitSent = (files) => {
+            sentBytes += files.reduce((total, file) => total + (file?.size ?? 0), 0)
+            setUploadProgress({ loaded: Math.min(totalBytes, sentBytes), total: totalBytes })
+          }
 
           try {
             for (const group of documentGroups) {
+              const groupFiles = group.documents.map((document) => document.sourceFile)
               const result = await uploadDocumentsMutation.mutateAsync({
-                files: group.documents.map((document) => document.sourceFile),
+                files: groupFiles,
                 documentCategoryId: group.documentCategoryId,
                 visibilityType: group.visibilityType,
                 departmentIds: group.departmentIds,
+                onUploadProgress: trackUpload,
               })
+              commitSent(groupFiles)
               await startAiJobMutation.mutateAsync(result.jobId)
               startedJobIds.push(result.jobId)
               group.documents.forEach((document) => uploadedIds.add(document.documentId))
@@ -217,7 +256,9 @@ export default function DocumentListPage() {
                 file: document.sourceFile,
                 visibilityType: document.visibilityType,
                 departmentIds: getDepartmentIds(document),
+                onUploadProgress: trackUpload,
               })
+              commitSent([document.sourceFile])
               uploadedIds.add(document.documentId)
             }
 
@@ -245,6 +286,7 @@ export default function DocumentListPage() {
               '파일 업로드에 실패했습니다. 입력값과 서버 연결을 확인해주세요.'
             toast.error(message)
           } finally {
+            setUploadProgress(null)
             if (uploadedIds.size > 0) {
               removeDocuments(uploadedIds)
             }
@@ -277,80 +319,108 @@ function UploadCard({
   onFilesSelected,
   onUploadComplete,
   onClick,
+  queuedCount = 0,
+  queuedBytes = 0,
 }) {
   const schedule = tone === 'schedule'
+  const toast = useToast()
   const inputRef = useRef(null)
   const onUploadCompleteRef = useRef(onUploadComplete)
   const [dragging, setDragging] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [currentIndex, setCurrentIndex] = useState(0)
   const acceptsFilesDirectly = Boolean(onFilesSelected)
-  const currentFile = selectedFiles[currentIndex]
 
   useEffect(() => {
     onUploadCompleteRef.current = onUploadComplete
   }, [onUploadComplete])
 
+  // 이 카드는 서버로 전송하지 않는다. POST /documents는 카테고리·공개 부서가 정해진 뒤
+  // 'AI 작업 시작'에서 한 번에 호출되므로, 여기서는 파일을 대기 목록에 담기만 한다.
+  // 따라서 전송률 대신 '몇 번째 파일을 담고 있는지'만 보여준다(가짜 진행률 제거).
   useEffect(() => {
     if (!selectedFiles.length) {
-      setProgress(0)
       setCurrentIndex(0)
       return undefined
     }
 
-    setCurrentIndex(0)
-    setProgress(0)
-    return undefined
-  }, [selectedFiles])
-
-  useEffect(() => {
-    if (!selectedFiles.length || !currentFile) return undefined
-    const timer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 100) {
-          window.clearInterval(timer)
-          return 100
-        }
-        return Math.min(100, current + 4)
-      })
-    }, 120)
-
-    return () => window.clearInterval(timer)
-  }, [currentFile, selectedFiles.length])
-
-  useEffect(() => {
-    if (progress !== 100 || !currentFile) return undefined
     let cancelled = false
-    const timer = window.setTimeout(async () => {
-      const isLast = currentIndex >= selectedFiles.length - 1
-      await onUploadCompleteRef.current?.([currentFile], {
-        index: currentIndex,
-        isLast,
-        files: selectedFiles,
-      })
-      if (cancelled) return
-
-      if (isLast) {
-        onFilesSelected?.([])
-      } else {
-        setCurrentIndex((index) => index + 1)
-        setProgress(0)
+    setCurrentIndex(0)
+    ;(async () => {
+      for (let index = 0; index < selectedFiles.length; index += 1) {
+        if (cancelled) return
+        setCurrentIndex(index)
+        await onUploadCompleteRef.current?.([selectedFiles[index]], {
+          index,
+          isLast: index === selectedFiles.length - 1,
+          files: selectedFiles,
+        })
       }
-    }, 500)
+      if (!cancelled) onFilesSelected?.([])
+    })()
+
     return () => {
       cancelled = true
-      window.clearTimeout(timer)
     }
-  }, [currentFile, currentIndex, onFilesSelected, progress, selectedFiles])
+  }, [selectedFiles, onFilesSelected])
 
   function openFilePicker() {
     if (acceptsFilesDirectly) inputRef.current?.click()
     else onClick?.()
   }
 
+  // input의 accept는 파일 대화상자 필터일 뿐이고(‘모든 파일’로 우회 가능), 드래그&드롭은
+  // accept를 아예 무시한다. 그래서 여기서 확장자·용량을 직접 검사한다.
+  // 백엔드(DocumentUploadRequest·ScheduleSourceService)는 확장자+MIME까지 다시 검증한다 —
+  // 이 검사는 대기 목록에 못 쓸 파일이 쌓여 'AI 작업 시작'에서야 400으로 터지는 것을 막는 용도다.
   function selectFiles(fileList) {
     const files = Array.from(fileList ?? [])
-    if (files.length) onFilesSelected?.(files)
+    if (!files.length) return
+
+    const rejected = []
+    const accepted = []
+    // 개수·총합은 요청 단위 제한이라, 대기 목록에 이미 쌓인 파일까지 합산해서 본다.
+    let runningCount = queuedCount
+    let runningBytes = queuedBytes
+
+    files.forEach((file) => {
+      const extension = fileExtensionOf(file.name)
+      if (!accept.includes(extension)) {
+        rejected.push(`${file.name} (지원하지 않는 형식)`)
+        return
+      }
+      // 확장자만 바꿔치기한 파일 걸러내기. 브라우저가 type을 비워 보내는 경우가 있어
+      // 값이 있을 때만 대조한다(비었으면 백엔드 검증에 맡긴다).
+      const allowedMimeTypes = FILE_MIME_TYPES[extension] ?? []
+      if (file.type && !allowedMimeTypes.includes(file.type)) {
+        rejected.push(`${file.name} (확장자와 파일 형식이 다름)`)
+        return
+      }
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        rejected.push(`${file.name} (20MB 초과)`)
+        return
+      }
+      if (runningCount + 1 > MAX_UPLOAD_FILE_COUNT) {
+        rejected.push(`${file.name} (한 번에 ${MAX_UPLOAD_FILE_COUNT}개까지)`)
+        return
+      }
+      if (runningBytes + file.size > MAX_UPLOAD_TOTAL_SIZE_BYTES) {
+        rejected.push(`${file.name} (합계 100MB 초과)`)
+        return
+      }
+      runningCount += 1
+      runningBytes += file.size
+      accepted.push(file)
+    })
+
+    if (rejected.length) {
+      const extra = rejected.length > 1 ? ` 외 ${rejected.length - 1}개` : ''
+      toast.error(
+        `${rejected[0]}${extra}는 업로드할 수 없습니다. ${accept
+          .map((extension) => extension.toUpperCase())
+          .join(' · ')} · 파일당 20MB · 최대 ${MAX_UPLOAD_FILE_COUNT}개 · 합계 100MB까지 가능합니다.`,
+      )
+    }
+    if (accepted.length) onFilesSelected?.(accepted)
   }
 
   function handleDrop(event) {
@@ -362,7 +432,6 @@ function UploadCard({
 
   function cancelSelection(event) {
     event.stopPropagation()
-    setProgress(0)
     setCurrentIndex(0)
     onFilesSelected?.([])
   }
@@ -442,10 +511,10 @@ function UploadCard({
                   <Upload className="size-4" />
                 </span>
                 <div>
-                  <p className="text-sm font-bold text-slate-800">
-                    {progress < 100 ? '한 개씩 업로드 중' : '현재 파일 업로드 완료'}
+                  <p className="text-sm font-bold text-slate-800">대기 목록에 추가 중</p>
+                  <p className="text-[11px] text-slate-400">
+                    실제 업로드는 &lsquo;AI 작업 시작&rsquo;에서 진행됩니다
                   </p>
-                  <p className="text-[11px] text-slate-400">완료되면 아래 AI 작업 대기 목록에 추가됩니다</p>
                 </div>
               </div>
               <span className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
@@ -454,14 +523,8 @@ function UploadCard({
             </div>
             <div className="mt-3 max-h-[328px] space-y-1.5 overflow-y-auto pr-1">
               {selectedFiles.map((file, index) => {
-                const fileProgress = index < currentIndex ? 100 : index === currentIndex ? progress : 0
-                const fileLoadedBytes = Math.round(file.size * (fileProgress / 100))
                 const status =
-                  index < currentIndex || (index === currentIndex && progress === 100)
-                    ? '완료'
-                    : index === currentIndex
-                      ? '업로드 중'
-                      : '대기'
+                  index < currentIndex ? '추가 완료' : index === currentIndex ? '추가 중' : '대기'
                 return (
                   <div
                     key={`${file.name}-${file.lastModified}-${index}`}
@@ -489,19 +552,11 @@ function UploadCard({
                               : 'text-primary-600'
                         }`}
                       >
-                        {status} {fileProgress > 0 && `${fileProgress}%`}
+                        {status}
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className={`h-full rounded-full transition-[width] duration-150 ${
-                          schedule ? 'bg-emerald-500' : 'bg-gradient-to-r from-blue-500 to-violet-600'
-                        }`}
-                        style={{ width: `${fileProgress}%` }}
-                      />
-                    </div>
                     <p className="mt-1 text-right text-[10px] text-slate-400">
-                      {formatUploadBytes(fileLoadedBytes)} / {formatUploadBytes(file.size)}
+                      {formatUploadBytes(file.size)}
                     </p>
                   </div>
                 )
@@ -548,6 +603,12 @@ function UploadCard({
       )}
     </article>
   )
+}
+
+function fileExtensionOf(fileName) {
+  const extensionStart = fileName?.lastIndexOf('.') ?? -1
+  if (extensionStart < 1) return ''
+  return fileName.slice(extensionStart + 1).toLowerCase()
 }
 
 function formatUploadBytes(bytes) {
