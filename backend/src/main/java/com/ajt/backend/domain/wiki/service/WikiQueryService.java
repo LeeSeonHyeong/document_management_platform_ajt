@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -417,6 +418,7 @@ public class WikiQueryService {
 
     // TODO(팀 협업): 아래 Wiki 상세 조립 로직은 WikiChatMessageService.toDetail과 사실상 동일하다.
     //  공용 컴포넌트(WikiDetailAssembler 등)로 추출해 양쪽이 함께 쓰도록 통합할지 팀과 협의한다.
+    //  무방향 판정이 두 곳에 있다 — 위 TODO 의 추출 대상.
     private WikiDetailResponse toDetail(Wiki wiki) {
         return new WikiDetailResponse(
                 String.valueOf(wiki.id()),
@@ -425,7 +427,7 @@ public class WikiQueryService {
                 category(wiki.wikiCategoryId()),
                 wiki.scopeKey(),
                 evidenceDocumentSummaries(wiki.documentRefs()),
-                relatedWikis(wiki.scopeKey(), wiki.wikiRefs()),
+                relatedWikis(wiki.scopeKey(), wiki.id(), wiki.wikiRefs()),
                 wiki.updatedAt()
         );
     }
@@ -456,16 +458,39 @@ public class WikiQueryService {
                 .toList();
     }
 
-    private List<WikiDetailResponse.RelatedWiki> relatedWikis(String scopeKey, List<Long> wikiRefs) {
-        if (wikiRefs.isEmpty()) {
-            return List.of();
+    /**
+     * 관련 Wiki 는 무방향입니다 (FR-WIKI-010). 내 목록에 있는 것과 <b>나를 가리키는 것</b>을
+     * 합쳐 돌려줍니다.
+     *
+     * <p>저장이 양쪽 JSON 을 함께 바꾸므로(DR-003) 원칙적으로는 내 목록만 읽어도 충분합니다.
+     * 역방향까지 읽는 이유는 두 가지입니다 — 반영 경로가 source 에만 쓰던 기간에 쌓인 반쪽
+     * 관계가 보정 전에도 화면에 맞게 보여야 하고, 이후 어떤 경로로 반쪽이 생겨도 화면은
+     * 옳아야 합니다. {@code InternalWikiQueryService#relations} 가 이미 같은 방식입니다.
+     *
+     * <p>순서는 내 목록의 저장 순서 → 나를 가리키는 쪽 id 순이며, 요청마다 달라지면 안 됩니다.
+     */
+    private List<WikiDetailResponse.RelatedWiki> relatedWikis(
+            String scopeKey, long wikiId, List<Long> wikiRefs) {
+        List<Wiki> inScope = wikiRepository.findAllByScopeKey(scopeKey);
+        Map<Long, Wiki> inScopeById = new LinkedHashMap<>();
+        inScope.forEach(candidate -> inScopeById.put(candidate.id(), candidate));
+
+        // 내 목록은 저장된 순서를 지킨다. 화면 순서가 요청마다 흔들리지 않아야 한다.
+        Map<Long, Wiki> relatedById = new LinkedHashMap<>();
+        for (Long refId : wikiRefs) {
+            Wiki related = inScopeById.get(refId);
+            if (related != null) {
+                relatedById.put(refId, related);
+            }
         }
-        Map<Long, Wiki> wikisById = new LinkedHashMap<>();
-        wikiRepository.findAllByScopeKeyAndIdIn(scopeKey, wikiRefs)
-                .forEach(related -> wikisById.put(related.id(), related));
-        return wikiRefs.stream()
-                .map(wikisById::get)
-                .filter(related -> related != null)
+        // 나를 가리키는 쪽은 저장된 순서가 없으므로 id 순으로 고정한다.
+        inScope.stream()
+                .filter(candidate -> candidate.id() != wikiId)
+                .filter(candidate -> candidate.wikiRefs().contains(wikiId))
+                .sorted(Comparator.comparing(Wiki::id))
+                .forEach(candidate -> relatedById.putIfAbsent(candidate.id(), candidate));
+
+        return relatedById.values().stream()
                 .map(related -> new WikiDetailResponse.RelatedWiki(
                         String.valueOf(related.id()),
                         related.title()

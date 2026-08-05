@@ -331,15 +331,33 @@ public class WikiTransformationApplier {
                 continue;
             }
             Wiki source = findWiki(scopeKey, sourceWikiId);
-            requireWikiInScope(scopeKey, targetWikiId);
+            Wiki target = findWiki(scopeKey, targetWikiId);
             switch (action(change.action())) {
-                case ACTION_ADD -> source.addWikiRef(targetWikiId);
-                case ACTION_REMOVE -> source.removeWikiRef(targetWikiId);
+                case ACTION_ADD -> linkWikis(source, target);
+                case ACTION_REMOVE -> unlinkWikis(source, target);
                 default -> throw new IllegalArgumentException(
                         "지원하지 않는 Wiki 관계 동작입니다: " + change.action()
                 );
             }
         }
+    }
+
+    /**
+     * Wiki-Wiki 관계는 무방향입니다 (FR-WIKI-010). 양쪽 JSON 을 함께 바꿔야 하므로
+     * (DR-003) 호출자가 짝을 기억하지 않도록 여기서 묶습니다.
+     *
+     * <p>앞 판본은 {@code source.addWikiRef(target)} 만 불렀습니다. 한쪽만 저장되어
+     * 반대쪽 상세 화면에서 관계가 보이지 않았고, 두 페이지가 서로 링크한 경우에만
+     * 정상처럼 보여 간헐적 결함으로 나타났습니다.
+     */
+    private void linkWikis(Wiki source, Wiki target) {
+        source.addWikiRef(target.id());
+        target.addWikiRef(source.id());
+    }
+
+    private void unlinkWikis(Wiki source, Wiki target) {
+        source.removeWikiRef(target.id());
+        target.removeWikiRef(source.id());
     }
 
     private void writeIndex(
@@ -430,10 +448,6 @@ public class WikiTransformationApplier {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "같은 Wiki 공간에서 찾을 수 없는 Wiki입니다: " + wikiId
                 ));
-    }
-
-    private void requireWikiInScope(String scopeKey, long wikiId) {
-        findWiki(scopeKey, wikiId);
     }
 
     private WikiCategory findCategory(String scopeKey, String categoryId) {

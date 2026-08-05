@@ -273,6 +273,79 @@ class WikiReadQueryServiceTest {
                 .isEqualTo(ErrorCode.WIKI_NOT_FOUND);
     }
 
+    @Test
+    @DisplayName("Wiki 상세는 나를 가리키는 Wiki 도 관련 위키로 함께 보여준다")
+    void getWikiIncludesWikisThatPointAtThisOne() {
+        // 저장이 반쪽이던 기간에 쌓인 데이터: A 만 B 를 가리킨다.
+        // 관계는 무방향이므로(FR-WIKI-010) B 상세를 열어도 A 가 보여야 한다.
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member employee = memberRepository.save(employee(dev, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        wikiScopeRepository.save(WikiScope.all());
+        WikiCategory category = wikiCategoryRepository.save(WikiCategory.create("ALL", "휴가 및 근태", null));
+        Wiki a = saveWiki("ALL", category.id(), "휴가 규정");
+        Wiki b = saveWiki("ALL", category.id(), "근태 관리");
+        a.addWikiRef(b.id());
+        wikiRepository.save(a);
+        authenticate(employee);
+
+        WikiDetailResponse response = wikiQueryService.getWiki(b.id());
+
+        assertThat(response.relatedWikis())
+                .extracting(WikiDetailResponse.RelatedWiki::wikiId)
+                .containsExactly(String.valueOf(a.id()));
+    }
+
+    @Test
+    @DisplayName("Wiki 상세는 양쪽에 저장된 관계를 두 번 보여주지 않는다")
+    void getWikiDoesNotDuplicateSymmetricRelations() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member employee = memberRepository.save(employee(dev, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        wikiScopeRepository.save(WikiScope.all());
+        WikiCategory category = wikiCategoryRepository.save(WikiCategory.create("ALL", "휴가 및 근태", null));
+        Wiki a = saveWiki("ALL", category.id(), "휴가 규정");
+        Wiki b = saveWiki("ALL", category.id(), "근태 관리");
+        a.addWikiRef(b.id());
+        b.addWikiRef(a.id());
+        wikiRepository.save(a);
+        wikiRepository.save(b);
+        authenticate(employee);
+
+        WikiDetailResponse response = wikiQueryService.getWiki(b.id());
+
+        assertThat(response.relatedWikis())
+                .extracting(WikiDetailResponse.RelatedWiki::wikiId)
+                .containsExactly(String.valueOf(a.id()));
+    }
+
+    @Test
+    @DisplayName("Wiki 상세의 관련 목록은 id 순이 아니라 저장된 순서를 지킨다")
+    void getWikiKeepsStoredOrderOfWikiRefs() {
+        // c, d, e 는 생성 순서상 id 가 오름차순이지만, main 은 e, c, d 순으로 참조를 저장한다.
+        // 저장 순서와 id 순이 다르게 골랐으므로, id 순으로 정렬돼도 우연히 통과하지 않는다.
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member employee = memberRepository.save(employee(dev, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        wikiScopeRepository.save(WikiScope.all());
+        WikiCategory category = wikiCategoryRepository.save(WikiCategory.create("ALL", "휴가 및 근태", null));
+        Wiki main = saveWiki("ALL", category.id(), "휴가 규정");
+        Wiki c = saveWiki("ALL", category.id(), "근태 관리");
+        Wiki d = saveWiki("ALL", category.id(), "출장 규정");
+        Wiki e = saveWiki("ALL", category.id(), "복리후생 안내");
+        main.addWikiRef(e.id());
+        main.addWikiRef(c.id());
+        main.addWikiRef(d.id());
+        wikiRepository.save(main);
+        authenticate(employee);
+
+        WikiDetailResponse response = wikiQueryService.getWiki(main.id());
+
+        assertThat(response.relatedWikis())
+                .extracting(WikiDetailResponse.RelatedWiki::wikiId)
+                .containsExactly(
+                        String.valueOf(e.id()),
+                        String.valueOf(c.id()),
+                        String.valueOf(d.id()));
+    }
+
     private Wiki saveWiki(String scopeKey, long categoryId, String title) {
         Wiki wiki = wikiRepository.save(Wiki.create(scopeKey, categoryId, title));
         wiki.assignStoragePath();
