@@ -378,9 +378,8 @@ def register(mcp: FastMCP, get_scope_key, fs_factory) -> None:
             "위키 페이지를 새로 만든다.\n\n"
             "경로를 지정하지 않는다 — 서버가 `pages/{키}.md`를 발급한다. 카테고리는 경로가 아니라 "
             "`category` 인자로 준다 (카테고리를 바꿔도 파일은 움직이지 않는다).\n"
-            "**`category`는 기본값이 있지만 생략하면 대개 실패한다** — `content`의 frontmatter에 "
-            "`category:`가 이미 있을 때만 생략할 수 있고, 없으면 `category` 인자를 반드시 준다. "
-            "`tags`도 같다(frontmatter의 `tags`가 없으면 인자로 최소 1개).\n"
+            "`category`와 `tags`는 **필수**다. `content`의 frontmatter에 이미 있으면 같은 값을 "
+            "그대로 주면 된다 — 그때도 frontmatter 쪽이 정본이다.\n"
             "본문의 모든 사실에 각주로 근거를 단다: "
             "`[^1]: 인사규정.pdf, 3장 휴가 — \"입사일을 기준으로 산정한다\"`\n"
             "frontmatter가 없으면 인자로 만들어 붙인다.\n\n"
@@ -388,7 +387,7 @@ def register(mcp: FastMCP, get_scope_key, fs_factory) -> None:
         ),
     )
     async def create(ctx: Context, scope: str, title: str, content: str, tags: list[str],
-                     category: str = "", date_str: str = "") -> str:
+                     category: str, date_str: str = "") -> str:
         handler, err = await _resolve(ctx, scope)
         return err or await guard(handler.create)(title, content, tags, category, date_str)
 
