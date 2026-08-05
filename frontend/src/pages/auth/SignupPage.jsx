@@ -80,7 +80,8 @@ export default function SignupPage() {
           label="비밀번호"
           type="password"
           autoComplete="new-password"
-          hint="8자 이상, 영문·숫자·특수문자 포함"
+          hint="8자 이상 15자 이하, 영문·숫자·특수문자 포함"
+          maxLength={15}
           error={errors.password?.message}
           {...register('password')}
         />
@@ -88,6 +89,7 @@ export default function SignupPage() {
           label="비밀번호 확인"
           type="password"
           autoComplete="new-password"
+          maxLength={15}
           error={errors.passwordConfirm?.message}
           {...register('passwordConfirm')}
         />

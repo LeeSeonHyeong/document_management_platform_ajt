@@ -70,7 +70,7 @@ class AuthControllerTest {
                         .content("""
                                 {
                                   "email": "employee@ajt.com",
-                                  "password": "password123!",
+                                  "password": "Password123!",
                                   "name": "홍길동",
                                   "departmentId": "%s"
                                 }
@@ -82,6 +82,79 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.employeeNo").doesNotExist())
                 .andExpect(jsonPath("$.signupStatus").value("pending"))
                 .andExpect(jsonPath("$.accountStatus").value("inactive"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/signup 요청은 이름에 특수문자·이모지가 있으면 400을 반환한다(S15P11B106-267)")
+    void signupRejectsNameWithSpecialCharactersOrEmoji() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "employee@ajt.com",
+                                  "password": "Password123!",
+                                  "name": "홍길동😀",
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/signup 요청은 영문 이름의 단어 사이 한 칸 공백을 허용한다(S15P11B106-267)")
+    void signupAcceptsEnglishNameWithSingleSpace() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "employee@ajt.com",
+                                  "password": "Password123!",
+                                  "name": "John Smith",
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isAccepted());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/signup 요청은 비밀번호가 15자를 초과하면 400을 반환한다(S15P11B106-267)")
+    void signupRejectsPasswordLongerThan15() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+        String longPassword = "Aa1!".repeat(5); // 20자 — 복잡도는 충족하나 길이 정책(최대 15자) 위반
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "employee@ajt.com",
+                                  "password": "%s",
+                                  "name": "홍길동",
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(longPassword, department.getId())))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/auth/signup 요청은 비밀번호에 대문자가 없으면 400을 반환한다(S15P11B106-267)")
+    void signupRejectsPasswordWithoutUppercase() throws Exception {
+        Department department = departmentRepository.save(new Department("개발부"));
+
+        mockMvc.perform(post("/api/v1/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "employee@ajt.com",
+                                  "password": "password123!",
+                                  "name": "홍길동",
+                                  "departmentId": "%s"
+                                }
+                                """.formatted(department.getId())))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

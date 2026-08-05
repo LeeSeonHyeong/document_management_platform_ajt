@@ -13,7 +13,7 @@ export default function Field({ id, label, required, hint, error, className, chi
       )}
       {children}
       {error ? (
-        <p className="text-xs text-rose-600">{error}</p>
+        <p className="text-xs text-rose-600">* {error}</p>
       ) : (
         hint && <p className="text-xs text-slate-400">{hint}</p>
       )}
