@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
+import { ChevronDown } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import DataTable from '@/components/ui/DataTable'
@@ -238,27 +239,33 @@ export default function InquiryManagementPage() {
         <div className="flex items-center gap-3 border-t border-slate-100 px-5 py-3">
           <SearchBar value={searchInput} onChange={setSearchInput} onSearch={(value) => { setKeyword(value); setPage(1) }} placeholder="문의 제목 또는 요청자로 검색" className="flex-1" />
           {isDepartmentAdmin ? null : (
-            <select
-              value={departmentId}
-              onChange={(event) => {
-                setDepartmentId(event.target.value)
-                setPage(1)
-              }}
-              className="focus-ring h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600"
-            >
-              <option value="">부서별</option>
-              {departments.map((department) => (
-                <option key={department.departmentId} value={String(department.departmentId)}>
-                  {department.name}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={departmentId}
+                onChange={(event) => {
+                  setDepartmentId(event.target.value)
+                  setPage(1)
+                }}
+                className="focus-ring h-10 appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-9 text-sm text-slate-600"
+              >
+                <option value="">부서별</option>
+                {departments.map((department) => (
+                  <option key={department.departmentId} value={String(department.departmentId)}>
+                    {department.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-slate-400" />
+            </div>
           )}
-          <select value={sort} onChange={(event) => setSort(event.target.value)} className="focus-ring h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-600">
-            <option value="priority,desc">중요도별</option>
-            <option value="createdAt,desc">최신순</option>
-            <option value="createdAt,asc">오래된순</option>
-          </select>
+          <div className="relative">
+            <select value={sort} onChange={(event) => setSort(event.target.value)} className="focus-ring h-10 appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-9 text-sm text-slate-600">
+              <option value="priority,desc">중요도별</option>
+              <option value="createdAt,desc">최신순</option>
+              <option value="createdAt,asc">오래된순</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute inset-y-0 right-3 my-auto size-4 text-slate-400" />
+          </div>
         </div>
         <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={visibleInquiries} rowKey="inquiryId" loading={query.isLoading} emptyState={<EmptyState title="담당 문의가 없습니다." />} />
         <Pagination page={query.data?.page ?? page} totalPages={query.data?.totalPages ?? 1} onChange={setPage} className="border-t border-slate-100 py-4" />
