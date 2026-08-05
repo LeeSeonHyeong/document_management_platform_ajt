@@ -145,7 +145,7 @@ export default function SignupRequestsPage() {
           </div>
         </div>
         <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={items} rowKey="userId" loading={query.isLoading} emptyState={<EmptyState title="가입 요청이 없습니다." />} />
-        {totalPages > 1 && (
+        {query.data && totalPages > 1 && (
           <div className="border-t border-slate-100 px-5 py-4">
             <Pagination page={query.data.page} totalPages={totalPages} onChange={setPage} />
           </div>
