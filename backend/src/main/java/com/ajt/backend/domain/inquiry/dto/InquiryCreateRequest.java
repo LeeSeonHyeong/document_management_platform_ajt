@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -22,6 +23,12 @@ public record InquiryCreateRequest(
         List<MultipartFile> attachments
 ) {
 
+    private static final int MAX_TITLE_LENGTH = 30;
+    private static final int MAX_CONTENT_LENGTH = 500;
+    // 이모지(그림문자) 차단용 패턴. 물음표·느낌표 등 일반 문장부호는 허용하고 이모지·기호 그림문자만 막는다.
+    private static final Pattern EMOJI = Pattern.compile(
+            "[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{2B00}-\\x{2BFF}"
+                    + "\\x{FE00}-\\x{FE0F}\\x{200D}\\x{20E3}\\x{1F1E6}-\\x{1F1FF}]");
     private static final int MAX_FILE_COUNT = 5;
     private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
     private static final long MAX_TOTAL_SIZE = 100L * 1024 * 1024;
@@ -42,12 +49,16 @@ public record InquiryCreateRequest(
             throw invalid("담당자를 선택해야 합니다.");
         }
         String safeTitle = requireText(title, "제목을 입력해주세요.");
-        if (safeTitle.length() > 200) {
-            throw invalid("제목은 200자 이하로 입력해주세요.");
+        if (safeTitle.length() > MAX_TITLE_LENGTH) {
+            throw invalid("제목은 30자 이하로 입력해주세요.");
         }
-        // TODO(개선): 제목은 200자로 제한하지만 내용(TEXT)에는 상한이 없다.
-        //  악의적 대용량 입력을 막도록 내용 길이 상한을 정책으로 확정해 검증을 추가한다.
+        if (EMOJI.matcher(safeTitle).find()) {
+            throw invalid("제목에 이모지는 사용할 수 없습니다.");
+        }
         String safeContent = requireText(content, "내용을 입력해주세요.");
+        if (safeContent.length() > MAX_CONTENT_LENGTH) {
+            throw invalid("내용은 500자 이하로 입력해주세요.");
+        }
 
         InquiryPriority parsedPriority;
         try {
