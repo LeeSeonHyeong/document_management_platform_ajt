@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, Check, ChevronDown, ChevronLeft, Info, Plus } from 'lucide-react'
 import { Button, Modal, useToast } from '@/components/ui'
 import { useDepartments } from '@/features/department/useDepartments'
+import { sanitizePlainName } from '@/shared/lib/sanitizePlainName'
 import {
   useCreateDocumentCategory,
   useDeleteDocumentCategory,
@@ -24,6 +25,8 @@ const CATEGORY_TONES = [
   'bg-slate-200 text-slate-600',
 ]
 
+const CATEGORY_NAME_MAX_LENGTH = 50
+
 // Figma 4-8R — 원본문서 카테고리 관리.
 // 기본 공개 부서는 아직 카테고리 API 계약에 없는 화면용 값이다.
 export default function DocumentCategoryPage() {
@@ -34,6 +37,8 @@ export default function DocumentCategoryPage() {
   const [defaultDepartments, setDefaultDepartments] = useState({})
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const categoryNameComposingRef = useRef(false)
+  const categoryNameInputRef = useRef(null)
 
   // 현재 목 API는 scopeKey와 무관하게 전체 카테고리를 반환한다.
   const scopeKey = 'ALL'
@@ -165,15 +170,39 @@ export default function DocumentCategoryPage() {
             </span>
             카테고리 추가
           </span>
-          <input
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') handleAdd()
-            }}
-            placeholder="추가할 카테고리명 입력"
-            className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400"
-          />
+          <div className="min-w-0 flex-1">
+            <input
+              ref={categoryNameInputRef}
+              value={newName}
+              maxLength={CATEGORY_NAME_MAX_LENGTH}
+              onCompositionStart={() => {
+                categoryNameComposingRef.current = true
+              }}
+              onCompositionEnd={() => {
+                // Windows의 `자음 + 한자` 특수문자 변환은 compositionEnd 뒤에 입력값과
+                // 커서 위치가 확정된다. 다음 프레임에서 읽어야 앞 글자가 유실되지 않는다.
+                requestAnimationFrame(() => {
+                  categoryNameComposingRef.current = false
+                  setNewName(sanitizePlainName(categoryNameInputRef.current?.value ?? ''))
+                })
+              }}
+              onChange={(event) => {
+                const value = event.target.value
+                setNewName(categoryNameComposingRef.current ? value : sanitizePlainName(value))
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleAdd()
+              }}
+              placeholder="추가할 카테고리명 입력"
+              aria-invalid={newName.length >= CATEGORY_NAME_MAX_LENGTH}
+              className="focus-ring h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 placeholder:text-slate-400"
+            />
+            {newName.length >= CATEGORY_NAME_MAX_LENGTH && (
+              <p className="mt-1 text-xs text-rose-600">
+                * 카테고리명은 최대 {CATEGORY_NAME_MAX_LENGTH}자까지 입력할 수 있습니다.
+              </p>
+            )}
+          </div>
           <div className="w-52 shrink-0">
             <DepartmentMultiSelect
               value={newDepartments}
