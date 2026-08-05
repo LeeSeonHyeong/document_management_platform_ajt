@@ -260,6 +260,10 @@ export default function DocumentTable({
     align: index === 0 ? 'left' : 'center',
   }))
 
+  // queue는 퍼센트 너비 + table-fixed라 표가 컨테이너를 절대 넘지 않는다. min-w가 없으면
+  // 창을 줄일 때 가로 스크롤 대신 열이 계속 찌그러져 파일명·드롭다운이 잘린다.
+  const queueTableClassName = variant === 'queue' ? 'table-fixed min-w-[860px]' : undefined
+
   return (
     <DataTable
       columns={columns}
@@ -269,7 +273,7 @@ export default function DocumentTable({
       onRowClick={onRowClick}
       emptyState={emptyState}
       headerAlign="center"
-      tableClassName={variant === 'queue' ? 'table-fixed' : undefined}
+      tableClassName={queueTableClassName}
     />
   )
 }
