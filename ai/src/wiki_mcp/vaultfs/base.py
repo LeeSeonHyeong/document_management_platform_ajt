@@ -50,6 +50,20 @@ class VaultFS(ABC):
     @abstractmethod
     async def get(self, scope_id: str, address: str) -> dict | None: ...
 
+    @abstractmethod
+    async def live_content(self, scope_id: str, address: str) -> str | None:
+        """라이브 층 본문만. 겹쳐 읽기(`get`)와 달리 작업 층을 보지 않는다.
+
+        에이전트 쓰기는 작업 층으로만 가므로 이 값은 **에이전트 실행 전 상태**다. 「이 각주가
+        원래 있던 것인가」를 나이로 판정하는 유일한 근거다
+        (`wiki_mcp/services/footnotes.py::legacy_footnote_labels`).
+
+        규약에 올려둔 이유가 있다. 구현이 `SpringVaultFS` 에만 있던 동안
+        `api/session.py::assert_lint_clean` 이 이것을 무조건 불렀고, 즉 게이트가 구체 클래스에
+        조용히 의존했다 — 세션이 마침 항상 `FederatedVaultFS` 라 안 터진 잠재 결함이었다.
+        판정을 `lint` 로 내리면서 하네스·개발 도구가 쓰는 `LocalVaultFS` 도 이 경로를 탄다.
+        """
+
     async def resolve_address(self, scope_id: str, address: str) -> dict | None:
         """이 주소가 이 공간에 있으면 그 행을, 없으면 `None`.
 

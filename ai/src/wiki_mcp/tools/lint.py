@@ -53,11 +53,12 @@ frontmatter·각주가 error 로 쏟아지고 에이전트가 그것을 고치�
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from wiki_mcp.services.footnotes import legacy_footnote_labels
 from wiki_mcp.vaultfs import INDEX_ADDRESS, VaultError, VaultFS
 
 from .helpers import MATCH_ALL, glob_match, label
@@ -71,6 +72,15 @@ from .write import (
 )
 
 _FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]]+)\]:\s*(.+)$", re.MULTILINE)
+
+# 편집 세션에서 목차에 대해 `warn` 으로 내리는 코드들. Spring 이 주는 목차 본문에
+# frontmatter 가 없어 이 세션 안에서는 사라지지 않는 것들이다 (`_demote_index_frontmatter`).
+# 반영 게이트가 무시하던 목록(`wiki_api/session.py::_INDEX_FRONTMATTER_CODES`)을 여기로
+# 옮겼다 — 같은 판정이 두 곳에 있으면 한쪽이 낡는다.
+_INDEX_FRONTMATTER_CODES = frozenset({
+    "missing-frontmatter", "missing-title", "missing-tags",
+    "missing-category", "footnote-in-frontmatter",
+})
 _FOOTNOTE_ANY_RE = re.compile(r"\[\^([^\]]+)\]")
 _MAX_PER_GROUP = 40
 
@@ -185,6 +195,17 @@ class LintHandler:
     def _is_this_jobs_work(self, doc: dict) -> bool:
         return not self._editing or doc.get("layer") == "work"
 
+    async def _legacy_labels(self, address: str, content: str) -> set[str]:
+        """이 페이지에서 이번 작업 전부터 있던 각주 라벨.
+
+        **편집 세션에서만 판정한다.** 작업 층이 없는 개발 도구 세션(`--job-id` 없이 띄운
+        `local_server`)에서는 라이브가 곧 현재라 모든 각주가 「원래 있던 것」이 돼 미해결 인용이
+        전부 강등된다. 그쪽은 사람이 읽는 진단이므로 그대로 `error` 를 내야 한다.
+        """
+        if not self._editing:
+            return set()
+        return await legacy_footnote_labels(self.fs, self.scope_id, address, content)
+
     async def _removed_addresses(self) -> set[str]:
         """이번 작업이 지우거나 병합해 없앤 주소.
 
@@ -217,7 +238,8 @@ class LintHandler:
         content = doc.get("content") or ""
         meta = parse_frontmatter(content)
 
-        issues = self._lint_frontmatter(address, meta)
+        issues = self._demote_index_frontmatter(address,
+                                                self._lint_frontmatter(address, meta))
         issues += self._lint_footnotes(address, content)
         issues += await self._lint_citations(address, content)
         issues += self._lint_uncited_tables(address, content)
@@ -288,6 +310,23 @@ class LintHandler:
                                     "category가 없다 — 목차에 나오지 않는다"))
         return issues
 
+    def _demote_index_frontmatter(self, address: str,
+                                  issues: list[LintIssue]) -> list[LintIssue]:
+        """편집 세션에서 목차의 frontmatter 계열은 `warn` 으로 내린다.
+
+        Spring 이 하이드레이션으로 주는 목차 본문에는 frontmatter 가 없다 — 운영 중인 목차가
+        그렇게 저장돼 있어서다. 그래서 이 오류들은 에이전트가 무엇을 해도 이 세션 안에서
+        사라지지 않고, 반영 게이트도 이미 무시한다. `error` 로 두면 에이전트가 목차를 반복해
+        고치며 턴을 쓴다 (실측 2026-08-05: 두 번 고쳐도 안 없어졌다).
+
+        주소 한 곳에만 걸리는 판정이라 인용 쪽(`unresolved-citation-legacy`)처럼 코드를 새로
+        나누지 않는다. 게이트는 `error` 만 막으므로 심각도를 내리는 것으로 충분하다.
+        """
+        if not self._editing or address != INDEX_ADDRESS:
+            return issues
+        return [issue if issue.code not in _INDEX_FRONTMATTER_CODES
+                else replace(issue, severity="warn") for issue in issues]
+
     def _lint_footnotes(self, address: str, content: str) -> list[LintIssue]:
         issues: list[LintIssue] = []
         def_matches = list(_FOOTNOTE_DEF_RE.finditer(content))
@@ -316,12 +355,28 @@ class LintHandler:
 
     async def _lint_citations(self, address: str, content: str) -> list[LintIssue]:
         """Every footnote resolves to a source, a location in it, and — when the
-        footnote quotes the source — to that exact text."""
+        footnote quotes the source — to that exact text.
+
+        **원본문서를 못 찾은 각주는 그게 이번 작업 전부터 있던 것인지 가른다.** 하이드레이션은
+        위키 페이지 전부를 올리지만 원본문서는 이번 요청의 것만 올리므로, 다른 문서를 인용하는
+        기존 각주는 세션 안에서 구조적으로 풀리지 않는다 — 에이전트는 원본문서를 만들 수 없어
+        고칠 수단이 없다. `error` 로 내면 「error 0까지 끝내지 않는다」는 지시와 맞물려 확정적
+        루프가 된다 (실측: `services/footnotes.py` docstring).
+        """
         issues: list[LintIssue] = []
+        legacy = await self._legacy_labels(address, content)
         for footnote, raw in _FOOTNOTE_DEF_RE.findall(content):
             parsed = parse_citation(raw)
             target = await self.fs.find_source(self.scope_id, parsed["name"])
             if not target:
+                if footnote in legacy:
+                    issues.append(LintIssue(
+                        "warn", "unresolved-citation-legacy", address,
+                        f"각주 `^{footnote}`가 가리키는 `{parsed['name']}`이 이 작업에 올라오지 "
+                        f"않았다 — 이번 작업 전부터 있던 각주이니 고칠 수 없다. 그대로 둔다",
+                        footnote=footnote,
+                    ))
+                    continue
                 issues.append(LintIssue(
                     "error", "unresolved-citation", address,
                     f"각주 `^{footnote}`가 `{parsed['name']}`을 가리키는데 그런 원본문서가 없다",
@@ -552,6 +607,9 @@ def register(mcp: FastMCP, get_scope_key, fs_factory) -> None:
             "내용은 검사하지 않는다 — 그 페이지들이 인용하는 원본문서는 이 작업에 실려 오지 "
             "않아 확인할 수 없고, 고치는 것도 이 작업의 범위가 아니다. 단 **이번에 페이지를 "
             "지우거나 병합해서 기존 페이지의 링크를 깼으면** 그것은 보고한다.\n\n"
+            "고친 페이지에 **이번 작업 전부터 있던** 각주가 남아 있고 그 원본문서가 이 작업에 "
+            "올라오지 않았으면, 그것은 `error`가 아니라 참고용으로 나온다 — 고칠 수단이 없으니 "
+            "그대로 둔다.\n\n"
             "**작업을 끝내기 전에 반드시 부르고 `error`는 전부 고친다.** `warn`은 이유가 있으면 남긴다.\n"
             '`path`로 좁힌다: `*`, `pages/*`, `pages/a3f2c1d4.md`'
         ),

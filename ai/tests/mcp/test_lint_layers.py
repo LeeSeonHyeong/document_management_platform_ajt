@@ -320,3 +320,99 @@ async def test_removing_a_page_at_scale_still_names_every_broken_inbound_link(tm
             assert f"pages/ref{i:04d}.md" in report, report
     finally:
         await LocalVaultFS.close()
+
+
+# ---- 손댄 페이지의 «고칠 수 없는» 오류 (2026-08-05) --------------------------
+#
+# 위의 D5 범위 좁히기는 **건드리지 않은** 페이지만 가린다. 기존 페이지를 고치는 순간 그
+# 페이지는 작업 층이 되어 전부 검사 대상이 되고, 그때 **원래 있던** 각주의
+# `unresolved-citation` 이 `error` 로 에이전트에게 간다. 지시문은 "error 0까지 끝내지
+# 않는다" 이므로 확정적 루프가 된다.
+#
+# 실측(job 32/document 43): 같은 4건이 lint 6번·edit 4번을 거쳐 하나도 줄지 않고 턴 상한에서
+# 죽었다 — 46라운드, 137만 토큰, $0.72, 산출물 0.
+# spec: docs/superpowers/specs/2026-08-05-lint-gate-parity-design.md
+
+
+async def _edit_live_page(fs, scope_id, address, content):
+    await fs.write(scope_id, address, content, title="취업규칙 요약",
+                   category="근무 정책", tags=["취업규칙", "근로시간"])
+    await sync_references(fs, scope_id, address, content)
+
+
+def _keeping_the_old_footnote(prose: str) -> str:
+    """산문만 고치고 각주 정의 줄은 글자 하나 안 바꾼 본문. 실제 편집의 모양이다."""
+    body = FOREIGN_CITATION_LIVE["contentMarkdown"].replace(
+        "소정근로시간은 주 40시간이다[^1].", prose)
+    assert '[^1]: 취업규칙.pdf, 2장 근로시간 — "소정근로시간은 주 40시간이다"' in body
+    return body
+
+
+async def test_an_edited_page_keeps_its_old_citation_as_a_note_not_an_error(
+        vault, scope_row):
+    """고친 페이지에 남아 있는 **기존** 각주는 `error` 가 아니다.
+
+    그 각주가 가리키는 원본문서는 이 세션에 올라오지 않았고 에이전트는 원본문서를 만들 수
+    없다. 유일한 «수정» 은 남의 각주를 지우는 것이므로 error 로 낼 것이 아니다."""
+    scope_id, fs = vault
+    await _edit_live_page(fs, scope_id, FOREIGN_CITATION_ADDRESS,
+                          _keeping_the_old_footnote("소정근로시간은 주 40시간이다(개정)[^1]."))
+
+    report = await _for_agent(fs, scope_row, FOREIGN_CITATION_ADDRESS)
+
+    assert "unresolved-citation-legacy" in report, report
+    assert "반드시 고칠 것 0건" in report, report
+    assert "고칠 수 없다" in report, report
+    # 종료 신호까지 붙어야 에이전트가 멈춘다 — 강등만 하고 이 문장이 없으면 warn 을 쫓는다.
+    assert "이걸로 끝이다" in report, report
+
+
+async def test_rewriting_a_footnote_definition_is_not_legacy(vault, scope_row):
+    """같은 라벨로 정의 줄을 바꿔 쓰면 「원래 있던 각주」가 아니다.
+
+    라벨만 비교하면 지어낸 인용이 이 완화를 타고 통과한다 (NFR-AI-002). 나이 판정은 정의
+    줄 전체로 한다."""
+    scope_id, fs = vault
+    body = FOREIGN_CITATION_LIVE["contentMarkdown"].replace(
+        '[^1]: 취업규칙.pdf, 2장 근로시간 — "소정근로시간은 주 40시간이다"',
+        '[^1]: 취업규칙.pdf, 2장 근로시간 — "소정근로시간은 주 52시간이다"')
+    await _edit_live_page(fs, scope_id, FOREIGN_CITATION_ADDRESS, body)
+
+    report = await _for_agent(fs, scope_row, FOREIGN_CITATION_ADDRESS)
+
+    assert "unresolved-citation-legacy" not in report, report
+    assert "[unresolved-citation]" in report, report
+    assert "반드시 고칠 것 1건" in report, report
+
+
+async def test_a_dev_tool_session_still_reports_unresolved_citations_as_errors(
+        vault, scope_row):
+    """작업 층이 없는 세션(`--job-id` 없이 띄운 개발 도구)은 강등하지 않는다.
+
+    거기서는 라이브가 곧 현재라 모든 각주가 「원래 있던 것」이 된다 — 강등하면 미해결 인용이
+    전부 사라져 사람이 읽는 진단이 쓸모없어진다."""
+    scope_id, _ = vault
+    read_only = SpringVaultFS(SCOPE, None)
+
+    report = await _for_agent(read_only, scope_row, FOREIGN_CITATION_ADDRESS)
+
+    assert "unresolved-citation-legacy" not in report, report
+    assert "[unresolved-citation]" in report, report
+    assert "반드시 고칠 것 1건" in report, report
+
+
+async def test_the_index_frontmatter_is_a_note_once_the_agent_touches_it(
+        vault, scope_row):
+    """목차를 고쳐도 frontmatter 는 생기지 않는다 — Spring 이 주는 본문에 없기 때문이다.
+
+    게이트는 이미 무시한다. 에이전트에게 `error` 로 내면 목차를 반복해 고치며 턴을 쓴다
+    (실측: 두 번 고쳐도 안 없어졌다)."""
+    scope_id, fs = vault
+    body = INDEX_MD.replace("— 비동기 우선 소통", "— 비동기로 먼저 쓴다")
+    await fs.write(scope_id, "index.md", body)
+
+    report = await _for_agent(fs, scope_row, "index.md")
+
+    assert "missing-frontmatter" in report, report
+    assert "반드시 고칠 것 0건" in report, report
+    assert "이걸로 끝이다" in report, report

@@ -261,3 +261,28 @@ async def test_search_does_not_return_superseded_live_content(vault):
     assert not [h for h in hits if h["address"] == address]
     hits = await fs2.search_chunks(scope_id, "회계연도", 10)
     assert [h for h in hits if h["address"] == address]
+
+
+async def test_live_content_ignores_the_work_layer(vault):
+    """`live_content` 는 에이전트 실행 **전** 본문을 준다 — 작업 층을 겹쳐 읽지 않는다.
+
+    「이 각주가 원래 있던 것인가」를 나이로 판정하는 유일한 근거다
+    (`wiki_mcp/services/footnotes.py`). 겹쳐 읽으면 에이전트가 방금 쓴 각주까지 「원래 있던
+    것」이 되어 지어낸 인용이 통과한다 (NFR-AI-002).
+
+    `VaultFS` 규약에 있어야 하는 이유: 구현이 `SpringVaultFS` 에만 있던 동안
+    `api/session.py` 가 그것을 무조건 불렀고, 즉 게이트가 구체 클래스에 조용히 의존했다.
+    """
+    _, scope_id, fs = vault
+
+    # 1) 작업 층에만 있는 페이지는 실행 전 상태가 없다 — 그 각주는 전부 이번 작업이 쓴 것이다.
+    fresh = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, fresh, "# 새 페이지\n\n작업 층에만 있다.\n")
+    assert await fs.live_content(scope_id, fresh) is None
+
+    # 2) 고친 페이지는 겹쳐 읽기와 실행 전 상태가 갈린다.
+    before = await fs.live_content(scope_id, "index.md")
+    assert before is not None
+    await fs.write(scope_id, "index.md", before + "\n- [새 페이지](%s)\n" % fresh)
+    assert "새 페이지" in (await fs.get(scope_id, "index.md"))["content"]
+    assert await fs.live_content(scope_id, "index.md") == before
