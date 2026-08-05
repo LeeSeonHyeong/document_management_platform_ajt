@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, MessageSquarePlus, Paperclip, UserRound } from 'lucide-react'
+import { ChevronDown, ChevronRight, MessageSquarePlus, Paperclip, UserRound } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
@@ -101,17 +101,20 @@ export default function EmployeeInquiriesPage() {
             <h2 className="font-bold">
               내 문의 <span className="ml-2 rounded-md bg-primary-50 px-2 py-1 text-xs text-primary-600">{countLabel}</span>
             </h2>
-            <select
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              className="focus-ring h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600"
-            >
-              <option value="all">전체</option>
-              <option value="pending">미처리</option>
-              <option value="done">처리 완료</option>
-              <option value="priority">중요도</option>
-              <option value="date">날짜순</option>
-            </select>
+            <div className="relative">
+              <select
+                value={filter}
+                onChange={(event) => setFilter(event.target.value)}
+                className="focus-ring h-9 appearance-none rounded-lg border border-slate-200 bg-white pl-2 pr-8 text-xs text-slate-600"
+              >
+                <option value="all">전체</option>
+                <option value="pending">미처리</option>
+                <option value="done">처리 완료</option>
+                <option value="priority">중요도</option>
+                <option value="date">날짜순</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute inset-y-0 right-2 my-auto size-4 text-slate-400" />
+            </div>
           </div>
           <div className="mt-5 min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
             {listQuery.isLoading ? (

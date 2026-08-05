@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AuthContext } from './AuthContext'
 import {
   login as loginRequest,
@@ -12,6 +13,7 @@ import { getStoredUser, setStoredUser, clearStoredUser } from '@/lib/authStorage
 //  - 부팅 시 GET /me로 실제 로그인 여부를 확정한다(initializing 동안 가드는 대기).
 //  - 캐시된 user는 첫 화면 깜빡임을 줄이기 위한 낙관적 값일 뿐, /me 결과로 재조정된다.
 export default function AuthProvider({ children }) {
+  const queryClient = useQueryClient()
   const [user, setUser] = useState(() => getStoredUser())
   const [initializing, setInitializing] = useState(true)
 
@@ -46,10 +48,12 @@ export default function AuthProvider({ children }) {
   const login = useCallback(
     async ({ email, password }) => {
       const data = await loginRequest({ email, password })
+      // 다른 계정으로 바로 갈아탈 때 이전 사용자의 캐시가 새 사용자에게 노출되지 않도록 초기화한다.
+      queryClient.clear()
       applyUser(data.user)
       return data.user
     },
-    [applyUser],
+    [applyUser, queryClient],
   )
 
   const logout = useCallback(async () => {
@@ -57,8 +61,10 @@ export default function AuthProvider({ children }) {
       await logoutRequest()
     } finally {
       clearUser()
+      // 로그아웃 후 남은 서버 상태 캐시를 제거해 다음 로그인 사용자에게 흔적이 남지 않게 한다.
+      queryClient.clear()
     }
-  }, [clearUser])
+  }, [clearUser, queryClient])
 
   // axios 인터셉터가 401을 감지하면 전역 이벤트로 알린다. 여기서 로그아웃 상태로 전환.
   useEffect(() => {

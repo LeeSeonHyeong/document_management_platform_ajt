@@ -97,7 +97,7 @@ export default function InquiryDetailPage() {
             <textarea value={answer} onChange={(event) => setAnswer(event.target.value.slice(0, 2000))} rows={7} placeholder="요청자에게 전달할 답변을 입력해주세요." className="focus-ring mt-4 w-full resize-none rounded-xl border border-primary-300 bg-slate-50 p-4 text-sm leading-6" />
             <p className="mt-3 flex items-center gap-2 rounded-lg bg-primary-50 px-4 py-3 text-xs text-slate-500"><Info className="size-4 text-primary-500" /> 등록하면 요청자에게 답변이 저장되고 문의 상태가 처리완료로 변경됩니다.</p>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setAnswer('')}>취소</Button>
+              <Button variant="outline" onClick={() => setAnswer('')}>답변 초기화</Button>
               <Button disabled={!answer.trim()} onClick={() => setConfirmOpen(true)}>{pending ? '답변 등록' : '답변 수정'}</Button>
             </div>
           </Card>
@@ -118,7 +118,7 @@ export default function InquiryDetailPage() {
               <span className="flex size-8 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white">{inquiry.assignee?.name?.slice(0, 1)}</span>
               <span className="font-semibold">{inquiry.assignee?.name} ({inquiry.assignee?.department?.name})</span>
             </div>
-            <p className="mt-3 text-xs text-slate-400">최신 API 계약에서는 등록 후 담당자를 변경할 수 없습니다.</p>
+            <p className="mt-3 text-xs text-slate-400">등록 후에는 담당자를 변경할 수 없습니다.</p>
           </div>
         </Card>
       </div>
