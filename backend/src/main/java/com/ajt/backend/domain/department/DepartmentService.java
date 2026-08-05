@@ -4,6 +4,7 @@ import com.ajt.backend.domain.department.dto.DepartmentCreateRequest;
 import com.ajt.backend.domain.department.dto.DepartmentListResponse;
 import com.ajt.backend.domain.department.dto.DepartmentResponse;
 import com.ajt.backend.domain.department.dto.DepartmentUpdateRequest;
+import com.ajt.backend.domain.document.DefaultDocumentCategoryEnsurer;
 import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
@@ -29,19 +30,22 @@ public class DepartmentService {
     private final ScheduleRepository scheduleRepository;
     private final WikiScopeRepository wikiScopeRepository;
     private final SuperAdminChecker superAdminChecker;
+    private final DefaultDocumentCategoryEnsurer defaultDocumentCategoryEnsurer;
 
     public DepartmentService(
             DepartmentRepository departmentRepository,
             MemberRepository memberRepository,
             ScheduleRepository scheduleRepository,
             WikiScopeRepository wikiScopeRepository,
-            SuperAdminChecker superAdminChecker
+            SuperAdminChecker superAdminChecker,
+            DefaultDocumentCategoryEnsurer defaultDocumentCategoryEnsurer
     ) {
         this.departmentRepository = departmentRepository;
         this.memberRepository = memberRepository;
         this.scheduleRepository = scheduleRepository;
         this.wikiScopeRepository = wikiScopeRepository;
         this.superAdminChecker = superAdminChecker;
+        this.defaultDocumentCategoryEnsurer = defaultDocumentCategoryEnsurer;
     }
 
     /**
@@ -97,7 +101,12 @@ public class DepartmentService {
         if (request.managerId() != null) {
             department.assignManager(findAssignableManager(request.managerId(), null));
         }
-        return DepartmentResponse.from(departmentRepository.save(department));
+        Department saved = departmentRepository.save(department);
+        // 수정(S15P11B106-257): 새 부서에는 기본 문서 카테고리(업무 가이드·규정·정책·회의·공지·기타 자료)를 자동으로 채운다.
+        //   카테고리 목록 조회(CAT-01)에 필요한 부서 문서 공간(wiki_scope)도 함께 보장한다. 같은 트랜잭션에서 실행되며,
+        //   기본 카테고리는 일반 카테고리라 이후 관리자가 이름 변경·삭제할 수 있다.
+        defaultDocumentCategoryEnsurer.ensureForDepartment(saved.getId());
+        return DepartmentResponse.from(saved);
     }
 
     /**

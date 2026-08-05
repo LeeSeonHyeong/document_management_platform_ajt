@@ -7,7 +7,10 @@ import com.ajt.backend.domain.department.dto.DepartmentCreateRequest;
 import com.ajt.backend.domain.department.dto.DepartmentListResponse;
 import com.ajt.backend.domain.department.dto.DepartmentResponse;
 import com.ajt.backend.domain.department.dto.DepartmentUpdateRequest;
+import com.ajt.backend.domain.document.DefaultDocumentCategoryEnsurer;
+import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.model.WikiScope;
+import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
@@ -40,6 +43,7 @@ class DepartmentServiceTest {
     private final MemberRepository memberRepository;
     private final ScheduleRepository scheduleRepository;
     private final WikiScopeRepository wikiScopeRepository;
+    private final DocumentCategoryRepository documentCategoryRepository;
     private final PasswordEncoder passwordEncoder;
 
 
@@ -50,6 +54,7 @@ class DepartmentServiceTest {
             MemberRepository memberRepository,
             ScheduleRepository scheduleRepository,
             WikiScopeRepository wikiScopeRepository,
+            DocumentCategoryRepository documentCategoryRepository,
             PasswordEncoder passwordEncoder
     ) {
         this.departmentService = departmentService;
@@ -57,6 +62,7 @@ class DepartmentServiceTest {
         this.memberRepository = memberRepository;
         this.scheduleRepository = scheduleRepository;
         this.wikiScopeRepository = wikiScopeRepository;
+        this.documentCategoryRepository = documentCategoryRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -103,6 +109,25 @@ class DepartmentServiceTest {
 
         assertThat(response.name()).isEqualTo("플랫폼개발부");
         assertThat(response.manager().userId()).isEqualTo(String.valueOf(admin.getId()));
+    }
+
+    @Test
+    @DisplayName("부서 생성 시 부서 문서 공간에 기본 카테고리가 채워진다(S15P11B106-257)")
+    void createDepartmentSeedsDefaultDocumentCategories() {
+        Department baseDepartment = departmentRepository.save(new Department("기본부"));
+        Member admin = memberRepository.save(approvedAdmin(baseDepartment, "admin@ajt.com", "AJT-2026-9001"));
+
+        DepartmentResponse response = departmentService.createDepartment(
+                authenticated(admin),
+                new DepartmentCreateRequest("플랫폼개발부", null)
+        );
+
+        String scopeKey = "D" + response.departmentId();
+        // 카테고리 목록 조회(CAT-01)에 필요한 부서 문서 공간과 기본 카테고리가 함께 생긴다.
+        assertThat(wikiScopeRepository.existsById(scopeKey)).isTrue();
+        assertThat(documentCategoryRepository.findAllByScopeKeyOrderByNameAsc(scopeKey))
+                .extracting(DocumentCategory::name)
+                .containsExactlyInAnyOrderElementsOf(DefaultDocumentCategoryEnsurer.DEFAULT_CATEGORY_NAMES);
     }
 
     @Test
