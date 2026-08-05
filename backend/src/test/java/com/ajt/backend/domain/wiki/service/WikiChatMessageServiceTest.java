@@ -119,7 +119,7 @@ class WikiChatMessageServiceTest {
         adminLoggedIn();
         given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
         given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정\n본문");
-        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki, related));
         given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
                 .willReturn(List.of(existingAgentMessage(wiki, "이전 응답입니다.")));
         given(documentRepository.findAllById(List.of(15L, 817L))).willReturn(List.of(
@@ -128,7 +128,6 @@ class WikiChatMessageServiceTest {
         ));
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
         given(wikiCategoryRepository.findById(9L)).willReturn(Optional.of(category(9L, "휴가 및 근태")));
-        given(wikiRepository.findAllByScopeKeyAndIdIn(SCOPE_KEY, List.of(108L))).willReturn(List.of(related));
         given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(new WikiEditResponse(
                 "중복된 연차 항목을 정리했습니다.",
                 List.of(),

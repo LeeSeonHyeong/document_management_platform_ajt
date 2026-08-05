@@ -238,7 +238,7 @@ class WikiTransformationApplierTest {
         assertThat(existing.title()).isEqualTo("휴가 규정 개정");
         assertThat(existing.wikiRefs()).containsExactly(108L);
         assertThat(existing.documentRefs()).containsExactly(15L);
-        assertThat(related.wikiRefs()).isEmpty();
+        assertThat(related.wikiRefs()).containsExactly(101L);
         then(wikiFileMutation).should().storeWikiMarkdown(
                 existing.wikiPath(), "# 휴가 규정 개정"
         );
@@ -540,6 +540,52 @@ class WikiTransformationApplierTest {
         assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID, response))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("본문이 비어 있습니다");
+    }
+
+    @Test
+    @DisplayName("관계 추가를 양쪽 Wiki 에 저장한다")
+    void addsRelationToBothWikis() throws Exception {
+        Wiki source = existingWiki(101L, 10L, "휴가 규정");
+        Wiki target = existingWiki(108L, 10L, "근태 관리");
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(),
+                List.of(new RelationChange("add", "101", "108")),
+                List.of()));
+
+        assertThat(source.wikiRefs()).containsExactly(108L);
+        assertThat(target.wikiRefs()).containsExactly(101L);
+    }
+
+    @Test
+    @DisplayName("관계 삭제를 양쪽 Wiki 에서 지운다")
+    void removesRelationFromBothWikis() throws Exception {
+        Wiki source = existingWiki(101L, 10L, "휴가 규정");
+        Wiki target = existingWiki(108L, 10L, "근태 관리");
+        source.addWikiRef(108L);
+        target.addWikiRef(101L);
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(),
+                List.of(new RelationChange("remove", "101", "108")),
+                List.of()));
+
+        assertThat(source.wikiRefs()).isEmpty();
+        assertThat(target.wikiRefs()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("자기 자신을 가리키는 관계는 양쪽 저장에서도 거부한다")
+    void rejectsSelfRelation() throws Exception {
+        existingWiki(101L, 10L, "휴가 규정");
+
+        assertThatThrownBy(() -> applier.apply(SCOPE_KEY, DOCUMENT_ID,
+                new WikiTransformationResponse(
+                        "요약", List.of(), List.of(),
+                        List.of(new RelationChange("add", "101", "101")),
+                        List.of())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("자기 자신");
     }
 
     private Wiki existingWiki(long id, long categoryId, String title) throws ReflectiveOperationException {
