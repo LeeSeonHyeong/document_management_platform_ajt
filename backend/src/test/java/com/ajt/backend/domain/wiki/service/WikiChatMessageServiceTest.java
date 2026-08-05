@@ -37,6 +37,8 @@ import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.AiClientFailureType;
 import com.ajt.backend.global.ai.client.WikiEditRequest;
 import com.ajt.backend.global.ai.client.WikiEditResponse;
+import com.ajt.backend.global.ai.client.WikiTransformationResponse.Evidence;
+import com.ajt.backend.global.ai.client.WikiTransformationResponse.WikiChange;
 import com.ajt.backend.global.ai.capability.WikiCapabilityService;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -55,8 +57,11 @@ import org.mockito.ArgumentCaptor;
 class WikiChatMessageServiceTest {
 
     private static final String SCOPE_KEY = "ALL";
+    private static final long ADMIN_ID = 10L;
 
     private final CurrentMemberProvider currentMemberProvider = mock(CurrentMemberProvider.class);
+    private final AdminInstructionDocumentService adminInstructionDocumentService =
+            mock(AdminInstructionDocumentService.class);
     private final WikiRepository wikiRepository = mock(WikiRepository.class);
     private final WikiCategoryRepository wikiCategoryRepository = mock(WikiCategoryRepository.class);
     private final WikiChatMessageRepository wikiChatMessageRepository = mock(WikiChatMessageRepository.class);
@@ -70,6 +75,7 @@ class WikiChatMessageServiceTest {
     private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
     private final WikiChatMessageService service = new WikiChatMessageService(
             currentMemberProvider,
+            adminInstructionDocumentService,
             wikiRepository,
             wikiCategoryRepository,
             wikiChatMessageRepository,
@@ -94,6 +100,7 @@ class WikiChatMessageServiceTest {
 
     @BeforeEach
     void setUp() {
+        given(adminInstructionDocumentService.create(anyLong(), anyLong(), anyString())).willReturn(817L);
         given(wikiScopeRepository.findById(SCOPE_KEY)).willReturn(Optional.of(WikiScope.all()));
         given(wikiCapabilityService.issue(eq(SCOPE_KEY), eq(0L), any(Duration.class))).willReturn("capability");
         given(wikiChatMessageRepository.save(any(WikiChatMessage.class))).willAnswer(invocation -> {
@@ -115,14 +122,17 @@ class WikiChatMessageServiceTest {
         given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
         given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
                 .willReturn(List.of(existingAgentMessage(wiki, "이전 응답입니다.")));
-        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document(15L, "취업규칙.pdf")));
+        given(documentRepository.findAllById(List.of(15L, 817L))).willReturn(List.of(
+                document(15L, "취업규칙.pdf"),
+                document(817L, "관리자지시-20260805-1600-w101.md")
+        ));
         given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
         given(wikiCategoryRepository.findById(9L)).willReturn(Optional.of(category(9L, "휴가 및 근태")));
         given(wikiRepository.findAllByScopeKeyAndIdIn(SCOPE_KEY, List.of(108L))).willReturn(List.of(related));
         given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(new WikiEditResponse(
                 "중복된 연차 항목을 정리했습니다.",
                 List.of(),
-                List.of(),
+                List.of(updateChange("817")),
                 List.of(),
                 List.of()
         ));
@@ -139,11 +149,18 @@ class WikiChatMessageServiceTest {
         assertThat(response.updatedWiki().category().wikiCategoryId()).isEqualTo("9");
         assertThat(response.updatedWiki().category().name()).isEqualTo("휴가 및 근태");
         assertThat(response.updatedWiki().scopeKey()).isEqualTo(SCOPE_KEY);
-        assertThat(response.updatedWiki().evidenceDocuments()).singleElement().satisfies(document -> {
-            assertThat(document.documentId()).isEqualTo("15");
-            assertThat(document.originalFileName()).isEqualTo("취업규칙.pdf");
-            assertThat(document.downloadUrl()).isEqualTo("/api/v1/documents/15/file");
-        });
+        assertThat(response.updatedWiki().evidenceDocuments()).satisfiesExactly(
+                document -> {
+                    assertThat(document.documentId()).isEqualTo("15");
+                    assertThat(document.originalFileName()).isEqualTo("취업규칙.pdf");
+                    assertThat(document.downloadUrl()).isEqualTo("/api/v1/documents/15/file");
+                },
+                document -> {
+                    assertThat(document.documentId()).isEqualTo("817");
+                    assertThat(document.originalFileName()).isEqualTo("관리자지시-20260805-1600-w101.md");
+                    assertThat(document.downloadUrl()).isEqualTo("/api/v1/documents/817/file");
+                }
+        );
         assertThat(response.updatedWiki().relatedWikis()).singleElement().satisfies(relatedWiki -> {
             assertThat(relatedWiki.wikiId()).isEqualTo("108");
             assertThat(relatedWiki.title()).isEqualTo("근태 관리");
@@ -185,7 +202,7 @@ class WikiChatMessageServiceTest {
     }
 
     @Test
-    @DisplayName("FastAPI 요청에 기존 대화와 조회 권한만 계약대로 담는다")
+    @DisplayName("FastAPI 요청에 기존 대화, 조회 권한, 관리자 지시 문서 ID를 계약대로 담는다")
     void buildsEditRequest() throws Exception {
         Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(15L), List.of());
         adminLoggedIn();
@@ -201,6 +218,7 @@ class WikiChatMessageServiceTest {
 
         service.sendChatMessage(101L, "중복 규정을 정리해줘.");
 
+        verify(adminInstructionDocumentService).create(101L, ADMIN_ID, "중복 규정을 정리해줘.");
         ArgumentCaptor<WikiEditRequest> captor = ArgumentCaptor.forClass(WikiEditRequest.class);
         verify(aiClient).editWiki(captor.capture());
         WikiEditRequest request = captor.getValue();
@@ -209,6 +227,7 @@ class WikiChatMessageServiceTest {
         assertThat(request.instruction()).isEqualTo("중복 규정을 정리해줘.");
         assertThat(request.wikiCapability()).isEqualTo("capability");
         assertThat(request.scopeVersion()).isZero();
+        assertThat(request.adminInstructionDocumentId()).isEqualTo("817");
         assertThat(request.chatHistory()).singleElement().satisfies(message -> {
             assertThat(message.senderType()).isEqualTo("agent");
             assertThat(message.content()).isEqualTo("이전 응답입니다.");
@@ -303,6 +322,33 @@ class WikiChatMessageServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.WIKI_EDIT_FAILED);
+        verify(adminInstructionDocumentService).create(101L, ADMIN_ID, "정리해줘.");
+        verify(wikiChatMessageRepository, never()).save(any(WikiChatMessage.class));
+        verify(applier, never()).apply(anyString(), any(WikiEditResponse.class));
+    }
+
+    @Test
+    @DisplayName("관리자 지시 문서를 근거로 인용하지 않은 Wiki 변경은 반영하거나 저장하지 않는다")
+    void rejectsWikiChangeWithoutAdminInstructionEvidence() throws Exception {
+        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(), List.of());
+        adminLoggedIn();
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
+                .willReturn(List.of());
+        given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
+        given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(new WikiEditResponse(
+                "정리했습니다.",
+                List.of(),
+                List.of(updateChange("15")),
+                List.of(),
+                List.of()
+        ));
+
+        assertThatThrownBy(() -> service.sendChatMessage(101L, "중복 규정을 정리해줘."))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.WIKI_EDIT_FAILED);
         verify(wikiChatMessageRepository, never()).save(any(WikiChatMessage.class));
         verify(applier, never()).apply(anyString(), any(WikiEditResponse.class));
     }
@@ -379,7 +425,20 @@ class WikiChatMessageServiceTest {
 
     private void adminLoggedIn() {
         given(currentMemberProvider.currentMember())
-                .willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+                .willReturn(new CurrentMember(ADMIN_ID, CurrentMemberRole.ADMIN));
+    }
+
+    private WikiChange updateChange(String documentId) {
+        return new WikiChange(
+                "update",
+                "101",
+                null,
+                "9",
+                "wiki/ALL/pages/101.md",
+                "휴가 규정",
+                "# 휴가 규정\n정리된 본문",
+                List.of(new Evidence(documentId, "[^1]", "관리자 지시", "중복 규정을 정리해줘."))
+        );
     }
 
     private WikiChatMessage existingAgentMessage(Wiki wiki, String content) throws Exception {

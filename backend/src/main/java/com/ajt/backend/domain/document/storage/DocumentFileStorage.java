@@ -26,6 +26,8 @@ public interface DocumentFileStorage {
 
     String storeParsedMarkdown(String scopeKey, long documentId, String parsedMarkdown) throws IOException;
 
+    String storeSynthesizedOriginal(String scopeKey, long documentId, String markdown) throws IOException;
+
     String readText(String storedPath) throws IOException;
 
     Resource load(String storedPath);

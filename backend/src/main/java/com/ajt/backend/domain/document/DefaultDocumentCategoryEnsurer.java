@@ -29,7 +29,7 @@ public class DefaultDocumentCategoryEnsurer {
      * 화면에는 이름순으로 정렬되어 나오므로 여기의 순서는 노출 순서와 무관하다.
      */
     public static final List<String> DEFAULT_CATEGORY_NAMES =
-            List.of("업무 가이드", "규정·정책", "회의·공지", "기타 자료");
+            List.of("업무 가이드", "규정·정책", "회의·공지", "기타 자료", "관리자 지시");
 
     private static final Logger log = LoggerFactory.getLogger(DefaultDocumentCategoryEnsurer.class);
 
@@ -56,6 +56,21 @@ public class DefaultDocumentCategoryEnsurer {
             wikiScopeRepository.save(departmentScope);
         }
 
+        ensureCategories(scopeKey, "부서(id=" + departmentId + ")");
+    }
+
+    /**
+     * 배포 전에 이미 존재하던 Wiki 공간에 누락된 기본 문서 카테고리를 채웁니다.
+     * Wiki 공간 자체는 만들지 않고 현재 저장된 행만 대상으로 한다.
+     */
+    @Transactional
+    public void ensureForExistingScopes() {
+        for (WikiScope wikiScope : wikiScopeRepository.findAll()) {
+            ensureCategories(wikiScope.scopeKey(), "기존 Wiki 공간");
+        }
+    }
+
+    private void ensureCategories(String scopeKey, String ownerDescription) {
         int created = 0;
         for (String name : DEFAULT_CATEGORY_NAMES) {
             if (!documentCategoryRepository.existsByScopeKeyAndName(scopeKey, name)) {
@@ -64,7 +79,7 @@ public class DefaultDocumentCategoryEnsurer {
             }
         }
         if (created > 0) {
-            log.info("부서(id={}) 기본 문서 카테고리 {}개 생성(scope={})", departmentId, created, scopeKey);
+            log.info("{} 기본 문서 카테고리 {}개 생성(scope={})", ownerDescription, created, scopeKey);
         }
     }
 }

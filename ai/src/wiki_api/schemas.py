@@ -177,6 +177,9 @@ class EditRequest(Strict):
     # 계약 1.6.0. 변환과 같다 — S15P11B106-175 에서 필수가 됐다.
     wikiCapability: str
     scopeVersion: int
+    # Spring이 생성 직후 보내는 BIGINT ID의 문자열 표현만 신뢰한다. 빈 값·공백·0·임의
+    # 표식을 받으면 프롬프트가 권한 없는 식별자를 관리자 근거로 승격할 수 있다.
+    adminInstructionDocumentId: str = Field(pattern=r"^[1-9][0-9]*$")
     chatHistory: list[ChatMessage] = Field(default_factory=list)
 
 

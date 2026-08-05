@@ -3,6 +3,7 @@ package com.ajt.backend.domain.document;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.ajt.backend.domain.document.model.DocumentCategory;
+import com.ajt.backend.domain.document.model.WikiScope;
 import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import org.junit.jupiter.api.DisplayName;
@@ -37,7 +38,7 @@ class DefaultDocumentCategoryEnsurerTest {
     }
 
     @Test
-    @DisplayName("부서 문서 공간(wiki_scope)과 기본 카테고리 4개를 생성한다")
+    @DisplayName("부서 문서 공간(wiki_scope)과 관리자 지시를 포함한 기본 카테고리를 생성한다")
     void createsDepartmentScopeAndDefaultCategories() {
         long departmentId = 7L;
         String scopeKey = "D" + departmentId;
@@ -48,7 +49,29 @@ class DefaultDocumentCategoryEnsurerTest {
         assertThat(wikiScopeRepository.existsById(scopeKey)).isTrue();
         assertThat(documentCategoryRepository.findAllByScopeKeyOrderByNameAsc(scopeKey))
                 .extracting(DocumentCategory::name)
-                .containsExactlyInAnyOrderElementsOf(DefaultDocumentCategoryEnsurer.DEFAULT_CATEGORY_NAMES);
+                .containsExactlyInAnyOrderElementsOf(DefaultDocumentCategoryEnsurer.DEFAULT_CATEGORY_NAMES)
+                .contains("관리자 지시");
+    }
+
+    @Test
+    @DisplayName("기존 전체·부서 공간에 관리자 지시를 포함한 누락 기본 카테고리만 채운다")
+    void fillsMissingDefaultCategoriesForExistingScopes() {
+        wikiScopeRepository.save(WikiScope.all());
+        wikiScopeRepository.save(WikiScope.department(java.util.List.of(2L)));
+        documentCategoryRepository.save(DocumentCategory.create("ALL", "업무 가이드", null));
+
+        ensurer.ensureForExistingScopes();
+        ensurer.ensureForExistingScopes();
+
+        assertThat(wikiScopeRepository.count()).isEqualTo(2L);
+        assertThat(documentCategoryRepository.findAllByScopeKeyOrderByNameAsc("ALL"))
+                .extracting(DocumentCategory::name)
+                .containsExactlyInAnyOrderElementsOf(DefaultDocumentCategoryEnsurer.DEFAULT_CATEGORY_NAMES)
+                .contains("관리자 지시");
+        assertThat(documentCategoryRepository.findAllByScopeKeyOrderByNameAsc("D2"))
+                .extracting(DocumentCategory::name)
+                .containsExactlyInAnyOrderElementsOf(DefaultDocumentCategoryEnsurer.DEFAULT_CATEGORY_NAMES)
+                .contains("관리자 지시");
     }
 
     @Test

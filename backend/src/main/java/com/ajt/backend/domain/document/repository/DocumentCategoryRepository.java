@@ -2,6 +2,7 @@ package com.ajt.backend.domain.document.repository;
 
 import com.ajt.backend.domain.document.model.DocumentCategory;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -13,6 +14,8 @@ public interface DocumentCategoryRepository extends JpaRepository<DocumentCatego
     List<DocumentCategory> findAllByScopeKeyOrderByNameAsc(String scopeKey);
 
     boolean existsByScopeKeyAndName(String scopeKey, String name);
+
+    Optional<DocumentCategory> findByScopeKeyAndName(String scopeKey, String name);
 
     boolean existsByScopeKeyAndNameAndIdNot(String scopeKey, String name, Long id);
 

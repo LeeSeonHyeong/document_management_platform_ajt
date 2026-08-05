@@ -506,6 +506,7 @@ class RestClientAiClientTest {
                           "instruction": "중복된 휴가 규정을 하나로 정리해줘.",
                           "wikiCapability": "capability",
                           "scopeVersion": 47,
+                          "adminInstructionDocumentId": "817",
                           "chatHistory": []
                         }
                         """))
@@ -539,7 +540,8 @@ class RestClientAiClientTest {
                 "중복된 휴가 규정을 하나로 정리해줘.",
                 List.of(),
                 "capability",
-                47L
+                47L,
+                "817"
         ));
 
         assertThat(response.agentMessage()).isEqualTo("중복된 휴가 규정을 하나로 정리했습니다.");
@@ -605,7 +607,8 @@ class RestClientAiClientTest {
                         new WikiEditRequest.ChatMessage("admin", "중복을 정리해줘"),
                         new WikiEditRequest.ChatMessage("agent", "어떤 문서를 기준으로 할까요?")),
                 "capability",
-                47L
+                47L,
+                "817"
         ));
 
         server.verify();
@@ -852,7 +855,8 @@ class RestClientAiClientTest {
                 "중복된 휴가 규정을 하나로 정리해줘.",
                 List.of(),
                 "capability",
-                47L
+                47L,
+                "817"
         );
     }
 

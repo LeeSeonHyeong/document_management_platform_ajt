@@ -43,7 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>수정(S15P11B106-176): <b>본문을 밀어 보내지 않는다.</b> 수정 대상 Wiki 본문과 근거 원본문서를
  * 싣던 것을 걷어냈다 — 에이전트가 Wiki 조회 API로 직접 읽는다. 이 서비스가 보내는 것은 대상 ID·지시·
- * 대화 이력과 <b>조회 권한</b>(허가값·범위 버전)뿐이다.
+ * 대화 이력, <b>조회 권한</b>(허가값·범위 버전), 관리자 지시 원본문서 ID뿐이다.
  */
 @Service
 public class WikiChatMessageService {
@@ -52,6 +52,7 @@ public class WikiChatMessageService {
             List.of(AiJobStatus.WAITING, AiJobStatus.PROCESSING);
 
     private final CurrentMemberProvider currentMemberProvider;
+    private final AdminInstructionDocumentService adminInstructionDocumentService;
     private final WikiRepository wikiRepository;
     private final WikiCategoryRepository wikiCategoryRepository;
     private final WikiChatMessageRepository wikiChatMessageRepository;
@@ -66,6 +67,7 @@ public class WikiChatMessageService {
 
     public WikiChatMessageService(
             CurrentMemberProvider currentMemberProvider,
+            AdminInstructionDocumentService adminInstructionDocumentService,
             WikiRepository wikiRepository,
             WikiCategoryRepository wikiCategoryRepository,
             WikiChatMessageRepository wikiChatMessageRepository,
@@ -79,6 +81,7 @@ public class WikiChatMessageService {
             DepartmentScopePolicy departmentScopePolicy
     ) {
         this.currentMemberProvider = currentMemberProvider;
+        this.adminInstructionDocumentService = adminInstructionDocumentService;
         this.wikiRepository = wikiRepository;
         this.wikiCategoryRepository = wikiCategoryRepository;
         this.wikiChatMessageRepository = wikiChatMessageRepository;
@@ -113,8 +116,15 @@ public class WikiChatMessageService {
         String instruction = requireContent(content);
         requireNoUnfinishedJob(wiki.scopeKey());
 
+        long adminInstructionDocumentId = adminInstructionDocumentService.create(
+                wiki.id(), currentMember.memberId(), instruction);
+        // create()는 REQUIRES_NEW라 바깥 영속성 컨텍스트의 wiki에는 커밋된 document_refs가
+        // 보이지 않는다. 응답 누락과 이후 dirty flush의 덮어쓰기를 모두 막도록 같은 ID를
+        // 바깥 관리 엔티티에도 멱등하게 합친다.
+        wiki.addDocumentRefs(List.of(adminInstructionDocumentId));
         List<WikiChatMessage> history = chatHistoryForScope(wiki.scopeKey());
-        WikiEditResponse response = requestEdit(wiki, instruction, history);
+        WikiEditResponse response = requestEdit(wiki, instruction, history, adminInstructionDocumentId);
+        requireAdminInstructionEvidence(response, adminInstructionDocumentId);
 
         WikiChatMessage adminMessage = wikiChatMessageRepository.save(
                 WikiChatMessage.fromAdmin(wiki, currentMember.memberId(), instruction)
@@ -176,7 +186,12 @@ public class WikiChatMessageService {
         }
     }
 
-    private WikiEditResponse requestEdit(Wiki wiki, String instruction, List<WikiChatMessage> history) {
+    private WikiEditResponse requestEdit(
+            Wiki wiki,
+            String instruction,
+            List<WikiChatMessage> history,
+            long adminInstructionDocumentId
+    ) {
         long scopeVersion = wikiScopeRepository.findById(wiki.scopeKey())
                 .orElseThrow(() -> new BusinessException(ErrorCode.WIKI_NOT_FOUND))
                 .scopeVersion();
@@ -188,7 +203,8 @@ public class WikiChatMessageService {
                     instruction,
                     chatHistory(history),
                     capability,
-                    scopeVersion
+                    scopeVersion,
+                    String.valueOf(adminInstructionDocumentId)
             ));
         } catch (AiClientException exception) {
             // AI 서버 미가동/연결 실패·타임아웃은 일시적 이용 불가 → 503. AI가 응답한 처리 실패는 기존 500 유지.
@@ -198,6 +214,15 @@ public class WikiChatMessageService {
             throw new BusinessException(ErrorCode.WIKI_EDIT_FAILED);
         } finally {
             wikiCapabilityService.revoke(capability);
+        }
+    }
+
+    private void requireAdminInstructionEvidence(WikiEditResponse response, long documentId) {
+        String requiredId = String.valueOf(documentId);
+        boolean missing = response.wikiChanges().stream().anyMatch(change ->
+                change.evidence().stream().noneMatch(evidence -> requiredId.equals(evidence.documentId())));
+        if (missing) {
+            throw new BusinessException(ErrorCode.WIKI_EDIT_FAILED);
         }
     }
 
