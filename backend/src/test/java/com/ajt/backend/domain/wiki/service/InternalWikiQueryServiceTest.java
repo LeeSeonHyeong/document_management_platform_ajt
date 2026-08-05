@@ -202,21 +202,21 @@ class InternalWikiQueryServiceTest {
     }
 
     @Test
-    void searchesOnlyTheRequestedScopeWithBooleanPhrase() {
+    void searchesOnlyTheRequestedScopeWithBooleanTerms() {
         WikiScope scope = mock(WikiScope.class);
         Wiki wiki = mock(Wiki.class);
         WikiSearchChunk chunk = WikiSearchChunk.create(
                 101L, "D1-D2", 0L, "휴가 > 연차", "연차는 15일입니다.", "hash");
         given(scope.scopeVersion()).willReturn(47L);
         given(wikiScopeRepository.findById("D1-D2")).willReturn(Optional.of(scope));
-        given(wikiSearchChunkRepository.searchByScopeKey("D1-D2", "\"연차 규정\"", 10))
+        given(wikiSearchChunkRepository.searchByScopeKey("D1-D2", "연차 규정", 10))
                 .willReturn(List.of(chunk));
         given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
         given(wiki.title()).willReturn("휴가 규정");
 
         InternalWikiQueryService.WikiSearch response = service.search("D1-D2", "연차 규정", 10);
 
-        then(wikiSearchChunkRepository).should().searchByScopeKey("D1-D2", "\"연차 규정\"", 10);
+        then(wikiSearchChunkRepository).should().searchByScopeKey("D1-D2", "연차 규정", 10);
         assertThat(response.scopeVersion()).isEqualTo(47L);
         assertThat(response.items()).singleElement().satisfies(item -> {
             assertThat(item.wikiId()).isEqualTo("101");
@@ -224,6 +224,36 @@ class InternalWikiQueryServiceTest {
             assertThat(item.breadcrumb()).isEqualTo("휴가 > 연차");
             assertThat(item.snippet()).isEqualTo("연차는 15일입니다.");
         });
+    }
+
+    @Test
+    void doesNotWrapAMultiWordQueryIntoAnExactPhrase() {
+        // 앞 판본은 질의를 통째로 큰따옴표로 감쌌다. boolean mode 에서 그것은 정확 구문이고,
+        // 색인이 ngram(2글자)이라 어절이 둘 이상인 질의는 그 연속 문자열이 본문에 그대로
+        // 없으면 0건이 됐다 — 「출장비(여비) 정산 안내」가 있는데 `출장비 정산`이 0건이었다.
+        // 실측(2026-08-05, corpus-ko dev): 1어절 0/10 0건, 2어절 이상 10/10 0건.
+        WikiScope scope = mock(WikiScope.class);
+        given(scope.scopeVersion()).willReturn(47L);
+        given(wikiScopeRepository.findById("ALL")).willReturn(Optional.of(scope));
+
+        service.search("ALL", "출장비 정산 안내", 10);
+
+        then(wikiSearchChunkRepository).should()
+                .searchByScopeKey("ALL", "출장비 정산 안내", 10);
+    }
+
+    @Test
+    void stripsBooleanOperatorsSoTheyAreNotReadAsOperators() {
+        // 큰따옴표를 그냥 지우면 안 되는 이유. 그 따옴표가 의도치 않게 연산자를 무해화하고
+        // 있었다 — `-` 를 그대로 넘기면 NOT 으로 읽혀 결과가 조용히 뒤집힌다.
+        WikiScope scope = mock(WikiScope.class);
+        given(scope.scopeVersion()).willReturn(47L);
+        given(wikiScopeRepository.findById("ALL")).willReturn(Optional.of(scope));
+
+        service.search("ALL", "연차 -이월 +부여 (규정) \"인용\"", 10);
+
+        then(wikiSearchChunkRepository).should()
+                .searchByScopeKey("ALL", "연차  이월  부여  규정   인용", 10);
     }
 
     @Test
