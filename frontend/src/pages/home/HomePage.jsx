@@ -24,8 +24,8 @@ import {
 } from 'lucide-react'
 import CalendarGrid from '@/components/calendar/CalendarGrid'
 import ScheduleFormModal from '@/components/calendar/ScheduleFormModal'
+import ScheduleDetailModal from '@/components/calendar/ScheduleDetailModal'
 import { Button, Card, EmptyState, Badge } from '@/components/ui'
-import { useToast } from '@/components/ui'
 import { useSchedules } from '@/features/schedule/useSchedules'
 import {
   SCHEDULE_VISIBILITY,
@@ -69,16 +69,16 @@ function ScheduleRow({ event, onClick }) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-medium text-slate-800">{event.title}</p>
-          <Badge tone={VIS_TONE[event.visibilityType]}>
+          <p className="min-w-0 truncate text-sm font-medium text-slate-800">{event.title}</p>
+          <Badge tone={VIS_TONE[event.visibilityType]} className="shrink-0 whitespace-nowrap">
             {SCHEDULE_VISIBILITY_LABELS[event.visibilityType]}
           </Badge>
         </div>
         <p className="mt-0.5 text-xs text-slate-500">{timeRange(event)}</p>
         {event.location && (
           <p className="mt-0.5 flex items-center gap-1 text-xs text-slate-400">
-            <MapPin className="size-3" />
-            {event.location}
+            <MapPin className="size-3 shrink-0" />
+            <span className="min-w-0 truncate">{event.location}</span>
           </p>
         )}
       </div>
@@ -88,11 +88,12 @@ function ScheduleRow({ event, onClick }) {
 
 // S1 홈·통합 달력. 권한 내 전체·부서 일정 + 본인 개인 일정을 한 달력에서 본다.
 export default function HomePage() {
-  const toast = useToast()
   const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [selectedDate, setSelectedDate] = useState(() => new Date())
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailEvent, setDetailEvent] = useState(null)
 
   // 보이는 그리드 전체 범위로 조회(앞뒤 달 걸침 포함).
   const range = useMemo(
@@ -133,18 +134,23 @@ export default function HomePage() {
     setModalOpen(true)
   }
 
+  // 일정 클릭 시 먼저 읽기 전용 상세를 연다. 수정은 상세의 '수정하기'로만 진입한다.
   const handleEventClick = (event) => {
-    if (event.visibilityType === SCHEDULE_VISIBILITY.PERSONAL) {
-      setEditing(event)
-      setModalOpen(true)
-    } else {
-      toast.info(event.title, timeRange(event))
-    }
+    setDetailEvent(event)
+    setDetailOpen(true)
+  }
+
+  // 상세의 '수정하기' → 상세를 닫고 개인 일정 편집 모달로 전환한다.
+  const handleEditFromDetail = (event) => {
+    setDetailOpen(false)
+    setEditing(event)
+    setModalOpen(true)
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    // 위키 화면처럼 뷰포트 높이에 맞춘다(lg 이상). 헤더는 고정, 아래 영역이 남는 높이를 채운다.
+    <div className="flex flex-col gap-4 lg:h-[calc(100vh-124px)]">
+      <div className="flex shrink-0 items-center justify-between">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-bold text-slate-800">{format(month, 'yyyy년 M월')}</h1>
           <div className="flex items-center">
@@ -158,21 +164,21 @@ export default function HomePage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setMonth(startOfMonth(new Date()))
-                setSelectedDate(new Date())
-              }}
-              className="focus-ring rounded-lg px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-100"
-            >
-              오늘
-            </button>
-            <button
-              type="button"
               onClick={() => moveMonth(1)}
               className="focus-ring rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
               aria-label="다음 달"
             >
               <ChevronRight className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMonth(startOfMonth(new Date()))
+                setSelectedDate(new Date())
+              }}
+              className="focus-ring ml-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-sm text-slate-600 shadow-sm hover:bg-slate-50"
+            >
+              오늘
             </button>
           </div>
         </div>
@@ -199,23 +205,28 @@ export default function HomePage() {
           </div>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
-        <CalendarGrid
-          monthDate={month}
-          events={events}
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
-          onEventClick={handleEventClick}
-        />
+        <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
+        {/* 달력 그리드에서는 일정 밴드를 클릭해도 해당 날짜만 선택되어 우측 패널이 갱신된다.
+            (onEventClick을 넘기지 않으면 밴드가 클릭을 받지 않고 아래 날짜 셀로 통과한다.) */}
+        <div className="lg:min-h-0">
+          <CalendarGrid
+            monthDate={month}
+            events={events}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            fillHeight
+          />
+        </div>
 
-        <div className="space-y-4">
-          <Card>
-            <div className="border-b border-slate-100 px-4 py-3">
+        {/* 당일 일정·이번 달 일정을 남는 높이의 절반씩 나눠 갖고, 넘치면 각자 스크롤한다. */}
+        <div className="flex flex-col gap-4 lg:min-h-0">
+          <Card className="flex flex-col lg:min-h-0 lg:flex-1">
+            <div className="shrink-0 border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-800">
                 {format(selectedDate, 'M월 d일 (EEE)', { locale: ko })} 일정
               </h2>
             </div>
-            <div className="space-y-2 p-3">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
               {isLoading ? (
                 <p className="px-1 py-6 text-center text-sm text-slate-400">불러오는 중…</p>
               ) : daySchedules.length === 0 ? (
@@ -226,11 +237,11 @@ export default function HomePage() {
             </div>
           </Card>
 
-          <Card>
-            <div className="border-b border-slate-100 px-4 py-3">
+          <Card className="flex flex-col lg:min-h-0 lg:flex-1">
+            <div className="shrink-0 border-b border-slate-100 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-800">이번 달 내 일정</h2>
             </div>
-            <div className="space-y-2 p-3">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
               {myMonthSchedules.length === 0 ? (
                 <p className="px-1 py-6 text-center text-sm text-slate-400">개인 일정이 없어요</p>
               ) : (
@@ -244,6 +255,12 @@ export default function HomePage() {
 
       {/* AI 어시스턴트 FAB은 전역 ChatAssistant(AppShell)가 담당하고,
           일정 추가는 상단 헤더 버튼이 담당하므로 페이지 자체 Fab은 두지 않는다. */}
+      <ScheduleDetailModal
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        event={detailEvent}
+        onEdit={handleEditFromDetail}
+      />
       <ScheduleFormModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}

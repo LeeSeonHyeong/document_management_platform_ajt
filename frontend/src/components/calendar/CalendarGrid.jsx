@@ -22,7 +22,8 @@ function pct(n) {
 }
 
 // 월간 캘린더 + 멀티데이 밴드. 사원 통합 달력·관리자 일정 관리에서 공용으로 쓴다.
-export default function CalendarGrid({ monthDate, events = [], selectedDate, onSelectDate, onEventClick }) {
+// fillHeight=true면 부모 높이를 꽉 채우고 주 행이 남는 높이를 균등 분배한다(홈 통합 달력).
+export default function CalendarGrid({ monthDate, events = [], selectedDate, onSelectDate, onEventClick, fillHeight = false }) {
   const { weeks } = useMemo(
     () => layoutMonth(monthDate, events, { maxLanes: MAX_LANES }),
     [monthDate, events],
@@ -31,9 +32,15 @@ export default function CalendarGrid({ monthDate, events = [], selectedDate, onS
   const weekMinHeight = DAY_NUM_H + MAX_LANES * (LANE_H + LANE_GAP) + 20
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className={cn(
+      'overflow-hidden rounded-xl border border-slate-200 bg-white',
+      fillHeight && 'flex h-full flex-col',
+    )}>
       {/* 요일 헤더 */}
-      <div className="grid grid-cols-7 border-b border-slate-100 bg-slate-50">
+      <div className={cn(
+        'grid grid-cols-7 border-b border-slate-100 bg-slate-50',
+        fillHeight && 'shrink-0',
+      )}>
         {WEEKDAY_LABELS.map((label, i) => (
           <div
             key={label}
@@ -47,11 +54,12 @@ export default function CalendarGrid({ monthDate, events = [], selectedDate, onS
         ))}
       </div>
 
-      {/* 주 단위 행 */}
+      {/* 주 단위 행. fillHeight면 박스 안에서 남는 높이를 채우고, 넘치면 이 안에서만 스크롤한다. */}
+      <div className={cn(fillHeight && 'flex min-h-0 flex-1 flex-col overflow-y-auto')}>
       {weeks.map((week, wi) => (
         <div
           key={wi}
-          className="relative border-b border-slate-100 last:border-b-0"
+          className={cn('relative border-b border-slate-100 last:border-b-0', fillHeight && 'flex-1')}
           style={{ minHeight: weekMinHeight }}
         >
           {/* 배경: 날짜 셀 7칸 */}
@@ -131,6 +139,7 @@ export default function CalendarGrid({ monthDate, events = [], selectedDate, onS
           </div>
         </div>
       ))}
+      </div>
     </div>
   )
 }
