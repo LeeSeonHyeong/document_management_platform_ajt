@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, Send, Sparkles, X } from 'lucide-react'
 import ColumnResizer from '@/features/wiki/components/ColumnResizer'
+import ChatMarkdown from '@/features/wiki/components/ChatMarkdown'
 import { askQuestion } from '../api'
 
 // 대화창 폭(px). 최소 390, 최대 화면 절반(50vw). 조정값은 localStorage로 유지한다.
@@ -48,8 +49,8 @@ function MessageBubble({ message }) {
   return (
     <div className={`flex ${mine ? 'justify-end' : 'justify-start gap-2'}`}>
       {!mine && <span className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-violet-600 text-white"><Sparkles className="size-4" /></span>}
-      <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${mine ? 'rounded-br-md bg-gradient-to-r from-blue-500 to-violet-500 text-white' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm'}`}>
-        <p className="whitespace-pre-line">{message.content}</p>
+      <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${mine ? 'rounded-br-md bg-slate-200 text-slate-800' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm'}`}>
+        <ChatMarkdown markdown={message.content} tone="agent" />
         {message.sources?.map((source) => <SourceCard key={`${source.type}-${source.wikiId ?? source.scheduleId}`} source={source} />)}
       </div>
     </div>
