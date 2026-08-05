@@ -214,13 +214,20 @@ export default function DocumentTable({
       header: '카테고리',
       className: 'w-[22%]',
       headerClassName: 'w-[22%]',
-      render: (doc) => (
-        <QueueCategorySelect
-          item={doc}
-          localOnly={doc.previewOnly}
-          onApplied={(changes) => onQueueMetadataChange?.(doc.documentId, changes)}
-        />
-      ),
+      // 일정 파일은 카테고리 개념이 없어 읽기 전용 '기본 카테고리' 배지로 표시한다(S15P11B106-257).
+      // 문서 파일은 기존처럼 카테고리를 직접 선택한다.
+      render: (doc) =>
+        doc.uploadKind === 'schedule' ? (
+          <Badge tone="neutral" className="whitespace-nowrap">
+            기본 카테고리
+          </Badge>
+        ) : (
+          <QueueCategorySelect
+            item={doc}
+            localOnly={doc.previewOnly}
+            onApplied={(changes) => onQueueMetadataChange?.(doc.documentId, changes)}
+          />
+        ),
     },
     {
       key: 'status',
