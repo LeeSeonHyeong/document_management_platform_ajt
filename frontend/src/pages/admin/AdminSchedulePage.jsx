@@ -137,6 +137,55 @@ function blockGeometry(event, date) {
   }
 }
 
+// 하루치 일정을 시간 겹침에 따라 열로 나눈다.
+// 서로(간접적으로) 겹치는 일정들을 한 묶음으로 보고, 묶음 안에서 열을 최소 개수로 배정해
+// 각 블록에 열 인덱스(col)와 묶음의 총 열 수(colCount)를 매긴다. 겹치면 좌우로 나란히 표시된다.
+function layoutDayEvents(events, date) {
+  const items = events
+    .map((event) => {
+      const geo = blockGeometry(event, date)
+      return geo ? { event, top: geo.top, height: geo.height, bottom: geo.top + geo.height } : null
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.top - b.top || a.bottom - b.bottom)
+
+  const positioned = []
+  let cluster = []
+  let clusterEnd = -Infinity
+
+  const flush = () => {
+    if (cluster.length === 0) return
+    // 각 열이 마지막으로 채운 bottom을 들고, 겹치지 않는 첫 열에 배정한다.
+    const columnEnds = []
+    cluster.forEach((item) => {
+      let col = columnEnds.findIndex((end) => item.top >= end)
+      if (col === -1) {
+        col = columnEnds.length
+        columnEnds.push(item.bottom)
+      } else {
+        columnEnds[col] = item.bottom
+      }
+      item.col = col
+    })
+    cluster.forEach((item) => {
+      item.colCount = columnEnds.length
+      positioned.push(item)
+    })
+    cluster = []
+    clusterEnd = -Infinity
+  }
+
+  items.forEach((item) => {
+    // 현재 묶음의 어떤 일정과도 겹치지 않으면(시작이 묶음의 끝 이상) 묶음을 마감한다.
+    if (item.top >= clusterEnd) flush()
+    cluster.push(item)
+    clusterEnd = Math.max(clusterEnd, item.bottom)
+  })
+  flush()
+
+  return positioned
+}
+
 // 주 뷰. 요일 헤더 + 시간대 그리드에 일정을 시간 위치대로 블록으로 배치한다.
 function WeekGrid({ weekDays, events, selectedDate, onSelectDate }) {
   const now = new Date()
@@ -239,15 +288,18 @@ function WeekGrid({ weekDays, events, selectedDate, onSelectDate }) {
                 </div>
               )}
 
-              {/* 일정 블록 */}
-              {dayEvents.map((event) => {
-                const geo = blockGeometry(event, date)
-                if (!geo) return null
+              {/* 일정 블록. 겹치는 일정은 좌우 열로 나눠 나란히 표시한다. */}
+              {layoutDayEvents(dayEvents, date).map(({ event, top, height, col, colCount }) => {
                 return (
                   <div
                     key={event.id}
-                    style={{ top: geo.top, height: geo.height }}
-                    className="pointer-events-none absolute inset-x-1"
+                    style={{
+                      top,
+                      height,
+                      left: `calc(${(col / colCount) * 100}% + 2px)`,
+                      width: `calc(${100 / colCount}% - 4px)`,
+                    }}
+                    className="pointer-events-none absolute"
                   >
                     <div
                       className={cn(
@@ -456,21 +508,21 @@ export default function AdminSchedulePage() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setMonth(startOfMonth(new Date()))
-                setSelectedDate(new Date())
-              }}
-              className="focus-ring rounded-lg px-2.5 py-1 text-sm text-slate-600 hover:bg-slate-100"
-            >
-              오늘
-            </button>
-            <button
-              type="button"
               onClick={() => movePeriod(1)}
               className="focus-ring rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
               aria-label={viewMode === 'week' ? '다음 주' : '다음 달'}
             >
               <ChevronRight className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMonth(startOfMonth(new Date()))
+                setSelectedDate(new Date())
+              }}
+              className="focus-ring ml-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-sm text-slate-600 shadow-sm hover:bg-slate-50"
+            >
+              오늘
             </button>
           </div>
         </div>

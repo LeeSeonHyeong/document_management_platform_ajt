@@ -136,7 +136,7 @@ export default function ScheduleFormModal({ open, onClose, initial, defaultDate 
       }
     >
       <form id="schedule-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-        <Input label="제목" required placeholder="일정 제목" error={errors.title?.message} {...register('title')} />
+        <Input label="제목" required maxLength={30} placeholder="일정 제목" error={errors.title?.message} {...register('title')} />
         <div className="grid grid-cols-2 gap-3">
           <Input
             label="시작"
