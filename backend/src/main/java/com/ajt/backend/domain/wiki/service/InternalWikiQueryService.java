@@ -175,7 +175,7 @@ public class InternalWikiQueryService {
     @Transactional(readOnly = true)
     public WikiSearch search(String scopeKey, String query, int limit) {
         WikiScope scope = requireScope(scopeKey);
-        List<WikiSearchItem> items = wikiSearchChunkRepository.searchByScopeKey(scopeKey, quotePhrase(query), limit).stream()
+        List<WikiSearchItem> items = wikiSearchChunkRepository.searchByScopeKey(scopeKey, booleanTerms(query), limit).stream()
                 .map(chunk -> new WikiSearchItem(
                         String.valueOf(chunk.wikiId()), titleOf(chunk.wikiId()), chunk.breadcrumb(), chunk.content(),
                         chunk.chunkIndex(), chunk.contentHash()))
@@ -187,8 +187,30 @@ public class InternalWikiQueryService {
         return wikiRepository.findById(wikiId).map(Wiki::title).orElse("");
     }
 
-    private String quotePhrase(String query) {
-        return "\"" + query.replace("\"", "") + "\"";
+    /**
+     * 검색어를 MySQL boolean mode 식으로 바꾼다. 연산자만 걷어내고 어절은 그대로 둔다.
+     *
+     * <p>앞 판본은 질의를 통째로 큰따옴표로 감쌌다({@code "" + query + ""}). boolean mode 에서
+     * 큰따옴표는 <b>정확 구문</b>이고, 색인은 {@code WITH PARSER ngram}(2글자)이므로
+     * 어절이 둘 이상인 질의는 그 연속 문자열이 본문에 그대로 없으면 0건이 됐다. 「출장비(여비)
+     * 정산 안내」 페이지가 있는데도 {@code 출장비 정산} 이 0건이었다.
+     *
+     * <p>실측(2026-08-05, {@code ai/experiments/corpus-ko}, dev 20개):
+     * <pre>
+     *   phrase(앞 판본)  R@5 0.50  0건 10/20  정확어 1.00  자연어 0.00
+     *   terms(현행)      R@5 0.60  0건  5/20  정확어 1.00  자연어 0.20
+     *   어절 수별 0건 — 1어절 0/10, 2어절 이상 10/10
+     * </pre>
+     * 한 어절이면 두 방식이 같으므로 2026-08-01 실경로 검증(질의 {@code 연차}·{@code 이월}·
+     * {@code 블록체인})이 이 결함을 볼 수 없었다. 같은 결함을 AI 쪽에서는 이미 고쳤다
+     * (S15P11B106-143, 어절 여럿이 FTS5 기본 AND 로 읽혀 0건이던 것 → 2글자 분해 OR).
+     *
+     * <p>큰따옴표를 그냥 지우지 않는 이유: 그 따옴표가 <b>의도치 않게 boolean 연산자를
+     * 무해화</b>하고 있었다. 그것까지 없애면 {@code -} 가 든 질의가 NOT 으로 읽혀 결과가
+     * 조용히 뒤집힌다.
+     */
+    private String booleanTerms(String query) {
+        return query.replaceAll("[+\\-><()~*\"@]", " ").trim();
     }
 
     private long parseCursor(String cursor) {
