@@ -26,7 +26,9 @@ const CARD_FILTERS = {
 }
 
 function isSuperAdminAccount(member) {
-  return member?.isSuperAdmin === true || member?.department?.name?.trim() === SYSTEM_DEPARTMENT_NAME
+  return member?.isSuperAdmin === true ||
+    member?.department?.name?.trim() === SYSTEM_DEPARTMENT_NAME ||
+    member?.name?.trim() === SYSTEM_DEPARTMENT_NAME
 }
 
 export default function EmployeeListPage() {

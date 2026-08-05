@@ -6,11 +6,16 @@ import com.ajt.backend.domain.department.dto.DepartmentResponse;
 import com.ajt.backend.domain.department.dto.DepartmentUpdateRequest;
 import com.ajt.backend.domain.document.DefaultDocumentCategoryEnsurer;
 import com.ajt.backend.domain.document.model.WikiScopeVisibilityType;
+import com.ajt.backend.domain.document.repository.AiJobRepository;
+import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
+import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.domain.schedule.repository.ScheduleRepository;
+import com.ajt.backend.domain.wiki.repository.WikiCategoryRepository;
+import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -29,6 +34,11 @@ public class DepartmentService {
     private final MemberRepository memberRepository;
     private final ScheduleRepository scheduleRepository;
     private final WikiScopeRepository wikiScopeRepository;
+    private final DocumentRepository documentRepository;
+    private final DocumentCategoryRepository documentCategoryRepository;
+    private final AiJobRepository aiJobRepository;
+    private final WikiRepository wikiRepository;
+    private final WikiCategoryRepository wikiCategoryRepository;
     private final SuperAdminChecker superAdminChecker;
     private final DefaultDocumentCategoryEnsurer defaultDocumentCategoryEnsurer;
 
@@ -37,6 +47,11 @@ public class DepartmentService {
             MemberRepository memberRepository,
             ScheduleRepository scheduleRepository,
             WikiScopeRepository wikiScopeRepository,
+            DocumentRepository documentRepository,
+            DocumentCategoryRepository documentCategoryRepository,
+            AiJobRepository aiJobRepository,
+            WikiRepository wikiRepository,
+            WikiCategoryRepository wikiCategoryRepository,
             SuperAdminChecker superAdminChecker,
             DefaultDocumentCategoryEnsurer defaultDocumentCategoryEnsurer
     ) {
@@ -44,6 +59,11 @@ public class DepartmentService {
         this.memberRepository = memberRepository;
         this.scheduleRepository = scheduleRepository;
         this.wikiScopeRepository = wikiScopeRepository;
+        this.documentRepository = documentRepository;
+        this.documentCategoryRepository = documentCategoryRepository;
+        this.aiJobRepository = aiJobRepository;
+        this.wikiRepository = wikiRepository;
+        this.wikiCategoryRepository = wikiCategoryRepository;
         this.superAdminChecker = superAdminChecker;
         this.defaultDocumentCategoryEnsurer = defaultDocumentCategoryEnsurer;
     }
@@ -148,10 +168,7 @@ public class DepartmentService {
         return DepartmentResponse.from(department);
     }
 
-    /**
-     * DEPT-04 부서 삭제 요구사항입니다.
-     * 직원이 소속되거나 다른 데이터가 참조하는 부서는 삭제하지 않고 409로 막습니다. (FR-USR-008)
-     */
+    /** DEPT-04: 소속 직원이 없으면 일정 연결과 Wiki 범위 데이터를 정리한 뒤 부서를 삭제합니다. */
     @Transactional
     public void deleteDepartment(AuthenticatedMember loginMember, Long departmentId) {
         requireAdmin(loginMember);
@@ -163,28 +180,47 @@ public class DepartmentService {
         if (memberRepository.existsByDepartment_Id(department.getId())) {
             throw new BusinessException(ErrorCode.DEPARTMENT_IN_USE);
         }
-        if (isReferencedByDepartment(department.getId())) {
-            throw new BusinessException(ErrorCode.DEPARTMENT_IN_USE);
-        }
+        removeDepartmentFromSchedules(department.getId());
+        removeDepartmentFromWikiScopes(department.getId());
         departmentRepository.delete(department);
     }
 
-    /**
-     * 부서 공개 일정과 부서 공개 위키 범위가 이 부서를 참조하는지 확인합니다.
-     * 일정은 schedule_department 조인 테이블의 FK가 삭제를 막지만, FK 위반은 계약이 요구하는
-     * 409 DEPARTMENT_IN_USE가 아니라 500으로 나가므로 삭제 전에 미리 확인한다.
-     * 위키 범위는 wiki_scope.department_refs JSON으로 저장되어 FK를 걸 수 없으므로
-     * (backend-spring-convention.md 3절) 부서 공개 범위만 읽어 메모리에서 판정한다.
-     * 부서 공개가 아닌 행의 참조 목록은 항상 비어 있다.
-     */
-    private boolean isReferencedByDepartment(long departmentId) {
-        if (scheduleRepository.existsByDepartments_DepartmentId(departmentId)) {
-            return true;
-        }
-        return wikiScopeRepository
+    private void removeDepartmentFromSchedules(long departmentId) {
+        scheduleRepository.findAllByDepartmentIdWithDepartments(departmentId).forEach(schedule ->
+                schedule.replaceDepartments(schedule.departmentIds().stream()
+                        .filter(id -> id != departmentId)
+                        .toList()));
+        scheduleRepository.flush();
+    }
+
+    private void removeDepartmentFromWikiScopes(long departmentId) {
+        wikiScopeRepository
                 .findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT)
                 .stream()
-                .anyMatch(scope -> scope.departmentRefs().contains(departmentId));
+                .filter(scope -> scope.departmentRefs().contains(departmentId))
+                .forEach(scope -> {
+                    if (scope.departmentRefs().size() > 1) {
+                        scope.removeDepartmentRef(departmentId);
+                        return;
+                    }
+                    deleteExclusiveWikiScope(scope.scopeKey());
+                });
+    }
+
+    /** FK가 RESTRICT인 자식부터 지우고 각 단계에서 flush해 실제 DB 삭제 순서를 고정합니다. */
+    private void deleteExclusiveWikiScope(String scopeKey) {
+        documentRepository.deleteAllByScopeKey(scopeKey);
+        documentRepository.flush();
+        documentCategoryRepository.deleteAllByScopeKey(scopeKey);
+        documentCategoryRepository.flush();
+        aiJobRepository.deleteAllByScopeKey(scopeKey);
+        aiJobRepository.flush();
+        wikiRepository.deleteAllByScopeKey(scopeKey);
+        wikiRepository.flush();
+        wikiCategoryRepository.deleteAllByScopeKey(scopeKey);
+        wikiCategoryRepository.flush();
+        wikiScopeRepository.deleteById(scopeKey);
+        wikiScopeRepository.flush();
     }
 
     private Department findDepartment(Long departmentId) {

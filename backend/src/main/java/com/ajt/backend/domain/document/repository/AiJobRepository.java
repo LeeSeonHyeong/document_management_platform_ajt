@@ -23,4 +23,6 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
      * 두 번 나오거나 빠질 수 있습니다.
      */
     Page<AiJob> findAllByOrderByCreatedAtDescIdDesc(Pageable pageable);
+
+    void deleteAllByScopeKey(String scopeKey);
 }
