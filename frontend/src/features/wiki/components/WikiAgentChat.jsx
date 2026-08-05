@@ -125,10 +125,10 @@ export default function WikiAgentChat({ wikiId }) {
                       'rounded-2xl px-4 py-3 text-sm',
                       agent
                         ? 'rounded-bl-md border border-slate-200 bg-white text-slate-600'
-                        : 'rounded-br-md bg-gradient-to-r from-primary-500 to-primary-700 text-white',
+                        : 'rounded-br-md bg-slate-200 text-slate-800',
                     )}
                   >
-                    <ChatMarkdown markdown={message.content} tone={message.senderType} />
+                    <ChatMarkdown markdown={message.content} tone="agent" />
                   </div>
                   {agent && (
                     <WikiLinkTag
