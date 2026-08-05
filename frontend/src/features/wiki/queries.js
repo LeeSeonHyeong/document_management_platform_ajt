@@ -24,10 +24,11 @@ export function useWikiCategories(scopeKey) {
   })
 }
 
-export function useWikis(filters) {
+export function useWikis(filters, { enabled = true } = {}) {
   return useQuery({
     queryKey: qk.wikis.list(filters),
     queryFn: () => fetchWikis(filters),
+    enabled,
   })
 }
 

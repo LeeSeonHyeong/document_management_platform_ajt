@@ -2,40 +2,49 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { SearchBar, Select } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
-import { useWikiCategories, useWikis, useWikiSpaces } from '../queries'
+import { useWiki, useWikiCategories, useWikis, useWikiSpaces } from '../queries'
 
 export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
-  // scopeKey === '' 이면 전체 부서(스코프 필터 없이 조회).
+  // 사이드바는 항상 부서 공간 하나를 보여준다. 「전체 부서」(스코프 없이 전부)는 걷어냈다 —
+  // 실제 공간이 아닌데 공간 목록과 나란히 놓여 「전체 공개」 공간과 구분되지 않았다.
   const [scopeKey, setScopeKey] = useState('')
   const [keyword, setKeyword] = useState('')
   const [expanded, setExpanded] = useState(() => new Set())
   const initializedScope = useRef(null)
+  const syncedWikiId = useRef(null)
 
   const { data: spaces = [] } = useWikiSpaces()
+  const { data: selectedWiki, isPending: wikiPending } = useWiki(selectedWikiId)
   const { data: scopeCategories = [] } = useWikiCategories(scopeKey)
   const filters = useMemo(
-    () => ({ scopeKey: scopeKey || undefined, keyword: keyword || undefined, size: 100 }),
+    () => ({ scopeKey, keyword: keyword || undefined, size: 100 }),
     [scopeKey, keyword],
   )
-  const { data: wikiPage, isLoading } = useWikis(filters)
+  // 공간이 정해지기 전에 조회하면 전 범위 목록을 한 번 받아 트리가 깜빡인다.
+  const { data: wikiPage, isLoading } = useWikis(filters, { enabled: Boolean(scopeKey) })
   const wikis = wikiPage?.items ?? []
   const firstWikiId = wikis[0]?.wikiId
   const searching = keyword.trim().length > 0
   const selectedSpace = spaces.find((space) => space.scopeKey === scopeKey)
+  const categories = scopeCategories
 
-  // /wiki-categories 는 scopeKey 가 필수라 전체 부서에서는 호출할 수 없다.
-  // 이때는 목록 응답의 wikiCategoryId·wikiCategoryName 으로 트리를 구성한다.
-  const listCategories = useMemo(() => {
-    const map = new Map()
-    ;(wikiPage?.items ?? []).forEach((wiki) => {
-      const id = String(wiki.wikiCategoryId)
-      if (!map.has(id)) {
-        map.set(id, { wikiCategoryId: wiki.wikiCategoryId, name: wiki.wikiCategoryName })
-      }
-    })
-    return [...map.values()]
-  }, [wikiPage])
-  const categories = scopeKey ? scopeCategories : listCategories
+  // 보고 있는 위키의 공간을 따라간다. 다른 화면에서 /wiki/:id 로 바로 들어오면(예: 문서 상세의
+  // 「갱신된 위키 보기」) 그 위키가 속한 공간을 열어야 목록에서 찾을 수 있다.
+  // 위키가 바뀔 때만 맞춘다 — 매번 맞추면 사용자가 고른 공간을 곧바로 되돌린다.
+  useEffect(() => {
+    if (!selectedWiki?.scopeKey) return
+    if (syncedWikiId.current === String(selectedWikiId)) return
+    syncedWikiId.current = String(selectedWikiId)
+    setScopeKey(selectedWiki.scopeKey)
+  }, [selectedWiki, selectedWikiId])
+
+  // 따라갈 위키가 없으면 첫 공간부터 보여준다. 위키를 읽는 중일 때만 기다린다 —
+  // 지워진 위키로 들어온 경우까지 기다리면 사이드바가 빈 채로 남는다.
+  useEffect(() => {
+    if (scopeKey || !spaces.length) return
+    if (selectedWikiId && wikiPending) return
+    setScopeKey(spaces[0].scopeKey)
+  }, [scopeKey, selectedWikiId, spaces, wikiPending])
 
   useEffect(() => {
     if (!categories.length || initializedScope.current === scopeKey) return
@@ -73,7 +82,6 @@ export default function WikiNavSidebar({ selectedWikiId, onSelectWiki }) {
         onChange={(event) => setScopeKey(event.target.value)}
         className="text-xs"
       >
-        <option value="">전체 부서</option>
         {spaces.map((space) => (
           <option key={space.scopeKey} value={space.scopeKey}>
             {space.displayName}
