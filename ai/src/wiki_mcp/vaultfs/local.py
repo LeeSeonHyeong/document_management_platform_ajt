@@ -483,6 +483,11 @@ class LocalVaultFS(VaultFS):
         await db.commit()
         return True
 
+    async def live_content(self, scope_id: str, address: str) -> str | None:
+        """`VaultFS.live_content` 구현. 규약 설명은 그쪽 docstring 이 정본이다."""
+        row = await self._row(scope_id, address, "live")
+        return (row or {}).get("content")
+
     async def _row(self, scope_id: str, address: str, layer: str) -> dict | None:
         db = self._conn()
         cursor = await db.execute(

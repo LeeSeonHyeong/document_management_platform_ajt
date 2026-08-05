@@ -15,7 +15,6 @@ S15P11B106-175 에서 push 경로가 사라졌다. v1.1.0~1.8.0 사이에는 요
 from __future__ import annotations
 
 import asyncio
-import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -23,8 +22,7 @@ from pathlib import Path
 from agent_runtime.base import runs_tools_in_process
 from agent_runtime.guards import wrote_without_reading
 from agent_runtime.limits import exceeds_ceiling
-from wiki_mcp.vaultfs import (INDEX_ADDRESS, FederatedVaultFS, LocalVaultFS,
-                              SpringVaultFS)
+from wiki_mcp.vaultfs import FederatedVaultFS, LocalVaultFS, SpringVaultFS
 from wiki_mcp.vaultfs.query_client import (QueryBudgetExceeded, ScopeChangedError,
                                            WikiQueryClient)
 
@@ -40,18 +38,6 @@ from .errors import FailureStage, InternalError
 #     그러면 막아야 할 것을 막지 않는다. 테스트가 그것을 잡지 못한다
 #
 # 이제 코드·주소·각주 라벨·링크 대상을 구조화된 필드로 받는다.
-
-# 본문에서 각주 정의 줄을 찾는다 — `tools/lint.py` 의 `_FOOTNOTE_DEF_RE` 와 같은 모양이다.
-_FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]]+)\]:\s*(.+)$", re.MULTILINE)
-
-# `index.md` 에 대해서만 무시하는 코드들. Spring 이 하이드레이션에서 주는
-# `indexMarkdown`은 목차 본문일 뿐 frontmatter를 갖지 않는다 — 운영 중인 목차가
-# 이미 그렇게 저장돼 있어서다. dangling-link·citation 류는 여기 포함하지 않는다 —
-# 이번 요청이 목차를 고쳤다면 그 안의 깨진 링크·인용은 그대로 반영을 막아야 한다.
-_INDEX_FRONTMATTER_CODES = frozenset({
-    "missing-frontmatter", "missing-title", "missing-tags",
-    "missing-category", "footnote-in-frontmatter",
-})
 
 # 라이브 전용(= 이번 요청이 건드리지 않은) 페이지에서 **막는** 코드. 하나뿐이다.
 #
@@ -518,14 +504,19 @@ class WikiSession:
         한 번만 돌린다. 앞 판본이 주소별로 나눠 돌린 것은 보고서 절단(`_MAX_PER_GROUP`)을
         피하려는 우회였고, `collect()` 는 절단하지 않으므로 필요 없다.
 
-        막는 기준은 그대로다:
+        막는 기준:
 
-          * 작업 층 주소 — 모든 error 가 막는다. 단 목차의 frontmatter 계열과 실행 전부터
-            있던 각주(`_is_legacy_footnote`)는 뺀다
+          * 작업 층 주소 — 모든 error 가 막는다
           * 라이브 전용 주소 — `_LIVE_ONLY_BLOCKING_CODES` 만, 그것도 링크 대상이 이번
             작업이 건드린 주소일 때만 막는다
           * `uncited-source` 는 버린다 (FR-DOC-012) — 정당한 무변경 재투입이 있다.
             에이전트에게는 보이고 게이트는 통과시킨다
+
+        **「이 요청으로 고칠 수 없는 오류」의 면제는 여기 없다.** `lint` 가 그것들을 애초에
+        `warn` 으로 낸다 — 실행 전부터 있던 미해결 인용(`unresolved-citation-legacy`)과 목차의
+        frontmatter 계열이다. 판정을 `lint` 로 내린 이유는 **에이전트도 같은 판정을 봐야**
+        하기 때문이다. 게이트만 알고 있던 동안 에이전트는 게이트가 용서할 오류를 고치려고 턴을
+        다 썼다 (`wiki_mcp/services/footnotes.py` docstring 의 실측).
         """
         from wiki_mcp.tools.lint import LintHandler, LintIssue
 
@@ -550,13 +541,6 @@ class WikiSession:
             if issue.severity != "error" or issue.code == "uncited-source":
                 continue
             if issue.address in work_addresses:
-                if issue.address == INDEX_ADDRESS and issue.code in _INDEX_FRONTMATTER_CODES:
-                    # Spring 이 주는 목차 본문에는 frontmatter 가 없다 — 에이전트가 목차를
-                    # 고쳐도 그 사실은 변하지 않는다. dangling-link·인용은 예외가 아니다.
-                    continue
-                if issue.code == "unresolved-citation" and \
-                        await self._is_legacy_footnote(issue.address, issue.footnote):
-                    continue
                 blocking.append(issue)
                 continue
             # 라이브 전용 페이지.
@@ -571,44 +555,6 @@ class WikiSession:
                 self.error_code,
                 f"검증에 실패했습니다 — [{first.code}] `{first.address}` — {first.message}",
                 FailureStage.LINT_FAILED)
-
-    async def _is_legacy_footnote(self, address: str, label: str | None) -> bool:
-        """이 각주 정의가 에이전트 실행 **전부터** 그 페이지에 있었나 (F1).
-
-        미해결 인용을 파일명으로 가려내려던 앞 판본은 죽은 분기였다 — `find_source` 가
-        파일명·확장자 없는 이름·`source_id`·주소를 모두 매칭하므로, 이번 요청이 올린
-        문서를 가리키는 각주는 애초에 `unresolved-citation` 까지 오지 않는다. 그 규칙은
-        결과적으로 **모든** 미해결 인용을 버렸고, 지어낸 인용이 게이트를 통과했다
-        (NFR-AI-002 상실).
-
-        그래서 이름이 아니라 **나이**로 판정한다. 에이전트 쓰기는 작업 층으로만 가므로
-        라이브 층 행은 실행 전 상태 그대로다. 같은 각주 정의 줄이 라이브 본문에 그대로
-        있으면 그 각주는 처음 쓰일 때 검증된 것이고 지금 원문이 없을 뿐이다 — 통과시킨다.
-        새로 쓰거나 고친 각주 정의는 라이브에 없으므로 그대로 막는다.
-
-        라벨은 `LintIssue.footnote` 로 받는다. 앞 판본은 메시지 문장을 정규식으로 뜯었고,
-        `tools/lint.py` 의 한국어 문장이 바뀌면 라벨을 못 찾아 **모든** 미해결 인용을
-        막는 쪽으로 조용히 넘어갔다.
-        """
-        if not label:
-            return False
-        current = (await self.fs.get(self.scope_id, address) or {}).get("content") or ""
-        definition = self._definition_line(current, label)
-        if not definition:
-            return False
-        live = await self.fs.live_content(self.scope_id, address)
-        return definition in self._definitions(live or "")
-
-    @staticmethod
-    def _definitions(content: str) -> set[str]:
-        return {f"[^{fid}]: {raw.strip()}" for fid, raw in _FOOTNOTE_DEF_RE.findall(content)}
-
-    @staticmethod
-    def _definition_line(content: str, label: str) -> str | None:
-        for fid, raw in _FOOTNOTE_DEF_RE.findall(content):
-            if fid == label:
-                return f"[^{fid}]: {raw.strip()}"
-        return None
 
     async def address_for_wiki_id(self, wiki_id: str) -> str:
         """`wikiId` → 주소. 하이드레이션이 받은 카탈로그에 없으면 400.

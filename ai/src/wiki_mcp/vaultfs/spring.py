@@ -117,14 +117,8 @@ class SpringVaultFS(LocalVaultFS):
         )
         await db.commit()
 
-    async def live_content(self, scope_id: str, address: str) -> str | None:
-        """라이브 층 본문만. 겹쳐 읽기(`get`)와 달리 작업 층을 보지 않는다.
-
-        에이전트 쓰기는 작업 층으로만 가므로, 이 값은 **에이전트 실행 전 상태**다. 게이트가
-        "이 각주가 원래 있던 것인가"를 판정하는 데 쓴다 (`api/session.py._is_legacy_footnote`).
-        """
-        row = await self._row(scope_id, address, "live")
-        return (row or {}).get("content")
+    # `live_content` 는 `LocalVaultFS` 것을 그대로 쓴다 — 라이브 층은 하이드레이션이 채운
+    # 로컬 행이라 조회 API 를 다시 부를 것이 없다.
 
     async def stage_source(self, scope_id: str, document_id: str, text: str,
                            original_file_name: str | None = None) -> str:
