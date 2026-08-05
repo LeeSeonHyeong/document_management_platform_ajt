@@ -56,20 +56,48 @@ export function SignupBadge({ status }) {
   return <Badge tone={tone}>{SIGNUP_STATUS_LABELS[status] ?? status}</Badge>
 }
 
-export function StatCard({ label, value, suffix = '명', tone = 'primary', caption }) {
+// onClick을 주면 카드가 필터 버튼처럼 동작한다. active면 선택 상태로 강조한다.
+export function StatCard({ label, value, suffix = '명', tone = 'primary', caption, onClick, active = false }) {
   const toneClass = {
     primary: 'bg-primary-50 text-primary-600',
     blue: 'bg-blue-50 text-blue-600',
     amber: 'bg-amber-50 text-amber-600',
     slate: 'bg-slate-100 text-slate-500',
   }[tone]
+  const clickable = typeof onClick === 'function'
   return (
-    <Card className="p-5">
-      <div className={cn('mb-4 flex size-9 items-center justify-center rounded-xl', toneClass)}>
+    <Card
+      className={cn(
+        'p-5 text-left transition',
+        clickable && 'cursor-pointer hover:border-primary-300 hover:shadow-md',
+        active &&
+          'scale-[1.03] border-primary-500 bg-primary-50 shadow-xl ring-2 ring-primary-500 ring-offset-2 ring-offset-white',
+      )}
+      {...(clickable
+        ? {
+            onClick,
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onClick()
+              }
+            },
+            role: 'button',
+            tabIndex: 0,
+            'aria-pressed': active,
+          }
+        : {})}
+    >
+      <div
+        className={cn(
+          'mb-4 flex size-9 items-center justify-center rounded-xl',
+          active ? 'bg-primary-600 text-white' : toneClass,
+        )}
+      >
         <span className="size-3 rounded bg-current" />
       </div>
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-bold text-slate-900">
+      <p className={cn('text-sm text-slate-500', active && 'font-semibold text-primary-700')}>{label}</p>
+      <p className={cn('mt-2 text-3xl font-bold text-slate-900', active && 'text-primary-700')}>
         {value}<span className="ml-1 text-sm font-medium text-slate-400">{suffix}</span>
       </p>
       {caption && <p className="mt-3 text-xs text-slate-400">{caption}</p>}

@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.13.1이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.13.2이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -47,7 +47,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.13.1",
+      "value": "1.13.2",
       "type": "string"
     },
     {
@@ -340,6 +340,11 @@
                   "disabled": true
                 },
                 {
+                  "key": "departmentId",
+                  "value": "1",
+                  "disabled": true
+                },
+                {
                   "key": "keyword",
                   "value": "홍길동",
                   "disabled": true
@@ -352,7 +357,7 @@
               ],
               "variable": []
             },
-            "description": "관리자가 사용자 목록을 검색하고 조회합니다.\n사용자 관리 목록 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `active` 또는 `inactive`\n- `signupStatus`: `pending`, `approved` 또는 `rejected`\n- `role`: `employee` 또는 `admin`\n- `managerAssignable`: 부서 관리자 지정 가능 사용자만 조회할지 여부\n- `keyword`: 이름 또는 이메일 검색어\n- `sort`: 정렬필드와 방향\n\n### Request Body\n없음\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222).\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지, 필터 또는 정렬값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
+            "description": "관리자가 사용자 목록을 검색하고 조회합니다.\n사용자 관리 목록 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `active` 또는 `inactive`\n- `signupStatus`: `pending`, `approved` 또는 `rejected`\n- `role`: `employee` 또는 `admin`\n- `managerAssignable`: 부서 관리자 지정 가능 사용자만 조회할지 여부\n- `departmentId`: 특정 부서 소속 사용자만 조회(부서 ID 문자열)\n- `keyword`: 이름 또는 이메일 검색어\n- `sort`: 정렬필드와 방향\n\n### Request Body\n없음\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222).\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지, 필터 또는 정렬값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
           },
           "response": [
             {
@@ -402,6 +407,11 @@
                       "disabled": true
                     },
                     {
+                      "key": "departmentId",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
                       "key": "keyword",
                       "value": "홍길동",
                       "disabled": true
@@ -414,7 +424,7 @@
                   ],
                   "variable": []
                 },
-                "description": "관리자가 사용자 목록을 검색하고 조회합니다.\n사용자 관리 목록 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `active` 또는 `inactive`\n- `signupStatus`: `pending`, `approved` 또는 `rejected`\n- `role`: `employee` 또는 `admin`\n- `managerAssignable`: 부서 관리자 지정 가능 사용자만 조회할지 여부\n- `keyword`: 이름 또는 이메일 검색어\n- `sort`: 정렬필드와 방향\n\n### Request Body\n없음\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222).\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지, 필터 또는 정렬값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
+                "description": "관리자가 사용자 목록을 검색하고 조회합니다.\n사용자 관리 목록 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `active` 또는 `inactive`\n- `signupStatus`: `pending`, `approved` 또는 `rejected`\n- `role`: `employee` 또는 `admin`\n- `managerAssignable`: 부서 관리자 지정 가능 사용자만 조회할지 여부\n- `departmentId`: 특정 부서 소속 사용자만 조회(부서 ID 문자열)\n- `keyword`: 이름 또는 이메일 검색어\n- `sort`: 정렬필드와 방향\n\n### Request Body\n없음\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222).\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지, 필터 또는 정렬값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
               },
               "status": "OK",
               "code": 200,
@@ -479,6 +489,11 @@
                       "disabled": true
                     },
                     {
+                      "key": "departmentId",
+                      "value": "1",
+                      "disabled": true
+                    },
+                    {
                       "key": "keyword",
                       "value": "홍길동",
                       "disabled": true
@@ -491,7 +506,7 @@
                   ],
                   "variable": []
                 },
-                "description": "관리자가 사용자 목록을 검색하고 조회합니다.\n사용자 관리 목록 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `active` 또는 `inactive`\n- `signupStatus`: `pending`, `approved` 또는 `rejected`\n- `role`: `employee` 또는 `admin`\n- `managerAssignable`: 부서 관리자 지정 가능 사용자만 조회할지 여부\n- `keyword`: 이름 또는 이메일 검색어\n- `sort`: 정렬필드와 방향\n\n### Request Body\n없음\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222).\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지, 필터 또는 정렬값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
+                "description": "관리자가 사용자 목록을 검색하고 조회합니다.\n사용자 관리 목록 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`: 페이지 번호, 기본값 1\n- `size`: 페이지 크기, 기본값 20, 최대 100\n- `status`: `active` 또는 `inactive`\n- `signupStatus`: `pending`, `approved` 또는 `rejected`\n- `role`: `employee` 또는 `admin`\n- `managerAssignable`: 부서 관리자 지정 가능 사용자만 조회할지 여부\n- `departmentId`: 특정 부서 소속 사용자만 조회(부서 ID 문자열)\n- `keyword`: 이름 또는 이메일 검색어\n- `sort`: 정렬필드와 방향\n\n### Request Body\n없음\n\n### 정책\n- 관리자(최고관리자·부서관리자)는 사용자 목록을 조회할 수 있습니다. 단, 사용자 상세 조회와 수정은 최고관리자만 가능하며 부서관리자는 목록 조회만 할 수 있습니다(S15P11B106-222).\n\n### Response\n- `items`: 사용자 ID, 이메일, 이름, 역할, 부서, 가입 상태, 계정 상태와 부서 관리자 지정 여부\n- `page`, `size`, `totalCount`, `totalPages`\n\n### Error\n- `400 Bad Request`: 페이지, 필터 또는 정렬값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `403 Forbidden`: 관리자 권한 없음"
               },
               "status": "Forbidden",
               "code": 403,

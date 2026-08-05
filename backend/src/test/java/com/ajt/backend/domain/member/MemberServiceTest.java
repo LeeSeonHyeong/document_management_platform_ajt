@@ -133,6 +133,7 @@ class MemberServiceTest {
                 "approved",
                 "employee",
                 false,
+                null,
                 "홍",
                 "createdAt,desc"
         );
@@ -152,7 +153,7 @@ class MemberServiceTest {
 
         UserListResponse response = memberService.findUsers(
                 new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN),
-                1, 20, null, null, null, false, "개발부", null);
+                1, 20, null, null, null, false, null, "개발부", null);
 
         // 개발부 소속(관리자 + 김개발)만 조회되고 인사부 소속(이인사)은 제외된다.
         assertThat(response.items()).extracting("email")
@@ -169,7 +170,7 @@ class MemberServiceTest {
 
         UserListResponse response = memberService.findUsers(
                 new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN),
-                1, 20, null, null, null, false, "special.person", null);
+                1, 20, null, null, null, false, null, "special.person", null);
 
         assertThat(response.items()).extracting("email")
                 .contains("special.person@ajt.com")
@@ -177,11 +178,43 @@ class MemberServiceTest {
     }
 
     @Test
+    @DisplayName("사용자 목록은 departmentId로 해당 부서 소속만 조회한다(S15P11B106-260)")
+    void findUsersFiltersByDepartmentId() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Department hr = departmentRepository.save(new Department("인사부"));
+        Member admin = memberRepository.save(approvedAdmin(dev)); // admin@ajt.com, 개발부
+        memberRepository.save(approvedEmployee(dev, "dev.emp@ajt.com", "김개발", "AJT-2026-1001"));
+        memberRepository.save(approvedEmployee(hr, "hr.emp@ajt.com", "이인사", "AJT-2026-1002"));
+
+        UserListResponse response = memberService.findUsers(
+                new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN),
+                1, 20, null, null, null, false, String.valueOf(dev.getId()), null, null);
+
+        assertThat(response.items()).extracting("email")
+                .contains("admin@ajt.com", "dev.emp@ajt.com")
+                .doesNotContain("hr.emp@ajt.com");
+    }
+
+    @Test
+    @DisplayName("departmentId가 숫자가 아니면 400으로 거절한다(S15P11B106-260)")
+    void findUsersRejectsNonNumericDepartmentId() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Member admin = memberRepository.save(approvedAdmin(dev));
+        AuthenticatedMember actor = new AuthenticatedMember(admin.getId(), admin.getEmail(), Role.ADMIN);
+
+        assertThatThrownBy(() ->
+                memberService.findUsers(actor, 1, 20, null, null, null, false, "abc", null, null))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
     @DisplayName("관리자가 아니면 사용자 목록을 조회할 수 없다")
     void findUsersRequiresAdmin() {
         AuthenticatedMember employee = new AuthenticatedMember(1L, "employee@ajt.com", Role.EMPLOYEE);
 
-        assertThatThrownBy(() -> memberService.findUsers(employee, 1, 20, null, null, null, null, null, null))
+        assertThatThrownBy(() -> memberService.findUsers(employee, 1, 20, null, null, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
@@ -597,7 +630,7 @@ class MemberServiceTest {
         Member superAdmin = memberRepository.save(approvedAdmin(department));
         AuthenticatedMember actor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
 
-        UserListResponse response = memberService.findUsers(actor, 1, 20, null, null, null, null, null, null);
+        UserListResponse response = memberService.findUsers(actor, 1, 20, null, null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isGreaterThanOrEqualTo(1);
     }
@@ -607,7 +640,7 @@ class MemberServiceTest {
     void departmentManagerCanListUsers() {
         AuthenticatedMember manager = savedDepartmentManagerActor();
 
-        UserListResponse response = memberService.findUsers(manager, 1, 20, null, null, null, null, null, null);
+        UserListResponse response = memberService.findUsers(manager, 1, 20, null, null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isGreaterThanOrEqualTo(1);
     }
@@ -720,7 +753,7 @@ class MemberServiceTest {
         AuthenticatedMember actor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
 
         UserListResponse response =
-                memberService.findUsers(actor, 1, 100, null, null, null, true, null, null);
+                memberService.findUsers(actor, 1, 100, null, null, null, true, null, null, null);
 
         assertThat(response.items()).extracting("email")
                 .contains("admin@ajt.com")
@@ -738,7 +771,7 @@ class MemberServiceTest {
         AuthenticatedMember actor = new AuthenticatedMember(superAdmin.getId(), superAdmin.getEmail(), Role.ADMIN);
 
         UserListResponse response =
-                memberService.findUsers(actor, 1, 100, null, null, null, true, null, null);
+                memberService.findUsers(actor, 1, 100, null, null, null, true, null, null, null);
 
         // 이미 부서장으로 지정된 admin@ajt.com은 후보에서 빠진다.
         assertThat(response.items()).extracting("email").doesNotContain("admin@ajt.com");
@@ -749,7 +782,7 @@ class MemberServiceTest {
     void employeeCannotAccessUserManagement() {
         AuthenticatedMember employee = new AuthenticatedMember(1L, "employee@ajt.com", Role.EMPLOYEE);
 
-        assertThatThrownBy(() -> memberService.findUsers(employee, 1, 20, null, null, null, null, null, null))
+        assertThatThrownBy(() -> memberService.findUsers(employee, 1, 20, null, null, null, null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);

@@ -30,7 +30,7 @@ export const NAV_ITEMS = {
     },
     { to: '/admin/departments', label: '부서 관리', icon: Building2 },
     { to: '/admin/documents', label: '문서 관리', icon: FileText },
-    { to: '/wiki', label: '위키', icon: BookOpen },
+    { to: '/wiki', label: '위키 관리', icon: BookOpen },
     { to: '/admin/schedules', label: '일정 관리', icon: CalendarDays },
     { to: '/admin/inquiries', label: '문의 관리', icon: Inbox },
   ],
@@ -39,7 +39,7 @@ export const NAV_ITEMS = {
 // 브레드크럼/타이틀용 경로 라벨. 세그먼트 경로 → 사람이 읽는 라벨.
 export const ROUTE_LABELS = {
   '/': '홈',
-  '/wiki': '위키',
+  '/wiki': '위키 관리',
   '/inquiries': '문의 사항',
   '/inquiries/new': '문의 작성',
   '/schedules': '일정',
@@ -69,7 +69,7 @@ export function getPageTitle(pathname) {
   if (/^\/admin\/documents\/jobs\/[^/]+\/summary$/.test(pathname)) return 'AI 작업 요약'
   if (/^\/admin\/documents\/jobs\/[^/]+$/.test(pathname)) return 'AI 작업 대기'
   if (pathname === '/admin/documents/categories') return '카테고리 관리'
-  if (/^\/wiki\/[^/]+$/.test(pathname)) return '위키'
+  if (/^\/wiki\/[^/]+$/.test(pathname)) return '위키 관리'
   return ROUTE_LABELS[pathname] ?? 'AJT'
 }
 
