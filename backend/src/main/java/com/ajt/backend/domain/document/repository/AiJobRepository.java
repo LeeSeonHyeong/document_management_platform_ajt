@@ -35,5 +35,16 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
      */
     List<AiJob> findAllByStatusIn(Collection<AiJobStatus> statuses);
 
+    /**
+     * 한 공간의 최근 작업들입니다(S15P11B106-304). 재처리가 「이 문서를 마지막으로 다룬 작업」을
+     * 찾는 데 씁니다 — 그 작업이 무엇을 하려던 것인지({@code document_change_types})를 이어받아야
+     * 삭제·교체 실패를 같은 종류로 다시 시도할 수 있습니다.
+     *
+     * <p>{@code document_ids} 가 JSON 이라 SQL 로 문서를 찾지 않고 최근 몇 건만 읽어 애플리케이션에서
+     * 펼칩니다({@link #findAllByStatusIn} 과 같은 방식). 재처리는 방금 실패한 작업을 이어받는 것이라
+     * 최근 목록 안에 있습니다.
+     */
+    List<AiJob> findByScopeKeyOrderByIdDesc(String scopeKey, Pageable pageable);
+
     void deleteAllByScopeKey(String scopeKey);
 }

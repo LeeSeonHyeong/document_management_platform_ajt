@@ -137,6 +137,14 @@ CREATE TABLE `ai_job` (
     `status` VARCHAR(30) NOT NULL,
     `document_ids` JSON NOT NULL,
     `document_results` JSON NULL,
+    -- 이 작업이 문서별로 무엇을 하려던 것인지다(S15P11B106-304). {"12":"document_removed"} 형태.
+    -- 없거나 문서가 빠져 있으면 document_added 로 본다 — 업로드·일반 재처리가 그렇다.
+    --
+    -- 왜 필요한가: 예전에는 이 값이 실행 시점 메모리(DocumentReprocessPlan)에만 있었다. 그래서
+    -- 삭제·교체가 실패한 뒤 재처리를 누르면 원래 무엇을 하려던 작업인지 알 길이 없어 항상
+    -- document_added 로 돌았다 — 지우려던 문서를 Wiki 에 도로 넣었다.
+    -- document 테이블이 아니라 여기 두는 이유는 작업 이력이라 성공 후 지울 것이 없기 때문이다.
+    `document_change_types` JSON NULL,
     `failure_reason` VARCHAR(1000) NULL,
     `created_at` DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
     `started_at` DATETIME(6) NULL,
