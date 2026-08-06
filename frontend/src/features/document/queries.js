@@ -153,63 +153,39 @@ export function useDocumentCategories(scopeKey) {
   })
 }
 
+// 카테고리 관리 화면(부서별 조회)용 전체 목록입니다(S15P11B106-290).
+// scopeKey 없이 요청하면 백엔드가 로그인 관리자가 접근 가능한 모든 공개 범위의 카테고리를 반환한다.
+export function useAllDocumentCategories() {
+  return useQuery({
+    queryKey: qk.documentCategories.list(null),
+    queryFn: () => fetchDocumentCategories(),
+  })
+}
+
+// 카테고리 생성/수정/삭제 후에는 카테고리 관련 모든 목록을 무효화한다(S15P11B106-290).
+//   예전에는 'ALL' 캐시에 setQueryData로 직접 끼워넣어 실제 서버와 어긋났고, 삭제 후 재조회에서
+//   부서 카테고리가 통째로 사라지는(증발) 문제가 있었다. 이제 전체 조회 API가 있어 무효화만 하면 된다.
 export function useCreateDocumentCategory() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createDocumentCategory,
-    onSuccess: (createdCategory, variables) => {
-      // 관리 화면은 `ALL` 키를 전체 카테고리 목록으로 사용한다. 실제 API는 scopeKey가
-      // 정확히 일치하는 항목만 반환하므로, 부서 범위(D1-D2 등)로 생성한 항목은 생성
-      // 응답을 관리 화면 캐시에 직접 추가해야 즉시 목록에 유지된다.
-      queryClient.setQueryData(qk.documentCategories.list('ALL'), (current = []) => {
-        const exists = current.some(
-          (category) => category.documentCategoryId === createdCategory.documentCategoryId,
-        )
-        return exists ? current : [...current, createdCategory]
-      })
-
-      // 업로드 화면 등 실제 공개 범위별 카테고리 목록은 서버 값으로 다시 동기화한다.
-      if (variables.scopeKey !== 'ALL') {
-        queryClient.invalidateQueries({
-          queryKey: qk.documentCategories.list(variables.scopeKey),
-        })
-      }
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.documentCategories.all }),
   })
 }
 
-export function useUpdateDocumentCategory(scopeKey) {
+export function useUpdateDocumentCategory() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: ({ categoryId, ...payload }) => updateDocumentCategory(categoryId, payload),
-    onSuccess: (updatedCategory) => {
-      // 카테고리 관리 화면의 `ALL` 캐시는 여러 공개 범위의 카테고리를 합쳐 보여주는
-      // 화면용 목록이다. 수정 후 `ALL`을 재조회하면 실제 scopeKey가 D1-D2인 항목은
-      // 응답에서 빠지므로, 수정된 행만 응답값으로 교체한다.
-      queryClient.setQueryData(qk.documentCategories.list(scopeKey), (current = []) =>
-        current.map((category) =>
-          category.documentCategoryId === updatedCategory.documentCategoryId
-            ? { ...category, ...updatedCategory }
-            : category,
-        ),
-      )
-
-      if (scopeKey !== updatedCategory.scopeKey) {
-        queryClient.invalidateQueries({
-          queryKey: qk.documentCategories.list(updatedCategory.scopeKey),
-        })
-      }
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.documentCategories.all }),
   })
 }
 
-export function useDeleteDocumentCategory(scopeKey) {
+export function useDeleteDocumentCategory() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteDocumentCategory,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: qk.documentCategories.list(scopeKey) })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.documentCategories.all }),
   })
 }
 

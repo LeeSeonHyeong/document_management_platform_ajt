@@ -24,7 +24,7 @@ export default function DocumentCategoryFormModal({
   const [departmentValues, setDepartmentValues] = useState([])
 
   const createMutation = useCreateDocumentCategory()
-  const updateMutation = useUpdateDocumentCategory(scopeKey)
+  const updateMutation = useUpdateDocumentCategory()
   const saving = createMutation.isPending || updateMutation.isPending
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function DocumentCategoryFormModal({
       onClose?.()
     }
     const onError = (error) => {
-      if (error?.response?.status === 409) toast.error('같은 이름의 카테고리가 있습니다.')
+      if (error?.status === 409) toast.error('같은 이름의 카테고리가 있습니다.')
       else toast.error('저장에 실패했습니다.')
     }
 
