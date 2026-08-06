@@ -6,9 +6,9 @@ import { Button, Modal, useToast } from '@/components/ui'
 import { useDepartments } from '@/features/department/useDepartments'
 import { sanitizePlainName } from '@/shared/lib/sanitizePlainName'
 import {
+  useAllDocumentCategories,
   useCreateDocumentCategory,
   useDeleteDocumentCategory,
-  useDocumentCategories,
   useDocuments,
 } from '../queries'
 import DocumentCategoryFormModal from '../components/DocumentCategoryFormModal'
@@ -25,28 +25,40 @@ const CATEGORY_TONES = [
   'bg-slate-200 text-slate-600',
 ]
 
-const CATEGORY_NAME_MAX_LENGTH = 50
+const CATEGORY_NAME_MAX_LENGTH = 20
+
+// 카테고리의 공개 부서 값을 scopeKey에서 파싱한다. ALL이면 ['ALL'], 부서 범위면 부서 ID 배열.
+// (S15P11B106-290: 전체 조회 API가 실제 scopeKey를 내려주므로 로컬 캐시 편법 없이 이 값만 쓴다.)
+function departmentValuesFor(category) {
+  if (category.scopeKey === 'ALL') return ['ALL']
+  return [...(category.scopeKey?.matchAll(/D(\d+)/g) ?? [])].map((match) => match[1])
+}
+
+function departmentValueFor(category) {
+  return departmentValuesFor(category)[0] ?? ''
+}
 
 // Figma 4-8R — 원본문서 카테고리 관리.
-// 기본 공개 부서는 아직 카테고리 API 계약에 없는 화면용 값이다.
+// 부서 카드로 먼저 나눠 보고, 카드를 누르면 그 부서의 카테고리만 본다(S15P11B106-290).
 export default function DocumentCategoryPage() {
   const toast = useToast()
   const [newName, setNewName] = useState('')
   const [newDepartments, setNewDepartments] = useState([])
-  const [scopeFilter, setScopeFilter] = useState('')
-  const [defaultDepartments, setDefaultDepartments] = useState({})
+  // 부서 필터: '' 전체 | 'ALL' 전체공개 | 부서 ID.
+  const [deptFilter, setDeptFilter] = useState('')
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const categoryNameComposingRef = useRef(false)
   const categoryNameInputRef = useRef(null)
 
-  // 현재 목 API는 scopeKey와 무관하게 전체 카테고리를 반환한다.
-  const scopeKey = 'ALL'
-  const { data: categories = [], isLoading } = useDocumentCategories(scopeKey)
+  // 관리 화면은 접근 가능한 모든 공개 범위의 카테고리를 한 번에 받아 부서별로 묶는다(S15P11B106-290).
+  // 예전에는 scopeKey='ALL'로만 조회 + 캐시 주입 편법을 써서, 삭제 후 재조회 시 부서 카테고리가
+  // 통째로 사라지는(증발) 문제가 있었다.
+  const { data: categories = [], isLoading } = useAllDocumentCategories()
   const { data: documentData } = useDocuments({ page: 1, size: 100 })
   const { data: departments = [] } = useDepartments()
   const createMutation = useCreateDocumentCategory()
-  const deleteMutation = useDeleteDocumentCategory(scopeKey)
+  const deleteMutation = useDeleteDocumentCategory()
   const documents = useMemo(() => documentData?.items ?? [], [documentData])
 
   const documentCounts = useMemo(
@@ -59,42 +71,43 @@ export default function DocumentCategoryPage() {
     [documents],
   )
 
-  function departmentValuesFor(category) {
-    if (defaultDepartments[category.documentCategoryId] !== undefined) {
-      const saved = defaultDepartments[category.documentCategoryId]
-      return Array.isArray(saved) ? saved : [saved]
-    }
-    if (category.scopeKey === 'ALL') return ['ALL']
-    return [...(category.scopeKey?.matchAll(/D(\d+)/g) ?? [])].map((match) => match[1])
-  }
+  // 부서 카드: 전체공개(ALL) + 카테고리가 실제로 있는 부서. 복수부서 카테고리는 각 부서에 함께 집계한다.
+  const departmentCards = useMemo(() => {
+    const counts = new Map()
+    categories.forEach((category) =>
+      departmentValuesFor(category).forEach((value) =>
+        counts.set(value, (counts.get(value) ?? 0) + 1),
+      ),
+    )
+    const cards = []
+    if (counts.has('ALL')) cards.push({ key: 'ALL', label: '전체 공개', count: counts.get('ALL') })
+    departments.forEach((department) => {
+      const id = String(department.departmentId)
+      if (counts.has(id)) cards.push({ key: id, label: department.name, count: counts.get(id) })
+    })
+    return cards
+  }, [categories, departments])
 
-  function departmentValueFor(category) {
-    return departmentValuesFor(category)[0] ?? ''
-  }
+  const filteredCategories = !deptFilter
+    ? categories
+    : categories.filter((category) => departmentValuesFor(category).includes(deptFilter))
 
   function handleAdd() {
     const name = newName.trim()
     if (!name || newDepartments.length === 0 || createMutation.isPending) return
-    const categoryScopeKey =
-      newDepartments.includes('ALL') || newDepartments.length === 0
-        ? 'ALL'
-        : buildScopeKey('department', newDepartments)
+    const categoryScopeKey = newDepartments.includes('ALL')
+      ? 'ALL'
+      : buildScopeKey('department', newDepartments)
     createMutation.mutate(
       { scopeKey: categoryScopeKey, name, description: '' },
       {
-        onSuccess: (category) => {
-          if (newDepartments.length > 0) {
-            setDefaultDepartments((current) => ({
-              ...current,
-              [category.documentCategoryId]: newDepartments,
-            }))
-          }
+        onSuccess: () => {
           setNewName('')
           setNewDepartments([])
           toast.success('카테고리를 추가했습니다.')
         },
         onError: (error) => {
-          if (error?.response?.status === 409) toast.error('같은 이름의 카테고리가 이미 있습니다.')
+          if (error?.status === 409) toast.error('같은 이름의 카테고리가 이미 있습니다.')
           else toast.error('카테고리를 추가하지 못했습니다.')
         },
       },
@@ -109,7 +122,7 @@ export default function DocumentCategoryPage() {
         toast.success('카테고리를 삭제했습니다.')
       },
       onError: (error) => {
-        if (error?.response?.status === 409) {
+        if (error?.status === 409) {
           toast.error('문서가 있는 카테고리는 삭제할 수 없습니다.')
         } else {
           toast.error('삭제하지 못했습니다.')
@@ -118,22 +131,6 @@ export default function DocumentCategoryPage() {
       },
     })
   }
-
-  const scopeOptions = Array.from(
-    new Map(
-      categories.map((category) => {
-        const values = departmentValuesFor(category)
-        const key = scopeFilterKey(values)
-        return [key, { value: key, label: departmentLabelFor(values, departments) }]
-      }),
-    ).values(),
-  )
-  const filteredCategories =
-    !scopeFilter
-      ? categories
-      : categories.filter((category) =>
-          scopeFilter === scopeFilterKey(departmentValuesFor(category)),
-        )
 
   return (
     <section className="space-y-5">
@@ -170,6 +167,15 @@ export default function DocumentCategoryPage() {
             </span>
             카테고리 추가
           </span>
+          {/* 공개 부서 선택이 먼저(왼쪽), 카테고리명 입력창이 오른쪽에 온다. */}
+          <div className="w-52 shrink-0">
+            <DepartmentMultiSelect
+              value={newDepartments}
+              departments={departments}
+              onChange={setNewDepartments}
+              placeholder="공개 부서 선택"
+            />
+          </div>
           <div className="min-w-0 flex-1">
             <input
               ref={categoryNameInputRef}
@@ -179,8 +185,6 @@ export default function DocumentCategoryPage() {
                 categoryNameComposingRef.current = true
               }}
               onCompositionEnd={() => {
-                // Windows의 `자음 + 한자` 특수문자 변환은 compositionEnd 뒤에 입력값과
-                // 커서 위치가 확정된다. 다음 프레임에서 읽어야 앞 글자가 유실되지 않는다.
                 requestAnimationFrame(() => {
                   categoryNameComposingRef.current = false
                   setNewName(sanitizePlainName(categoryNameInputRef.current?.value ?? ''))
@@ -203,14 +207,6 @@ export default function DocumentCategoryPage() {
               </p>
             )}
           </div>
-          <div className="w-52 shrink-0">
-            <DepartmentMultiSelect
-              value={newDepartments}
-              departments={departments}
-              onChange={setNewDepartments}
-              placeholder="공개 부서 선택"
-            />
-          </div>
           <Button
             size="sm"
             onClick={handleAdd}
@@ -222,34 +218,33 @@ export default function DocumentCategoryPage() {
           </Button>
         </div>
 
-        <div className="mx-5 mb-4 flex items-center justify-end gap-2">
-          <Button
-            size="md"
-            variant="primary"
-            onClick={() => setScopeFilter('')}
-            disabled={!scopeFilter}
-            className="bg-gradient-to-r from-blue-500 to-violet-600 hover:from-blue-600 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300"
-          >
-            필터 초기화
-          </Button>
-          <div className="w-56">
-            <ScopeCombinationFilter
-              value={scopeFilter}
-              options={scopeOptions}
-              onChange={setScopeFilter}
-              placeholder="공개 부서 필터"
+        {/* 부서 필터 — 부서가 많아도 넘치지 않게 드롭다운으로 고른다(S15P11B106-290).
+            고르면 그 부서(또는 전체 공개)의 카테고리만 본다. */}
+        <div className="mx-5 mb-4 flex items-center gap-2">
+          <span className="shrink-0 text-sm font-semibold text-slate-500">부서 필터</span>
+          <div className="w-64">
+            <DepartmentFilterDropdown
+              value={deptFilter}
+              onChange={setDeptFilter}
+              options={[
+                { value: '', label: `전체 · ${categories.length}개` },
+                ...departmentCards.map((card) => ({
+                  value: card.key,
+                  label: `${card.label} · ${card.count}개`,
+                })),
+              ]}
             />
           </div>
         </div>
 
         <div className="overflow-x-auto border-t border-slate-200">
-          <table className="w-full min-w-[760px] border-collapse text-left">
+          <table className="w-full min-w-[640px] table-fixed border-collapse text-left">
             <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
               <tr>
-                <th className="px-5 py-3 text-center">카테고리명</th>
-                <th className="w-28 px-4 py-3 text-center">문서 수</th>
-                <th className="w-64 px-4 py-3 text-center">공개 부서</th>
-                <th className="w-44 px-5 py-3 text-center">관리</th>
+                <th className="w-[30%] px-5 py-3 text-left">카테고리명</th>
+                <th className="w-[20%] px-3 py-3 text-center">문서 수</th>
+                <th className="w-[30%] px-3 py-3 text-center">공개 부서</th>
+                <th className="w-[20%] px-5 py-3 text-center">관리</th>
               </tr>
             </thead>
             <tbody>
@@ -266,7 +261,7 @@ export default function DocumentCategoryPage() {
                   return (
                     <tr key={category.documentCategoryId} className="border-t border-slate-100">
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-3">
+                        <div className="flex min-w-0 items-center gap-3">
                           <span
                             className={`flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${
                               CATEGORY_TONES[index % CATEGORY_TONES.length]
@@ -274,17 +269,22 @@ export default function DocumentCategoryPage() {
                           >
                             {category.name.slice(0, 1)}
                           </span>
-                          <span className="font-semibold text-slate-800">{category.name}</span>
+                          <span className="truncate font-semibold text-slate-800" title={category.name}>
+                            {category.name}
+                          </span>
                         </div>
                       </td>
                       <td className={`px-4 py-3 text-center text-sm font-semibold ${count ? 'text-slate-700' : 'text-slate-400'}`}>
                         {count}건
                       </td>
-                      <td className="px-4 py-3 text-center text-sm font-medium text-slate-700">
-                        <DepartmentSummary
-                          values={departmentValuesFor(category)}
-                          departments={departments}
-                        />
+                      <td className="px-3 py-3 text-center text-sm font-medium text-slate-700">
+                        {/* 가운데 정렬하되, 공개 부서명이 길면 셀 안에서 좌우 스크롤한다. */}
+                        <div className="inline-block max-w-full overflow-x-auto whitespace-nowrap align-middle">
+                          <DepartmentSummary
+                            values={departmentValuesFor(category)}
+                            departments={departments}
+                          />
+                        </div>
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex flex-nowrap justify-center gap-2">
@@ -327,7 +327,7 @@ export default function DocumentCategoryPage() {
               {!isLoading && filteredCategories.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-5 py-12 text-center text-sm text-slate-400">
-                    선택한 공개 부서에 해당하는 카테고리가 없습니다.
+                    {deptFilter ? '선택한 부서에 해당하는 카테고리가 없습니다.' : '등록된 카테고리가 없습니다.'}
                   </td>
                 </tr>
               )}
@@ -344,7 +344,7 @@ export default function DocumentCategoryPage() {
       <DocumentCategoryFormModal
         open={Boolean(editing)}
         mode="edit"
-        scopeKey={scopeKey}
+        scopeKey={editing?.scopeKey}
         category={editing}
         departments={departments}
         defaultDepartments={editing ? departmentValuesFor(editing) : []}
@@ -354,12 +354,6 @@ export default function DocumentCategoryPage() {
             : '부서별 지정'
         }
         documentCount={editing ? (documentCounts[editing.documentCategoryId] ?? 0) : 0}
-        onDefaultDepartmentsChange={(values) =>
-          setDefaultDepartments((current) => ({
-            ...current,
-            [editing.documentCategoryId]: values,
-          }))
-        }
         onClose={() => setEditing(null)}
         onSaved={() => setEditing(null)}
       />
@@ -380,29 +374,14 @@ export default function DocumentCategoryPage() {
   )
 }
 
-function departmentLabelFor(value, departments) {
-  const values = Array.isArray(value) ? value : [value]
-  if (values.includes('ALL')) return '전체 공개'
-  const names = values
-    .map((departmentId) =>
-      departments.find((department) => String(department.departmentId) === String(departmentId))?.name,
-    )
-    .filter(Boolean)
-  return names.length > 0 ? names.join(', ') : '부서별 지정'
-}
-
-function scopeFilterKey(values) {
-  if (values.includes('ALL')) return 'ALL'
-  return [...values].sort((left, right) => Number(left) - Number(right)).join('-')
-}
-
-function ScopeCombinationFilter({ value, options, onChange, placeholder }) {
+// 부서 필터 드롭다운. 네이티브 select는 브라우저가 방향을 정해 위로 뜰 수 있어, 항상 버튼 '아래'로
+// 열리는 커스텀 드롭다운을 쓴다(S15P11B106-290). 아래 남은 높이에 맞춰 max-height를 정해 내부 스크롤한다.
+function DepartmentFilterDropdown({ value, options, onChange }) {
   const [open, setOpen] = useState(false)
   const buttonRef = useRef(null)
   const popupRef = useRef(null)
-  const [position, setPosition] = useState({ top: 0, left: 0 })
-  const selectedOption = options.find((option) => option.value === value)
-  const label = selectedOption?.label ?? placeholder
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 256, maxHeight: 288 })
+  const selected = options.find((option) => option.value === value) ?? options[0]
 
   useEffect(() => {
     if (!open) return undefined
@@ -410,10 +389,11 @@ function ScopeCombinationFilter({ value, options, onChange, placeholder }) {
     function updatePosition() {
       const rect = buttonRef.current?.getBoundingClientRect()
       if (!rect) return
-      const popupWidth = 288
       setPosition({
         top: rect.bottom + 6,
-        left: Math.max(12, Math.min(rect.right - popupWidth, window.innerWidth - popupWidth - 12)),
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.max(160, window.innerHeight - rect.bottom - 16),
       })
     }
 
@@ -434,62 +414,62 @@ function ScopeCombinationFilter({ value, options, onChange, placeholder }) {
     }
   }, [open])
 
-  function select(optionValue) {
-    onChange(value === optionValue ? '' : optionValue)
-    setOpen(false)
-  }
-
   return (
     <>
       <button
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
         className="focus-ring flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-300 bg-white px-3 text-left text-sm text-slate-700"
       >
-        <span className={`truncate ${!value ? 'text-slate-400' : ''}`}>{label}</span>
+        <span className="truncate">{selected?.label}</span>
         <ChevronDown className="size-4 shrink-0 text-slate-400" />
       </button>
 
-      {open && (
+      {open &&
         createPortal(
           <div
             ref={popupRef}
-            style={{ position: 'fixed', top: position.top, left: position.left, width: 288 }}
+            style={{ position: 'fixed', top: position.top, left: position.left, width: position.width }}
             className="z-[100] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
           >
-            <div className="max-h-44 overflow-y-auto p-2">
+            <div className="overflow-y-auto p-1" style={{ maxHeight: position.maxHeight }}>
               {options.map((option) => (
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => select(option.value)}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs ${
-                    value === option.value
+                  onClick={() => {
+                    onChange(option.value)
+                    setOpen(false)
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm ${
+                    option.value === value
                       ? 'bg-primary-50 font-semibold text-slate-800'
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <span
-                    className={`flex size-4 shrink-0 items-center justify-center rounded border ${
-                      value === option.value
-                        ? 'border-primary-500 bg-primary-500 text-white'
-                        : 'border-slate-300 bg-white'
-                    }`}
-                  >
-                    {value === option.value && <Check className="size-3" />}
-                  </span>
-                  <span className="min-w-0 whitespace-normal break-keep">{option.label}</span>
+                  <span className="truncate">{option.label}</span>
+                  {option.value === value && <Check className="size-4 shrink-0 text-primary-600" />}
                 </button>
               ))}
             </div>
-          </div>
-          ,
+          </div>,
           document.body,
-        )
-      )}
+        )}
     </>
   )
+}
+
+function departmentLabelFor(value, departments) {
+  const values = Array.isArray(value) ? value : [value]
+  if (values.includes('ALL')) return '전체 공개'
+  const names = values
+    .map((departmentId) =>
+      departments.find((department) => String(department.departmentId) === String(departmentId))?.name,
+    )
+    .filter(Boolean)
+  return names.length > 0 ? names.join(', ') : '부서별 지정'
 }
 
 function DepartmentSummary({ values, departments }) {

@@ -12,10 +12,13 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.global.auth.AuthenticatedMember;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +47,25 @@ public class DocumentCategoryService {
         return DocumentCategoryListResponse.from(
                 documentCategoryRepository.findAllByScopeKeyOrderByNameAsc(normalizedScopeKey)
         );
+    }
+
+    /**
+     * CAT-01b 문서 카테고리 전체 목록 조회입니다(S15P11B106-290).
+     * scopeKey 없이 요청하면, 로그인 관리자가 접근할 수 있는 모든 공개 범위의 카테고리를 반환한다.
+     * 최고관리자=전체, 부서관리자=담당 부서 범위만. 응답 항목에 scopeKey가 있어 프론트가 부서별로 묶는다.
+     * 카테고리 관리 화면(부서별 카드 조회)이 사용한다 — scopeKey 하나로만 조회하던 한계를 없앤다.
+     */
+    @Transactional(readOnly = true)
+    public DocumentCategoryListResponse findAccessibleCategories(AuthenticatedMember loginMember) {
+        requireAdmin(loginMember);
+        ScopeAccess scope = departmentScopePolicy.resolve(loginMember.memberId());
+        List<DocumentCategory> categories = documentCategoryRepository.findAll(Sort.by("scopeKey", "name"));
+        if (!scope.isSuperAdmin()) {
+            categories = categories.stream()
+                    .filter(category -> scope.canAccessScopeKey(category.scopeKey()))
+                    .toList();
+        }
+        return DocumentCategoryListResponse.from(categories);
     }
 
     /**

@@ -704,15 +704,18 @@ const publicFolders = [
       name: "문서 카테고리 목록 조회",
       method: "GET",
       path: "/api/v1/document-categories",
-      query: [{ key: "scopeKey", value: "D1-D2" }],
+      query: [{ key: "scopeKey", value: "D1-D2", disabled: true }],
       description: docs({
-        summary: "Wiki 공간에 속한 원본문서 카테고리 목록을 조회합니다.",
-        usage: "원본문서 업로드와 카테고리 관리 화면에서 사용합니다.",
-        queryParams: ["`scopeKey`: 카테고리를 조회할 Wiki 공간 키"],
+        summary: "원본문서 카테고리 목록을 조회합니다.",
+        usage: "원본문서 업로드(scopeKey 지정)와 카테고리 관리 화면(scopeKey 생략, 부서별 조회)에서 사용합니다.",
+        queryParams: [
+          "`scopeKey`: (선택) 특정 Wiki 공간의 카테고리만 조회. 생략하면 로그인 관리자가 접근 가능한 모든 공개 범위의 카테고리를 반환한다(S15P11B106-290). 최고관리자=전체, 부서관리자=담당 부서 범위.",
+        ],
         response: ["`items`: 카테고리 ID, 이름, 설명, scopeKey"],
         errors: [
           "`400 Bad Request`: scopeKey 형식 오류",
-          "`404 Not Found`: 존재하지 않거나 접근할 수 없는 Wiki 공간",
+          "`403 Forbidden`: scopeKey 없이 전체 조회는 관리자만 가능",
+          "`404 Not Found`: (scopeKey 지정 시) 존재하지 않거나 접근할 수 없는 Wiki 공간",
         ],
       }),
     }),

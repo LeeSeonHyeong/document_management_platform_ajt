@@ -36,7 +36,7 @@ const AVATAR_TONES = [
 
 const SYSTEM_DEPARTMENT_NAMES = new Set(['최고관리자'])
 const KEEP_CURRENT_MANAGER = '__keep_current_manager__'
-const DEPARTMENT_NAME_MAX_LENGTH = 50
+const DEPARTMENT_NAME_MAX_LENGTH = 20
 
 function DepartmentAvatar({ department, index }) {
   return (

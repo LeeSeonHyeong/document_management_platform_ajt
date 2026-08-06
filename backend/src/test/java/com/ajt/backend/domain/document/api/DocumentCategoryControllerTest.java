@@ -1,5 +1,6 @@
 package com.ajt.backend.domain.document.api;
 
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -84,6 +85,24 @@ class DocumentCategoryControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.items[0].name").value("공통"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/document-categories는 scopeKey 없이 요청하면 접근 가능한 모든 범위의 카테고리를 반환한다(S15P11B106-290)")
+    void findAllCategoriesWithoutScopeKey() throws Exception {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        String devScope = WikiScope.department(java.util.List.of(dev.getId())).scopeKey();
+        wikiScopeRepository.save(WikiScope.all());
+        wikiScopeRepository.save(WikiScope.department(java.util.List.of(dev.getId())));
+        documentCategoryRepository.save(DocumentCategory.create("ALL", "공통", null));
+        documentCategoryRepository.save(DocumentCategory.create(devScope, "개발", null));
+        Member admin = memberRepository.save(approvedAdmin(dev)); // 설정 이메일 → 최고관리자
+
+        mockMvc.perform(get("/api/v1/document-categories")
+                        .cookie(accessTokenCookie(admin)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].scopeKey", hasItem("ALL")))
+                .andExpect(jsonPath("$.items[*].scopeKey", hasItem(devScope)));
     }
 
     @Test
