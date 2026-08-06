@@ -50,6 +50,7 @@ def main() -> None:
 
     from mcp.server.fastmcp import FastMCP
 
+    from wiki_mcp.repeat_guard import guard_repeated_calls
     from wiki_mcp.telemetry import count_tool_calls, enable_query_log
     from wiki_mcp.tools import register
     from wiki_mcp.vaultfs import LocalVaultFS
@@ -81,6 +82,8 @@ def main() -> None:
     # (`_assert_runtime_can_use_the_gateway`), 이 팩토리는 push 경로 그대로 남는다.
     # 무엇이 더 필요한지는 task-7 보고서에 적혀 있다 (전달 수단 + 중단 신호 경로).
     register(mcp, _get_scope_key, lambda key: LocalVaultFS(key, args.job_id))
+    # 동일 호출·동일 결과의 연속 반복을 3회에서 끊는다 (S15P11B106-311).
+    guard_repeated_calls(mcp)
     count_tool_calls(mcp, args.tool_log)
     if args.query_log:
         enable_query_log(args.query_log)
