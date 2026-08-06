@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Upload, FileText, CalendarDays, X, AlertTriangle, Check } from 'lucide-react'
-import { Button, EmptyState, Spinner, useToast } from '@/components/ui'
+import { Button, EmptyState, useToast } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import {
   FILE_ACCEPT,
@@ -22,6 +22,7 @@ import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import { useAiJobQueue } from '../useAiJobQueue'
 import AiJobStartDialog from '../components/AiJobStartDialog'
 import AiJobProgressDialog from '../components/AiJobProgressDialog'
+import ScheduleExtractionDialog from '../components/ScheduleExtractionDialog'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
@@ -45,8 +46,7 @@ export default function DocumentListPage() {
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressJobIds, setProgressJobIds] = useState([])
   const [progressDocumentCount, setProgressDocumentCount] = useState(0)
-  // 처리 중인 일정 파일 수. 파싱·추출이 동기라 오래 걸려 화면에 따로 알린다.
-  const [scheduleUploadCount, setScheduleUploadCount] = useState(0)
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   // 문서 파일 대기 목록은 서버에서 읽는다 (S15P11B106-276). 파일을 고르는 즉시 업로드하므로
   // 새로고침해도 남아 있다.
   //
@@ -63,20 +63,31 @@ export default function DocumentListPage() {
     addDocuments,
     updateMetadata,
     removeDocuments,
+    extractingSchedules,
+    startScheduleExtraction,
+    finishScheduleExtraction,
   } = useAiJobQueue()
+  // 일정 추출 진행 상태는 셸이 들고 있다 — 문서 관리를 떠나도 유지돼야 일정 관리에서 이어 볼 수
+  // 있다(S15P11B106-287). 진행 중인 파일은 시작 대상에서 빼고 삭제도 막는다(S15P11B106-284).
+  const processingScheduleIds = new Set(extractingSchedules.map((file) => file.documentId))
+  const scheduleUploadCount = processingScheduleIds.size
   const uploadDocumentsMutation = useUploadDocuments()
   const uploadScheduleMutation = useUploadScheduleSource()
   const createAiJobMutation = useCreateAiJob()
   const deleteDocumentMutation = useDeleteDocument()
   // 모달의 「시작 중…」은 작업 생성만 기다린다. 일정 파일 전송은 모달을 닫은 뒤 진행한다 —
   // 파싱·추출이 동기라 오래 걸려서, 기다리면 화면이 붙잡힌다.
-  const isStarting = createAiJobMutation.isPending
+  const isStarting = createAiJobMutation.isPending || scheduleUploadCount > 0
   // 오버레이(queueMetadata)는 서버 문서에도 씌운다. 공개 부서만 먼저 고른 상태는 아직
   // 서버에 저장할 수 없어(카테고리와 함께 보내야 한다) 화면에만 담아 둔다.
   const withOverlay = (document) => ({ ...document, ...queueMetadata[document.documentId] })
   const scheduleDocuments = previewQueueDocuments.map(withOverlay)
   const waitingDocuments = [...pendingDocuments.map(withOverlay), ...scheduleDocuments]
-  const readyDocuments = waitingDocuments.filter(isAssigned)
+  // 전송 중인 일정 파일은 시작 대상에서 뺀다 — 버튼을 잠그긴 했지만 중복 전송의 유일한 방어선을
+  // 화면 상태 하나에 걸지 않는다.
+  const readyDocuments = waitingDocuments
+    .filter(isAssigned)
+    .filter((document) => !processingScheduleIds.has(document.documentId))
   const allAssigned = waitingDocuments.length > 0 && readyDocuments.length === waitingDocuments.length
   const unassignedCount = waitingDocuments.filter((document) => !isAssigned(document)).length
   // 업로드 카드가 개수·총합 제한을 판단할 때 쓴다.
@@ -187,6 +198,10 @@ export default function DocumentListPage() {
               onClick={async (event) => {
                 event.stopPropagation()
                 if (doc.previewOnly) {
+                  if (processingScheduleIds.has(doc.documentId)) {
+                    toast.error('일정을 추출하는 중인 파일은 지울 수 없습니다.')
+                    return
+                  }
                   removeDocuments([doc.documentId])
                   return
                 }
@@ -283,7 +298,8 @@ export default function DocumentListPage() {
 
           // 2) 일정 파일은 병렬로 보낸다. 서로 독립적인 요청이라 순차로 돌리면 파일 수만큼
           //    시간이 곱해진다(3개면 최장 9분). 실패한 파일만 대기 목록에 남긴다.
-          setScheduleUploadCount(scheduleDocuments.length)
+          startScheduleExtraction(scheduleDocuments)
+          setScheduleDialogOpen(true)
           const results = await Promise.allSettled(
             scheduleDocuments.map((document) =>
               uploadScheduleMutation
@@ -295,7 +311,7 @@ export default function DocumentListPage() {
                 .then(() => document.documentId),
             ),
           )
-          setScheduleUploadCount(0)
+          finishScheduleExtraction()
 
           const uploadedIds = results
             .filter((result) => result.status === 'fulfilled')
@@ -319,16 +335,15 @@ export default function DocumentListPage() {
         }}
       />
 
-      {scheduleUploadCount > 0 && (
-        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-700">
-          <Spinner className="size-4" />
-          <p>
-            일정 파일 {scheduleUploadCount}개에서 일정을 추출하고 있습니다. 파일에 따라 몇 분
-            걸릴 수 있습니다. 다른 메뉴로 이동해도 계속되지만, 새로고침하거나 탭을 닫으면
-            중단됩니다.
-          </p>
-        </div>
-      )}
+      <ScheduleExtractionDialog
+        open={scheduleDialogOpen}
+        files={extractingSchedules}
+        onClose={() => setScheduleDialogOpen(false)}
+        onOpenSchedules={() => {
+          setScheduleDialogOpen(false)
+          navigate('/admin/schedules')
+        }}
+      />
 
       <AiJobProgressDialog
         open={progressOpen}
