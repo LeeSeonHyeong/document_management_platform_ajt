@@ -121,7 +121,34 @@ async def test_상한에_닿으면_고장이_아니라_턴_상한으로_보고�
         scope_key="ALL", job_id="job-1", timeout=120,
     )
 
-    assert "턴 상한" in result.error
+    assert "작업 한도" in result.error
     assert "GraphRecursionError" not in result.error
     # 상한까지 부른 도구 수가 남는다 — 0 이면 상한이 아니라 모델 호출 실패다.
     assert result.tool_calls.get("guide", 0) > 0
+
+
+async def test_상한_도달_메시지가_관리자에게_다음_행동을_알려준다():
+    """「턴 상한 60회에 도달해 끝내지 못했다」는 관리자에게 아무 행동도 주지 못한다.
+
+    이 문장은 `failure_reason` 으로 관리자 화면에 그대로 뜬다. 관리자는 「턴」이 뭔지
+    모르고, 알아도 할 수 있는 게 없다. 오늘 수정(검색 루프·압축·NFC) 이후 상한에 닿는
+    현실적 원인은 **주제가 많은 문서**이므로, 실행 가능한 안내(주제별 분리 재업로드)와
+    반복 시 문의를 담는다. 진단용 표식(「작업 한도」)은 남긴다 — 로그 grep 과
+    `failure_stage_for_error` 이후의 원인 구분이 이 문구에 기대므로 완전히 빼지 않는다.
+    """
+    runtime = DeepAgentsRuntime(
+        model="anthropic:claude-sonnet-4-6",
+        credentials={"anthropic": ("test-key", "http://gms.example/anthropic")},
+        chat_model=NeverStopsModel(),
+    )
+    root = Path(tempfile.mkdtemp())
+
+    result = await runtime.arun(
+        "위키를 고쳐라", fs=ScopelessFS(), scope_id="scope-1", root=root,
+        scope_key="ALL", job_id="job-1", timeout=120,
+    )
+
+    assert "작업 한도" in result.error, "진단용 표식"
+    assert "나눠" in result.error or "분리" in result.error, "실행 가능한 안내"
+    assert "반복되면" in result.error, "결함 가능성의 탈출구"
+    assert "턴" not in result.error, "관리자가 모르는 내부 용어"

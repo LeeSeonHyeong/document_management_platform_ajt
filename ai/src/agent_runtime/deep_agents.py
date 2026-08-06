@@ -91,6 +91,45 @@ MAX_TURNS = 60
 RECURSION_LIMIT_PER_TURN = 8
 
 
+# 실패가 관리자 화면(`failure_reason`)에 닿을 때의 번역 원칙: **첫 문장은 관리자의
+# 다음 행동, 괄호 꼬리는 개발팀용 진단 표식.** 2026-08-06 에 ai_job·document 의
+# failure_reason 을 전수 조사했더니 GMS 크기벽 400 이 「Model not found」 문구 그대로
+# 5번, GraphRecursionError 원문이 8번, SDK 예외 원문이 그대로 관리자에게 나가 있었다 —
+# 전부 읽을 수 없는 말이고, 크기벽 400 은 모델 설정 오류로 오독되기까지 한다.
+_SPLIT_GUIDANCE = ("문서가 다루는 내용이 많아 정해진 작업 한도 안에 위키 반영을 "
+                   "끝내지 못했습니다. 문서를 주제별로 나눠 다시 업로드해 주세요. "
+                   "나눠서 올려도 같은 문제가 반복되면 시스템 문제일 수 있으니 "
+                   "개발팀에 알려 주세요.")
+
+
+def _admin_error_message(exc: Exception, last_stage: str) -> str:
+    """예외 1건 → 관리자가 읽고 행동할 수 있는 문장.
+
+    분류는 문구 기반이다 — GMS 는 오류를 전용 예외 타입이 아니라 400 본문 문구로만
+    구분해 주기 때문이다. 문구가 바뀌면 일반 분기로 떨어질 뿐 삼켜지지는 않는다.
+    """
+    text = str(exc)
+    if "Model not found in request" in text:
+        # GMS 요청 크기벽의 오류 문구다 (job 7 사고 기록과 대조로 확정). 문구 그대로
+        # 내보내면 모델 설정 오류로 오독된다 — 실제 처방은 「나눠라」다.
+        return ("문서가 길거나 참조할 내용이 많아 한 번에 처리할 수 있는 용량을 "
+                "넘었습니다. 문서를 주제별로 나눠 다시 업로드해 주세요. "
+                f"(요청 용량 초과, 마지막 도달 단계: {last_stage})")
+    if "credit balance" in text.lower():
+        # 관리자가 고칠 수 없는 문제 — 재시도 유도가 아니라 문의 안내가 맞다.
+        return ("AI 서비스 사용량 한도 문제로 처리가 중단되었습니다. 개발팀에 알려 "
+                f"주세요. (API 과금 한도, 마지막 도달 단계: {last_stage})")
+    if type(exc).__name__ == "GraphRecursionError":
+        # 턴 상한의 백스톱. 미들웨어(`turn_limit_middleware`)가 먼저 걸리는 것이
+        # 정상이지만, 배수 회귀로 백스톱이 먼저 걸려도 관리자 안내는 같아야 한다.
+        return _SPLIT_GUIDANCE + f" (recursion 백스톱, 마지막 도달 단계: {last_stage})"
+    # 번역표에 없는 오류 — 뭉개지 않는다. 관리자용 첫 문장 뒤에 개발팀용 원문을 남긴다.
+    # failure_reason 은 1,000자 제한이라 꼬리를 자른다.
+    return ("AI 처리 중 예상하지 못한 오류가 발생했습니다. 다시 시도해 보시고, "
+            "반복되면 개발팀에 알려 주세요. "
+            f"({type(exc).__name__}, 마지막 도달 단계: {last_stage}: {text[:300]})")
+
+
 def turn_limit_middleware():
     """위키 경로의 턴 상한. 챗봇 경로(`_run_with_tools`)와 같은 이유로 미들웨어다.
 
@@ -660,9 +699,13 @@ class DeepAgentsRuntime:
             # 아래로 내려가면 `GraphRecursionError` 때와 똑같이 뭉개진다. 그때까지 부른
             # 도구 수를 함께 낸다: 쓰기가 0건이면 검색 루프이고, 도구가 0건이면 상한이
             # 아니라 모델 호출 실패다 (2026-08-06 실측에서 그 둘을 구분할 수 없었다).
+            # 이 문장은 `failure_reason` 으로 관리자 화면에 그대로 뜬다 — 읽는 사람은
+            # 비개발자다. 「턴」은 내부 용어라 쓰지 않고, 실행 가능한 다음 행동(주제별
+            # 분리 재업로드)과 반복 시 탈출구(문의)를 준다. 「작업 한도」가 진단용
+            # 표식이다 — 로그에서 상한 도달을 grep 하는 쪽이 이 단어에 기댄다.
             return RunResult(
                 text="", tool_calls=counts, elapsed_seconds=elapsed(),
-                error=f"턴 상한 {MAX_TURNS}회에 도달해 끝내지 못했다")
+                error=_SPLIT_GUIDANCE)
         except (TimeoutError, asyncio.TimeoutError):
             # 작업 공간에 쓰인 것은 남지만 작업이 성공을 보고하지 않았으므로 백엔드가
             # 버린다 (DR-009). `run` 과 같은 규약 — 예외가 아니라 `error` 문장이다.
@@ -674,9 +717,11 @@ class DeepAgentsRuntime:
             raise
         except Exception as exc:
             last = max(counts, key=counts.get) if counts else "시작 전"
+            # 원문은 로그에 남긴다 — 관리자에게는 번역문이 나가므로 여기가 유일한 원본이다.
+            logger.warning("agent 실패 원문 — job=%s stage=%s: %r", job_id, last, exc)
             return RunResult(
                 text="", tool_calls=counts, elapsed_seconds=elapsed(),
-                error=f"{type(exc).__name__} (마지막 도달 단계: {last}): {exc}")
+                error=_admin_error_message(exc, last))
 
         messages = result.get("messages") or []
         # 구조 강제(`response_format`)가 성공하면 답변은 도구 호출 인자로 온다 —
