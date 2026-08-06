@@ -106,9 +106,9 @@ def scrub_internal_tokens(text: str) -> str:
     """내부 파일 이름·식별자만 걷어낸다. 점검 서술은 건드리지 않는다.
 
     목차 요약(`IndexEntry.summary` → `wiki.summary`)에 쓰려고 뺀 것이다. 그 값은 에이전트
-    답변이 아니라 목차 마크다운에서 파싱해 온 것이라(`api/changes.py::parse_index_entries`)
-    `sanitize_admin_reply` 경로를 지나지 않았고, 그래서 `document-32` 같은 토큰이 위키 상세
-    화면의 제목 아래까지 그대로 갔다.
+    답변이 아니라 페이지 frontmatter `description` 에서 가져온 것이라(`api/changes.py::
+    index_entries_from_pages`) `sanitize_admin_reply` 경로를 지나지 않았고, 그래서
+    `document-32` 같은 토큰이 위키 상세 화면의 제목 아래까지 그대로 갔다.
 
     **요약에는 문장 단위 제거를 걸지 않는다.** 요약은 위키 내용이라 「검증 절차 정리」 같은
     정당한 요약이 점검 서술로 오인될 수 있다 — 그 판단은 답변에만 적용한다.

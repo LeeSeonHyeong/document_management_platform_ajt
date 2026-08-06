@@ -10,23 +10,10 @@
 
 from __future__ import annotations
 
-import re
-
 from agent_runtime.reply_sanitizer import scrub_internal_tokens
 
 from .schemas import (CategoryChange, Evidence, IndexEntry, RelationChange,
                       TransformResponse, WikiChange)
-
-# 목록 줄. 링크 앞뒤에 강조(`**`)나 날짜 같은 군더더기가 붙어도 읽는다 — 실제 목차에
-# `- **[제목](주소)** — 요약` 과 `- 2026-07-27: [제목](주소) 신규 생성` 이 둘 다 나온다.
-_BULLET = re.compile(r"^\s*[-*]\s+(?P<rest>.*\[[^\]]+\]\([^)]+?\.md\).*)$")
-# 요약은 구분선(—) 뒤에만 있다. 「최근 변경」 서술을 요약으로 착각하지 않기 위한 조건이다.
-_BULLET_SUMMARY = re.compile(r"\)\s*\**\s*[-–—]\s*(?P<summary>.+)$")
-# 링크 하나. 표 칸과 목록 줄에서 같이 쓴다 — 목차를 표로 쓴 경우가 훨씬 많다
-# (저장된 측정 8건 중 7건이 표였다).
-_CELL_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+?\.md)\)")
-# 표 구분선(`|---|:--:|`). 링크가 없으니 어차피 걸리지 않지만 의도를 적어 둔다.
-_TABLE_RULE = re.compile(r"^[\s|:-]+$")
 
 # 내부 변경 종류(`vaultfs.pending_changes` 의 `type`) → `WikiChange.action` 전송값.
 # Spring `WikiTransformationApplier` 의 Wiki 변경 switch(ACTION_CREATE/UPDATE/DELETE)에
@@ -66,74 +53,52 @@ class TempRefs:
         return self._existing.get(page_key) or self._new.get(page_key)
 
 
-def _parse_bullet(line: str) -> tuple[str, str, str | None] | None:
-    """목록 줄에서 `(제목, 주소, 요약)`. 링크가 없으면 `None`."""
-    bullet = _BULLET.match(line)
-    if not bullet:
-        return None
-    rest = bullet.group("rest")
-    link = _CELL_LINK.search(rest)
-    if not link:
-        return None
-    title, target = link.groups()
-    tail = rest[link.end():]
-    summary = _BULLET_SUMMARY.match(f"){tail}")
-    return title, target, summary.group("summary") if summary else None
+async def index_entries_from_pages(fs, scope_id: str, changes: list[dict],
+                                   refs: TempRefs) -> list[IndexEntry]:
+    """이번 작업이 손댄 페이지의 요약을 나른다.
 
+    **목차 파일의 모양은 Spring 이 DB 로 그린다** (S15P11B106-280). 그래서 이 배열은
+    「목차 제안」이 아니라 **요약 제안 채널**이다. 앞 판본은 에이전트가 쓴 목차 마크다운을
+    파싱했는데, 형식이 실행마다 갈려 목차가 통째로 사라진 적이 있다(S15P11B106-165).
+    요약은 원래 페이지 자신이 frontmatter `description` 으로 갖고 있다.
 
-def _parse_table_row(line: str) -> tuple[str, str, str | None] | None:
-    """표 행에서 `(제목, 주소, 요약)`. 링크가 없으면 `None`.
+    **손대지 않은 페이지는 보내지 않는다.** Spring 은 받은 항목만 갱신하므로 기존 요약이
+    그대로 남는다. `description` 이 없는 페이지도 건너뛴다 — 빈 값을 보내면 Spring 이
+    `changeSummary(None)` 으로 기존 요약을 지운다.
 
-    링크는 첫 칸에 없다 — 실제 목차는 `| 주제 | [제목](주소) | 요약 |` 모양이다. 제목은
-    링크 글자를 쓰고(목록 형식과 같은 규칙) 요약은 링크 뒤의 링크 없는 칸이다.
+    요약은 위키 상세 화면의 **제목 바로 아래**에 그대로 뜬다(프론트 `WikiDetail.jsx`).
+    `document-32` 같은 내부 토큰이 화면까지 간 사고가 있어 `scrub_internal_tokens` 를
+    반드시 통과시킨다.
     """
-    if not line.lstrip().startswith("|") or _TABLE_RULE.match(line):
-        return None
-    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-    for position, cell in enumerate(cells):
-        match = _CELL_LINK.search(cell)
-        if not match:
-            continue
-        title, target = match.groups()
-        summary = next((later for later in cells[position + 1:]
-                        if later and not _CELL_LINK.search(later)), None)
-        return title, target, summary
-    return None
+    from wiki_mcp.tools.write import extract_frontmatter_field, parse_frontmatter
 
-
-def parse_index_entries(index_markdown: str, refs: TempRefs) -> list[IndexEntry]:
-    """에이전트가 쓴 목차 마크다운에서 구조를 뽑는다.
-
-    목록 줄과 표 행을 모두 읽는다. **형식을 지침이 못 박지 않아 실행마다 갈린다** —
-    표만 읽거나 목록만 읽으면 목차가 통째로 사라진다 (S15P11B106-165).
-
-    계약이 `indexEntries` 배열을 요구한다. 없는 페이지를 가리키는 줄은 버린다 — Spring 에
-    매달린 참조를 넘기면 반영 시점에 깨진다. 같은 페이지가 「핵심 내용」과 「최근 변경」에
-    함께 나오므로 먼저 나온 것만 남긴다.
-    """
     entries: list[IndexEntry] = []
-    seen: set[str] = set()
-    for line in index_markdown.splitlines():
-        parsed = _parse_bullet(line) or _parse_table_row(line)
-        if parsed is None:
+    for change in changes:
+        if change["type"] not in ("create", "update"):
             continue
-        title, target, summary = parsed
-        target_address = f"pages/{target.split('/')[-1]}"
-        key = _page_key(target_address)
+        key = _page_key(change["address"])
         ref = refs.ref_for(key) if key else None
-        if not ref or ref in seen:
+        if not ref:
             continue
-        seen.add(ref)
-        # 이 요약이 `wiki.summary` 가 되고, 위키 상세 화면의 **제목 바로 아래**에 뜬다
-        # (프론트 `WikiDetail.jsx`). 에이전트 답변이 아니라 목차 마크다운에서 파싱해 온
-        # 값이라 `sanitize_admin_reply` 를 지나지 않는다 — 그래서 `document-32` 같은 내부
-        # 토큰이 화면까지 그대로 갔다(실측: 위키 8·10·11·12 의 요약). 여기서 걷어낸다.
-        # 제목은 손대지 않는다. 에이전트가 지은 사람 읽는 이름이라 내부 토큰이 들어갈 일이
-        # 없고, 괜히 걸면 정당한 제목을 깎을 위험만 남는다.
-        entries.append(IndexEntry(wikiRef=ref, order=len(entries) + 1,
-                                  title=title.strip(),
-                                  summary=scrub_internal_tokens(
-                                      (summary or "").strip()) or None))
+        content = (await fs.get(scope_id, change["address"]) or {}).get("content") or ""
+        meta = parse_frontmatter(content)
+        description = (extract_frontmatter_field(meta, "description") or "").strip()
+        if not description:
+            continue
+        title = (change.get("title")
+                 or extract_frontmatter_field(meta, "title") or "").strip()
+        if not title:
+            continue
+        # 스크럽이 description 을 통째로 지울 수 있다 — `(document-32 반영)` 처럼 내부
+        # 토큰만 있는 문단은 `scrub_internal_tokens` 가 빈 문자열을 돌려준다. 빈 요약을
+        # 보내면 Spring `Wiki.changeSummary("")` 가 `null` 과 같이 취급돼 기존 요약을
+        # 지운다 — 원문(스크럽 전 텍스트)으로 되돌리면 지우려던 내부 토큰이 그대로 새어
+        # 나가므로 이 항목은 아예 건너뛴다.
+        summary = scrub_internal_tokens(description)
+        if not summary:
+            continue
+        entries.append(IndexEntry(wikiRef=ref, order=len(entries) + 1, title=title,
+                                  summary=summary))
     return entries
 
 
@@ -204,7 +169,7 @@ async def build_response(fs, scope_id: str, *, summary: str,
     for change in changes:
         key = _page_key(change["address"])
         if key is None:
-            continue                      # index.md 는 indexEntries 로 나간다
+            continue                      # index.md 는 wikiChanges 대상이 아니다
         ref = refs.ref_for(key)
         is_new = not change.get("wikiId")
         evidence = [Evidence(**e) for e in change.get("evidence") or []]
@@ -247,13 +212,12 @@ async def build_response(fs, scope_id: str, *, summary: str,
                 relations.append(RelationChange(action=action, type="wiki_wiki",
                                                 sourceWikiRef=ref, targetWikiRef=target))
 
-    index_row = await fs.get(scope_id, "index.md")
     return TransformResponse(
         summary=summary,
         categoryChanges=categories.changes(),
         wikiChanges=wiki_changes,
         relationChanges=_dedupe(relations),
-        indexEntries=parse_index_entries((index_row or {}).get("content") or "", refs),
+        indexEntries=await index_entries_from_pages(fs, scope_id, changes, refs),
     )
 
 

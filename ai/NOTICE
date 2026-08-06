@@ -20,6 +20,9 @@ Substantive modifications made by this project:
     HTTP transport, and `add_source_from_url`.
   * Highlights/annotations, courses, image and spreadsheet reading removed.
   * `overview.md` renamed `index.md` to match `wiki_scope.index_path`.
+  * The index is no longer the agent's responsibility: this project has a
+    DB and a scope-listing endpoint that upstream (filesystem-only) did not
+    have, so Spring renders the index instead of the agent maintaining it.
   * Wiki page directories map to `wiki_category`; `category` added to the
     required frontmatter because `wiki.wiki_category_id` is NOT NULL.
   * Cross-page markdown links are permitted only within one scope. A link

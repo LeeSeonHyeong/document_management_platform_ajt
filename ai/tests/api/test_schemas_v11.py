@@ -104,8 +104,15 @@ def test_edit_request_rejects_pushed_context():
 
 
 def test_edit_request_minimal_payload_is_valid():
+    """최소 필수 집합을 못 박는다. 새 필수 필드가 생기면 여기서 잡힌다.
+
+    `adminInstructionDocumentId` 가 그렇게 잡혔다 — 관리자 지시를 원본문서로 승격하는
+    변경(S15P11B106-267 계열)이 계약에 그 필드를 **필수 문자열**로 넣었고, 스키마는 따라갔는데
+    이 테스트가 안 따라와 실패로 남아 있었다. 계약이 정본이므로 여기를 맞춘다.
+    """
     req = EditRequest(wikiId="9", scopeKey="D1", instruction="요약을 고쳐라",
-                      wikiCapability="c", scopeVersion=47)
+                      wikiCapability="c", scopeVersion=47,
+                      adminInstructionDocumentId="817")
     assert req.chatHistory == []
 
 

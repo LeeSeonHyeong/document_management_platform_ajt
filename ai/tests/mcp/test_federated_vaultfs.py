@@ -115,8 +115,14 @@ async def test_hydration_fills_catalog_without_bodies(federated):
 
     assert "pages/a3f2c1d4.md" in addresses
     assert "pages/b7e1f2a9.md" in addresses
-    assert INDEX_ADDRESS in addresses
     assert client.body_fetches == 0
+
+
+async def test_hydration_does_not_bring_the_index_into_the_vault(federated):
+    """목차는 Spring 이 DB 로 그린다 (S15P11B106-280). 올릴 이유가 없고, 올리면
+    에이전트가 그것을 고치려 들다 dangling-link 로 잡을 죽인다."""
+    fs, scope_id, _ = federated
+    assert await fs.get(scope_id, INDEX_ADDRESS) is None
 
 
 async def test_wiki_path_becomes_the_address(federated):
@@ -240,8 +246,7 @@ async def test_backlinks_append_remote_rows(tmp_path):
                                            client=client)
     fs = FederatedVaultFS("D1-D2", "job-1", client)
     try:
-        # 본문을 하나 당기면 그때 참조 그래프가 만들어진다 — 목차가 이 페이지를
-        # 링크한다는 사실이 내부 그래프에 들어온다.
+        # 본문을 당겨 둔다 — 역링크 조회가 body 지연 적재와 부딴이 없는지 함께 본다.
         await fs.get(scope_id, "pages/b7e1f2a9.md")
         rows = await fs.get_backlinks(scope_id, "pages/a3f2c1d4.md")
         # 실제 소비자를 태운다 — read 가 페이지마다 부르는 경로다. 원격 행에 키가
@@ -253,8 +258,7 @@ async def test_backlinks_append_remote_rows(tmp_path):
     # 페이지별 relations 는 이제 부르지 않는다 (S15P11B106-175).
     assert client.relations_calls == 0
     addresses = {row["address"] for row in rows}
-    # 내부 그래프(목차)가 남아 있고, 원격이 준 역링크가 덧붙는다.
-    assert INDEX_ADDRESS in addresses
+    # 원격이 준 역링크가 덧붙는다. 목차는 이제 카탈로그에 없으므로(S15P11B106-280) 여기 안 낀다.
     assert "pages/b7e1f2a9.md" in addresses
 
     # **행을 실제로 소비해 본다.** 소비자들이 대괄호로 읽는 키가 빠지면 KeyError 가
@@ -262,9 +266,9 @@ async def test_backlinks_append_remote_rows(tmp_path):
     # (tools/references.py:142-143 · search.py:175-176 · write.py:331-332).
     for row in rows:
         assert row["reference_type"] in ("cites", "links_to")
-        assert row["kind"] in ("page", "index")
+        assert row["kind"] == "page"
         _ = row["title"], row["address"]
-    assert [r for r in rows if r["kind"] in ("page", "index")]
+    assert [r for r in rows if r["kind"] == "page"]
     assert "pages/b7e1f2a9.md" in summary
 
 
@@ -469,19 +473,6 @@ async def test_staged_sources_are_still_indexed_locally(federated):
 
     rows = await LocalVaultFS.search_chunks(fs, scope_id, "출장비", 10, None)
     assert [r["address"] for r in rows] == ["sources/77/parsed/content.md"]
-
-
-async def test_hydration_records_the_index_links(federated):
-    """목차의 링크는 하이드레이션에서 그래프에 들어간다.
-
-    예전에는 스코프 전체를 훑는 재동기화에 딸려 왔다. 그것을 걷어냈으므로 (설계 4.1)
-    명시적으로 넣지 않으면 목차 링크가 조용히 사라진다.
-    """
-    fs, scope_id, _ = federated
-
-    forward = await fs.get_forward_references(scope_id, INDEX_ADDRESS)
-
-    assert [row["address"] for row in forward] == ["pages/a3f2c1d4.md"]
 
 
 async def test_resolve_address_never_loads_a_body(tmp_path):
