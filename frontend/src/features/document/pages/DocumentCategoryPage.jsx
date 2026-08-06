@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Check, ChevronDown, ChevronLeft, Info, Plus } from 'lucide-react'
 import { Button, Modal, useToast } from '@/components/ui'
+import { useAuth } from '@/hooks/useAuth'
 import { useDepartments } from '@/features/department/useDepartments'
 import { sanitizePlainName } from '@/shared/lib/sanitizePlainName'
 import {
@@ -31,6 +32,10 @@ const CATEGORY_NAME_MAX_LENGTH = 50
 // 기본 공개 부서는 아직 카테고리 API 계약에 없는 화면용 값이다.
 export default function DocumentCategoryPage() {
   const toast = useToast()
+  // 부서관리자는 담당 부서가 포함된 범위만 관리한다. 전사 카테고리(전체 공개)는 모든 부서가
+  // 함께 쓰는 분류라 최고관리자만 만든다(S15P11B106-289).
+  const { user } = useAuth()
+  const managedDepartmentId = user?.isSuperAdmin ? null : (user?.managedDepartmentId ?? null)
   const [newName, setNewName] = useState('')
   const [newDepartments, setNewDepartments] = useState([])
   const [scopeFilter, setScopeFilter] = useState('')
@@ -209,6 +214,10 @@ export default function DocumentCategoryPage() {
               departments={departments}
               onChange={setNewDepartments}
               placeholder="공개 부서 선택"
+              // 부서관리자는 담당 부서가 포함된 범위만 만들 수 있고, 전사 카테고리(전체 공개)는
+              // 최고관리자만 만든다(S15P11B106-289).
+              requiredDepartmentId={managedDepartmentId}
+              allowAllScope={!managedDepartmentId}
             />
           </div>
           <Button

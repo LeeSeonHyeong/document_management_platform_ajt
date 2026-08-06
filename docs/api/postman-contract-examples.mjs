@@ -1,4 +1,4 @@
-export const contractVersion = "1.15.0";
+export const contractVersion = "1.15.1";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -72,7 +72,9 @@ const contracts = {
       httpStatus: 200,
       body: {
         expiresIn: 3600,
-        user: { ...user, isSuperAdmin: false },
+        // managedDepartmentId: 장으로 지정된 부서 ID. 부서장이 아니면 null이며 소속 부서와
+        // 다를 수 있다(S15P11B106-289). 화면이 공개 범위 선택을 제한할 때 쓴다.
+        user: { ...user, isSuperAdmin: false, managedDepartmentId: null },
       },
       headers: [
         {
@@ -166,6 +168,7 @@ const contracts = {
       body: {
         ...user,
         isSuperAdmin: false,
+        managedDepartmentId: null,
         createdAt: "2026-07-01T02:00:00Z",
         updatedAt: "2026-07-27T09:00:00Z",
       },

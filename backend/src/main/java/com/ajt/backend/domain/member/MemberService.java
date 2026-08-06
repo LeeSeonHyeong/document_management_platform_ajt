@@ -76,7 +76,12 @@ public class MemberService {
     @Transactional(readOnly = true)
     public UserResponse findMe(AuthenticatedMember loginMember) {
         Member member = findMember(loginMember.memberId());
-        return UserResponse.from(member, superAdminChecker.isSuperAdmin(member));
+        // 담당 부서를 함께 내려준다(S15P11B106-289). 화면이 공개 범위 선택을 제한할 때 쓴다 —
+        // manager_id 는 UNIQUE 라 담당 부서는 최대 1개다.
+        Long managedDepartmentId = departmentRepository.findByManager_Id(member.getId())
+                .map(Department::getId)
+                .orElse(null);
+        return UserResponse.from(member, superAdminChecker.isSuperAdmin(member), managedDepartmentId);
     }
 
     /**

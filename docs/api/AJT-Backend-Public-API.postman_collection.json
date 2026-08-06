@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.15.0이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.15.1이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -47,7 +47,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.15.0",
+      "value": "1.15.1",
       "type": "string"
     },
     {
@@ -186,7 +186,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"userId\": \"1\",\n  \"email\": \"employee@ajt.com\",\n  \"name\": \"홍길동\",\n  \"employeeNo\": \"AJT-2026-0001\",\n  \"role\": \"employee\",\n  \"department\": {\n    \"departmentId\": \"1\",\n    \"name\": \"개발부\"\n  },\n  \"signupStatus\": \"approved\",\n  \"accountStatus\": \"active\",\n  \"isSuperAdmin\": false,\n  \"createdAt\": \"2026-07-01T02:00:00Z\",\n  \"updatedAt\": \"2026-07-27T09:00:00Z\"\n}"
+              "body": "{\n  \"userId\": \"1\",\n  \"email\": \"employee@ajt.com\",\n  \"name\": \"홍길동\",\n  \"employeeNo\": \"AJT-2026-0001\",\n  \"role\": \"employee\",\n  \"department\": {\n    \"departmentId\": \"1\",\n    \"name\": \"개발부\"\n  },\n  \"signupStatus\": \"approved\",\n  \"accountStatus\": \"active\",\n  \"isSuperAdmin\": false,\n  \"managedDepartmentId\": null,\n  \"createdAt\": \"2026-07-01T02:00:00Z\",\n  \"updatedAt\": \"2026-07-27T09:00:00Z\"\n}"
             },
             {
               "name": "401 Unauthorized - 대표 오류",
@@ -6150,7 +6150,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"expiresIn\": 3600,\n  \"user\": {\n    \"userId\": \"1\",\n    \"email\": \"employee@ajt.com\",\n    \"name\": \"홍길동\",\n    \"employeeNo\": \"AJT-2026-0001\",\n    \"role\": \"employee\",\n    \"department\": {\n      \"departmentId\": \"1\",\n      \"name\": \"개발부\"\n    },\n    \"signupStatus\": \"approved\",\n    \"accountStatus\": \"active\",\n    \"isSuperAdmin\": false\n  }\n}"
+              "body": "{\n  \"expiresIn\": 3600,\n  \"user\": {\n    \"userId\": \"1\",\n    \"email\": \"employee@ajt.com\",\n    \"name\": \"홍길동\",\n    \"employeeNo\": \"AJT-2026-0001\",\n    \"role\": \"employee\",\n    \"department\": {\n      \"departmentId\": \"1\",\n      \"name\": \"개발부\"\n    },\n    \"signupStatus\": \"approved\",\n    \"accountStatus\": \"active\",\n    \"isSuperAdmin\": false,\n    \"managedDepartmentId\": null\n  }\n}"
             },
             {
               "name": "401 Unauthorized - 대표 오류",
