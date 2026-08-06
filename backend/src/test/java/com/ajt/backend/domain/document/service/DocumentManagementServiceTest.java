@@ -42,6 +42,7 @@ import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.ScopeAccess;
+import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -79,6 +80,7 @@ class DocumentManagementServiceTest {
     private final AiJobFailureMarker aiJobFailureMarker = mock(AiJobFailureMarker.class);
     private final DocumentFailureMarker documentFailureMarker = mock(DocumentFailureMarker.class);
     private final DepartmentScopePolicy departmentScopePolicy = superAdminScopePolicy();
+    private final WikiRepository wikiRepository = mock(WikiRepository.class);
     private final DocumentManagementService service = new DocumentManagementService(
             currentMemberProvider,
             documentRepository,
@@ -91,7 +93,8 @@ class DocumentManagementServiceTest {
             departmentRepository,
             aiJobFailureMarker,
             documentFailureMarker,
-            departmentScopePolicy
+            departmentScopePolicy,
+            wikiRepository
     );
 
     // 기존 테스트의 관리자는 전체 접근(최고관리자)으로 취급해 기존 동작을 유지한다(S15P11B106-199).
@@ -846,6 +849,63 @@ class DocumentManagementServiceTest {
         // 관리자는 접근범위 계산이 필요 없으므로 부서/공개범위 조회를 하지 않는다.
         verify(memberRepository, never()).findById(anyLong());
         verify(wikiScopeRepository, never()).findByVisibilityType(any());
+    }
+
+    @Test
+    @DisplayName("상세는 이 문서를 근거로 삼는 Wiki 를 제목과 함께 준다")
+    void detailExposesRelatedWikis() throws Exception {
+        // 예전에는 이 목록을 비워 둬서 화면이 언제나 「이 문서로 반영된 위키가 없습니다」였다.
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/15/parsed.md", List.of());
+        document.completeProcessing(List.of(101L, 102L));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(7L)).willReturn(Optional.of(category(7L, "취업규칙")));
+        // 목 생성을 stubbing 안에서 하면 Mockito 가 중첩 stubbing 으로 보고 막는다. 먼저 만든다.
+        var firstWiki = wiki(101L, "연차휴가 사용 절차");
+        var secondWiki = wiki(102L, "복지 포인트 안내");
+        given(wikiRepository.findAllById(List.of(101L, 102L)))
+                .willReturn(List.of(firstWiki, secondWiki));
+
+        DocumentDetailResponse response = service.getDocument(15L);
+
+        // 순서는 문서에 저장된 참조 순서를 지킨다.
+        assertThat(response.relatedWikis())
+                .extracting(DocumentDetailResponse.RelatedWikiResponse::wikiId,
+                        DocumentDetailResponse.RelatedWikiResponse::title)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("101", "연차휴가 사용 절차"),
+                        org.assertj.core.groups.Tuple.tuple("102", "복지 포인트 안내"));
+    }
+
+    @Test
+    @DisplayName("지워진 Wiki 를 가리키는 참조는 상세에서 건너뛴다")
+    void detailSkipsMissingRelatedWikis() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/15/parsed.md", List.of());
+        document.completeProcessing(List.of(101L, 999L));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(7L)).willReturn(Optional.of(category(7L, "취업규칙")));
+        var survivingWiki = wiki(101L, "연차휴가 사용 절차");
+        given(wikiRepository.findAllById(List.of(101L, 999L))).willReturn(List.of(survivingWiki));
+
+        DocumentDetailResponse response = service.getDocument(15L);
+
+        assertThat(response.relatedWikis()).hasSize(1);
+        assertThat(response.relatedWikis().get(0).wikiId()).isEqualTo("101");
+    }
+
+    private com.ajt.backend.domain.wiki.model.Wiki wiki(long id, String title) {
+        com.ajt.backend.domain.wiki.model.Wiki wiki =
+                mock(com.ajt.backend.domain.wiki.model.Wiki.class);
+        given(wiki.id()).willReturn(id);
+        given(wiki.title()).willReturn(title);
+        return wiki;
     }
 
     @Test
