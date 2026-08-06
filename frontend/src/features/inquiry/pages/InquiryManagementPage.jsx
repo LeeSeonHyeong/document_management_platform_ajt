@@ -29,7 +29,7 @@ const PRIORITY_ORDER = {
 
 function PriorityBadge({ priority }) {
   const meta = PRIORITY_META[priority] ?? PRIORITY_META[INQUIRY_PRIORITY.NORMAL]
-  return <span className={`rounded-lg px-3 py-1 text-xs font-semibold ${meta.className}`}>{meta.label}</span>
+  return <span className={`shrink-0 rounded-lg px-3 py-1 text-xs font-semibold ${meta.className}`}>{meta.label}</span>
 }
 
 function StatusBadge({ status }) {
@@ -162,27 +162,32 @@ export default function InquiryManagementPage() {
       )
     : departmentInquiries
 
+  // width 를 주면 표가 table-fixed 로 그려진다 — 상태 카드를 바꿔도(전체 ↔ 미처리 ↔ 처리 완료)
+  // 남은 행의 제목·담당자 길이에 따라 열이 밀리지 않는다.
   const columns = [
     {
       key: 'content',
       header: '문의 내용',
+      width: '38%',
       render: (inquiry) => (
-        <div className="flex items-center gap-3">
+        // 제목·요청자가 길어도 두 줄을 넘기지 않도록 각각 한 줄로 줄인다(전체 값은 title).
+        <div className="flex min-w-0 items-center gap-3">
           <PriorityBadge priority={inquiry.priority} />
-          <div>
-            <p className="font-semibold text-slate-800">{inquiry.title}</p>
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-slate-800" title={inquiry.title}>{inquiry.title}</p>
             {/* TODO(API): 문의 목록 계약의 author에는 department가 없어 요청자 부서는 '-'로 표시된다. */}
-            <p className="mt-0.5 text-xs text-slate-400">{inquiry.author?.name} · {inquiry.author?.department?.name ?? '-'}</p>
+            <p className="mt-0.5 truncate text-xs text-slate-400">{inquiry.author?.name} · {inquiry.author?.department?.name ?? '-'}</p>
           </div>
         </div>
       ),
     },
-    { key: 'assignee', header: '담당자', render: (inquiry) => `${inquiry.assignee?.name} (${inquiry.assignee?.department?.name ?? '-'})` },
-    { key: 'status', header: '상태', render: (inquiry) => <StatusBadge status={inquiry.status} /> },
-    { key: 'createdAt', header: '접수 시간', render: (inquiry) => relativeTime(inquiry.createdAt) },
+    { key: 'assignee', header: '담당자', width: '20%', render: (inquiry) => `${inquiry.assignee?.name} (${inquiry.assignee?.department?.name ?? '-'})` },
+    { key: 'status', header: '상태', width: '14%', render: (inquiry) => <StatusBadge status={inquiry.status} /> },
+    { key: 'createdAt', header: '접수 시간', width: '14%', render: (inquiry) => relativeTime(inquiry.createdAt) },
     {
       key: 'manage',
       header: '관리',
+      width: '14%',
       render: (inquiry) => (
         <Button size="sm" variant="outline" onClick={() => navigate(`/admin/inquiries/${inquiry.inquiryId}`)}>상세</Button>
       ),

@@ -2,7 +2,8 @@
 // 마크업과 스크롤 동작을 따로 두면 목차가 여러 자리에 놓일 때 번호·들여쓰기가 갈라진다.
 
 // 목차 클릭 → 본문의 같은 id 헤딩으로 스크롤. 본문이 별도 스크롤 컨테이너일 수도 있어
-// DOM id 로 찾아 scrollIntoView 한다. 본문 헤딩의 scroll-mt-* 가 상단 여백을 준다.
+// DOM id 로 찾아 scrollIntoView 한다. 헤딩이 sticky 바 뒤로 숨지 않게 하는 상단 여백은
+// 본문 헤딩의 scroll-margin-top(= `--wiki-anchor-offset`, WikiArticleBar 가 실측해 넣는다)이 맡는다.
 function scrollToHeading(id) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }

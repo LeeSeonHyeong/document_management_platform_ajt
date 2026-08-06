@@ -113,9 +113,18 @@ export default function DepartmentManagementPage() {
     0,
   )
 
+  // 부서를 추가·삭제하면 부서에서 파생되는 캐시도 같이 버려야 한다.
+  // 위키 사이드바의 「부서」 공간 목록(wiki-spaces)과 그 아래 카테고리는 `departments` 접두 밖에
+  // 있는 별도 키라, 예전에는 부서를 지우고 위키로 넘어가도 삭제 전 개수가 그대로 남아 있었다
+  // (staleTime 30초 안에는 재요청도 안 하므로 새로고침 말고는 갱신될 길이 없었다).
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: qk.departments.all })
-    await queryClient.invalidateQueries({ queryKey: qk.users.all })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: qk.departments.all }),
+      queryClient.invalidateQueries({ queryKey: qk.users.all }),
+      queryClient.invalidateQueries({ queryKey: qk.wikis.spaces }),
+      queryClient.invalidateQueries({ queryKey: qk.wikis.categoriesAll }),
+      queryClient.invalidateQueries({ queryKey: qk.wikis.listAll }),
+    ])
   }
 
   const createMutation = useMutation({

@@ -121,22 +121,29 @@ export default function EmployeeListPage() {
   const inactiveCount = countQueries[2].data?.totalCount ?? 0
   const totalCount = adminCount + employeeCount
 
+  // width 를 주면 표가 table-fixed 로 그려진다 — 카드 필터를 바꿔도(전체 직원 ↔ 관리자)
+  // 남은 행의 이메일·부서 길이에 따라 열이 밀리지 않는다.
+  // '관리' 열이 없는 부서관리자 화면에서는 남는 12% 를 브라우저가 나눠 채운다.
   const columns = [
     {
       key: 'name',
       header: '이름',
+      width: '20%',
       render: (employee) => (
-        <div className="flex items-center gap-3">
+        // 긴 이름이 세 줄로 늘어나 행 높이를 밀지 않도록 한 줄로 줄이고 '…'로 끝낸다.
+        <div className="flex min-w-0 items-center gap-3">
           <EmployeeAvatar employee={employee} />
-          <span className="font-semibold text-slate-800">{employee.name}</span>
+          <span className="truncate font-semibold text-slate-800" title={employee.name}>
+            {employee.name}
+          </span>
         </div>
       ),
     },
-    { key: 'employeeNo', header: '사번' },
-    { key: 'email', header: '이메일' },
-    { key: 'department', header: '부서', render: (employee) => employee.department?.name ?? '-' },
-    { key: 'role', header: '역할', render: (employee) => <RoleBadge role={employee.role} /> },
-    { key: 'accountStatus', header: '상태', render: (employee) => <AccountBadge status={employee.accountStatus} /> },
+    { key: 'employeeNo', header: '사번', width: '14%' },
+    { key: 'email', header: '이메일', width: '22%' },
+    { key: 'department', header: '부서', width: '12%', render: (employee) => employee.department?.name ?? '-' },
+    { key: 'role', header: '역할', width: '10%', render: (employee) => <RoleBadge role={employee.role} /> },
+    { key: 'accountStatus', header: '상태', width: '10%', render: (employee) => <AccountBadge status={employee.accountStatus} /> },
     // 상세보기(상세·수정 화면 진입)는 최고관리자 전용이다(S15P11B106-222).
     // 부서관리자는 목록만 볼 수 있으므로 '관리' 열 자체를 숨긴다.
     ...(canManageUsers
@@ -144,6 +151,7 @@ export default function EmployeeListPage() {
           {
             key: 'manage',
             header: '관리',
+            width: '12%',
             render: (employee) => (
               <Button
                 size="sm"

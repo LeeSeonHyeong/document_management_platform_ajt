@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Download, ListOrdered, PanelLeft, Sparkles } from 'lucide-react'
 import { useToast } from '@/components/ui'
 import { fetchWikiFile } from '../api'
@@ -28,12 +28,32 @@ export default function WikiArticleBar({
 }) {
   const toast = useToast()
   const tocRef = useRef(null)
+  const barRef = useRef(null)
   const [downloading, setDownloading] = useState(false)
   const { data: wiki } = useWiki(wikiId)
   const headings = useMemo(
     () => numberHeadings(extractHeadings(wiki?.contentMarkdown)),
     [wiki?.contentMarkdown],
   )
+
+  // 이 바는 sticky 라 본문 맨 위를 늘 덮고 있다. 목차에서 절을 고르면 그 헤딩이 **바 뒤에**
+  // 멈춰서 제목은 안 보이고 본문 문단부터 보였다 — 어느 절로 왔는지 알 수 없었다.
+  // 본문 헤딩(WikiMarkdown)이 쓰는 scroll-margin-top 을 바의 **실제 높이**로 넘긴다.
+  // 상수로 박으면 바에 줄이 늘거나 여백이 바뀔 때 다시 어긋나므로 재서 쓴다.
+  useEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+    // +8px: 헤딩이 바 밑변에 딱 붙으면 잘린 것처럼 보인다.
+    const apply = () =>
+      document.documentElement.style.setProperty('--wiki-anchor-offset', `${bar.offsetHeight + 8}px`)
+    apply()
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(apply)
+    observer?.observe(bar)
+    return () => {
+      observer?.disconnect()
+      document.documentElement.style.removeProperty('--wiki-anchor-offset')
+    }
+  }, [wiki])
 
   // 다운로드는 위키가 있으면 항상 뜨는 기능이라, 이 바를 그릴지 말지는 이제 wiki 로딩
   // 여부로 정한다(예전엔 문서 목록·목차·AI 편집 중 하나라도 있어야 그렸다).
@@ -61,7 +81,10 @@ export default function WikiArticleBar({
   }
 
   return (
-    <div className="sticky top-0 z-20 -mx-5 mb-4 flex items-center gap-2 border-b border-slate-200 bg-white/95 px-5 pb-3 pt-4 backdrop-blur sm:-mx-6 sm:px-6">
+    <div
+      ref={barRef}
+      className="sticky top-0 z-20 -mx-5 mb-4 flex items-center gap-2 border-b border-slate-200 bg-white/95 px-5 pb-3 pt-4 backdrop-blur sm:-mx-6 sm:px-6"
+    >
       {onOpenTree && (
         <BarButton
           icon={PanelLeft}

@@ -90,15 +90,18 @@ export default function SignupRequestsPage() {
   const totalPages = status === SIGNUP_STATUS.APPROVED
     ? Math.max(1, Math.ceil(statusCounts[SIGNUP_STATUS.APPROVED] / PAGE_SIZE))
     : query.data?.totalPages ?? 1
+  // width 를 주면 표가 table-fixed 로 그려진다 — 상태 카드를 바꿔도(대기 ↔ 승인 완료) 열이 밀리지 않는다.
+  // 특히 '관리' 열은 대기일 때 버튼 2개, 그 외에는 배지 1개라 너비 차이가 가장 크다.
   const columns = [
-    { key: 'name', header: '이름', render: (request) => <div className="flex items-center gap-3"><EmployeeAvatar employee={request} /><span className="font-semibold">{request.name}</span></div> },
-    { key: 'email', header: '이메일' },
-    { key: 'department', header: '신청 부서', render: (request) => request.department?.name ?? '-' },
-    { key: 'employeeNo', header: '사번', render: (request) => request.employeeNo ?? '-' },
-    { key: 'requestedAt', header: '신청일시', render: (request) => formatRequestedAt(request.requestedAt) },
+    { key: 'name', header: '이름', width: '20%', render: (request) => <div className="flex min-w-0 items-center gap-3"><EmployeeAvatar employee={request} /><span className="truncate font-semibold" title={request.name}>{request.name}</span></div> },
+    { key: 'email', header: '이메일', width: '22%' },
+    { key: 'department', header: '신청 부서', width: '14%', render: (request) => request.department?.name ?? '-' },
+    { key: 'employeeNo', header: '사번', width: '12%', render: (request) => request.employeeNo ?? '-' },
+    { key: 'requestedAt', header: '신청일시', width: '16%', render: (request) => formatRequestedAt(request.requestedAt) },
     {
       key: 'manage',
       header: '관리',
+      width: '16%',
       render: (request) => request.signupStatus === SIGNUP_STATUS.PENDING ? (
         <div className="flex gap-2">
           <Button size="sm" onClick={() => action.mutate({ userId: request.userId, type: 'approve' })}>승인</Button>

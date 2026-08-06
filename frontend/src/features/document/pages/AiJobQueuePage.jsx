@@ -46,14 +46,17 @@ export default function AiJobQueuePage() {
 
   const allAssigned = results.length > 0 && results.every((r) => Boolean(docById[r.documentId]?.visibilityType))
 
+  // width 를 주면 표가 table-fixed 로 그려진다 — 문서마다 파일명 길이가 달라도 열이 흔들리지 않고,
+  // 긴 파일명은 줄바꿈 대신 '…'로 줄어든다(전체 이름은 마우스를 올리면 보인다).
   const columns = [
-    { key: 'order', header: '순서', render: (r) => r.order },
-    { key: 'fileName', header: '파일명', render: (r) => docById[r.documentId]?.originalFileName ?? '…' },
-    { key: 'category', header: '카테고리', render: (r) => docById[r.documentId]?.documentCategoryName ?? '-' },
-    { key: 'visibility', header: '공개 범위', render: (r) => <VisibilityCell doc={docById[r.documentId]} /> },
+    { key: 'order', header: '순서', width: '8%', render: (r) => r.order },
+    { key: 'fileName', header: '파일명', width: '34%', render: (r) => docById[r.documentId]?.originalFileName ?? '…' },
+    { key: 'category', header: '카테고리', width: '16%', render: (r) => docById[r.documentId]?.documentCategoryName ?? '-' },
+    { key: 'visibility', header: '공개 범위', width: '20%', render: (r) => <VisibilityCell doc={docById[r.documentId]} /> },
     {
       key: 'actions',
       header: '',
+      width: '22%',
       align: 'right',
       render: (r) => (
         <Button
