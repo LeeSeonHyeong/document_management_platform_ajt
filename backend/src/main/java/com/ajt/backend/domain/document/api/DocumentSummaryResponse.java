@@ -24,6 +24,10 @@ public record DocumentSummaryResponse(
         List<DocumentDepartmentResponse> departments,
         String status,
         String failureReason,
+        // 이 문서를 근거로 삼고 있는 Wiki 수입니다(S15P11B106-306).
+        // 「지금 Wiki 의 근거인가」를 목록이 판단하는 값이다 — 삭제·교체가 실패한 문서는 status 가
+        // FAILED 여도 근거로는 그대로 남아 있어서, 상태만으로는 감출지 보일지 정할 수 없다.
+        int wikiCount,
         DocumentUploaderResponse uploadedBy,
         Instant uploadedAt
 ) {
@@ -52,6 +56,7 @@ public record DocumentSummaryResponse(
                 departments,
                 document.status().name().toLowerCase(),
                 document.failureReason(),
+                document.documentWikiRefs().size(),
                 uploadedBy,
                 document.createdAt()
         );
