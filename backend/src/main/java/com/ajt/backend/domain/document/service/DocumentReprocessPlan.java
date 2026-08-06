@@ -1,6 +1,7 @@
 package com.ajt.backend.domain.document.service;
 
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -63,6 +64,20 @@ public record DocumentReprocessPlan(
 
     public WikiDocumentChangeType changeTypeOf(long documentId) {
         return changeTypes.getOrDefault(documentId, WikiDocumentChangeType.DOCUMENT_ADDED);
+    }
+
+    /**
+     * {@code ai_job.document_change_types} 에 남길 형태입니다(S15P11B106-304).
+     *
+     * <p>계획은 실행 시점 메모리에만 있어 작업이 끝나면 사라진다. 재처리는 그 뒤에 눌리므로,
+     * 무엇을 하려던 작업이었는지는 작업 행에 남아 있어야 한다. 옛 파싱 본문은 남기지 않는다 —
+     * 문서가 살아 있으면 파일에서 다시 읽을 수 있고, 본문을 DB 에 복사해 둘 이유가 없다.
+     */
+    public Map<String, String> asStoredChangeTypes() {
+        Map<String, String> stored = new LinkedHashMap<>();
+        changeTypes.forEach((documentId, changeType) ->
+                stored.put(String.valueOf(documentId), changeType.value()));
+        return stored;
     }
 
     /** 걷어내기·교체 대상이 아니면 {@code null}입니다. */
