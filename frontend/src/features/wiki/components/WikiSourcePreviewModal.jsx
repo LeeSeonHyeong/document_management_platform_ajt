@@ -94,6 +94,8 @@ export default function WikiSourcePreviewModal({ open, onClose, evidenceDocument
       ) : (
         <div className="thin-scroll max-h-[65vh] overflow-y-auto rounded-xl bg-slate-50 p-5">
           <DocumentPreview
+            // 이 화면 자체가 모달이라 전체보기를 끈다 — 모달 위에 모달이 겹친다.
+            expandable={false}
             documentId={documentId}
             fileName={fileName}
             mimeType={doc?.mimeType}
