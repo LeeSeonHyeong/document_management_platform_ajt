@@ -1,4 +1,4 @@
-export const contractVersion = "1.15.1";
+export const contractVersion = "1.15.2";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -437,6 +437,9 @@ const contracts = {
       body: page([
         {
           wikiId: "101",
+          // 본문 파일명(wiki_path 마지막 세그먼트, 확장자 제외). 본문 내부 링크
+          // `pages/{pageKey}.md` 를 wikiId 로 되돌리는 열쇠다. 구형 Wiki 는 wikiId 와 같다.
+          pageKey: "a3f2c1d4",
           title: "휴가 규정",
           summary: "연차와 반차 사용 기준",
           wikiCategoryId: "9",
@@ -471,7 +474,14 @@ const contracts = {
             downloadUrl: "/api/v1/documents/15/file",
           },
         ],
-        relatedWikis: [],
+        relatedWikis: [
+          {
+            wikiId: "108",
+            // 목록의 pageKey 와 같은 의미 — 본문 내부 링크를 wikiId 로 되돌린다.
+            pageKey: "b6d1e8f3",
+            title: "근태 관리",
+          },
+        ],
         updatedAt: timestamp,
       },
     },

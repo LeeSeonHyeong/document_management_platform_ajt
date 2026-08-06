@@ -26,6 +26,30 @@ class WikiTest {
     }
 
     @Test
+    @DisplayName("페이지 키는 본문 파일명에서 확장자를 뺀 값이다")
+    void derivesPageKeyFromWikiPath() throws Exception {
+        Wiki wiki = Wiki.create("ALL", 10L, "휴가 규정");
+        assignId(wiki, 101L);
+
+        // 에이전트 발급 경로(pageKey 체계)
+        wiki.assignStoragePath("wiki/ALL/pages/a1b2c3d4e5f6.md");
+        assertThat(wiki.pageKey()).isEqualTo("a1b2c3d4e5f6");
+
+        // 구형 wikiId 체계 — pageKey 가 wikiId 문자열과 같아진다
+        wiki.assignStoragePath("wiki/ALL/pages/101.md");
+        assertThat(wiki.pageKey()).isEqualTo("101");
+    }
+
+    @Test
+    @DisplayName("경로가 확정되기 전의 페이지 키는 wikiId 문자열이다")
+    void fallsBackToWikiIdBeforePathAssigned() throws Exception {
+        Wiki wiki = Wiki.create("ALL", 10L, "휴가 규정");
+        assignId(wiki, 101L);
+
+        assertThat(wiki.pageKey()).isEqualTo("101");
+    }
+
+    @Test
     @DisplayName("문서 참조는 중복 없이 더한다")
     void addsDocumentRefsWithoutDuplicates() {
         Wiki wiki = Wiki.create("ALL", 10L, "휴가 규정");

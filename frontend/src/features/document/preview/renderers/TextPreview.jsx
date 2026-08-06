@@ -37,7 +37,7 @@ export default function TextPreview({ blob, kind, onPageCountChange, onError }) 
 
   if (kind === PREVIEW_KIND.MARKDOWN) {
     // 원본 문서는 Wiki 가 아니므로 내부 링크(pages/{id}.md)는 모두 "없는 문서"로 처리된다.
-    return <WikiMarkdown markdown={text} validWikiIds={new Set()} />
+    return <WikiMarkdown markdown={text} wikiIdByPageKey={new Map()} />
   }
 
   return (

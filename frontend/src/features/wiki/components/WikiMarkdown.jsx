@@ -7,7 +7,9 @@ import { headingId, headingNumberMap } from '../headings'
 import { collectFootnotes, footnoteLabelFromHref } from '../footnotes'
 import MermaidBlock from './MermaidBlock'
 
-// 본문 내부 링크 패턴: pages/{wikiId}.md (상대/절대 경로 접두 허용)
+// 본문 내부 링크 패턴: pages/{pageKey}.md (상대/절대 경로 접두 허용).
+// 에이전트가 발급하는 주소는 pageKey 이고 구형 문서는 wikiId 라서,
+// 잡은 세그먼트를 wikiIdByPageKey Map 으로 wikiId 로 되돌린다. (S15P11B106-300)
 const INTERNAL_LINK = /(?:^|\/)pages\/([^/]+)\.md$/
 
 // 커스텀 헤딩 컴포넌트가 받는 children(React 노드)에서 순수 텍스트만 뽑는다.
@@ -25,9 +27,9 @@ function headingText(children) {
 }
 
 // Wiki 본문 마크다운 렌더러.
-// - pages/{wikiId}.md 내부 링크 → 새 페이지 대신 같은 화면에서 react-router로 해당 Wiki 상세 전환
+// - pages/{pageKey}.md 내부 링크 → 새 페이지 대신 같은 화면에서 react-router로 해당 Wiki 상세 전환
 // - 외부 링크(http/https) → 새 탭
-// - 존재하지 않는 wikiId 링크 → 클릭 불가 + 안내
+// - 매핑되지 않는 내부 링크 → 클릭 불가 + 안내
 // 각주 번호에 올렸을 때 근거를 보여준다. **이 제품의 핵심 가치가 근거 확인**인데, 지금까지는
 // 번호를 누르면 페이지 맨 아래로 점프하는 것이 전부였다 — 읽던 자리를 잃고 되돌아와야 했다.
 // 원문 인용문은 본문 각주 정의에만 있다(`../footnotes` 주석 참고).
@@ -50,7 +52,8 @@ function FootnoteRef({ note, children, ...rest }) {
   )
 }
 
-export default function WikiMarkdown({ markdown, validWikiIds }) {
+// wikiIdByPageKey: 내부 링크 마지막 세그먼트(pageKey 또는 구형 wikiId) → wikiId 문자열 Map.
+export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
   const navigate = useNavigate()
   // 목차와 동일한 계층 번호를 본문 헤딩에도 붙인다(id → 번호).
   const numberMap = useMemo(() => headingNumberMap(markdown), [markdown])
@@ -76,9 +79,8 @@ export default function WikiMarkdown({ markdown, validWikiIds }) {
 
       const internal = INTERNAL_LINK.exec(href)
       if (internal) {
-        const wikiId = internal[1]
-        const exists = validWikiIds.has(String(wikiId))
-        if (!exists) {
+        const wikiId = wikiIdByPageKey?.get(String(internal[1]))
+        if (!wikiId) {
           return (
             <span
               className="cursor-not-allowed text-slate-400 line-through"
@@ -203,7 +205,7 @@ export default function WikiMarkdown({ markdown, validWikiIds }) {
         <td style={style} className="border border-slate-200 px-3 py-1.5 tabular-nums">{children}</td>
       ),
     }
-  }, [navigate, validWikiIds, numberMap, footnotes])
+  }, [navigate, wikiIdByPageKey, numberMap, footnotes])
 
   return (
     <ReactMarkdown

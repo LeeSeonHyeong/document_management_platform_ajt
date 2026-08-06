@@ -37,6 +37,7 @@ class WikiQueryControllerTest {
                 .willReturn(new WikiListResponse(
                         List.of(new WikiSummaryResponse(
                                 "101",
+                                "a1b2c3d4e5f6",
                                 "휴가 규정",
                                 "연차와 반차 사용 기준",
                                 "9",
@@ -55,6 +56,7 @@ class WikiQueryControllerTest {
                         .param("keyword", "연차"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].wikiId").value("101"))
+                .andExpect(jsonPath("$.items[0].pageKey").value("a1b2c3d4e5f6"))
                 .andExpect(jsonPath("$.items[0].title").value("휴가 규정"))
                 .andExpect(jsonPath("$.items[0].summary").value("연차와 반차 사용 기준"))
                 .andExpect(jsonPath("$.items[0].wikiCategoryName").value("휴가 및 근태"))

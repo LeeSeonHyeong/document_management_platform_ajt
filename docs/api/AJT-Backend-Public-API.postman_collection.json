@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.15.1이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.15.2이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -47,7 +47,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.15.1",
+      "value": "1.15.2",
       "type": "string"
     },
     {
@@ -2927,7 +2927,7 @@
               ],
               "variable": []
             },
-            "description": "사용자가 접근 가능한 Wiki 목록을 검색합니다.\nWiki 목록과 검색 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 독립 Wiki 공간 필터\n- `wikiCategoryId`: AI가 관리하는 Wiki 카테고리 필터\n- `keyword`: Wiki 제목과 본문 검색어\n- `page`, `size`: 페이지네이션\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다.\n\n### Response\n- `items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+            "description": "사용자가 접근 가능한 Wiki 목록을 검색합니다.\nWiki 목록과 검색 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 독립 Wiki 공간 필터\n- `wikiCategoryId`: AI가 관리하는 Wiki 카테고리 필터\n- `keyword`: Wiki 제목과 본문 검색어\n- `page`, `size`: 페이지네이션\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다.\n\n### Response\n- `items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각\n- `items[].pageKey`: 본문 파일명(확장자 제외). 본문 내부 링크 `pages/{pageKey}.md` 를 wikiId 로 되돌릴 때 씁니다\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
           },
           "response": [
             {
@@ -2974,7 +2974,7 @@
                   ],
                   "variable": []
                 },
-                "description": "사용자가 접근 가능한 Wiki 목록을 검색합니다.\nWiki 목록과 검색 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 독립 Wiki 공간 필터\n- `wikiCategoryId`: AI가 관리하는 Wiki 카테고리 필터\n- `keyword`: Wiki 제목과 본문 검색어\n- `page`, `size`: 페이지네이션\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다.\n\n### Response\n- `items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "사용자가 접근 가능한 Wiki 목록을 검색합니다.\nWiki 목록과 검색 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 독립 Wiki 공간 필터\n- `wikiCategoryId`: AI가 관리하는 Wiki 카테고리 필터\n- `keyword`: Wiki 제목과 본문 검색어\n- `page`, `size`: 페이지네이션\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다.\n\n### Response\n- `items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각\n- `items[].pageKey`: 본문 파일명(확장자 제외). 본문 내부 링크 `pages/{pageKey}.md` 를 wikiId 로 되돌릴 때 씁니다\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "OK",
               "code": 200,
@@ -2990,7 +2990,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"items\": [\n    {\n      \"wikiId\": \"101\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiCategoryId\": \"9\",\n      \"wikiCategoryName\": \"휴가 및 근태\",\n      \"scopeKey\": \"D1-D2\",\n      \"updatedAt\": \"2026-07-27T09:00:00Z\"\n    }\n  ],\n  \"page\": 1,\n  \"size\": 20,\n  \"totalCount\": 1,\n  \"totalPages\": 1\n}"
+              "body": "{\n  \"items\": [\n    {\n      \"wikiId\": \"101\",\n      \"pageKey\": \"a3f2c1d4\",\n      \"title\": \"휴가 규정\",\n      \"summary\": \"연차와 반차 사용 기준\",\n      \"wikiCategoryId\": \"9\",\n      \"wikiCategoryName\": \"휴가 및 근태\",\n      \"scopeKey\": \"D1-D2\",\n      \"updatedAt\": \"2026-07-27T09:00:00Z\"\n    }\n  ],\n  \"page\": 1,\n  \"size\": 20,\n  \"totalCount\": 1,\n  \"totalPages\": 1\n}"
             },
             {
               "name": "400 Bad Request - 대표 오류",
@@ -3036,7 +3036,7 @@
                   ],
                   "variable": []
                 },
-                "description": "사용자가 접근 가능한 Wiki 목록을 검색합니다.\nWiki 목록과 검색 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 독립 Wiki 공간 필터\n- `wikiCategoryId`: AI가 관리하는 Wiki 카테고리 필터\n- `keyword`: Wiki 제목과 본문 검색어\n- `page`, `size`: 페이지네이션\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다.\n\n### Response\n- `items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "사용자가 접근 가능한 Wiki 목록을 검색합니다.\nWiki 목록과 검색 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `scopeKey`: 독립 Wiki 공간 필터\n- `wikiCategoryId`: AI가 관리하는 Wiki 카테고리 필터\n- `keyword`: Wiki 제목과 본문 검색어\n- `page`, `size`: 페이지네이션\n\n### Request Body\n없음\n\n### 정책\n- 권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다.\n\n### Response\n- `items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각\n- `items[].pageKey`: 본문 파일명(확장자 제외). 본문 내부 링크 `pages/{pageKey}.md` 를 wikiId 로 되돌릴 때 씁니다\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "Bad Request",
               "code": 400,
@@ -3105,7 +3105,7 @@
                 }
               ]
             },
-            "description": "Wiki 본문, 연결 원본문서와 연관 Wiki를 조회합니다.\nWiki 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey\n- `evidenceDocuments`: 연결 원본문서 목록\n- `relatedWikis`: 연관 Wiki 목록\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: Wiki가 없거나 접근 권한이 없음"
+            "description": "Wiki 본문, 연결 원본문서와 연관 Wiki를 조회합니다.\nWiki 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey\n- `evidenceDocuments`: 연결 원본문서 목록\n- `relatedWikis`: 연관 Wiki 목록 (wikiId·pageKey·title. pageKey 는 본문 내부 링크를 wikiId 로 되돌리는 키)\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: Wiki가 없거나 접근 권한이 없음"
           },
           "response": [
             {
@@ -3133,7 +3133,7 @@
                     }
                   ]
                 },
-                "description": "Wiki 본문, 연결 원본문서와 연관 Wiki를 조회합니다.\nWiki 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey\n- `evidenceDocuments`: 연결 원본문서 목록\n- `relatedWikis`: 연관 Wiki 목록\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: Wiki가 없거나 접근 권한이 없음"
+                "description": "Wiki 본문, 연결 원본문서와 연관 Wiki를 조회합니다.\nWiki 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey\n- `evidenceDocuments`: 연결 원본문서 목록\n- `relatedWikis`: 연관 Wiki 목록 (wikiId·pageKey·title. pageKey 는 본문 내부 링크를 wikiId 로 되돌리는 키)\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: Wiki가 없거나 접근 권한이 없음"
               },
               "status": "OK",
               "code": 200,
@@ -3149,7 +3149,7 @@
                 }
               ],
               "cookie": [],
-              "body": "{\n  \"wikiId\": \"101\",\n  \"title\": \"휴가 규정\",\n  \"contentMarkdown\": \"# 휴가 규정\\n연차와 반차를 사용할 수 있습니다.\",\n  \"category\": {\n    \"wikiCategoryId\": \"9\",\n    \"name\": \"휴가 및 근태\"\n  },\n  \"scopeKey\": \"D1-D2\",\n  \"evidenceDocuments\": [\n    {\n      \"documentId\": \"15\",\n      \"originalFileName\": \"취업규칙.pdf\",\n      \"downloadUrl\": \"/api/v1/documents/15/file\"\n    }\n  ],\n  \"relatedWikis\": [],\n  \"updatedAt\": \"2026-07-27T09:00:00Z\"\n}"
+              "body": "{\n  \"wikiId\": \"101\",\n  \"title\": \"휴가 규정\",\n  \"contentMarkdown\": \"# 휴가 규정\\n연차와 반차를 사용할 수 있습니다.\",\n  \"category\": {\n    \"wikiCategoryId\": \"9\",\n    \"name\": \"휴가 및 근태\"\n  },\n  \"scopeKey\": \"D1-D2\",\n  \"evidenceDocuments\": [\n    {\n      \"documentId\": \"15\",\n      \"originalFileName\": \"취업규칙.pdf\",\n      \"downloadUrl\": \"/api/v1/documents/15/file\"\n    }\n  ],\n  \"relatedWikis\": [\n    {\n      \"wikiId\": \"108\",\n      \"pageKey\": \"b6d1e8f3\",\n      \"title\": \"근태 관리\"\n    }\n  ],\n  \"updatedAt\": \"2026-07-27T09:00:00Z\"\n}"
             },
             {
               "name": "404 Not Found - 대표 오류",
@@ -3176,7 +3176,7 @@
                     }
                   ]
                 },
-                "description": "Wiki 본문, 연결 원본문서와 연관 Wiki를 조회합니다.\nWiki 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey\n- `evidenceDocuments`: 연결 원본문서 목록\n- `relatedWikis`: 연관 Wiki 목록\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: Wiki가 없거나 접근 권한이 없음"
+                "description": "Wiki 본문, 연결 원본문서와 연관 Wiki를 조회합니다.\nWiki 상세 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n- `wikiId`: 조회할 Wiki ID\n\n### Query Params\n없음\n\n### Request Body\n없음\n\n### 정책\n없음\n\n### Response\n- Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey\n- `evidenceDocuments`: 연결 원본문서 목록\n- `relatedWikis`: 연관 Wiki 목록 (wikiId·pageKey·title. pageKey 는 본문 내부 링크를 wikiId 로 되돌리는 키)\n\n### Error\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음\n- `404 Not Found`: Wiki가 없거나 접근 권한이 없음"
               },
               "status": "Not Found",
               "code": 404,

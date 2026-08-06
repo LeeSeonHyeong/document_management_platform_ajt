@@ -96,7 +96,7 @@ class WikiChatMessageControllerTest {
                                 new WikiDetailResponse.Category("9", "휴가 및 근태"),
                                 "D1-D2",
                                 List.of(WikiDetailResponse.EvidenceDocument.of(15L, "취업규칙.pdf")),
-                                List.of(new WikiDetailResponse.RelatedWiki("108", "근태 관리")),
+                                List.of(new WikiDetailResponse.RelatedWiki("108", "108", "근태 관리")),
                                 Instant.parse("2026-07-29T09:10:20Z")
                         )
                 )

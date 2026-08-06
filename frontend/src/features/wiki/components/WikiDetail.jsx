@@ -22,13 +22,21 @@ export default function WikiDetail({ wikiId }) {
   const currentListItem = (scopeWikiPage?.items ?? []).find(
     (item) => String(item.wikiId) === String(wikiId),
   )
-  const validWikiIds = useMemo(() => {
-    const ids = new Set()
-    if (wiki) ids.add(String(wiki.wikiId))
-    ;(scopeWikiPage?.items ?? []).forEach((item) => ids.add(String(item.wikiId)))
-    ;(wiki?.relatedWikis ?? []).forEach((item) => ids.add(String(item.wikiId)))
-    return ids
-  }, [wiki, scopeWikiPage])
+  // 본문 내부 링크(`pages/{pageKey}.md`)의 마지막 세그먼트 → wikiId.
+  // 에이전트 발급 주소는 pageKey, 구형 주소는 wikiId 라서 두 열쇠를 모두 넣는다. (S15P11B106-300)
+  const wikiIdByPageKey = useMemo(() => {
+    const map = new Map()
+    const put = (item) => {
+      if (!item?.wikiId) return
+      const id = String(item.wikiId)
+      map.set(id, id)
+      if (item.pageKey) map.set(String(item.pageKey), id)
+    }
+    ;(scopeWikiPage?.items ?? []).forEach(put)
+    ;(wiki?.relatedWikis ?? []).forEach(put)
+    if (wiki) put(currentListItem ?? { wikiId: wiki.wikiId })
+    return map
+  }, [wiki, scopeWikiPage, currentListItem])
 
   // 실제 레이아웃(제목·메타·본문 문단) 모양을 흉내낸다 — 빙글빙글 도는 스피너보다
   // "곧 이 모양으로 채워진다"는 정보를 더 준다.
@@ -93,7 +101,7 @@ export default function WikiDetail({ wikiId }) {
       {/* 본문 폭을 제한한다. 넓은 화면에서 한 줄이 100자를 넘어가면 눈이 줄을 놓친다 —
           읽기 편한 한 줄은 65자 안팎이다. 표·다이어그램은 아래에서 폭을 되찾는다. */}
       <article className="min-w-0 max-w-[72ch] flex-1 py-1">
-        <WikiMarkdown markdown={wiki.contentMarkdown} validWikiIds={validWikiIds} />
+        <WikiMarkdown markdown={wiki.contentMarkdown} wikiIdByPageKey={wikiIdByPageKey} />
       </article>
 
       <WikiSourcePreviewModal
