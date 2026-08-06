@@ -12,6 +12,11 @@ import MermaidBlock from './MermaidBlock'
 // 잡은 세그먼트를 wikiIdByPageKey Map 으로 wikiId 로 되돌린다. (S15P11B106-300)
 const INTERNAL_LINK = /(?:^|\/)pages\/([^/]+)\.md$/
 
+// 목차·각주로 뛰어온 자리가 sticky 바(WikiArticleBar) 뒤에 숨지 않도록 확보하는 상단 여백.
+// 바가 실제 높이를 `--wiki-anchor-offset` 으로 알려준다. 바가 없는 화면(문서 미리보기 등)에서는
+// 기본값 1rem 이라 예전 동작 그대로다.
+const ANCHOR_OFFSET = 'scroll-mt-[var(--wiki-anchor-offset,1rem)]'
+
 // 커스텀 헤딩 컴포넌트가 받는 children(React 노드)에서 순수 텍스트만 뽑는다.
 // 목차와 같은 규칙(headingId)으로 id 를 만들기 위한 것이다.
 function headingText(children) {
@@ -70,7 +75,7 @@ export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
             note={footnotes[footnote]}
             href={href}
             id={rest.id}
-            className="text-primary-600 no-underline hover:underline"
+            className={`text-primary-600 no-underline hover:underline ${ANCHOR_OFFSET}`}
           >
             {children}
           </FootnoteRef>
@@ -121,7 +126,10 @@ export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
     return {
       a: Anchor,
       h1: ({ children }) => (
-        <h1 id={headingId(headingText(children))} className="mb-3 mt-6 scroll-mt-4 text-2xl font-bold text-slate-800">
+        <h1
+          id={headingId(headingText(children))}
+          className={`mb-3 mt-6 text-2xl font-bold text-slate-800 ${ANCHOR_OFFSET}`}
+        >
           {children}
         </h1>
       ),
@@ -134,7 +142,7 @@ export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
         }
         const id = headingId(headingText(children))
         return (
-          <h2 id={id} className="mb-2 mt-5 scroll-mt-4 text-xl font-semibold text-slate-800">
+          <h2 id={id} className={`mb-2 mt-5 text-xl font-semibold text-slate-800 ${ANCHOR_OFFSET}`}>
             {numberMap[id] && <span className="mr-2 font-bold text-slate-400">{numberMap[id]}</span>}
             {children}
           </h2>
@@ -143,7 +151,7 @@ export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
       h3: ({ children }) => {
         const id = headingId(headingText(children))
         return (
-          <h3 id={id} className="mb-2 mt-4 scroll-mt-4 text-lg font-semibold text-slate-800">
+          <h3 id={id} className={`mb-2 mt-4 text-lg font-semibold text-slate-800 ${ANCHOR_OFFSET}`}>
             {numberMap[id] && <span className="mr-2 font-bold text-slate-400">{numberMap[id]}</span>}
             {children}
           </h3>
@@ -154,12 +162,13 @@ export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
         <sup className="ml-0.5 align-super text-[0.65em] leading-none font-medium">{children}</sup>
       ),
       // 각주 묶음: 위에 실선을 그어 본문과 끊고, 본문보다 작고 옅게 둔다.
+      // 각주 번호를 눌러 여기로 뛰어올 때도 sticky 바에 가리지 않게 항목마다 상단 여백을 준다.
       section: ({ children, ...rest }) => {
         if (!('data-footnotes' in rest)) return <section>{children}</section>
         return (
           <section
             data-footnotes
-            className="mt-10 border-t border-slate-200 pt-4 text-[13px] leading-relaxed text-slate-500 [&_a]:text-slate-400 [&_li]:marker:text-slate-400 [&_ol]:my-0 [&_ol]:space-y-1.5 [&_p]:my-0"
+            className="mt-10 border-t border-slate-200 pt-4 text-[13px] leading-relaxed text-slate-500 [&_a]:text-slate-400 [&_li]:scroll-mt-[var(--wiki-anchor-offset,1rem)] [&_li]:marker:text-slate-400 [&_ol]:my-0 [&_ol]:space-y-1.5 [&_p]:my-0"
           >
             {children}
           </section>

@@ -428,37 +428,41 @@ export default function AdminSchedulePage() {
     ...departments.map((d) => ({ value: d.departmentId, label: d.name })),
   ]
 
+  // width 를 주면 표가 table-fixed 로 그려진다 — 부서 탭을 바꿔 행이 달라져도 열이 밀리지 않는다.
+  // 제목·파일명·장소는 길이가 제각각이라 줄바꿈 대신 '…'로 줄이고 전체 값은 title 로 남긴다.
   const draftColumns = [
     {
       key: 'title',
       header: '제목',
+      width: '28%',
       render: (row) => (
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <span
             className={cn(
               'size-2 shrink-0 rounded-full',
               ACCENT[row.visibilityType] ?? 'bg-slate-400',
             )}
           />
-          <span className="font-medium text-slate-800">{row.title}</span>
+          <span className="truncate font-medium text-slate-800" title={row.title}>{row.title}</span>
         </div>
       ),
     },
     {
       key: 'source',
       header: '출처 문서',
+      width: '26%',
       render: (row) => {
         const fileName = sourceFileName(row)
         if (fileName) {
           return (
-            <span className="flex items-center gap-1.5 text-slate-600">
+            <span className="flex min-w-0 items-center gap-1.5 text-slate-600">
               <FileText className="size-4 shrink-0 text-primary-500" />
-              {fileName}
+              <span className="truncate" title={fileName}>{fileName}</span>
             </span>
           )
         }
         return (
-          <span className="flex items-center gap-1.5 text-slate-400">
+          <span className="flex min-w-0 items-center gap-1.5 text-slate-400">
             <FileText className="size-4 shrink-0 text-slate-300" />
             {row.sourceGroupKey ? 'AI 추출 문서' : '—'}
           </span>
@@ -468,16 +472,18 @@ export default function AdminSchedulePage() {
     {
       key: 'location',
       header: '장소',
+      width: '18%',
       render: (row) => (
-        <span className={cn('flex items-center gap-1.5', row.location ? 'text-slate-600' : 'text-slate-400')}>
+        <span className={cn('flex min-w-0 items-center gap-1.5', row.location ? 'text-slate-600' : 'text-slate-400')}>
           <MapPin className="size-4 shrink-0 text-slate-300" />
-          {row.location || '미정'}
+          <span className="truncate" title={row.location || '미정'}>{row.location || '미정'}</span>
         </span>
       ),
     },
     {
       key: 'time',
       header: '시간',
+      width: '16%',
       render: (row) => (
         <div>
           <p className="font-medium text-slate-800">
@@ -492,6 +498,7 @@ export default function AdminSchedulePage() {
     {
       key: 'actions',
       header: '관리',
+      width: '12%',
       align: 'right',
       headerAlign: 'right',
       render: (row) => (
