@@ -25,6 +25,10 @@ import {
 export default function AiJobQueueProvider({ children }) {
   const [queueDocuments, setQueueDocuments] = useState([])
   const [queueMetadata, setQueueMetadata] = useState({})
+  // 추출 중인 일정 파일. 셸에 두어 문서 관리를 떠나도 유지된다 — 일정 관리 화면이 이 값을 읽어
+  // 「N개 추출 중」을 보여준다(S15P11B106-287). POST /schedule-sources 는 파싱·추출을 동기로
+  // 끝내 몇 분 걸리는데, 그 진행을 서버에 물어볼 방법이 없어 브라우저가 들고 있어야 한다.
+  const [extractingSchedules, setExtractingSchedules] = useState(() => [])
 
   // 담아둔 항목을 복원한다. 복원 중에 사용자가 새로 올린 항목을 덮지 않도록 뒤에 이어 붙인다.
   useEffect(() => {
@@ -83,9 +87,39 @@ export default function AiJobQueueProvider({ children }) {
     removeScheduleQueueDocuments(removing)
   }, [])
 
+  // 추출 시작·종료. 종료는 성공·실패와 무관하게 「더 이상 진행 중이 아님」만 알린다.
+  const startScheduleExtraction = useCallback((documents) => {
+    setExtractingSchedules(
+      documents.map((document) => ({
+        documentId: document.documentId,
+        originalFileName: document.originalFileName,
+      })),
+    )
+  }, [])
+
+  const finishScheduleExtraction = useCallback(() => setExtractingSchedules([]), [])
+
   const value = useMemo(
-    () => ({ queueDocuments, queueMetadata, addDocuments, updateMetadata, removeDocuments }),
-    [queueDocuments, queueMetadata, addDocuments, updateMetadata, removeDocuments],
+    () => ({
+      queueDocuments,
+      queueMetadata,
+      addDocuments,
+      updateMetadata,
+      removeDocuments,
+      extractingSchedules,
+      startScheduleExtraction,
+      finishScheduleExtraction,
+    }),
+    [
+      queueDocuments,
+      queueMetadata,
+      addDocuments,
+      updateMetadata,
+      removeDocuments,
+      extractingSchedules,
+      startScheduleExtraction,
+      finishScheduleExtraction,
+    ],
   )
 
   return <AiJobQueueContext.Provider value={value}>{children}</AiJobQueueContext.Provider>
