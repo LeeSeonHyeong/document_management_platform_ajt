@@ -551,6 +551,7 @@ class DeepAgentsRuntime:
         )
         from langchain.agents.structured_output import ToolStrategy
 
+        from .history_tool import history_read_tool
         from .wiki_tools import wiki_agent_tools
 
         limit = timeout or CALL_TIMEOUT_SECONDS
@@ -560,7 +561,6 @@ class DeepAgentsRuntime:
         counts: dict = {}
         specs = wiki_agent_tools(fs, scope_key)
         verify_mcp_tools({spec.name for spec in specs})
-        tools = langchain_tools(specs, counts)
 
         register_harness_profile(
             self.model,
@@ -577,6 +577,15 @@ class DeepAgentsRuntime:
         # 작업의 임시 루트에 둔다 — 텍스트 요약이라 거의 안 쓰인다.
         from deepagents.backends import FilesystemBackend
         compaction_backend = FilesystemBackend(root_dir=str(root), virtual_mode=True)
+        # **압축이 버린 이력을 되읽을 길을 하나 준다.** 요약 메시지는 "전체 이력을
+        # `/conversation_history/…md` 에 저장했다" 고 안내하는데, `EXCLUDED_BUILTIN_TOOLS`
+        # 가 `read_file` 을 막아 그 안내가 막다른 길이었다 — 에이전트가 시킨 대로 읽으려다
+        # 실패하고 `guide` 부터 다시 시작해 아무것도 못 고쳤다 (2026-08-06 job 40).
+        #
+        # 이 도구는 그 디렉터리 **하나만** 읽는다. `read_file` 을 푸는 것이 아니다 —
+        # 그러면 `write_file` 과 함께 MCP 우회가 열린다 (`history_tool.py` 헤더).
+        specs = [*specs, history_read_tool(compaction_backend)]
+        tools = langchain_tools(specs, counts)
         agent = create_deep_agent(
             model=self._chat_model(limit),
             tools=tools,
