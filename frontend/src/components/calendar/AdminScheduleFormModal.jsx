@@ -158,7 +158,8 @@ export default function AdminScheduleFormModal({ open, onClose, initial, default
       }
     >
       <form id="admin-schedule-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-        <Input label="제목" required placeholder="일정 제목" error={errors.title?.message} {...register('title')} />
+        {/* 등록 폼에서만 제목을 30자로 하드 캡한다. 공유 스키마(초안 승인)는 200자 유지. */}
+        <Input label="제목" required maxLength={30} placeholder="일정 제목" error={errors.title?.message} {...register('title')} />
 
         <div className="space-y-1.5">
           <span className="text-sm font-medium text-slate-700">
