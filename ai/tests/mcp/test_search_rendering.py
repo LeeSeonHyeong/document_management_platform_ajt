@@ -84,11 +84,17 @@ async def test_push_search_without_page_or_breadcrumb_omits_them():
 
 
 async def test_push_search_with_no_matches_reports_the_empty_message():
+    """사실 문장은 그대로 두고 결론을 덧붙였다 (2026-08-06).
+
+    이 파일은 "형식을 새로 정하지 않는다" 를 원칙으로 삼지만, 0건 문구는 실측 결과
+    **의도적으로 바꾼 것**이다 — 아래 `test_empty_result_tells_the_agent_to_create` 가
+    그 근거를 적고 있다. 첫 줄이 바뀌지 않았음을 계속 고정한다.
+    """
     handler = SearchHandler(FakeFS([]), SCOPE_ROW)
 
     result = await handler.search("없는말", "*", None, 10)
 
-    assert result == "`없는말`에 해당하는 것이 D1-D2 범위에 없다."
+    assert result.startswith("`없는말`에 해당하는 것이 D1-D2 범위에 없다.")
 
 
 # ---- 목록에 한 줄 요약 (2026-08-05) -----------------------------------------
@@ -158,3 +164,126 @@ async def test_browse_notes_the_remainder_when_pages_exceed_max_list():
 
     assert f"... {len(docs) - MAX_LIST}건 더" in result
     assert f"**위키 ({len(docs)}페이지):**" in result
+
+
+# ---------------------------------------------------------------------------
+# 검색 루프 차단 (2026-08-06 실측). 실패 트레이스에서 에이전트가 `search` 를 37회 불렀고
+# 쓰기는 0건이었다. 실제 질의 33개를 실제 위키 색인에 돌려보니 **검색은 매번 옳았다** —
+# 없는 것은 0건으로 답했고, 있는 것은 맞는 페이지를 1위로 줬다. 문제는 응답이 그 사실을
+# 전달하지 못한 것이다. 아래 넷이 그것을 고정한다.
+# ---------------------------------------------------------------------------
+
+class FakeLiveFS:
+    """`origin` 키가 있는 창구 경로. 라이브/작업층 분리 렌더링을 탄다."""
+
+    def __init__(self, matches):
+        self.matches = matches
+
+    async def search_chunks(self, scope_id, query, limit, kind_filter=None):
+        return self.matches
+
+
+def _live(address, content="출장비는 실비로 정산한다."):
+    return {"address": address, "title": "출장비 정산", "kind": "page",
+            "content": content, "origin": "live"}
+
+
+async def test_live_header_does_not_claim_the_answer_is_already_in_service():
+    """「이미 서비스 중이다」가 「네가 찾는 내용이 여기 있다」로 읽힌다.
+
+    트레이스의 출장·식비 계열 15개 질의가 전부 이 문구와 함께 `출장비(여비) 정산 안내` 를
+    받았다. 그 페이지에 식비 조항은 없었다(그래서 추가하려던 것이다). 에이전트는
+    「있다는데 없네」를 반복하며 질의를 13번 바꿨다.
+    """
+    from wiki_mcp.tools.search import reset_search_memory
+    reset_search_memory()
+    handler = SearchHandler(FakeLiveFS([_live("pages/aaa.md")]), SCOPE_ROW)
+
+    result = await handler.search("출장 식비", "*", None, 10)
+
+    assert "이미 서비스 중이다" not in result
+    assert "반영된 위키" in result          # 사실 진술은 남는다
+
+
+async def test_empty_result_tells_the_agent_to_create():
+    """0건은 실패가 아니라 결론이다.
+
+    트레이스의 조직개편 계열 7개 질의가 전부 0건이었다 — 색인이 정확히 답한 것이다.
+    그런데 에이전트는 5번 확인하고도 `create` 로 가지 않았다.
+    """
+    from wiki_mcp.tools.search import reset_search_memory
+    reset_search_memory()
+    handler = SearchHandler(FakeLiveFS([]), SCOPE_ROW)
+
+    result = await handler.search("조직개편 플랫폼팀 신설", "*", None, 10)
+
+    assert "없다" in result
+    assert "create" in result
+
+
+async def test_the_same_result_set_twice_is_called_out():
+    """질의 33개가 서로 다른 결과집합 14개를 냈다 — 절반 이상이 같은 답의 재수신이다.
+
+    bigram OR 색인이라 표현을 바꿔도 결과가 거의 같다. 재질의는 구조적으로 새 정보를
+    주지 못하므로, 같은 집합이 다시 나오면 그 사실을 말해 준다.
+    """
+    from wiki_mcp.tools.search import reset_search_memory
+    reset_search_memory()
+    fs = FakeLiveFS([_live("pages/aaa.md")])
+    handler = SearchHandler(fs, SCOPE_ROW)
+
+    first = await handler.search("출장 식비", "*", None, 10)
+    second = await handler.search("출장 식비 지급 기준", "*", None, 10)
+
+    assert "같은 결과" not in first
+    assert "같은 결과" in second
+    assert "read" in second
+
+
+async def test_a_different_result_set_is_not_called_out():
+    from wiki_mcp.tools.search import reset_search_memory
+    reset_search_memory()
+    handler_a = SearchHandler(FakeLiveFS([_live("pages/aaa.md")]), SCOPE_ROW)
+    handler_b = SearchHandler(FakeLiveFS([_live("pages/bbb.md")]), SCOPE_ROW)
+
+    await handler_a.search("출장 식비", "*", None, 10)
+    second = await handler_b.search("경조사 휴가", "*", None, 10)
+
+    assert "같은 결과" not in second
+
+
+# ---- 세션 경계와 툴 등록 경로 -----------------------------------------------
+#
+# 위의 넷은 `SearchHandler` 를 직접 만들어 부른다. 실제 에이전트는 등록된 `search` 툴을
+# 부르고, 그 툴은 **호출마다 핸들러를 새로 만든다** — 그래서 결과집합 이력이 프로세스
+# 전역에 있다. 그 두 가지(툴 경로에서도 동작하나 · 세션 사이에 새는가)를 여기서 잡는다.
+
+async def test_reset_clears_the_history_between_sessions():
+    """작업이 끝나면 이력을 비운다. 안 그러면 다음 작업의 첫 검색이 남의 이력으로 경고받는다."""
+    from wiki_mcp.tools.search import reset_search_memory
+    reset_search_memory()
+    handler = SearchHandler(FakeLiveFS([_live("pages/aaa.md")]), SCOPE_ROW)
+
+    await handler.search("출장 식비", "*", None, 10)
+    reset_search_memory()
+    after_reset = await handler.search("출장 식비", "*", None, 10)
+
+    assert "같은 결과" not in after_reset
+
+
+async def test_the_session_teardown_actually_calls_the_reset(tmp_path):
+    """`LocalVaultFS.close` 가 리셋을 부른다.
+
+    리셋 함수가 있어도 아무도 안 부르면 이력이 프로세스 수명 내내 쌓인다. 세션 종료가
+    지나는 유일한 자리가 여기다 — 창구 경로의 `FederatedVaultFS.close` 도 이것을 부른다.
+    """
+    from wiki_mcp.tools.search import _seen_result_sets, reset_search_memory
+    from wiki_mcp.vaultfs.local import LocalVaultFS
+
+    reset_search_memory()
+    _seen_result_sets["ALL"] = [frozenset({"pages/aaa.md"})]
+
+    await LocalVaultFS.open(tmp_path, "ALL", "job-1")
+    await LocalVaultFS.close()
+
+    assert _seen_result_sets == {}

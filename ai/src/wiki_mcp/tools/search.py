@@ -58,6 +58,48 @@ def _one_liner(doc: dict) -> str:
     return f"\n      {summary}"
 
 
+# 스코프별로 이번 작업에서 이미 나온 결과집합. 반복 재질의를 알아채는 근거다.
+#
+# **왜 필요한가** (2026-08-06 실측): 실패한 잡에서 `search` 질의 33개가 서로 다른 결과집합
+# **14개**를 냈다. 절반 이상이 같은 답의 재수신이다. 색인이 bigram OR 이라 표현을 바꿔도
+# 걸리는 것이 거의 같기 때문으로, **재질의는 구조적으로 새 정보를 주지 못한다.** 그런데
+# 응답에는 그 사실이 드러나지 않아 에이전트가 계속 다시 물었다.
+#
+# 프로세스 전역인 이유는 `SearchHandler` 가 툴 호출마다 새로 만들어져서다(이 파일의
+# `register`). 요청은 전역 잠금으로 직렬화되므로(`wiki_api/session.py`) 세션이 겹치지
+# 않지만, 다음 요청에 남으면 남의 이력으로 경고하게 되어 `reset_search_memory` 로 비운다 —
+# 호출부는 `vaultfs/local.py::LocalVaultFS.close`(모든 세션이 지나는 자리)다.
+_seen_result_sets: dict[str, list[frozenset[str]]] = {}
+
+# 같은 집합이 몇 번째로 다시 나왔을 때부터 말해 주나. 2회째부터다 — 한 번 더 확인해 보는
+# 것은 정상이고, 세 번째부터는 늦다(트레이스에서 13회까지 갔다).
+_REPEAT_NOTE = (
+    "⚠️ **직전에 나온 것과 같은 결과다.** 이 색인은 표현을 바꿔도 거의 같은 것을 돌려준다 "
+    "— 질의를 더 바꾸지 말고, 후보를 `read` 로 읽어 판단한다. 읽어서 찾는 내용이 없으면 "
+    "`create`·`edit` 로 넘어간다."
+)
+
+
+def reset_search_memory() -> None:
+    """작업 사이에 결과집합 이력을 비운다. 세션 경계에서 부른다."""
+    _seen_result_sets.clear()
+
+
+def _note_result_set(scope_key: str, matches: list[dict]) -> str:
+    """이번 결과집합을 기록하고, 이미 나온 적 있으면 경고 문구를 돌려준다.
+
+    주소 집합으로만 본다 — 청크가 달라도 같은 페이지들을 다시 받은 것이면 에이전트에게
+    새 정보가 아니다.
+    """
+    addresses = frozenset(m["address"] for m in matches if m.get("address"))
+    if not addresses:
+        return ""
+    seen = _seen_result_sets.setdefault(scope_key, [])
+    repeated = addresses in seen
+    seen.append(addresses)
+    return _REPEAT_NOTE if repeated else ""
+
+
 def _snippet(content: str, query: str) -> str:
     if not content:
         return "(빈 내용)"
@@ -128,9 +170,18 @@ class SearchHandler:
         record_search(query, len(matches), scope_key=self.scope_key)
 
         if not matches:
-            return f"`{query}`에 해당하는 것이 {self.scope_key} 범위에 없다."
+            # **0건은 실패가 아니라 결론이다.** 예전에는 사실만 말하고 끝냈는데, 그러면
+            # 에이전트가 "질의가 나빴나" 로 읽고 표현을 바꿔 다시 묻는다 — 2026-08-06
+            # 트레이스에서 조직개편 계열 7개 질의가 전부 0건이었고 색인은 매번 옳았는데
+            # (그 주제는 실제로 위키에 없었다) 에이전트는 `create` 로 가지 않았다.
+            return (f"`{query}`에 해당하는 것이 {self.scope_key} 범위에 없다.\n\n"
+                    f"**이것이 답이다.** 표현을 바꿔 다시 찾지 말고, 반영할 내용이면 "
+                    f"`create` 로 새 페이지를 만든다.")
 
+        repeat = _note_result_set(self.scope_key, matches)
         lines = [f"**{len(matches)}건** — `{query}`:\n"]
+        if repeat:
+            lines.append(repeat + "\n")
         # `origin` 이 없으면 과도기 push 경로다 — 지금까지처럼 한 덩어리로 보여준다.
         # 창구 경로에서만 나눈다 (설계 §7.1). 섞으면 에이전트가 자기 초안과 라이브를
         # 구분하지 못해 남의 페이지를 자기 것으로 착각한다.
@@ -144,7 +195,13 @@ class SearchHandler:
             lines.append(f"**작업 중 ({len(work)}건)** — 이번 작업에서 쓴 것이다.\n")
             lines.extend(self._match_lines(work, query))
         if live:
-            lines.append(f"**반영된 위키 ({len(live)}건)** — 이미 서비스 중이다.\n")
+            # **「이미 서비스 중이다」를 쓰지 않는다.** 그 문구는 「네가 찾는 내용이 여기
+            # 있다」로 읽힌다. 색인은 bigram OR 이라 관련 낮은 것도 함께 걸리므로 그 단정이
+            # 거의 항상 과하다 — 2026-08-06 트레이스에서 출장·식비 계열 15개 질의가 전부 이
+            # 문구와 함께 `출장비(여비) 정산 안내` 를 받았는데 그 페이지에 식비 조항은 없었다
+            # (그래서 추가하려던 것이다). 에이전트는 「있다는데 없네」를 반복하며 13번 재질의했다.
+            lines.append(f"**반영된 위키 ({len(live)}건)** — 관련 있어 보이는 것이지 "
+                         f"찾는 내용이 그 안에 있다는 뜻은 아니다. `read` 로 확인한다.\n")
             lines.extend(self._match_lines(live, query))
         return "\n".join(lines)
 
