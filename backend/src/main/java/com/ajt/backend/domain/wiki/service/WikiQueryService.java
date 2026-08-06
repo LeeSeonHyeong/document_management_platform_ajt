@@ -30,7 +30,6 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -125,14 +124,13 @@ public class WikiQueryService {
         Map<Long, String> categoryNames = wikiCategoryRepository.findAllById(categoryIds).stream()
                 .collect(Collectors.toMap(WikiCategory::id, WikiCategory::name));
 
-        // 요약은 wiki 테이블에 없어 공간 목차(index.md)에서 읽는다. 같은 공간은 목차를 한 번만 읽는다.
-        Map<String, WikiIndex> indexByScope = new HashMap<>();
+        // 요약은 `wiki.summary` 컬럼이 정본이다. 예전에는 목차 파일을 파싱해 읽었고, 그래서
+        // 목차에 항목이 없는 Wiki 는 컬럼에 요약이 있어도 화면에서 비어 보였다.
         Page<WikiSummaryResponse> mapped = wikis.map(wiki -> {
-            WikiIndex index = indexByScope.computeIfAbsent(wiki.scopeKey(), this::readIndexSafely);
             return new WikiSummaryResponse(
                     String.valueOf(wiki.id()),
                     wiki.title(),
-                    index.summaryOf(wiki.id()),
+                    wiki.summary(),
                     String.valueOf(wiki.wikiCategoryId()),
                     categoryNames.get(wiki.wikiCategoryId()),
                     wiki.scopeKey(),
@@ -304,15 +302,6 @@ public class WikiQueryService {
             }
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
         };
-    }
-
-    private WikiIndex readIndexSafely(String scopeKey) {
-        try {
-            return WikiIndex.parse(wikiFileStorage.readIndex(scopeKey));
-        } catch (IOException exception) {
-            // 목차를 읽지 못하면 요약 없이 목록만 내려준다(목록 자체는 정상).
-            return WikiIndex.parse(null);
-        }
     }
 
     // TODO(#43): createPageable/parseSort가 member/document 등 여러 도메인에 중복된다.

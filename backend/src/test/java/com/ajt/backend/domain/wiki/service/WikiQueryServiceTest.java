@@ -76,15 +76,14 @@ class WikiQueryServiceTest {
     }
 
     @Test
-    @DisplayName("관리자는 접근 제한 없이 목록을 조회하고, 요약은 목차에서 채운다")
+    @DisplayName("관리자는 접근 제한 없이 목록을 조회하고, 요약은 컬럼에서 채운다")
     void adminListsWikis() throws Exception {
         Wiki wiki = wiki("ALL", 9L, "휴가 규정", 101L);
+        wiki.changeSummary("연차와 반차 사용 기준");
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(wikiRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .willReturn(new PageImpl<>(List.of(wiki), PageRequest.of(0, 20), 1));
         given(wikiCategoryRepository.findAllById(any())).willReturn(List.of(wikiCategory(9L, "휴가 및 근태")));
-        given(wikiFileStorage.readIndex("ALL"))
-                .willReturn("# 목차\n\n- [휴가 규정](pages/101.md) — 연차와 반차 사용 기준");
 
         WikiListResponse response = service.findWikis(1, 20, null, null, null, null);
 
@@ -105,6 +104,7 @@ class WikiQueryServiceTest {
     @DisplayName("사원은 접근 가능한 공개범위의 Wiki만 조회하며, 소속 부서·공개범위를 조회한다")
     void employeeListsAccessibleWikis() throws Exception {
         Wiki wiki = wiki("D2", 9L, "부서 규정", 202L);
+        wiki.changeSummary("부서 전용 규정");
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(20L, CurrentMemberRole.EMPLOYEE));
         Department department = mock(Department.class);
         given(department.getId()).willReturn(2L);
@@ -119,8 +119,6 @@ class WikiQueryServiceTest {
         given(wikiRepository.findAll(any(Specification.class), any(Pageable.class)))
                 .willReturn(new PageImpl<>(List.of(wiki), PageRequest.of(0, 20), 1));
         given(wikiCategoryRepository.findAllById(any())).willReturn(List.of(wikiCategory(9L, "부서 규정")));
-        given(wikiFileStorage.readIndex("D2"))
-                .willReturn("# 목차\n\n- [부서 규정](pages/202.md) — 부서 전용 규정");
 
         WikiListResponse response = service.findWikis(1, 20, null, null, null, null);
 
@@ -129,6 +127,27 @@ class WikiQueryServiceTest {
         assertThat(response.items().get(0).summary()).isEqualTo("부서 전용 규정");
         verify(memberRepository).findById(20L);
         verify(wikiScopeRepository).findByVisibilityType(WikiScopeVisibilityType.DEPARTMENT);
+    }
+
+    @Test
+    @DisplayName("목차에 없는 Wiki 의 요약도 컬럼에서 읽어 채운다")
+    void fillsSummaryFromColumnEvenWhenAbsentFromIndex() throws Exception {
+        // 목차 파일에 이 위키 항목이 없다. 예전에는 목차에서 요약을 읽어 null 이 됐다.
+        // 실데이터에서 확인된 상태다 — 시드로 만든 위키(14·15)는 목차에 들어간 적이 없어,
+        // 컬럼에 요약이 있는데도 목록 화면에서 비어 보였다.
+        Wiki wiki = wiki("ALL", 9L, "[샘플] 취업규칙 위키", 14L);
+        wiki.changeSummary("근무·휴가·복무 규정 요약(시연용)");
+        given(currentMemberProvider.currentMember())
+                .willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(wikiRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(wiki), PageRequest.of(0, 20), 1));
+        given(wikiCategoryRepository.findAllById(any()))
+                .willReturn(List.of(wikiCategory(9L, "샘플")));
+
+        WikiListResponse response = service.findWikis(1, 20, null, null, null, null);
+
+        assertThat(response.items().get(0).summary())
+                .isEqualTo("근무·휴가·복무 규정 요약(시연용)");
     }
 
     @Test
