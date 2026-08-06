@@ -7,6 +7,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.domain.question.dto.QuestionAskRequest;
 import com.ajt.backend.domain.question.dto.QuestionAskResponse;
 import com.ajt.backend.domain.question.dto.QuestionAskSourceResponse;
@@ -79,6 +80,7 @@ public class QuestionAskService {
     private final QuestionAnswerTransactionService answerTransactionService;
     private final ScheduleVisibilityPolicy scheduleVisibilityPolicy;
     private final WikiCapabilityService wikiCapabilityService;
+    private final SuperAdminChecker superAdminChecker;
 
     public QuestionAskService(
             AiClient aiClient,
@@ -91,7 +93,8 @@ public class QuestionAskService {
             AiQuestionRepository questionRepository,
             QuestionAnswerTransactionService answerTransactionService,
             ScheduleVisibilityPolicy scheduleVisibilityPolicy,
-            WikiCapabilityService wikiCapabilityService
+            WikiCapabilityService wikiCapabilityService,
+            SuperAdminChecker superAdminChecker
     ) {
         this.aiClient = aiClient;
         this.memberRepository = memberRepository;
@@ -104,6 +107,7 @@ public class QuestionAskService {
         this.answerTransactionService = answerTransactionService;
         this.scheduleVisibilityPolicy = scheduleVisibilityPolicy;
         this.wikiCapabilityService = wikiCapabilityService;
+        this.superAdminChecker = superAdminChecker;
     }
 
     public QuestionAskResponse ask(AuthenticatedMember loginMember, QuestionAskRequest request) {
@@ -219,8 +223,26 @@ public class QuestionAskService {
         return List.copyOf(messages.subList(from, messages.size()));
     }
 
-    /** 사원이 접근 가능한 공개범위: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위. */
+    /**
+     * 질문자가 근거로 쓸 수 있는 공개범위입니다.
+     *
+     * <p>사원·부서관리자: 전체 공개(ALL) + 소속 부서를 포함하는 부서 공개 범위. 문서·Wiki 목록
+     * 조회와 같은 기준이다(S15P11B106-229·289).
+     *
+     * <p>최고관리자: 모든 공간(S15P11B106-290). 예전에는 역할을 보지 않아 최고관리자도 소속 부서로
+     * 계산했는데, 최고관리자의 소속은 명목상 '최고관리자' 부서라 그 부서를 포함하는 Wiki 공간이
+     * 없다 — 결과적으로 전체 공개만 받아 「개발부 규정이 뭐야」 같은 질문에 근거를 찾지 못했다.
+     * 최고관리자는 이미 모든 문서·Wiki 를 볼 수 있으므로 새로 열리는 정보는 없다.
+     */
     private Set<String> accessibleScopeKeys(Member member) {
+        if (superAdminChecker.isSuperAdmin(member)) {
+            Set<String> scopeKeys = new HashSet<>();
+            scopeKeys.add("ALL");
+            wikiScopeRepository.findAll().stream()
+                    .map(WikiScope::scopeKey)
+                    .forEach(scopeKeys::add);
+            return scopeKeys;
+        }
         Set<String> scopeKeys = new HashSet<>();
         scopeKeys.add("ALL");
         Long departmentId = member.getDepartment() == null ? null : member.getDepartment().getId();
