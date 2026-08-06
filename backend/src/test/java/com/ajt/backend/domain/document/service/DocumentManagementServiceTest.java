@@ -1260,6 +1260,42 @@ class DocumentManagementServiceTest {
         verify(aiJobRepository, never()).save(any(AiJob.class));
     }
 
+    @Test
+    @DisplayName("AI 작업이 진행 중인 문서는 아직 UPLOADED 여도 지울 수 없다(S15P11B106-284)")
+    void rejectsDeleteWhileJobIsActive() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        AiJob running = AiJob.waiting(10L, "ALL", "ALL/jobs/abc", List.of(15L));
+        running.start();
+        given(aiJobRepository.findAllByStatusIn(any())).willReturn(List.of(running));
+
+        assertThatThrownBy(() -> service.delete(15L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+        // 지우지 않았으므로 파일도 그대로다.
+        verify(documentRepository, never()).delete(any(Document.class));
+    }
+
+    @Test
+    @DisplayName("확정 전 문서(카테고리 없음)도 상세 조회된다")
+    void readsUnclassifiedDocumentDetail() throws Exception {
+        Document document = Document.uploaded(
+                10L, null, "ALL", "rule.pdf", "wiki/ALL/sources/15/original.pdf", "application/pdf", 1024L);
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+
+        DocumentDetailResponse response = service.getDocument(15L);
+
+        assertThat(response.documentCategoryId()).isNull();
+        assertThat(response.documentCategoryName()).isNull();
+        // 카테고리가 없으면 조회 자체를 하지 않는다 — findById(null)은 예외를 던진다.
+        verify(documentCategoryRepository, never()).findById(any());
+    }
+
     private Document uploadedDocument() {
         return Document.uploaded(
                 10L,

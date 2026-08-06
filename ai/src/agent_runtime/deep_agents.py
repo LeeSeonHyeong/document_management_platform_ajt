@@ -76,6 +76,36 @@ CALL_TIMEOUT_SECONDS = 600
 # turns, so this is well clear of normal work while still bounded.
 MAX_TURNS = 60
 
+# `recursion_limit` 배수. LangGraph 는 **턴이 아니라 superstep** 을 센다.
+#
+# 상한은 `turn_limit_middleware` 가 맡는다. 이 값은 **백스톱**이므로 넉넉해야 한다 —
+# 여기가 먼저 걸리면 `GraphRecursionError` 가 나고 그것이 고장으로 뭉개져 상한 도달이
+# 이름을 잃는다. 정확히 그 상태였다(2026-08-06 01:00).
+#
+# **턴당 superstep 은 추정하지 않는다 — 실측이다.** 트레이스에서 3개(`model` ·
+# `TodoListMiddleware.after_model` · `tools`)로 보고 2배(120)를 썼는데, 그 값이 실효 상한을
+# 모델 호출 40회로 만들었다. 4배로 고친 뒤에도 `tests/runtime/test_turn_limit.py` 의 가짜
+# 모델이 **240 superstep / 모델 호출 47회 = 5.1** 을 보여 여전히 백스톱이 먼저 걸렸다.
+# 요약 미들웨어가 도는 턴은 더 쓴다. 8배는 그 실측(5.1)에 여유를 얹은 것이고, 그래도
+# 폭주는 미들웨어가 60회에서 끊으므로 이 값이 커진다고 잡이 길어지지 않는다.
+RECURSION_LIMIT_PER_TURN = 8
+
+
+def turn_limit_middleware():
+    """위키 경로의 턴 상한. 챗봇 경로(`_run_with_tools`)와 같은 이유로 미들웨어다.
+
+    `recursion_limit` 만으로는 상한 도달이 `GraphRecursionError` 로 나고, 그것이 위키 경로의
+    `except Exception` 에 걸려 「모델 호출 실패」로 뭉개진다 — 상한 도달과 고장을 구분할 수
+    없게 된다 (2026-08-06 01:00 실패가 그렇게 보고됐다).
+
+    `exit_behavior="error"` 다. `"end"` 는 영어 안내문(`Model call limits exceeded: ...`)을
+    마지막 AI 메시지로 끼워 정상 종료처럼 끝내는데, 위키 경로에서 그 메시지는 관리자가 읽는
+    작업 요약이 될 수 있다.
+    """
+    from langchain.agents.middleware import ModelCallLimitMiddleware
+
+    return ModelCallLimitMiddleware(thread_limit=MAX_TURNS, exit_behavior="error")
+
 # 문맥 압축 설정. **트리거는 프로바이더마다 다르다** — 게이트웨이의 요청 크기벽은 모델의
 # 컨텍스트 창과 다른 제약이라, 하나의 값으로 둘을 만족시킬 수 없다.
 #
@@ -193,11 +223,21 @@ class AgentReport(BaseModel):
     준다 — 완전한 차단은 아니라 `reply_sanitizer`를 이중으로 걸어둔다.
     """
 
+    # **길이를 여기서 정하지 않는다.** 예전 설명은 "2~3문장 보고" 였는데, 그것이
+    # `base.py::ingest_instruction` 의 표 양식(페이지·처리·카테고리·주요 내용·근거 5열 +
+    # 보충 4줄)과 정면으로 모순됐다. 마지막 답변은 `ToolStrategy(AgentReport)` 로 이 필드
+    # 하나에 담기므로 필드 설명이 프롬프트보다 가깝고, 그쪽이 이겨서 **표가 구조적으로 나올
+    # 수 없었다** — 실기동 job 37 의 「반영 내용」이 "새 페이지 1장을 만들고 기존 페이지
+    # 2장을 고쳤습니다" 한 줄로 끝나 무엇을 고쳤는지 알 수 없었다 (2026-08-06).
+    #
+    # 양식의 정본은 지시문이다. 여기서 다시 정의하면 또 갈라지므로 가리키기만 한다.
+    # 이 필드가 존재하는 이유(용어·경로 누출 차단, S15P11B106-243)는 그대로 남긴다.
     summary: str = Field(description=(
-        "비개발자 관리자에게 보여줄 2~3문장 보고. 시스템 용어(scope·frontmatter·lint·"
-        "error·warn 등)나 내부 파일 경로(pages/*.md, document-N, sources/N 등)를 "
-        "쓰지 않는다. 점검이 끝났다는 말로 시작하거나 끝맺지 않고, 첫 단어부터 곧바로 "
-        "반영된 내용을 설명한다."
+        "비개발자 관리자에게 보여줄 작업 보고. **지시문이 준 양식을 그대로 지킨다** — "
+        "한 줄 요약, 다룬 페이지마다 한 행인 표, 그다음 보충 항목이다. 길이를 줄이려고 "
+        "표를 빼지 않는다. 시스템 용어(scope·frontmatter·lint·error·warn 등)나 내부 파일 "
+        "경로(pages/*.md, document-N, sources/N 등)는 쓰지 않는다. 점검이 끝났다는 말로 "
+        "시작하거나 끝맺지 않고, 첫 단어부터 곧바로 반영된 내용을 설명한다."
     ))
 
 
@@ -506,8 +546,12 @@ class DeepAgentsRuntime:
         )
 
         from deepagents.middleware.summarization import SummarizationMiddleware
+        from langchain.agents.middleware.model_call_limit import (
+            ModelCallLimitExceededError,
+        )
         from langchain.agents.structured_output import ToolStrategy
 
+        from .history_tool import history_read_tool
         from .wiki_tools import wiki_agent_tools
 
         limit = timeout or CALL_TIMEOUT_SECONDS
@@ -517,7 +561,6 @@ class DeepAgentsRuntime:
         counts: dict = {}
         specs = wiki_agent_tools(fs, scope_key)
         verify_mcp_tools({spec.name for spec in specs})
-        tools = langchain_tools(specs, counts)
 
         register_harness_profile(
             self.model,
@@ -534,12 +577,22 @@ class DeepAgentsRuntime:
         # 작업의 임시 루트에 둔다 — 텍스트 요약이라 거의 안 쓰인다.
         from deepagents.backends import FilesystemBackend
         compaction_backend = FilesystemBackend(root_dir=str(root), virtual_mode=True)
+        # **압축이 버린 이력을 되읽을 길을 하나 준다.** 요약 메시지는 "전체 이력을
+        # `/conversation_history/…md` 에 저장했다" 고 안내하는데, `EXCLUDED_BUILTIN_TOOLS`
+        # 가 `read_file` 을 막아 그 안내가 막다른 길이었다 — 에이전트가 시킨 대로 읽으려다
+        # 실패하고 `guide` 부터 다시 시작해 아무것도 못 고쳤다 (2026-08-06 job 40).
+        #
+        # 이 도구는 그 디렉터리 **하나만** 읽는다. `read_file` 을 푸는 것이 아니다 —
+        # 그러면 `write_file` 과 함께 MCP 우회가 열린다 (`history_tool.py` 헤더).
+        specs = [*specs, history_read_tool(compaction_backend)]
+        tools = langchain_tools(specs, counts)
         agent = create_deep_agent(
             model=self._chat_model(limit),
             tools=tools,
             subagents=[],
             system_prompt="사내 위키 편집 에이전트다. `guide` 도구를 먼저 불러 작업 방식을 확인한다.",
-            middleware=[self._summarization_middleware(compaction_backend)],
+            middleware=[self._summarization_middleware(compaction_backend),
+                        turn_limit_middleware()],
             response_format=ToolStrategy(AgentReport),
         )
 
@@ -550,10 +603,18 @@ class DeepAgentsRuntime:
             result = await asyncio.wait_for(
                 agent.ainvoke(
                     {"messages": [{"role": "user", "content": instruction}]},
-                    {"recursion_limit": MAX_TURNS * 2},
+                    {"recursion_limit": MAX_TURNS * RECURSION_LIMIT_PER_TURN},
                 ),
                 timeout=limit,
             )
+        except ModelCallLimitExceededError:
+            # 상한 도달은 고장이 아니라 상한 도달이다. `except Exception` 보다 위에 둔다 —
+            # 아래로 내려가면 `GraphRecursionError` 때와 똑같이 뭉개진다. 그때까지 부른
+            # 도구 수를 함께 낸다: 쓰기가 0건이면 검색 루프이고, 도구가 0건이면 상한이
+            # 아니라 모델 호출 실패다 (2026-08-06 실측에서 그 둘을 구분할 수 없었다).
+            return RunResult(
+                text="", tool_calls=counts, elapsed_seconds=elapsed(),
+                error=f"턴 상한 {MAX_TURNS}회에 도달해 끝내지 못했다")
         except (TimeoutError, asyncio.TimeoutError):
             # 작업 공간에 쓰인 것은 남지만 작업이 성공을 보고하지 않았으므로 백엔드가
             # 버린다 (DR-009). `run` 과 같은 규약 — 예외가 아니라 `error` 문장이다.

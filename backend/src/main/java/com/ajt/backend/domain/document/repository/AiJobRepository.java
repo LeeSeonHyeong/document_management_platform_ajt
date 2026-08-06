@@ -3,6 +3,7 @@ package com.ajt.backend.domain.document.repository;
 import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.AiJobStatus;
 import java.util.Collection;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,6 +24,16 @@ public interface AiJobRepository extends JpaRepository<AiJob, Long> {
      * 두 번 나오거나 빠질 수 있습니다.
      */
     Page<AiJob> findAllByOrderByCreatedAtDescIdDesc(Pageable pageable);
+
+    /**
+     * 아직 끝나지 않은 작업들입니다(S15P11B106-284).
+     *
+     * <p>어떤 문서가 이미 작업에 들어갔는지 판단하는 데 쓴다. 문서 상태만으로는 알 수 없다 —
+     * 작업이 시작돼도 워커가 그 문서를 집을 때까지 문서는 UPLOADED 로 남고, 동시 실행 수가
+     * 제한돼 그 창이 몇 분씩 된다. {@code document_ids} 는 JSON 이라 SQL 로 찾지 않고
+     * 진행 중 작업만 읽어 애플리케이션에서 펼친다(진행 중 작업은 소수다).
+     */
+    List<AiJob> findAllByStatusIn(Collection<AiJobStatus> statuses);
 
     void deleteAllByScopeKey(String scopeKey);
 }

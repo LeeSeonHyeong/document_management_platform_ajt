@@ -15,6 +15,7 @@ import com.ajt.backend.domain.document.api.DocumentSummaryResponse;
 import com.ajt.backend.domain.document.api.DocumentUpdateResponse;
 import com.ajt.backend.domain.document.api.DocumentUploadRequest;
 import com.ajt.backend.domain.document.model.AiJob;
+import com.ajt.backend.domain.document.model.AiJobStatus;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.model.DocumentStatus;
@@ -117,8 +118,11 @@ public class DocumentManagementService {
         CurrentMember currentMember = requireAdmin();
         Document document = findDocument(documentId);
         requireDocumentScope(currentMember, document);
-        DocumentCategory category = documentCategoryRepository.findById(document.documentCategoryId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
+        // 확정 전 업로드는 카테고리가 없다(S15P11B106-276). findById(null)은 예외를 던지므로 건너뛴다.
+        DocumentCategory category = document.documentCategoryId() == null
+                ? null
+                : documentCategoryRepository.findById(document.documentCategoryId())
+                        .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND));
 
         return toDetail(document, category);
     }
@@ -605,9 +609,28 @@ public class DocumentManagementService {
     // 삭제)를 document_removed 단건으로 처리하므로 남은 문서를 다시 반영할 이유가 없다.
     // 남은 문서가 0개일 때 빈 작업이 FAILED로 마감되던 허위 실패(옛 리뷰 #3)도 함께 사라졌다.
 
+    /**
+     * 아직 끝나지 않은 작업에 들어간 문서 ID 들입니다(S15P11B106-284).
+     *
+     * <p>문서 상태로는 판단할 수 없다. 작업이 시작돼도 워커가 그 문서를 집을 때까지 문서는
+     * UPLOADED 로 남고, 동시 실행 수 제한 때문에 그 창이 몇 분씩 된다. 그 사이 문서가 대기
+     * 목록에 남아 있으면 관리자가 지울 수 있고, 지우면 워커가 문서를 못 찾아 작업이 깨진다.
+     */
+    private Set<Long> documentIdsInActiveJobs() {
+        return aiJobRepository.findAllByStatusIn(List.of(AiJobStatus.WAITING, AiJobStatus.PROCESSING))
+                .stream()
+                .flatMap(job -> job.documentIds().stream())
+                .collect(Collectors.toSet());
+    }
+
     private void ensureNotInProgress(Document document) {
         if (document.isInProgress()) {
             throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS);
+        }
+        // 작업에 들어간 문서는 아직 UPLOADED 여도 지울 수 없다 — 지우면 그 작업이 깨진다.
+        if (documentIdsInActiveJobs().contains(document.id())) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_DOCUMENT_STATUS, "AI 작업이 진행 중인 문서는 지울 수 없습니다.");
         }
     }
 
@@ -668,7 +691,7 @@ public class DocumentManagementService {
                 document.fileSize(),
                 // 확정 전 업로드는 카테고리가 없다. "null" 문자열을 내려보내지 않는다.
                 document.documentCategoryId() == null ? null : String.valueOf(document.documentCategoryId()),
-                category.name(),
+                category == null ? null : category.name(),
                 document.scopeKey(),
                 scope.visibilityType(),
                 departmentRefs(scope.departmentIds()),
@@ -744,8 +767,18 @@ public class DocumentManagementService {
         }
 
         Pageable pageable = createPageable(page, size, sort);
+        // 작업에 들어간 문서는 status=uploaded 조회에서 뺀다(S15P11B106-284).
+        //
+        // 대기 목록이 status=uploaded 로 조회하는데, 작업이 시작돼도 워커가 그 문서를 집을
+        // 때까지 문서는 UPLOADED 로 남는다(동시 실행 수 제한으로 몇 분). 그대로 두면 이미
+        // 시작한 문서가 대기 목록에 남아 「시작을 눌렀는데 그대로네」 하고 지우게 되고,
+        // 지우면 워커가 문서를 못 찾아 작업이 「문서를 찾을 수 없습니다」로 깨진다.
+        Set<Long> excludedIds = DocumentStatus.UPLOADED.name().equalsIgnoreCase(status)
+                ? documentIdsInActiveJobs()
+                : Set.of();
         Specification<Document> specification = documentSpecification(
-                allowedScopeKeys, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo, classified);
+                allowedScopeKeys, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo,
+                classified, excludedIds);
         Page<Document> documents = documentRepository.findAll(specification, pageable);
 
         // 카테고리명·업로더명·공개범위 부서명을 문서마다 개별 조회하면 N+1이 되므로 페이지 단위로 한 번에 모아 매핑한다.
@@ -829,7 +862,8 @@ public class DocumentManagementService {
             String fileType,
             String uploadedFrom,
             String uploadedTo,
-            Boolean classified
+            Boolean classified,
+            Set<Long> excludedIds
     ) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -851,6 +885,9 @@ public class DocumentManagementService {
                 predicates.add(classified
                         ? criteriaBuilder.isNotNull(root.get("documentCategoryId"))
                         : criteriaBuilder.isNull(root.get("documentCategoryId")));
+            }
+            if (excludedIds != null && !excludedIds.isEmpty()) {
+                predicates.add(criteriaBuilder.not(root.get("id").in(excludedIds)));
             }
             if (status != null && !status.isBlank()) {
                 predicates.add(criteriaBuilder.equal(root.get("status"), parseStatus(status)));

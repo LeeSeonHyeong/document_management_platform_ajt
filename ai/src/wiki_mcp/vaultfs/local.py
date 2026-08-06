@@ -167,6 +167,12 @@ class LocalVaultFS(VaultFS):
         if _db:
             await _db.close()
             _db = None
+        # 검색 결과집합 이력도 여기서 비운다. 남기면 다음 작업이 앞 작업의 집합을 보고
+        # "같은 결과다" 라고 잘못 경고한다 (`tools/search.py` 의 `_seen_result_sets`).
+        # 여기 두는 이유: 모든 세션이 지나는 유일한 자리다 — 창구 경로의
+        # `FederatedVaultFS.close` 도 이 메서드를 부른다.
+        from wiki_mcp.tools.search import reset_search_memory
+        reset_search_memory()
 
     @staticmethod
     def _conn() -> aiosqlite.Connection:

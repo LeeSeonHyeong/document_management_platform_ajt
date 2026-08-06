@@ -119,6 +119,53 @@ class DocumentCategoryServiceTest {
     }
 
     @Test
+    @DisplayName("scopeKey 없이 조회하면 최고관리자는 모든 공개 범위의 카테고리를 받는다(S15P11B106-290)")
+    void findAccessibleCategoriesReturnsAllForSuperAdmin() {
+        seedFourScopedCategories();
+
+        DocumentCategoryListResponse response = documentCategoryService.findAccessibleCategories(superAdmin());
+
+        assertThat(response.items()).extracting(DocumentCategoryResponse::scopeKey)
+                .contains("ALL", devScope, otherScope, multiScope);
+    }
+
+    @Test
+    @DisplayName("scopeKey 없이 조회하면 부서관리자는 담당 부서가 포함된 범위와 전체 공개를 받는다(S15P11B106-292)")
+    void findAccessibleCategoriesFiltersForDepartmentManager() {
+        seedFourScopedCategories();
+
+        DocumentCategoryListResponse response =
+                documentCategoryService.findAccessibleCategories(deptManager());
+
+        // S15P11B106-290 에서는 담당 부서만 받았다. 그러면 전체 공개 문서를 올릴 때 고를 카테고리가
+        // 없고, 「개발부+타부서」 공동 공간의 카테고리도 보이지 않는다(S15P11B106-292).
+        assertThat(response.items()).extracting(DocumentCategoryResponse::scopeKey)
+                .contains(devScope, "ALL", multiScope)
+                .doesNotContain(otherScope);
+    }
+
+    @Test
+    @DisplayName("scopeKey 없는 전체 조회는 일반 사용자를 403으로 거절한다(S15P11B106-290)")
+    void findAccessibleCategoriesRejectsEmployee() {
+        assertThatThrownBy(() -> documentCategoryService.findAccessibleCategories(employee()))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
+    }
+
+    // ALL·개발부·기획부·복수부서 각 scope에 카테고리를 하나씩 심는다.
+    private void seedFourScopedCategories() {
+        wikiScopeRepository.save(WikiScope.all());
+        wikiScopeRepository.save(WikiScope.department(List.of(dev.getId())));
+        wikiScopeRepository.save(WikiScope.department(List.of(other.getId())));
+        wikiScopeRepository.save(WikiScope.department(List.of(dev.getId(), other.getId())));
+        documentCategoryRepository.save(DocumentCategory.create("ALL", "공통", null));
+        documentCategoryRepository.save(DocumentCategory.create(devScope, "개발", null));
+        documentCategoryRepository.save(DocumentCategory.create(otherScope, "기획", null));
+        documentCategoryRepository.save(DocumentCategory.create(multiScope, "합동", null));
+    }
+
+    @Test
     @DisplayName("생성은 최고관리자가 카테고리를 저장하고 없는 Wiki 공간은 함께 준비한다")
     void createCategoryCreatesCategoryAndScope() {
         DocumentCategoryResponse response = documentCategoryService.createCategory(

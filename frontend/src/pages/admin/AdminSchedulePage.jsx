@@ -29,9 +29,10 @@ import {
 import CalendarGrid from '@/components/calendar/CalendarGrid'
 import AdminScheduleFormModal from '@/components/calendar/AdminScheduleFormModal'
 import ScheduleDraftDetailModal from '@/components/calendar/ScheduleDraftDetailModal'
-import { Button, Card, EmptyState, Badge, Tabs, DataTable } from '@/components/ui'
+import { Button, Card, EmptyState, Badge, Spinner, Tabs, DataTable } from '@/components/ui'
 import { cn } from '@/shared/lib/cn'
 import { useSchedules } from '@/features/schedule/useSchedules'
+import { useAiJobQueue } from '@/features/document/useAiJobQueue'
 import { useDepartments } from '@/features/department/useDepartments'
 import { filterByDepartmentTab } from '@/features/schedule/adminFilters'
 import { SCHEDULE_VISIBILITY } from '@/shared/constants/enums'
@@ -348,8 +349,17 @@ export default function AdminSchedulePage() {
   )
 
   const { data: departments = [] } = useDepartments()
+  // 문서 관리에서 시작한 일정 추출이 아직 돌고 있으면 여기서도 알려준다(S15P11B106-287).
+  // 셸이 들고 있는 값이라 화면을 옮겨도 유지된다 — 추출은 브라우저가 붙잡은 요청이라 서버에
+  // 물어볼 진행 상태가 없다.
+  const { extractingSchedules } = useAiJobQueue()
   const approvedQuery = useSchedules({ ...range, status: 'approved' })
-  const draftQuery = useSchedules({ ...range, status: 'draft' })
+  // 승인 대기 목록은 달 범위를 걸지 않는다.
+  //
+  // 검수할 초안이 어느 달에 있는지 관리자가 미리 알 수 없다. 문서에서 추출된 일정은 과거·미래
+  // 어디로든 흩어지므로, 보고 있는 달로 걸면 「추출 완료」가 떴는데 목록이 비어 실패로 보이고
+  // (S15P11B106-276 확인) 검수를 놓친 초안이 다른 달에 묻힌다. 캘린더만 달 단위로 둔다.
+  const draftQuery = useSchedules({ status: 'draft' })
 
   const deptId = deptTab === ALL_TAB ? null : deptTab
   const approvedEvents = useMemo(
@@ -640,6 +650,15 @@ export default function AdminSchedulePage() {
             <p className="mt-0.5 text-sm text-slate-400">
               AI가 문서에서 추출한 일정입니다. 승인해야 캘린더에 반영됩니다
             </p>
+            {extractingSchedules.length > 0 && (
+              <div className="mt-2 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                <Spinner size="sm" />
+                <span>
+                  일정 파일 {extractingSchedules.length}개에서 일정을 추출하고 있습니다. 끝나면 이
+                  목록에 나타납니다
+                </span>
+              </div>
+            )}
           </div>
           <Button onClick={openCreate}>
             <Plus className="size-4" />
@@ -667,6 +686,10 @@ export default function AdminSchedulePage() {
             rowKey="id"
             loading={draftQuery.isLoading}
             emptyState={<EmptyState title="검수할 초안이 없어요" />}
+            // 초안은 모든 달을 모아 보여주므로 많아질 수 있다. 목록 안에서만 스크롤해
+            // 아래 내용이 화면 밖으로 밀려나지 않게 한다. 헤더는 고정한다.
+            scrollClassName="max-h-[28rem]"
+            stickyHeader
           />
         )}
       </Card>

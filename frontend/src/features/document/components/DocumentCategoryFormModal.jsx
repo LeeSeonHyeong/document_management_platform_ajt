@@ -11,6 +11,9 @@ export default function DocumentCategoryFormModal({
   scopeKey,
   category,
   departments = [],
+  // 부서관리자 제한(S15P11B106-292). 담당 부서를 빼거나 전사 범위로 바꿀 수 없다.
+  requiredDepartmentId = null,
+  allowAllScope = true,
   defaultDepartments = [],
   departmentLabel = '부서별 지정',
   documentCount = 0,
@@ -24,7 +27,7 @@ export default function DocumentCategoryFormModal({
   const [departmentValues, setDepartmentValues] = useState([])
 
   const createMutation = useCreateDocumentCategory()
-  const updateMutation = useUpdateDocumentCategory(scopeKey)
+  const updateMutation = useUpdateDocumentCategory()
   const saving = createMutation.isPending || updateMutation.isPending
 
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function DocumentCategoryFormModal({
       onClose?.()
     }
     const onError = (error) => {
-      if (error?.response?.status === 409) toast.error('같은 이름의 카테고리가 있습니다.')
+      if (error?.status === 409) toast.error('같은 이름의 카테고리가 있습니다.')
       else toast.error('저장에 실패했습니다.')
     }
 
@@ -105,6 +108,8 @@ export default function DocumentCategoryFormModal({
                 onChange={setDepartmentValues}
                 placeholder="공개 부서 (선택)"
                 allowWrap
+                requiredDepartmentId={requiredDepartmentId}
+                allowAllScope={allowAllScope}
               />
             ) : (
               <div className="flex min-h-10 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2">
