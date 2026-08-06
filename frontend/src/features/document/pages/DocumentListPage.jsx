@@ -45,8 +45,10 @@ export default function DocumentListPage() {
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressJobIds, setProgressJobIds] = useState([])
   const [progressDocumentCount, setProgressDocumentCount] = useState(0)
-  // 처리 중인 일정 파일 수. 파싱·추출이 동기라 오래 걸려 화면에 따로 알린다.
-  const [scheduleUploadCount, setScheduleUploadCount] = useState(0)
+  // 전송·추출이 진행 중인 일정 파일. 파싱·추출이 동기라 몇 분씩 걸리는데, 그 사이 대기 목록에
+  // 남아 있어 다시 시작하면 같은 파일이 또 전송돼 일정 초안이 중복 생성된다(S15P11B106-284).
+  const [processingScheduleIds, setProcessingScheduleIds] = useState(() => new Set())
+  const scheduleUploadCount = processingScheduleIds.size
   // 문서 파일 대기 목록은 서버에서 읽는다 (S15P11B106-276). 파일을 고르는 즉시 업로드하므로
   // 새로고침해도 남아 있다.
   //
@@ -70,13 +72,17 @@ export default function DocumentListPage() {
   const deleteDocumentMutation = useDeleteDocument()
   // 모달의 「시작 중…」은 작업 생성만 기다린다. 일정 파일 전송은 모달을 닫은 뒤 진행한다 —
   // 파싱·추출이 동기라 오래 걸려서, 기다리면 화면이 붙잡힌다.
-  const isStarting = createAiJobMutation.isPending
+  const isStarting = createAiJobMutation.isPending || scheduleUploadCount > 0
   // 오버레이(queueMetadata)는 서버 문서에도 씌운다. 공개 부서만 먼저 고른 상태는 아직
   // 서버에 저장할 수 없어(카테고리와 함께 보내야 한다) 화면에만 담아 둔다.
   const withOverlay = (document) => ({ ...document, ...queueMetadata[document.documentId] })
   const scheduleDocuments = previewQueueDocuments.map(withOverlay)
   const waitingDocuments = [...pendingDocuments.map(withOverlay), ...scheduleDocuments]
-  const readyDocuments = waitingDocuments.filter(isAssigned)
+  // 전송 중인 일정 파일은 시작 대상에서 뺀다 — 버튼을 잠그긴 했지만 중복 전송의 유일한 방어선을
+  // 화면 상태 하나에 걸지 않는다.
+  const readyDocuments = waitingDocuments
+    .filter(isAssigned)
+    .filter((document) => !processingScheduleIds.has(document.documentId))
   const allAssigned = waitingDocuments.length > 0 && readyDocuments.length === waitingDocuments.length
   const unassignedCount = waitingDocuments.filter((document) => !isAssigned(document)).length
   // 업로드 카드가 개수·총합 제한을 판단할 때 쓴다.
@@ -187,6 +193,10 @@ export default function DocumentListPage() {
               onClick={async (event) => {
                 event.stopPropagation()
                 if (doc.previewOnly) {
+                  if (processingScheduleIds.has(doc.documentId)) {
+                    toast.error('일정을 추출하는 중인 파일은 지울 수 없습니다.')
+                    return
+                  }
                   removeDocuments([doc.documentId])
                   return
                 }
@@ -283,7 +293,7 @@ export default function DocumentListPage() {
 
           // 2) 일정 파일은 병렬로 보낸다. 서로 독립적인 요청이라 순차로 돌리면 파일 수만큼
           //    시간이 곱해진다(3개면 최장 9분). 실패한 파일만 대기 목록에 남긴다.
-          setScheduleUploadCount(scheduleDocuments.length)
+          setProcessingScheduleIds(new Set(scheduleDocuments.map((d) => d.documentId)))
           const results = await Promise.allSettled(
             scheduleDocuments.map((document) =>
               uploadScheduleMutation
@@ -295,7 +305,7 @@ export default function DocumentListPage() {
                 .then(() => document.documentId),
             ),
           )
-          setScheduleUploadCount(0)
+          setProcessingScheduleIds(new Set())
 
           const uploadedIds = results
             .filter((result) => result.status === 'fulfilled')
