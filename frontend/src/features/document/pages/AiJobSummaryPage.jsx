@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Button, Badge, Spinner } from '@/components/ui'
-import { RotateCcw } from 'lucide-react'
+import { ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAiJob, useRetryDocument } from '../queries'
 import { useDocumentDetails } from '../hooks/useDocumentDetails'
 import { DOC_STATUS_TONE, DOC_STATUS_LABEL } from '../status'
@@ -51,6 +51,15 @@ export default function AiJobSummaryPage() {
 
   return (
     <section className="space-y-4">
+      {/* 진행 화면과 마찬가지로 나갈 길이 없었다(S15P11B106-300). */}
+      <Link
+        to="/admin/documents/summaries"
+        className="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-md text-sm font-semibold text-slate-500 hover:text-primary-600"
+      >
+        <ArrowLeft className="size-3.5" />
+        AI 작업 요약
+      </Link>
+
       <div>
         <h1 className="text-2xl font-semibold">AI 작업 요약</h1>
         <p className="mt-1 text-sm text-slate-500">
