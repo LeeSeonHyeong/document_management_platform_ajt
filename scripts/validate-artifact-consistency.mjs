@@ -426,7 +426,9 @@ const collectionVariable = (collection, key) =>
 //     필수에서 선택으로 바뀐다. 작업 생성은 신설 `POST /api/v1/ai-jobs` 가 맡는다.
 //   - `GET /documents` 에 classified 필터를 더한다(선택).
 //   - AI 작업·업로드·재시도 응답의 시각이 시간대 표기 없는 값에서 UTC 표기("...Z")로 바뀐다.
-const expectedContractVersion = "1.15.0";
+// 1.15.1 은 로그인·내 정보 응답에 managedDepartmentId 를 더한 것이다(S15P11B106-289).
+// 필드 추가라 patch 다.
+const expectedContractVersion = "1.15.1";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

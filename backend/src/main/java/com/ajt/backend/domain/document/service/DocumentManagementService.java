@@ -746,16 +746,16 @@ public class DocumentManagementService {
 
         // 접근 가능한 공개범위(scopeKey) 제한을 계산한다. null이면 제한 없음(관리자이면서 부서 필터도 없는 경우).
         Set<String> allowedScopeKeys = null;
-        if (!currentMember.isAdmin()) {
-            // 사원: 전체 공개(ALL) + 본인 소속 부서를 포함하는 부서 공개 범위만 볼 수 있다.
+        // 조회 범위(S15P11B106-289): 최고관리자만 제한이 없다. 부서관리자는 사원과 같은 범위를 본다 —
+        // 전체 공개(ALL) + 소속 부서가 포함된 공개 범위.
+        //
+        // 예전에는(S15P11B106-199) 부서관리자를 담당 부서 단일 scope 로 좁혔는데, 그러면 전체 공개
+        // 문서가 목록에서 사라져 같은 부서 사원보다 덜 보였고 재처리에도 닿을 수 없었다. Wiki 는
+        // S15P11B106-229 에서 이미 같은 이유로 넓혔다. 쓰기 제한(담당 부서 + 전체 공개)은 그대로다.
+        boolean unrestricted = currentMember.isAdmin()
+                && departmentScopePolicy.resolve(currentMember.memberId()).isSuperAdmin();
+        if (!unrestricted) {
             allowedScopeKeys = accessibleScopeKeys(memberDepartmentId(currentMember.memberId()));
-        } else {
-            // 수정(S15P11B106-199): 부서관리자는 담당 부서 단일 scope 문서만 조회한다(전체·타부서 제외). 최고관리자는 제한 없음.
-            ScopeAccess scope = departmentScopePolicy.resolve(currentMember.memberId());
-            if (scope.isRestricted()) {
-                String managed = scope.managedScopeKey();
-                allowedScopeKeys = managed == null ? Set.of() : Set.of(managed);
-            }
         }
         if (departmentId != null) {
             // departmentId 필터(계약): 해당 부서를 department_refs에 포함하는 공개범위로 좁힌다. 사원이면 기존 접근권한과 교집합.

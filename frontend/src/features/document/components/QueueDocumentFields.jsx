@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Check, ChevronDown, Search } from 'lucide-react'
 import { Button } from '@/components/ui'
 import { useDepartments } from '@/features/department/useDepartments'
+import { useAuth } from '@/hooks/useAuth'
 import { useDocumentCategories, useUpdateDocument } from '../queries'
 
 function DropdownButton({ children, open, warning, onClick }) {
@@ -36,6 +37,14 @@ export function QueueVisibilityDropdown({ item, onApplied, localOnly = false }) 
   const [position, setPosition] = useState({ top: 0, left: 0, width: 264 })
   const { data: departments = [] } = useDepartments()
   const updateMutation = useUpdateDocument(item.documentId)
+  // 부서관리자는 담당 부서가 포함된 범위와 전체 공개만 다룰 수 있다(S15P11B106-289). 서버가
+  // 403으로 막지만, 고를 수 없는 조합을 보여주면 「골랐는데 안 되는」 상태가 된다.
+  //
+  // 담당 부서는 소속 부서와 다를 수 있어 managedDepartmentId 를 쓴다 — 소속으로 추측하면
+  // 담당≠소속인 부서장에게 틀린 선택지를 보여준다.
+  const { user } = useAuth()
+  const managedDepartmentId = user?.isSuperAdmin ? null : (user?.managedDepartmentId ?? null)
+  const restricted = Boolean(managedDepartmentId)
 
   useEffect(() => {
     const incomingIds = (item.departments ?? []).map((department) => department.departmentId).sort()
@@ -104,8 +113,17 @@ export function QueueVisibilityDropdown({ item, onApplied, localOnly = false }) 
   const filtered = departments.filter((department) => department.name.toLowerCase().includes(search.toLowerCase()))
 
   function toggleDepartment(id) {
+    // 담당 부서는 뺄 수 없다 — 빼면 서버가 거절하는 조합이 된다.
+    if (restricted && String(id) === String(managedDepartmentId)) return
     setAllVisible(false)
-    setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]))
+    setSelectedIds((current) => {
+      const next = current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
+      // 부서 범위를 고르는 순간 담당 부서를 항상 함께 넣는다.
+      if (restricted && next.length > 0 && !next.some((value) => String(value) === String(managedDepartmentId))) {
+        return [...next, managedDepartmentId]
+      }
+      return next
+    })
   }
 
   function apply() {
@@ -182,15 +200,25 @@ export function QueueVisibilityDropdown({ item, onApplied, localOnly = false }) 
                   setSelectedIds([])
                 }}
               />
-              {filtered.map((department) => (
-                <CheckOption
-                  key={department.departmentId}
-                  label={department.name}
-                  checked={!allVisible && selectedIds.includes(department.departmentId)}
-                  onClick={() => toggleDepartment(department.departmentId)}
-                />
-              ))}
+              {filtered.map((department) => {
+                const managed =
+                  restricted && String(department.departmentId) === String(managedDepartmentId)
+                return (
+                  <CheckOption
+                    key={department.departmentId}
+                    // 담당 부서는 뺄 수 없다는 것을 라벨로 알린다(S15P11B106-289).
+                    label={managed ? `${department.name} (담당 부서)` : department.name}
+                    checked={!allVisible && selectedIds.includes(department.departmentId)}
+                    onClick={() => toggleDepartment(department.departmentId)}
+                  />
+                )
+              })}
             </div>
+            {restricted && (
+              <p className="px-3 pb-2 text-[11px] leading-4 text-slate-400">
+                부서를 고르면 담당 부서가 함께 포함됩니다. 담당 부서가 빠진 조합은 만들 수 없습니다.
+              </p>
+            )}
 
             <div className="flex items-center justify-between border-t border-slate-100 px-3 py-2">
               <span className="text-[11px] text-slate-500">

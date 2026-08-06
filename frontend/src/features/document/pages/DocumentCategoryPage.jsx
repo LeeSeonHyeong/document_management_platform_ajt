@@ -13,6 +13,7 @@ import {
 } from '../queries'
 import DocumentCategoryFormModal from '../components/DocumentCategoryFormModal'
 import DepartmentMultiSelect from '../components/DepartmentMultiSelect'
+import { useAuth } from '@/hooks/useAuth'
 import { buildScopeKey } from '../scope'
 
 const CATEGORY_TONES = [
@@ -44,6 +45,10 @@ export default function DocumentCategoryPage() {
   const toast = useToast()
   const [newName, setNewName] = useState('')
   const [newDepartments, setNewDepartments] = useState([])
+  // 부서관리자는 담당 부서가 포함된 범위만 관리한다. 전사 카테고리(전체 공개)는 모든 부서가
+  // 함께 쓰는 분류라 최고관리자만 만든다(S15P11B106-292).
+  const { user } = useAuth()
+  const managedDepartmentId = user?.isSuperAdmin ? null : (user?.managedDepartmentId ?? null)
   // 부서 필터: '' 전체 | 'ALL' 전체공개 | 부서 ID.
   const [deptFilter, setDeptFilter] = useState('')
   const [editing, setEditing] = useState(null)
@@ -174,6 +179,8 @@ export default function DocumentCategoryPage() {
               departments={departments}
               onChange={setNewDepartments}
               placeholder="공개 부서 선택"
+              requiredDepartmentId={managedDepartmentId}
+              allowAllScope={!managedDepartmentId}
             />
           </div>
           <div className="min-w-0 flex-1">
@@ -347,6 +354,9 @@ export default function DocumentCategoryPage() {
         scopeKey={editing?.scopeKey}
         category={editing}
         departments={departments}
+        // 수정에서도 담당 부서를 빼거나 전사(전체 공개)로 바꿀 수 없다(S15P11B106-292).
+        requiredDepartmentId={managedDepartmentId}
+        allowAllScope={!managedDepartmentId}
         defaultDepartments={editing ? departmentValuesFor(editing) : []}
         departmentLabel={
           editing

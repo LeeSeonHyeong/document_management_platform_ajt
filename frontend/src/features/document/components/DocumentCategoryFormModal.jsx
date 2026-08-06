@@ -11,6 +11,9 @@ export default function DocumentCategoryFormModal({
   scopeKey,
   category,
   departments = [],
+  // 부서관리자 제한(S15P11B106-292). 담당 부서를 빼거나 전사 범위로 바꿀 수 없다.
+  requiredDepartmentId = null,
+  allowAllScope = true,
   defaultDepartments = [],
   departmentLabel = '부서별 지정',
   documentCount = 0,
@@ -105,6 +108,8 @@ export default function DocumentCategoryFormModal({
                 onChange={setDepartmentValues}
                 placeholder="공개 부서 (선택)"
                 allowWrap
+                requiredDepartmentId={requiredDepartmentId}
+                allowAllScope={allowAllScope}
               />
             ) : (
               <div className="flex min-h-10 items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-2">

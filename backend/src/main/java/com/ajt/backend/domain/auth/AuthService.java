@@ -95,10 +95,15 @@ public class AuthService {
                 .filter(this::canLogin)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_CREDENTIALS));
 
+        // 담당 부서를 함께 내려준다(S15P11B106-289) — 로그인 직후 화면이 공개 범위 선택을
+        // 제한할 수 있어야 하고, /me 를 한 번 더 부르지 않아도 되게 한다.
+        Long managedDepartmentId = departmentRepository.findByManager_Id(member.getId())
+                .map(Department::getId)
+                .orElse(null);
         return new LoginResult(
                 accessTokenService.createAccessToken(member),
                 accessTokenService.expiresInSeconds(),
-                AuthUserResponse.from(member, superAdminChecker.isSuperAdmin(member))
+                AuthUserResponse.from(member, superAdminChecker.isSuperAdmin(member), managedDepartmentId)
         );
     }
 

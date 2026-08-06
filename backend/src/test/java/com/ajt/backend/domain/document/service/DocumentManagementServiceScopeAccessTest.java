@@ -141,8 +141,8 @@ class DocumentManagementServiceScopeAccessTest {
     }
 
     @Test
-    @DisplayName("부서관리자는 담당 부서(D2) 문서만 보고 전체(ALL)·타부서(D3)는 제외된다(S15P11B106-199)")
-    void departmentManagerSeesOnlyManagedScope() {
+    @DisplayName("부서관리자는 담당 부서(D2)와 전체 공개(ALL) 문서를 보고 타부서(D3)는 제외된다(S15P11B106-289)")
+    void departmentManagerSeesManagedAndAllScope() {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(deptManagerId, CurrentMemberRole.ADMIN));
 
@@ -151,7 +151,9 @@ class DocumentManagementServiceScopeAccessTest {
         List<String> scopeKeys = response.items().stream()
                 .map(DocumentSummaryResponse::scopeKey)
                 .toList();
-        assertThat(scopeKeys).containsExactly(scopeD2);
-        assertThat(scopeKeys).doesNotContain("ALL", scopeD3);
+        // 예전에는 담당 부서만 보였다. 그러면 같은 부서 사원보다 덜 보이고, 전체 공개 문서의
+        // 재처리에도 닿을 수 없었다(S15P11B106-289).
+        assertThat(scopeKeys).contains(scopeD2, "ALL");
+        assertThat(scopeKeys).doesNotContain(scopeD3);
     }
 }
