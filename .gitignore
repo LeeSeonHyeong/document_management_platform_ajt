@@ -6,3 +6,25 @@
 .env
 .env.*
 !.env.example
+
+# OS·에디터가 만드는 파일. 사람마다 달라 저장소에 두면 서로 덮어쓴다.
+.DS_Store
+.idea/
+*.iml
+
+# 루트에서 npm 을 잘못 돌리면 생긴다. 실제 잠금 파일은 frontend/·ai/viewer/ 안에 있다.
+/package-lock.json
+/node_modules/
+
+# 팀원이 각자 내려받아 보는 산출물·샘플. 공유는 노션·드라이브로 하고 저장소에 넣지 않는다.
+# (S15P11B106-297: 실수로 커밋돼 저장소에 들어갔다가 걷어냈다.)
+/sample-docs/
+/sample-docs.zip
+/erdTable-snapshot-ajt.json
+
+# 로컬에 두고 보는 문서 사본. 정본은 docs/ 안에 있다(루트 CLAUDE.md 의 단일 관리 지점 원칙).
+/Git Convention.md
+/REST API 개발 컨벤션.md
+/요구사항정의서_v2 1.md
+/와이어프레임(관리자)/
+/와이어프레임(사원)/
