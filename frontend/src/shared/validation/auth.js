@@ -12,7 +12,8 @@ export const loginSchema = z.object({
 export const signupSchema = z
   .object({
     name: nameSchema,
-    email: emailSchema,
+    // 회원가입 이메일은 30자 이하로 제한(공유 emailSchema는 로그인·비밀번호찾기와 공유해 그대로 둔다).
+    email: emailSchema.max(30, '이메일은 최대 30자입니다.'),
     departmentId: z.string().min(1, '소속 부서를 선택해 주세요.'),
     password: passwordSchema,
     passwordConfirm: z.string().min(1, '비밀번호 확인을 입력해 주세요.'),
