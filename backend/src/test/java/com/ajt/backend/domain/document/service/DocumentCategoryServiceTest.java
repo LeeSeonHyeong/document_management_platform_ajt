@@ -130,16 +130,18 @@ class DocumentCategoryServiceTest {
     }
 
     @Test
-    @DisplayName("scopeKey 없이 조회하면 부서관리자는 담당 부서 범위 카테고리만 받는다(S15P11B106-290)")
+    @DisplayName("scopeKey 없이 조회하면 부서관리자는 담당 부서가 포함된 범위와 전체 공개를 받는다(S15P11B106-292)")
     void findAccessibleCategoriesFiltersForDepartmentManager() {
         seedFourScopedCategories();
 
         DocumentCategoryListResponse response =
                 documentCategoryService.findAccessibleCategories(deptManager());
 
+        // S15P11B106-290 에서는 담당 부서만 받았다. 그러면 전체 공개 문서를 올릴 때 고를 카테고리가
+        // 없고, 「개발부+타부서」 공동 공간의 카테고리도 보이지 않는다(S15P11B106-292).
         assertThat(response.items()).extracting(DocumentCategoryResponse::scopeKey)
-                .contains(devScope)
-                .doesNotContain("ALL", otherScope, multiScope);
+                .contains(devScope, "ALL", multiScope)
+                .doesNotContain(otherScope);
     }
 
     @Test
@@ -268,9 +270,10 @@ class DocumentCategoryServiceTest {
     }
 
     @Test
-    @DisplayName("부서관리자는 전체(ALL)·타부서·복수 부서 범위 카테고리를 생성할 수 없다(403)")
+    @DisplayName("부서관리자는 전체(ALL)·타부서 범위 카테고리를 생성할 수 없다(403)")
     void deptManagerCannotCreateOutOfScopeCategory() {
-        for (String scope : List.of("ALL", otherScope, multiScope)) {
+        // 담당 부서가 포함된 복수 부서 범위(multiScope)는 관리할 수 있다 — 아래 별도 테스트.
+        for (String scope : List.of("ALL", otherScope)) {
             assertThatThrownBy(() -> documentCategoryService.createCategory(
                     deptManager(), new DocumentCategoryCreateRequest(scope, "x", null)))
                     .isInstanceOf(BusinessException.class)
@@ -280,16 +283,31 @@ class DocumentCategoryServiceTest {
     }
 
     @Test
-    @DisplayName("부서관리자는 담당 부서 카테고리만 조회하고 전체·타부서·복수 부서는 404로 숨겨진다")
-    void deptManagerReadsOnlyOwnScope() {
+    @DisplayName("부서관리자는 담당 부서가 포함된 복수 부서 범위 카테고리를 만들 수 있다(S15P11B106-289)")
+    void deptManagerCreatesCategoryInSharedScope() {
+        // "개발부+타부서" 공간은 두 부서장이 함께 쓰는 곳이라 카테고리도 함께 관리한다.
+        wikiScopeRepository.save(WikiScope.department(List.of(dev.getId(), other.getId())));
+
+        DocumentCategoryResponse created = documentCategoryService.createCategory(
+                deptManager(), new DocumentCategoryCreateRequest(multiScope, "공동 규정", null));
+
+        assertThat(created.scopeKey()).isEqualTo(multiScope);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 담당 부서·복수 부서·전체 공개 카테고리를 조회하고 타부서는 404로 숨겨진다")
+    void deptManagerReadsOwnAndAllScope() {
         wikiScopeRepository.save(WikiScope.department(List.of(dev.getId())));
         wikiScopeRepository.save(WikiScope.all());
         wikiScopeRepository.save(WikiScope.department(List.of(other.getId())));
         wikiScopeRepository.save(WikiScope.department(List.of(dev.getId(), other.getId())));
         documentCategoryRepository.save(DocumentCategory.create(devScope, "개발 규정", null));
+        documentCategoryRepository.save(DocumentCategory.create("ALL", "공지사항", null));
 
         assertThat(documentCategoryService.findCategories(deptManager(), devScope).items()).hasSize(1);
-        for (String scope : List.of("ALL", otherScope, multiScope)) {
+        // 전체 공개 문서를 올릴 때 그 범위의 카테고리를 골라야 한다(S15P11B106-289).
+        assertThat(documentCategoryService.findCategories(deptManager(), "ALL").items()).hasSize(1);
+        for (String scope : List.of(otherScope)) {
             assertThatThrownBy(() -> documentCategoryService.findCategories(deptManager(), scope))
                     .isInstanceOf(BusinessException.class)
                     .extracting("errorCode")

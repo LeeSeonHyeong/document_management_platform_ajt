@@ -58,10 +58,10 @@ class DocumentUploadServiceTest {
     }
 
     @Test
-    @DisplayName("부서관리자는 전체(ALL) 범위로 업로드할 수 없다(S15P11B106-199)")
-    void departmentManagerCannotUploadToAllScope() {
+    @DisplayName("부서관리자는 타부서(D3) 범위로 업로드할 수 없다(S15P11B106-199)")
+    void departmentManagerCannotUploadToAnotherDepartment() {
         DocumentUploadRequest request = DocumentUploadRequest.of(
-                List.of(markdownFile("a.md")), 7L, "all", List.of());
+                List.of(markdownFile("a.md")), 7L, "department", List.of(3L));
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(departmentScopePolicy.resolve(10L)).willReturn(ScopeAccess.departmentManager(2L));
 
@@ -69,6 +69,26 @@ class DocumentUploadServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 전체 공개(ALL) 범위로 업로드할 수 있다(S15P11B106-289)")
+    void departmentManagerUploadsToAllScope() throws Exception {
+        MockMultipartFile file = markdownFile("a.md");
+        DocumentUploadRequest request = DocumentUploadRequest.of(List.of(file), 7L, "all", List.of());
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(departmentScopePolicy.resolve(10L)).willReturn(ScopeAccess.departmentManager(2L));
+        given(documentCategoryRepository.findById(7L))
+                .willReturn(Optional.of(DocumentCategory.create("ALL", "공지사항", null)));
+        given(wikiScopeRepository.findById("ALL")).willReturn(Optional.of(WikiScope.all()));
+        given(documentRepository.save(any(Document.class))).willAnswer(invocation -> {
+            Document document = invocation.getArgument(0);
+            assignId(document, 15L);
+            return document;
+        });
+        given(fileStorage.storeOriginal("ALL", 15L, file)).willReturn("ALL/15/original.md");
+
+        assertThat(service.upload(request).scopeKey()).isEqualTo("ALL");
     }
 
     @Test

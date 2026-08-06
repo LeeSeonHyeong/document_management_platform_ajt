@@ -7,6 +7,10 @@ export default function DepartmentMultiSelect({
   onChange,
   placeholder = '공개 부서 (선택)',
   allowWrap = false,
+  // 부서관리자 제한(S15P11B106-289). 전체 공개를 막고, 담당 부서를 반드시 포함시킨다.
+  // 서버가 403으로 거절하는 조합을 화면에서 고를 수 없게 하려는 것이다.
+  requiredDepartmentId = null,
+  allowAllScope = true,
 }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
@@ -30,13 +34,24 @@ export default function DepartmentMultiSelect({
   }, [open])
 
   function toggleAll() {
+    if (!allowAllScope) return
     onChange(allSelected ? [] : ['ALL'])
   }
 
   function toggleDepartment(departmentId) {
     const id = String(departmentId)
+    const required = requiredDepartmentId == null ? null : String(requiredDepartmentId)
+    // 담당 부서는 뺄 수 없다 — 빼면 서버가 거절하는 조합이 된다.
+    if (required && id === required) return
     const current = value.filter((selected) => selected !== 'ALL')
-    onChange(current.includes(id) ? current.filter((selected) => selected !== id) : [...current, id])
+    const next = current.includes(id)
+      ? current.filter((selected) => selected !== id)
+      : [...current, id]
+    // 부서를 고르는 순간 담당 부서를 함께 넣는다.
+    if (required && next.length > 0 && !next.includes(required)) {
+      next.push(required)
+    }
+    onChange(next)
   }
 
   return (
@@ -61,7 +76,9 @@ export default function DepartmentMultiSelect({
       {open && (
         <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-full min-w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
           <div className="max-h-56 overflow-y-auto p-2">
-            <DepartmentCheckOption label="전체 공개" checked={allSelected} onClick={toggleAll} />
+            {allowAllScope && (
+              <DepartmentCheckOption label="전체 공개" checked={allSelected} onClick={toggleAll} />
+            )}
             {departments.map((department) => (
               <DepartmentCheckOption
                 key={department.departmentId}

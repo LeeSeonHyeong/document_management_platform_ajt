@@ -11,6 +11,7 @@ import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.DepartmentScopePolicy;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.global.auth.AuthenticatedMember;
@@ -175,9 +176,20 @@ public class DocumentCategoryService {
      * 카테고리 생성/수정/삭제용 스코프 가드(관리자 전용, S15P11B106-199).
      * 부서관리자는 담당 부서 단일 범위만 관리할 수 있고, 그 외 범위는 {@code denyCode}로 거절한다
      * (생성=FORBIDDEN, 수정·삭제=DOCUMENT_CATEGORY_NOT_FOUND로 존재 숨김). 최고관리자는 제한이 없다.
+     *
+     * <p>전체 공개(ALL)만 여기서 제외한다(S15P11B106-289). 부서관리자가 전체 공개 문서를 <b>다루는</b>
+     * 것과 전사 카테고리 체계를 <b>바꾸는</b> 것은 다른 무게다 — 전사 분류는 모든 부서가 함께 쓰므로
+     * 최고관리자만 만들고 고친다. 조회(canReadScope)는 넓혀서 전체 공개 카테고리를 골라 문서를
+     * 올릴 수 있다.
+     *
+     * <p>부서 범위는 담당 부서가 포함되면 관리할 수 있다 — "개발부+인사부"(D2-D5) 공간의 카테고리는
+     * 그 두 부서장이 함께 관리한다.
      */
     private void requireManageableScope(AuthenticatedMember loginMember, String scopeKey, ErrorCode denyCode) {
-        if (!departmentScopePolicy.resolve(loginMember.memberId()).canAccessScopeKey(scopeKey)) {
+        ScopeAccess access = departmentScopePolicy.resolve(loginMember.memberId());
+        boolean manageable = access.isSuperAdmin()
+                || (!"ALL".equals(scopeKey) && access.canAccessScopeKey(scopeKey));
+        if (!manageable) {
             throw new BusinessException(denyCode);
         }
     }
