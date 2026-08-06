@@ -34,10 +34,26 @@ export default function SourceDocumentListPage() {
   // 이 목록은 「지금 Wiki 의 근거가 무엇인가」를 보는 곳이다(S15P11B106-248). 그래서 위키에
   // 반영이 끝난 문서만 남긴다(S15P11B106-288).
   //
-  // 빠지는 것: 확정 전 업로드(카테고리 미지정), 처리 중, 실패, 삭제 대기. 실패한 문서는 「AI 작업
-  // 요약」에서 사유를 보고 재시도할 수 있어(AiJobSummaryListPage) 여기서 숨겨도 닿을 수 있다.
+  // 빠지는 것: 확정 전 업로드(카테고리 미지정), 처리 중, 변환 실패, 삭제 대기. 변환에 실패한
+  // 문서는 Wiki 에 들어간 적이 없어 근거가 아니고, 「AI 작업 요약」에서 사유를 보고 재시도할 수 있다.
   const sourceFilters = { ...filters, status: DOCUMENT_STATUS.COMPLETED }
   const { data, isLoading } = useDocuments(sourceFilters)
+  // 삭제·교체가 실패한 문서는 status 가 failed 여도 **Wiki 근거로는 그대로 남아 있다**
+  // (S15P11B106-306). 상태만 보고 감추면 관리자가 그 문서를 이 화면에서 찾지 못해 다시 지울
+  // 수도, 다시 교체할 수도 없다. 그래서 실패 문서 중 아직 근거인 것(wikiCount > 0)만 되살린다.
+  //
+  // 서버 필터가 상태 하나만 받으므로 따로 조회해 첫 페이지에 얹는다. 이런 문서는 몇 건뿐이고,
+  // 목록 페이지네이션은 완료 문서 기준을 그대로 유지한다.
+  const { data: failedData } = useDocuments({
+    ...filters,
+    page: 1,
+    size: 100,
+    status: DOCUMENT_STATUS.FAILED,
+  })
+  const failedEvidenceDocuments =
+    filters.page === 1
+      ? (failedData?.items ?? []).filter((document) => (document.wikiCount ?? 0) > 0)
+      : []
   const { data: allData } = useDocuments({
     page: 1,
     size: 100,
@@ -67,11 +83,13 @@ export default function SourceDocumentListPage() {
     return true
   })
   // 삭제를 누른 문서는 목록에서 뺀다 (S15P11B106-248). 관리자 입장에선 이미 치운 것이고,
-  // 같은 문서를 또 삭제하려는 것도 막힌다. 걷어내기가 실패하면 상태가 failed 로 바뀌므로
-  // 다시 보인다 — 숨기는 것은 진행 중(deleting)뿐이다.
-  const documents = [...matchingPreviewDocuments, ...(data?.items ?? [])].filter(
-    (document) => document.status !== 'deleting',
-  )
+  // 같은 문서를 또 삭제하려는 것도 막힌다. 걷어내기가 실패하면 실패 문서로 되살아난다
+  // (위 failedEvidenceDocuments) — 숨기는 것은 진행 중(deleting)뿐이다.
+  const documents = [
+    ...matchingPreviewDocuments,
+    ...failedEvidenceDocuments,
+    ...(data?.items ?? []),
+  ].filter((document) => document.status !== 'deleting')
   const sortedDocuments = [...documents].sort((a, b) => {
     const left = new Date(a.uploadedAt ?? 0).getTime()
     const right = new Date(b.uploadedAt ?? 0).getTime()
