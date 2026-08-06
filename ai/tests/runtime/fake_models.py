@@ -43,6 +43,9 @@ class ScriptedModel(BaseChatModel):
     calls: int = 0
     seen_history_path: str | None = None
     padding: str = ""
+    # 요약 요청(압축이 부르는 것)을 받은 횟수. 에이전트 호출과 **분리해 센다** — 요약
+    # 요청이 각본 항목을 소비하면 압축 횟수에 따라 각본이 어긋나 테스트가 비결정적이 된다.
+    summary_requests: int = 0
 
     @property
     def _llm_type(self) -> str:
@@ -65,6 +68,16 @@ class ScriptedModel(BaseChatModel):
             found = _HISTORY_PATH.search(str(getattr(m, "content", "")))
             if found:
                 self.seen_history_path = found.group(1)
+
+        # 압축의 요약 요청은 각본 밖에서 처리한다. 요약 모델도 이 가짜가 맡으므로
+        # (`_chat_model_override` 규약) 구분하지 않으면 각본 항목을 소비해 압축 횟수에
+        # 따라 테스트가 흔들린다. 우리 프롬프트의 고정 문자열(`wiki_work_state`)로
+        # 식별한다 — 이 카운터가 곧 「작업 상태 보존 지시가 요약 모델에 전달됐다」의 증거다.
+        if any("wiki_work_state" in str(getattr(m, "content", "")) for m in messages):
+            self.summary_requests += 1
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(
+                content=("## 진행 상태\n원본문서 반영 작업 중이다. 페이지를 만들고 "
+                         "lint 를 통과했다.\n남은 일 없음 — 최종 보고만 남았다")))])
 
         item = self._next()
         self.calls += 1
