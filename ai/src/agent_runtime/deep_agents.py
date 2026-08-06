@@ -72,9 +72,14 @@ SERVER_MODULE = "wiki_mcp.local_server"
 # this from a subprocess timeout; here it has to be enforced in the loop.
 CALL_TIMEOUT_SECONDS = 600
 
-# A turn cap is a runaway guard, not a quality lever. Measured ingests run 14–19
-# turns, so this is well clear of normal work while still bounded.
-MAX_TURNS = 60
+# A turn cap is a runaway guard, not a quality lever.
+#
+# 60 은 검색 루프·압축 붕괴를 고치기 전(7월 평균 34턴) 세계의 값이다. 고친 뒤(2026-08-06)
+# 정상 성공은 8~18턴이고 25턴 초과가 이상 신호다 — 즉 40 까지 가는 실행은 전부 병든
+# 실행이며, 컨텍스트가 턴마다 자라 비용은 턴 수의 제곱에 가깝다. 실제로 2026-08-07 삭제
+# 데드락에서 60턴이 토큰 339만 개를 태워 팀 GMS 키를 고갈시켰다. 40 은 정상 최대(18)의
+# 2.2배 — 압축 회복(이력 되읽기 +2~3턴)까지 여유가 있고, 폭발 반경은 절반 이하가 된다.
+MAX_TURNS = 40
 
 # `recursion_limit` 배수. LangGraph 는 **턴이 아니라 superstep** 을 센다.
 #
@@ -87,7 +92,7 @@ MAX_TURNS = 60
 # 모델 호출 40회로 만들었다. 4배로 고친 뒤에도 `tests/runtime/test_turn_limit.py` 의 가짜
 # 모델이 **240 superstep / 모델 호출 47회 = 5.1** 을 보여 여전히 백스톱이 먼저 걸렸다.
 # 요약 미들웨어가 도는 턴은 더 쓴다. 8배는 그 실측(5.1)에 여유를 얹은 것이고, 그래도
-# 폭주는 미들웨어가 60회에서 끊으므로 이 값이 커진다고 잡이 길어지지 않는다.
+# 폭주는 미들웨어가 `MAX_TURNS` 회에서 끊으므로 이 값이 커진다고 잡이 길어지지 않는다.
 RECURSION_LIMIT_PER_TURN = 8
 
 

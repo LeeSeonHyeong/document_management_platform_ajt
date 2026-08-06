@@ -17,6 +17,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
 import com.ajt.backend.domain.wiki.service.WikiTransformationService;
 import com.ajt.backend.domain.document.service.DocumentWikiTransformationTransactionService.WikiTransformationResult;
+import com.ajt.backend.domain.wiki.service.WikiTransformationApplier;
 import com.ajt.backend.global.ai.client.AiClient;
 import com.ajt.backend.global.ai.client.AiClientException;
 import com.ajt.backend.global.ai.client.AiClientFailureType;
@@ -445,6 +446,9 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
 
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
         // 파싱·파일 접근이 전혀 없다 — 원본은 이미 새 범위로 옮겨졌다.
@@ -480,6 +484,9 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
 
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
         // 걷어내기가 끝난 뒤에야 지운다 — 되돌릴 수 없는 일이 마지막이다 (S15P11B106-195).
@@ -503,6 +510,9 @@ class DocumentParseWorkerTest {
         given(wikiTransformationService.requestForDocumentChange(
                 anyLong(), anyLong(), anyString(), any(), any(), anyString()))
                 .willThrow(timeout());
+
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -531,6 +541,9 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
 
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
         org.mockito.Mockito.verify(documentRepository, org.mockito.Mockito.never())
@@ -557,6 +570,9 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(), "걷어낼 내용을 찾지 못했습니다", 2));
 
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
         org.mockito.Mockito.verify(documentRepository, org.mockito.Mockito.never())
@@ -567,9 +583,10 @@ class DocumentParseWorkerTest {
     }
 
     @Test
-    @DisplayName("근거로 삼던 Wiki가 없으면 변경이 비어도 걷어내기를 성공으로 보고 문서를 지운다")
+    @DisplayName("근거로 삼던 Wiki가 없으면 AI를 부르지 않고 걷어내기를 성공으로 마감한다")
     void deletesTheDocumentWhenNoWikiReferencedIt() throws Exception {
-        // 파싱은 됐지만 Wiki 에 반영된 적이 없는 문서다. 걷어낼 것이 애초에 없다.
+        // 파싱은 됐지만 Wiki 에 반영된 적이 없는 문서다. 걷어낼 것이 애초에 없다 —
+        // 프리패스가 그 사실을 아니까 LLM 을 부를 이유가 없다.
         Document document = document(15L, "rule.md");
         document.markForDeletion();
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
@@ -577,16 +594,67 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
-        given(wikiTransformationService.requestForDocumentChange(
-                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
-                .willReturn(transformationResponse("걷어낼 내용이 없습니다"));
-        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
-                .willReturn(new WikiTransformationResult(List.of(), "걷어낼 내용이 없습니다", 0));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
+        org.mockito.Mockito.verify(wikiTransformationService, org.mockito.Mockito.never())
+                .requestForDocumentChange(anyLong(), anyLong(), anyString(), any(), any(), anyString());
         org.mockito.Mockito.verify(documentRepository).delete(document);
         assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+    }
+
+    @Test
+    @DisplayName("근거가 삭제 문서뿐인 위키를 프리패스가 지웠고 남은 게 없으면 AI 없이 그 사실을 요약으로 남긴다")
+    void skipsAiWhenPruneRemovedEveryReferencingWiki() throws Exception {
+        // 2026-08-07 데드락 시나리오: 링크받는 페이지의 삭제를 에이전트에게 맡기지 않는다.
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(transactionService.pruneFullyDependentWikis(15L, "ALL"))
+                .willReturn(new WikiTransformationApplier.PruneResult(
+                        List.of("AJT 정보보안 기본 정책"), 1, 0));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 정책\n본문"));
+
+        org.mockito.Mockito.verify(wikiTransformationService, org.mockito.Mockito.never())
+                .requestForDocumentChange(anyLong(), anyLong(), anyString(), any(), any(), anyString());
+        org.mockito.Mockito.verify(documentRepository).delete(document);
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+        assertThat(job.documentResults().get(0).summary())
+                .contains("AJT 정보보안 기본 정책")
+                .contains("링크 표기를 정리했습니다");
+    }
+
+    @Test
+    @DisplayName("프리패스가 지운 위키가 있고 걷어낼 위키도 남았으면 AI 요약 앞에 프리패스 요약을 붙인다")
+    void prependsPruneSummaryWhenAiPathFollows() throws Exception {
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(transactionService.pruneFullyDependentWikis(15L, "ALL"))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of("정보보안 정책"), 0, 1));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willReturn(transformationResponse("남은 인용을 걷어냈습니다"));
+        given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationResult(List.of(101L), "남은 인용을 걷어냈습니다"));
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 정책\n본문"));
+
+        assertThat(job.status()).isEqualTo(AiJobStatus.COMPLETED);
+        assertThat(job.documentResults().get(0).summary())
+                .contains("정보보안 정책")
+                .contains("남은 인용을 걷어냈습니다");
     }
 
     @Test

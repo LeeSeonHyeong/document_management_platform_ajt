@@ -6,6 +6,7 @@ import com.ajt.backend.domain.document.model.DocumentStatus;
 import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.storage.DocumentFileStorage;
+import com.ajt.backend.domain.wiki.service.WikiTransformationApplier;
 import com.ajt.backend.domain.wiki.service.WikiTransformationService;
 import com.ajt.backend.domain.document.service.DocumentWikiTransformationTransactionService.WikiTransformationResult;
 import com.ajt.backend.global.ai.client.AiClient;
@@ -202,6 +203,15 @@ public class DocumentParseWorker {
         // 지우기 전에 이름을 잡아 둔다 — 결과에 남길 스냅샷이다 (S15P11B106-202).
         String fileName = document == null ? null : document.originalFileName();
         try {
+            // 결정적 프리패스: 근거가 이 문서뿐인 Wiki 는 판단이 필요 없으므로 AI 전에 지운다.
+            // 링크받는 페이지의 삭제를 에이전트에게 맡기면 지시 규칙이 충돌해 같은 read 를
+            // 반복하다 호출 상한에서 죽는 데드락이 있었다 (2026-08-07 LangSmith 실측).
+            var prune = transactionService.pruneFullyDependentWikis(documentId, scopeKey);
+            if (prune.remainingReferencingWikis() == 0) {
+                // 걷어낼 것이 남지 않았다 — AI 를 부르지 않고 끝낸다 (LLM 비용 0).
+                finishDeletion(documentId);
+                return AiJob.DocumentParseResult.succeeded(documentId, fileName, pruneSummary(prune));
+            }
             var response = wikiTransformationService.requestForDocumentChange(
                     job.id(),
                     documentId,
@@ -229,7 +239,10 @@ public class DocumentParseWorker {
 
             // 여기까지 왔으면 Wiki 에서 이 문서의 근거가 걷혔다. 이제 지운다.
             finishDeletion(documentId);
-            return AiJob.DocumentParseResult.succeeded(documentId, fileName, result.summary());
+            String summary = prune.deletedWikiTitles().isEmpty()
+                    ? result.summary()
+                    : pruneSummary(prune) + "\n\n" + result.summary();
+            return AiJob.DocumentParseResult.succeeded(documentId, fileName, summary);
         } catch (AiClientException exception) {
             markDeletionFailed(documentId, failureReason(exception));
             return AiJob.DocumentParseResult.failed(
@@ -250,6 +263,27 @@ public class DocumentParseWorker {
      * <p>범위 변경 재처리도 이 경로를 쓰지만 그때 문서는 {@code DELETING}이 아니다 — 이미 새 범위로
      * 옮겨져 그쪽 작업이 상태를 관리한다. 그래서 {@code DELETING}일 때만 지운다.
      */
+    /**
+     * 결정적 프리패스 결과를 관리자용 문장으로 만듭니다. AI 요약과 같은 자리(작업 요약)에 실립니다.
+     */
+    private static String pruneSummary(WikiTransformationApplier.PruneResult prune) {
+        if (prune.deletedWikiTitles().isEmpty()) {
+            return "이 문서를 근거로 삼는 위키가 없어 위키 변경 없이 문서를 삭제했습니다.";
+        }
+        StringBuilder summary = new StringBuilder()
+                .append("근거가 이 문서뿐인 위키 ")
+                .append(prune.deletedWikiTitles().size())
+                .append("건을 삭제했습니다: ")
+                .append(String.join(", ", prune.deletedWikiTitles()))
+                .append(".");
+        if (prune.flattenedLinkPages() > 0) {
+            summary.append(" 삭제된 페이지로 향하는 링크가 있던 위키 ")
+                    .append(prune.flattenedLinkPages())
+                    .append("건에서 링크 표기를 정리했습니다(내용은 유지).");
+        }
+        return summary.toString();
+    }
+
     private void finishDeletion(long documentId) {
         documentRepository.findById(documentId).ifPresent(document -> {
             if (document.status() != DocumentStatus.DELETING) {
