@@ -121,18 +121,20 @@ class WikiChatMessageServiceTransactionIntegrationTest {
     }
 
     @Test
-    @DisplayName("변경이 없어도 별도 트랜잭션에서 연결한 관리자 지시 문서를 응답과 DB에 유지한다")
-    void keepsCommittedDocumentReferenceForNoChangeReply() {
+    @DisplayName("아무 변경도 없으면 선제 연결한 관리자 지시 문서를 근거에서 회수한다(S15P11B106-303)")
+    void withdrawsCommittedDocumentReferenceForNoChangeReply() {
+        // 옛 정책은 무변경에도 연결을 유지했다. 실사용(2026-08-06)에서 거부된 잡담 지시가
+        // 위키의 근거 문서 목록·관계 그래프에 남는 것이 확인돼 정책을 뒤집었다.
+        // 문서 행 자체는 스펙(2026-08-04)대로 보존한다 — 회수 대상은 연결(refs)뿐이다.
         given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(noChangeResponse());
 
         WikiChatReplyResponse response = service.sendChatMessage(sourceWiki.id(), "이미 반영됐는지 확인해줘.");
 
         long instructionDocumentId = onlyInstructionDocumentId();
-        assertThat(response.updatedWiki().evidenceDocuments())
-                .extracting(document -> document.documentId())
-                .containsExactly(String.valueOf(instructionDocumentId));
-        assertThat(wikiRepository.findById(sourceWiki.id()).orElseThrow().documentRefs())
-                .containsExactly(instructionDocumentId);
+        assertThat(response.updatedWiki().evidenceDocuments()).isEmpty();
+        assertThat(wikiRepository.findById(sourceWiki.id()).orElseThrow().documentRefs()).isEmpty();
+        assertThat(documentRepository.findById(instructionDocumentId).orElseThrow().documentWikiRefs())
+                .isEmpty();
     }
 
     @Test

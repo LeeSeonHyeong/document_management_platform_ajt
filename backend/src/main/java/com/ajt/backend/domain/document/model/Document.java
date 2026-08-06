@@ -138,6 +138,14 @@ public class Document {
      * Wiki 변환 결과까지 반영된 문서를 완료 처리합니다.
      * 변환으로 생성·수정된 Wiki가 문서의 참조 목록이 됩니다.
      */
+    /**
+     * 관리자 지시가 아무 위키 변경으로도 이어지지 않아 근거 연결을 회수할 때, 문서 상세의
+     * 「연결 Wiki」(역참조)도 사실과 맞춥니다. (S15P11B106-303)
+     */
+    public void clearWikiRefs() {
+        this.documentWikiRefs = List.of();
+    }
+
     public void completeProcessing(List<Long> documentWikiRefs) {
         if (status != DocumentStatus.PROCESSING) {
             throw new IllegalStateException("PROCESSING 상태의 문서만 완료할 수 있습니다.");
