@@ -8,6 +8,7 @@ import { useDocuments } from '../queries'
 import DocumentTable from '../components/DocumentTable'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import { readPreviewSourceDocuments } from '../previewStorage'
+import { DOCUMENT_STATUS } from '@/shared/constants/enums'
 
 const PAGE_SIZE = 20
 
@@ -30,12 +31,25 @@ export default function SourceDocumentListPage() {
   const [previewDocuments] = useState(readPreviewSourceDocuments)
   const filters = filtersFromParams(searchParams)
 
-  // 확정 전 업로드(카테고리 미지정)는 이 목록에서 제외한다 — 아직 분류가 끝나지 않아
-  // Wiki의 근거가 아니고, 「AI 작업 대기」에서 다룬다(S15P11B106-276).
-  const { data, isLoading } = useDocuments({ ...filters, classified: true })
-  const { data: allData } = useDocuments({ page: 1, size: 100, classified: true })
+  // 이 목록은 「지금 Wiki 의 근거가 무엇인가」를 보는 곳이다(S15P11B106-248). 그래서 위키에
+  // 반영이 끝난 문서만 남긴다(S15P11B106-288).
+  //
+  // 빠지는 것: 확정 전 업로드(카테고리 미지정), 처리 중, 실패, 삭제 대기. 실패한 문서는 「AI 작업
+  // 요약」에서 사유를 보고 재시도할 수 있어(AiJobSummaryListPage) 여기서 숨겨도 닿을 수 있다.
+  const sourceFilters = { ...filters, status: DOCUMENT_STATUS.COMPLETED }
+  const { data, isLoading } = useDocuments(sourceFilters)
+  const { data: allData } = useDocuments({
+    page: 1,
+    size: 100,
+    status: DOCUMENT_STATUS.COMPLETED,
+  })
   const { data: departments = [] } = useDepartments()
   const matchingPreviewDocuments = previewDocuments.filter((document) => {
+    // 서버 목록과 같은 기준을 적용한다. 이 항목들은 세션스토리지에 남은 옛 미리보기 항목이라
+    // 서버 필터를 타지 않는다(S15P11B106-288).
+    if (document.status !== DOCUMENT_STATUS.COMPLETED) {
+      return false
+    }
     if (filters.keyword && !document.originalFileName.toLowerCase().includes(filters.keyword.toLowerCase())) {
       return false
     }
