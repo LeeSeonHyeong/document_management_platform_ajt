@@ -313,6 +313,7 @@ public class WikiChatMessageService {
         return relatedById.values().stream()
                 .map(related -> new WikiDetailResponse.RelatedWiki(
                         String.valueOf(related.id()),
+                        related.pageKey(),
                         related.title()
                 ))
                 .toList();

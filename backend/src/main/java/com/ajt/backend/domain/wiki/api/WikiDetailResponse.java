@@ -34,6 +34,9 @@ public record WikiDetailResponse(
         }
     }
 
-    public record RelatedWiki(String wikiId, String title) {
+    /**
+     * pageKey 는 본문 내부 링크({@code pages/{pageKey}.md})를 wikiId 로 되돌리는 열쇠다. (S15P11B106-300)
+     */
+    public record RelatedWiki(String wikiId, String pageKey, String title) {
     }
 }

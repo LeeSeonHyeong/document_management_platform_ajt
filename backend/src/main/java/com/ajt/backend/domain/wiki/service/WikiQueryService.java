@@ -129,6 +129,7 @@ public class WikiQueryService {
         Page<WikiSummaryResponse> mapped = wikis.map(wiki -> {
             return new WikiSummaryResponse(
                     String.valueOf(wiki.id()),
+                    wiki.pageKey(),
                     wiki.title(),
                     wiki.summary(),
                     String.valueOf(wiki.wikiCategoryId()),
@@ -482,6 +483,7 @@ public class WikiQueryService {
         return relatedById.values().stream()
                 .map(related -> new WikiDetailResponse.RelatedWiki(
                         String.valueOf(related.id()),
+                        related.pageKey(),
                         related.title()
                 ))
                 .toList();

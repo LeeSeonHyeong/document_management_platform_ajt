@@ -79,6 +79,7 @@ class WikiQueryServiceTest {
     @DisplayName("관리자는 접근 제한 없이 목록을 조회하고, 요약은 컬럼에서 채운다")
     void adminListsWikis() throws Exception {
         Wiki wiki = wiki("ALL", 9L, "휴가 규정", 101L);
+        wiki.assignStoragePath("wiki/ALL/pages/a3f2c1d4.md");
         wiki.changeSummary("연차와 반차 사용 기준");
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(wikiRepository.findAll(any(Specification.class), any(Pageable.class)))
@@ -91,6 +92,8 @@ class WikiQueryServiceTest {
         assertThat(response.page()).isEqualTo(1);
         WikiSummaryResponse item = response.items().get(0);
         assertThat(item.wikiId()).isEqualTo("101");
+        // 본문 내부 링크(pages/{pageKey}.md)를 화면이 wikiId 로 되돌리는 열쇠 (S15P11B106-300)
+        assertThat(item.pageKey()).isEqualTo("a3f2c1d4");
         assertThat(item.title()).isEqualTo("휴가 규정");
         assertThat(item.summary()).isEqualTo("연차와 반차 사용 기준");
         assertThat(item.wikiCategoryId()).isEqualTo("9");

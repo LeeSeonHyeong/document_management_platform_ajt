@@ -203,6 +203,19 @@ public class Wiki {
         return wikiPath;
     }
 
+    /**
+     * 본문 파일명에서 확장자를 뺀 페이지 키입니다. 에이전트가 본문 내부 링크를
+     * {@code pages/{pageKey}.md} 로 쓰므로, 화면이 링크를 wiki_id 로 되돌릴 때 이 값이 필요합니다.
+     * 경로가 아직 확정되지 않았으면 wiki_id 문자열로 대신합니다(구형 경로와 같은 값).
+     */
+    public String pageKey() {
+        if (wikiPath == null || wikiPath.isBlank()) {
+            return String.valueOf(idValue());
+        }
+        String fileName = wikiPath.substring(wikiPath.lastIndexOf('/') + 1);
+        return fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
+    }
+
     public String summary() {
         return summary;
     }

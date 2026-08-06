@@ -428,7 +428,9 @@ const collectionVariable = (collection, key) =>
 //   - AI 작업·업로드·재시도 응답의 시각이 시간대 표기 없는 값에서 UTC 표기("...Z")로 바뀐다.
 // 1.15.1 은 로그인·내 정보 응답에 managedDepartmentId 를 더한 것이다(S15P11B106-289).
 // 필드 추가라 patch 다.
-const expectedContractVersion = "1.15.1";
+// 1.15.2 는 Wiki 목록 항목과 상세의 relatedWikis 에 pageKey 를 더한 것이다 — 본문 내부 링크
+// `pages/{pageKey}.md` 를 화면이 wikiId 로 되돌리기 위해서다(S15P11B106-300). 필드 추가라 patch 다.
+const expectedContractVersion = "1.15.2";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,

@@ -1226,6 +1226,7 @@ const publicFolders = [
         policy: ["권한이 없는 Wiki는 목록과 검색 결과에 포함하지 않습니다."],
         response: [
           "`items`: Wiki ID, 제목, 요약, 카테고리, scopeKey, 수정 시각",
+          "`items[].pageKey`: 본문 파일명(확장자 제외). 본문 내부 링크 `pages/{pageKey}.md` 를 wikiId 로 되돌릴 때 씁니다",
           "페이지 정보",
         ],
         errors: [
@@ -1245,7 +1246,7 @@ const publicFolders = [
         response: [
           "Wiki ID, 제목, Markdown 본문, 카테고리와 scopeKey",
           "`evidenceDocuments`: 연결 원본문서 목록",
-          "`relatedWikis`: 연관 Wiki 목록",
+          "`relatedWikis`: 연관 Wiki 목록 (wikiId·pageKey·title. pageKey 는 본문 내부 링크를 wikiId 로 되돌리는 키)",
         ],
         errors: [
           "`401 Unauthorized`: accessToken이 유효하지 않음",
