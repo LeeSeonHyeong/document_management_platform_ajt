@@ -427,6 +427,77 @@ class WikiChatMessageServiceTest {
                 .willReturn(new CurrentMember(ADMIN_ID, CurrentMemberRole.ADMIN));
     }
 
+    @Test
+    @DisplayName("지시가 아무 변경으로도 이어지지 않으면 선제 연결한 지시 문서를 근거에서 회수한다(S15P11B106-303)")
+    void withdrawsInstructionEvidenceWhenNothingChanged() throws Exception {
+        // 실사용 재현(2026-08-06): "나 똥마려워" 지시를 에이전트가 거부했는데, 하이드레이션용으로
+        // 선제 연결된 지시 문서(58)가 위키 11 의 근거 문서 목록·관계 그래프에 그대로 남았다.
+        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(15L), List.of());
+        adminLoggedIn();
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정\n본문");
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
+                .willReturn(List.of());
+        given(documentRepository.findAllById(List.of(15L)))
+                .willReturn(List.of(document(15L, "취업규칙.pdf")));
+        given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
+        given(wikiCategoryRepository.findById(9L)).willReturn(Optional.of(category(9L, "휴가 및 근태")));
+        // create()(REQUIRES_NEW) 가 커밋해 둔 상태를 흉내 낸다 — 역참조가 대화 위키를 가리킨다.
+        Document instructionDocument = document(817L, "관리자지시-20260806-2210-w101.md");
+        instructionDocument.completeProcessing(List.of(101L));
+        given(documentRepository.findById(817L)).willReturn(Optional.of(instructionDocument));
+        given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(new WikiEditResponse(
+                "요청하신 내용은 위키 수정과 관련이 없어 반영하지 않았습니다.",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        ));
+
+        WikiChatReplyResponse response = service.sendChatMessage(101L, "나 똥마려워");
+
+        // 위키의 근거 목록과 응답의 근거 문서에 지시 문서가 없어야 한다.
+        assertThat(wiki.documentRefs()).containsExactly(15L);
+        assertThat(response.updatedWiki().evidenceDocuments())
+                .extracting(doc -> doc.documentId())
+                .containsExactly("15");
+        // 문서 상세의 「연결 Wiki」도 사실과 맞아야 한다 — 아무것도 반영하지 않았다.
+        assertThat(instructionDocument.documentWikiRefs()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("변경이 반영됐으면 지시 문서 연결을 회수하지 않는다(S15P11B106-303)")
+    void keepsInstructionEvidenceWhenChangesApplied() throws Exception {
+        Wiki wiki = wiki(101L, 9L, "휴가 규정", List.of(15L), List.of());
+        adminLoggedIn();
+        given(wikiRepository.findById(101L)).willReturn(Optional.of(wiki));
+        given(wikiFileStorage.readWikiMarkdown("wiki/ALL/pages/101.md")).willReturn("# 휴가 규정\n본문");
+        given(wikiRepository.findAllByScopeKey(SCOPE_KEY)).willReturn(List.of(wiki));
+        given(wikiChatMessageRepository.findAllByWikiIdInOrderByCreatedAtAscIdAsc(List.of(101L)))
+                .willReturn(List.of());
+        given(documentRepository.findAllById(List.of(15L, 817L))).willReturn(List.of(
+                document(15L, "취업규칙.pdf"),
+                document(817L, "관리자지시-20260806-2210-w101.md")
+        ));
+        given(aiJobRepository.existsByScopeKeyAndStatusIn(anyString(), anyCollection())).willReturn(false);
+        given(wikiCategoryRepository.findById(9L)).willReturn(Optional.of(category(9L, "휴가 및 근태")));
+        given(aiClient.editWiki(any(WikiEditRequest.class))).willReturn(new WikiEditResponse(
+                "중복된 연차 항목을 정리했습니다.",
+                List.of(),
+                List.of(updateChange("817")),
+                List.of(),
+                List.of()
+        ));
+
+        WikiChatReplyResponse response = service.sendChatMessage(101L, "중복된 휴가 규정을 하나로 정리해줘.");
+
+        assertThat(wiki.documentRefs()).containsExactly(15L, 817L);
+        assertThat(response.updatedWiki().evidenceDocuments())
+                .extracting(doc -> doc.documentId())
+                .containsExactly("15", "817");
+    }
+
     private WikiChange updateChange(String documentId) {
         return new WikiChange(
                 "update",

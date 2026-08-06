@@ -126,6 +126,14 @@ public class WikiChatMessageService {
         List<WikiChatMessage> history = chatHistoryForScope(wiki.scopeKey());
         WikiEditResponse response = requestEdit(wiki, instruction, history, adminInstructionDocumentId);
         requireAdminInstructionEvidence(response, adminInstructionDocumentId);
+        // 지시가 아무 변경으로도 이어지지 않으면(거부·무변경) 하이드레이션용으로 선제 연결한
+        // 지시 문서를 근거에서 회수한다. 본문 변경은 requireAdminInstructionEvidence 가 인용을
+        // 보장하고, 관계·카테고리 변경은 지시가 이행된 것이라 변경 이력으로서 연결을 남긴다.
+        // (S15P11B106-303)
+        if (repliedWithoutAnyChange(response)) {
+            wiki.removeDocumentRef(adminInstructionDocumentId);
+            documentRepository.findById(adminInstructionDocumentId).ifPresent(Document::clearWikiRefs);
+        }
 
         WikiChatMessage adminMessage = wikiChatMessageRepository.save(
                 WikiChatMessage.fromAdmin(wiki, currentMember.memberId(), instruction)
@@ -216,6 +224,12 @@ public class WikiChatMessageService {
         } finally {
             wikiCapabilityService.revoke(capability);
         }
+    }
+
+    private static boolean repliedWithoutAnyChange(WikiEditResponse response) {
+        return response.wikiChanges().isEmpty()
+                && response.categoryChanges().isEmpty()
+                && response.relationChanges().isEmpty();
     }
 
     private void requireAdminInstructionEvidence(WikiEditResponse response, long documentId) {

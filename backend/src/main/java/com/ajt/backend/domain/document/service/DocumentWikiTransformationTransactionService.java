@@ -55,6 +55,21 @@ public class DocumentWikiTransformationTransactionService {
     }
 
     /**
+     * 근거가 삭제 문서뿐인 Wiki를 AI 호출 전에 결정적으로 지웁니다. 상세는
+     * {@link WikiTransformationApplier#pruneFullyDependentWikis}.
+     *
+     * <p>AI 하이드레이션이 별도 트랜잭션에서 조회 API 로 위키를 읽으므로, 프리패스 결과가
+     * 그 조회에 보이려면 호출 전에 커밋돼 있어야 한다({@code REQUIRES_NEW}).
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public WikiTransformationApplier.PruneResult pruneFullyDependentWikis(
+            long documentId,
+            String scopeKey
+    ) {
+        return applier.pruneFullyDependentWikis(scopeKey, documentId);
+    }
+
+    /**
      * @param referencingWikiCount 걷어내기 <b>전에</b> 이 문서를 근거로 삼던 Wiki 수입니다.
      *                             걷어내기가 아닌 반영에서는 0입니다(S15P11B106-225).
      */
