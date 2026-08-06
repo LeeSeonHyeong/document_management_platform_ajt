@@ -86,5 +86,19 @@ cd ai && uv run python experiments/corpus-ko/evaluate_sqlite.py --split all
 
 ## 재현
 
-평가 하네스는 아직 스크래치패드에만 있다 (`ir_ko.py`·`eval2.py`·`mysql_eval.py`). 계획
-Task 2 가 회귀 테스트로 옮기면 그 테스트가 재현 수단이 된다.
+SQLite 경로는 `evaluate_sqlite.py`, **MySQL(Spring) 경로는 `evaluate_mysql.py`** 다. 후자는
+잃어버려서 2026-08-05 에 다시 썼다 — 그때 현행 질의 방식이 어절 둘 이상을 전부 0건으로
+만드는 것을 발견했다 (`../INDEX.md` 「Spring 실경로 — 코퍼스 측정」).
+
+```bash
+cd ai && uv run --with pymysql python experiments/corpus-ko/evaluate_mysql.py --split dev
+```
+
+`pymysql` 은 `pyproject.toml` 에 넣지 않는다 — AI 서버는 DB 에 붙지 않으므로 이 오프라인
+도구만의 의존이다. 별도 데이터베이스(`ajt_search_eval`)를 쓰고 운영 스키마를 건드리지 않는다.
+
+**같은 조건 4회 중 3회가 동일하고 1회가 질의 1건만큼 흔들렸다.** ±1건은 잡음으로 본다 —
+InnoDB FTS 순위가 캐시 상태에 따라 조금 달라지는 것으로 보이고, 원인은 아직 안 짚었다.
+
+`ir_ko.py`·`eval2.py` 는 여전히 스크래치패드에만 있다. 계획 Task 2 가 회귀 테스트로 옮기면
+그 테스트가 재현 수단이 된다.
