@@ -31,6 +31,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 import uuid
 from datetime import date
 from pathlib import Path
@@ -53,6 +54,19 @@ logger = logging.getLogger(__name__)
 _SCHEMA_PATH = Path(__file__).parent.parent / "shared" / "schema.sql"
 _SOURCE_EXT_RE = re.compile(r"\.(pdf|docx?|pptx?|xlsx?|csv|html?|md|txt)$", re.IGNORECASE)
 _JSON_COLUMNS = {"tags": list, "metadata": dict}
+
+
+def _nfc(text: str) -> str:
+    """파일명을 NFC 로 정규화한다. 저장과 조회 **양쪽**에서 부른다.
+
+    macOS 브라우저는 한글 파일명을 NFD(자모 분해)로 올리고, 모델이 각주에 다시 타이핑한
+    이름은 NFC 다 — 겉보기에 같은 문자열이 바이트가 달라 `find_source` 가 영원히
+    실패했고, 에이전트가 고칠 수 없는 `unresolved-citation` 을 60턴 내내 고치려다
+    죽었다 (2026-08-06 job 43, 문서 48 「공통 프로젝트 산출물 제출 안내.pdf」).
+    SQLite 는 SQL 에서 정규화할 수 없으므로 파이썬 경계에서 한다.
+    `tests/mcp/test_nfd_filename.py` 가 네 조합을 고정한다.
+    """
+    return unicodedata.normalize("NFC", text)
 
 _db: aiosqlite.Connection | None = None
 _root: Path | None = None
@@ -273,7 +287,7 @@ class LocalVaultFS(VaultFS):
         lookup is what makes a citation checkable at all.
         """
         db = self._conn()
-        key = name.strip()
+        key = _nfc(name.strip())          # 각주가 NFC·NFD 어느 쪽이든 받아 준다
         bare = _SOURCE_EXT_RE.sub("", key).lower()
         cursor = await db.execute(
             f"SELECT {self._COLUMNS} FROM visible_documents "
@@ -294,7 +308,10 @@ class LocalVaultFS(VaultFS):
             "WHERE scope_id = ? AND kind = 'source'", (scope_id,),
         )
         for row in _rows_to_dicts(cursor, await cursor.fetchall()):
-            candidate = _SOURCE_EXT_RE.sub("", (row.get("original_file_name") or "")).lower()
+            stored = _nfc(row.get("original_file_name") or "")
+            if stored and stored.lower() == key.lower():
+                return row                # 정규화 전에 저장된 NFD 행 (SQL 정확일치가 놓친다)
+            candidate = _SOURCE_EXT_RE.sub("", stored).lower()
             if candidate and candidate == bare:
                 return row
         return None
@@ -707,6 +724,7 @@ async def register_source(scope_key: str, document_id: str, original_file_name: 
     """Put a parsed upload where AJT 4절 says it goes and index it."""
     fs = LocalVaultFS(scope_key)
     scope_id = await fs._ensure_scope()
+    original_file_name = _nfc(original_file_name)   # macOS 업로드는 NFD 로 온다
     address = f"{SOURCES_PREFIX}{document_id}/parsed/content.md"
 
     path = fs._live_dir() / address
