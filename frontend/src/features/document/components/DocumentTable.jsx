@@ -120,7 +120,9 @@ export default function DocumentTable({
       key: 'wiki',
       header: '관련 위키',
       render: (doc) => {
-        const count = doc.relatedWikis?.length ?? 0
+        // 목록 응답에는 relatedWikis 가 없다 — 그래서 이 칸이 언제나 「0개」였다(S15P11B106-310).
+        // 목록은 개수만 필요하므로 wikiCount 를 읽는다. relatedWikis 는 상세 응답에만 있다.
+        const count = doc.wikiCount ?? doc.relatedWikis?.length ?? 0
         return (
           <span className={count ? 'font-semibold text-primary-600' : 'text-slate-400'}>
             {count ? `● ${count}개` : '0개'}
