@@ -11,6 +11,8 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -44,6 +46,20 @@ public class AiJob {
     @Column(name = "document_results", columnDefinition = "json")
     private List<DocumentParseResult> documentResults;
 
+    /**
+     * 이 작업이 문서별로 무엇을 하려던 것인지입니다(S15P11B106-304). {@code {"12": "document_removed"}}.
+     *
+     * <p>없거나 문서가 빠져 있으면 {@code document_added} 로 본다 — 업로드·일반 재처리가 그렇다.
+     * 실행 계획({@code DocumentReprocessPlan})은 메모리에만 있어 작업이 끝나면 사라진다. 재처리는
+     * 그 뒤에 눌리므로, 무엇을 하려던 작업이었는지는 여기 남아 있어야 한다.
+     *
+     * <p>값은 문자열로 둔다 — 이 모델이 {@code global.ai.client} 의 열거형을 알 필요가 없다.
+     * 뜻을 아는 쪽(서비스)이 변환한다.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "document_change_types", columnDefinition = "json")
+    private Map<String, String> documentChangeTypes;
+
     @Column(name = "failure_reason", length = 1000)
     private String failureReason;
 
@@ -72,6 +88,25 @@ public class AiJob {
 
     public static AiJob waiting(long requesterId, String scopeKey, String workspacePath, List<Long> documentIds) {
         return new AiJob(requesterId, scopeKey, workspacePath, documentIds);
+    }
+
+    /**
+     * 이 작업이 문서별로 무엇을 하려는지 기록합니다. 실행 계획을 만드는 쪽이 작업을 저장할 때 부릅니다.
+     *
+     * <p>비어 있으면 아무것도 남기지 않는다 — 전부 {@code document_added} 라는 뜻이고, 그것이 기본값이다.
+     */
+    public void recordChangeTypes(Map<String, String> changeTypes) {
+        this.documentChangeTypes = changeTypes == null || changeTypes.isEmpty()
+                ? null
+                : Map.copyOf(changeTypes);
+    }
+
+    /** 이 작업이 그 문서에 하려던 일입니다. 기록이 없으면 비어 있습니다(= document_added). */
+    public Optional<String> changeTypeOf(long documentId) {
+        if (documentChangeTypes == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(documentChangeTypes.get(String.valueOf(documentId)));
     }
 
     public void start() {

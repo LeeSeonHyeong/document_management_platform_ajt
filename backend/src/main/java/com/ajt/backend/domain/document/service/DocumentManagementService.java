@@ -32,6 +32,7 @@ import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.ScopeAccess;
+import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import jakarta.persistence.criteria.Predicate;
@@ -67,6 +68,10 @@ import org.springframework.web.multipart.MultipartFile;
 public class DocumentManagementService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentManagementService.class);
+
+    // 「이 문서를 마지막으로 다룬 작업」을 찾을 때 훑는 최근 작업 수(S15P11B106-304).
+    // 재처리는 방금 실패한 작업을 이어받는 것이라 이 안에 반드시 있다.
+    private static final int RECENT_JOB_LOOKUP_SIZE = 50;
 
     private final CurrentMemberProvider currentMemberProvider;
     private final DocumentRepository documentRepository;
@@ -156,24 +161,24 @@ public class DocumentManagementService {
         return new DocumentFileDownload(resource, document.originalFileName(), document.mimeType());
     }
 
+    /**
+     * 작업(DOC-05): 실패한 문서 재처리.
+     *
+     * <p>수정(S15P11B106-304): <b>실패한 작업이 무엇을 하려던 것인지 그대로 다시 한다.</b> 예전에는
+     * 종류를 가리지 않고 {@code document_added} 로 돌려서, 삭제가 실패한 문서를 재처리하면 지우려던
+     * 문서를 Wiki 에 도로 넣었다. 교체 실패도 옛 근거를 걷어내지 못한 채 새 내용만 얹혔다.
+     * 무엇을 하려던 작업인지는 마지막 작업 행({@code ai_job.document_change_types})이 알고 있다.
+     */
     @Transactional
     public DocumentRetryResponse retry(long documentId) {
         CurrentMember currentMember = requireAdmin();
         Document document = findDocument(documentId);
         requireDocumentScope(currentMember, document);
-        try {
-            document.retryParsing();
-        } catch (IllegalStateException exception) {
-            throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS, exception.getMessage());
-        }
 
-        AiJob job = aiJobRepository.save(AiJob.waiting(
-                currentMember.memberId(),
-                document.scopeKey(),
-                document.scopeKey() + "/jobs/" + UUID.randomUUID(),
-                List.of(document.id())
-        ));
-        parseJobLauncher.launch(job, DocumentReprocessPlan.added());
+        WikiDocumentChangeType lastChangeType = lastChangeTypeOf(document);
+        AiJob job = lastChangeType == WikiDocumentChangeType.DOCUMENT_REMOVED
+                ? retryRemoval(currentMember.memberId(), document)
+                : retryReprocess(currentMember.memberId(), document, lastChangeType);
 
         return new DocumentRetryResponse(
                 String.valueOf(job.id()),
@@ -181,6 +186,69 @@ public class DocumentManagementService {
                 job.status().name().toLowerCase(),
                 Instant.now()
         );
+    }
+
+    /**
+     * 걷어내기(삭제) 재시도입니다. 문서를 다시 {@code DELETING} 으로 되돌리고 같은 걷어내기를 다시 겁니다.
+     *
+     * <p><b>옛 파싱 본문이 없으면 여기서 멈춘다.</b> 걷어내기 계약은 그 본문을 필수로 받는데, 없다고
+     * {@code document_added} 로 폴백하면 <b>지우려던 문서를 Wiki 에 도로 넣는다</b> — 삭제를 누른
+     * 관리자가 가장 원하지 않는 결과다. 파일이 유실된 경우이므로 사람이 판단해야 한다.
+     */
+    private AiJob retryRemoval(long requesterId, Document document) {
+        String removedParsedMarkdown = readParsedMarkdownQuietly(document);
+        if (removedParsedMarkdown == null || removedParsedMarkdown.isBlank()) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_DOCUMENT_STATUS,
+                    "삭제 재시도에 필요한 파싱 본문을 찾을 수 없습니다. Wiki 에서 이 문서의 근거를 직접 확인해주세요."
+            );
+        }
+        try {
+            document.markForDeletion();
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS, exception.getMessage());
+        }
+        documentRepository.save(document);
+        return removeDeletedDocumentFromScope(
+                requesterId, document.id(), document.scopeKey(), removedParsedMarkdown);
+    }
+
+    /**
+     * 변환·교체 재시도입니다. 문서를 다시 처리 대상으로 되돌리고 원래 종류로 작업을 겁니다.
+     *
+     * <p>교체는 옛 파싱 본문이 없으면 {@code added} 로 강등된다({@link DocumentReprocessPlan#replaced}).
+     * 걷어내기와 달리 방향이 어긋나지 않아 — 같은 범위에 새 내용을 반영하는 것은 그대로다 — 막지 않는다.
+     */
+    private AiJob retryReprocess(long requesterId, Document document, WikiDocumentChangeType changeType) {
+        try {
+            document.retryParsing();
+        } catch (IllegalStateException exception) {
+            throw new BusinessException(ErrorCode.INVALID_DOCUMENT_STATUS, exception.getMessage());
+        }
+        DocumentReprocessPlan plan = changeType == WikiDocumentChangeType.DOCUMENT_REPLACED
+                ? DocumentReprocessPlan.replaced(document.id(), readParsedMarkdownQuietly(document))
+                : DocumentReprocessPlan.added();
+        AiJob job = createJob(requesterId, document.scopeKey(), List.of(document.id()), plan);
+        parseJobLauncher.launch(job, plan);
+        return job;
+    }
+
+    /**
+     * 이 문서를 마지막으로 다룬 작업이 하려던 일입니다. 기록이 없으면 {@code document_added} 입니다.
+     *
+     * <p>{@code document_ids} 가 JSON 이라 SQL 로 찾지 않고 같은 공간의 최근 작업만 읽어
+     * 애플리케이션에서 펼친다({@code documentIdsInActiveJobs} 와 같은 방식). 재처리는 방금 실패한
+     * 작업을 이어받는 것이라 최근 몇 건 안에 반드시 있다.
+     */
+    private WikiDocumentChangeType lastChangeTypeOf(Document document) {
+        return aiJobRepository
+                .findByScopeKeyOrderByIdDesc(document.scopeKey(), PageRequest.of(0, RECENT_JOB_LOOKUP_SIZE))
+                .stream()
+                .filter(job -> job.documentIds().contains(document.id()))
+                .findFirst()
+                .flatMap(job -> job.changeTypeOf(document.id()))
+                .map(WikiDocumentChangeType::fromValue)
+                .orElse(WikiDocumentChangeType.DOCUMENT_ADDED);
     }
 
     /**
@@ -221,12 +289,7 @@ public class DocumentManagementService {
             // 교체 전 본문이 없으면 계획이 document_added로 강등된다(DocumentReprocessPlan.replaced 주석 참고).
             document.markForReprocess();
             DocumentReprocessPlan plan = DocumentReprocessPlan.replaced(document.id(), removedParsedMarkdown);
-            AiJob job = aiJobRepository.save(AiJob.waiting(
-                    admin.memberId(),
-                    document.scopeKey(),
-                    document.scopeKey() + "/jobs/" + UUID.randomUUID(),
-                    List.of(document.id())
-            ));
+            AiJob job = createJob(admin.memberId(), document.scopeKey(), List.of(document.id()), plan);
 
             // 파일 확정 → (성공 시) 기존 파일 삭제 + 재처리 실행 순서를 하나의 afterCommit 흐름에서 보장한다.
             // promote가 실패하면 재처리를 시작하지 않고 작업을 FAILED로 남긴다(DB↔실제 파일 불일치를 조용히 묻지 않는다).
@@ -429,13 +492,9 @@ public class DocumentManagementService {
                     document.id(), oldScopeKey);
             return null;
         }
-        AiJob job = aiJobRepository.save(AiJob.waiting(
-                requesterId,
-                oldScopeKey,
-                oldScopeKey + "/jobs/" + UUID.randomUUID(),
-                List.of(document.id())
-        ));
-        parseJobLauncher.launch(job, DocumentReprocessPlan.removed(document.id(), removedParsedMarkdown));
+        DocumentReprocessPlan plan = DocumentReprocessPlan.removed(document.id(), removedParsedMarkdown);
+        AiJob job = createJob(requesterId, oldScopeKey, List.of(document.id()), plan);
+        parseJobLauncher.launch(job, plan);
         return job;
     }
 
@@ -452,13 +511,9 @@ public class DocumentManagementService {
             String scopeKey,
             String removedParsedMarkdown
     ) {
-        AiJob job = aiJobRepository.save(AiJob.waiting(
-                requesterId,
-                scopeKey,
-                scopeKey + "/jobs/" + UUID.randomUUID(),
-                List.of(documentId)
-        ));
-        parseJobLauncher.launch(job, DocumentReprocessPlan.removed(documentId, removedParsedMarkdown));
+        DocumentReprocessPlan plan = DocumentReprocessPlan.removed(documentId, removedParsedMarkdown);
+        AiJob job = createJob(requesterId, scopeKey, List.of(documentId), plan);
+        parseJobLauncher.launch(job, plan);
         return job;
     }
 
@@ -595,14 +650,29 @@ public class DocumentManagementService {
 
     private AiJob reprocessDocument(long requesterId, Document document, DocumentReprocessPlan plan) {
         document.markForReprocess();
-        AiJob job = aiJobRepository.save(AiJob.waiting(
-                requesterId,
-                document.scopeKey(),
-                document.scopeKey() + "/jobs/" + UUID.randomUUID(),
-                List.of(document.id())
-        ));
+        AiJob job = createJob(requesterId, document.scopeKey(), List.of(document.id()), plan);
         parseJobLauncher.launch(job, plan);
         return job;
+    }
+
+    /**
+     * 작업 행을 만들어 저장합니다. <b>계획의 문서별 종류를 작업에 함께 남긴다</b>(S15P11B106-304) —
+     * 실행 계획은 메모리에만 있어, 남기지 않으면 실패 후 재처리가 무엇을 하려던 작업인지 알 수 없다.
+     *
+     * <p>이 서비스가 만드는 작업은 전부 이 메서드를 지나게 둔다. 한 곳이라도 빠지면 그 경로의 실패는
+     * 조용히 {@code document_added} 로 재처리된다. (최초 업로드 변환은 {@code AiJobCreateService} 가
+     * 만들며 항상 추가라 기록할 것이 없다 — 비어 있으면 추가로 읽는다.)
+     */
+    private AiJob createJob(
+            long requesterId,
+            String scopeKey,
+            List<Long> documentIds,
+            DocumentReprocessPlan plan
+    ) {
+        AiJob job = AiJob.waiting(
+                requesterId, scopeKey, scopeKey + "/jobs/" + UUID.randomUUID(), documentIds);
+        job.recordChangeTypes(plan.asStoredChangeTypes());
+        return aiJobRepository.save(job);
     }
 
     // 범위 전체를 다시 훑던 reprocessScope는 제거했다. 문서가 빠지는 경우(범위 변경 시 기존 범위,
