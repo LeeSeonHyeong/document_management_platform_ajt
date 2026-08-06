@@ -11,55 +11,11 @@ import org.junit.jupiter.api.Test;
 class WikiIndexTest {
 
     @Test
-    @DisplayName("목차 항목에서 Wiki ID와 요약을 읽는다")
-    void parsesEntries() {
-        WikiIndex index = WikiIndex.parse("""
-                # 목차
-
-                - [휴가 규정](pages/101.md) — 연차와 반차 사용 기준
-                - [취업 규칙](pages/102.md)
-                """);
-
-        assertThat(index.entries())
-                .extracting(WikiIndex.Entry::wikiId, WikiIndex.Entry::title, WikiIndex.Entry::summary)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(101L, "휴가 규정", "연차와 반차 사용 기준"),
-                        org.assertj.core.groups.Tuple.tuple(102L, "취업 규칙", null)
-                );
-        assertThat(index.summaryOf(101L)).isEqualTo("연차와 반차 사용 기준");
-        assertThat(index.summaryOf(102L)).isNull();
-        assertThat(index.summaryOf(999L)).isNull();
-    }
-
-    @Test
-    @DisplayName("목차 형식이 아닌 줄은 무시한다")
-    void ignoresNonEntryLines() {
-        WikiIndex index = WikiIndex.parse("""
-                # 목차
-
-                본문 설명 문장
-                - [잘못된 링크](other/101.md)
-                - [휴가 규정](pages/101.md)
-                """);
-
-        assertThat(index.entries())
-                .extracting(WikiIndex.Entry::wikiId)
-                .containsExactly(101L);
-    }
-
-    @Test
-    @DisplayName("빈 목차와 null을 안전하게 처리한다")
-    void parsesEmptyIndex() {
-        assertThat(WikiIndex.parse(null).entries()).isEmpty();
-        assertThat(WikiIndex.parse("# 목차").entries()).isEmpty();
-    }
-
-    @Test
-    @DisplayName("항목을 다시 쓰면 되읽을 수 있는 형식으로 만든다")
+    @DisplayName("항목을 다시 쓰면 사람이 읽을 수 있는 Markdown이 된다")
     void rendersReparsableIndex() {
         String rendered = WikiIndex.render(List.of(
-                new WikiIndex.Entry(101L, "휴가 규정", "연차와 반차 사용 기준"),
-                new WikiIndex.Entry(102L, "취업 규칙", null)
+                new WikiIndex.Entry("pages/101.md", "휴가 규정", "연차와 반차 사용 기준"),
+                new WikiIndex.Entry("pages/102.md", "취업 규칙", null)
         ));
 
         assertThat(rendered).isEqualTo("""
@@ -67,29 +23,30 @@ class WikiIndexTest {
 
                 - [휴가 규정](pages/101.md) — 연차와 반차 사용 기준
                 - [취업 규칙](pages/102.md)""");
-        assertThat(WikiIndex.parse(rendered).summaryOf(101L)).isEqualTo("연차와 반차 사용 기준");
-    }
-
-    @Test
-    @DisplayName("순서 값이 없는 항목은 뒤로 보내고 같은 순서면 원래 순서를 유지한다")
-    void sortsByOrderWithNullsLast() {
-        List<WikiIndex.Entry> sorted = WikiIndex.sortedByOrder(List.of(
-                new WikiIndex.OrderedEntry(null, new WikiIndex.Entry(103L, "세 번째", null)),
-                new WikiIndex.OrderedEntry(2, new WikiIndex.Entry(102L, "둘", null)),
-                new WikiIndex.OrderedEntry(1, new WikiIndex.Entry(101L, "하나", null)),
-                new WikiIndex.OrderedEntry(2, new WikiIndex.Entry(104L, "둘 다음", null))
-        ));
-
-        assertThat(sorted)
-                .extracting(WikiIndex.Entry::wikiId)
-                .containsExactly(101L, 102L, 104L, 103L);
     }
 
     @Test
     @DisplayName("제목 없는 목차 항목은 만들 수 없다")
     void rejectsBlankTitle() {
-        assertThatThrownBy(() -> new WikiIndex.Entry(101L, " ", null))
+        assertThatThrownBy(() -> new WikiIndex.Entry("pages/101.md", " ", null))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("제목");
+    }
+
+    @Test
+    @DisplayName("목차 링크는 wiki_path 에서 유도한다 — wikiId 로 만들지 않는다")
+    void linksAreDerivedFromWikiPath() {
+        // 하이드레이션이 wiki_path 로 페이지 주소를 만들기 때문에, 목차도 같은 출처를 써야
+        // 두 이름이 갈리지 않는다. wikiId 로 만들면 그 간극을 메우는 변환이 필요해지고,
+        // 변환이 실패한 항목은 dangling-link 로 그 공간의 문서 처리를 막는다.
+        String markdown = WikiIndex.render(List.of(
+                new WikiIndex.Entry("pages/a67336b0c716.md", "정보보안 지침", "계정·비밀번호 관리"),
+                new WikiIndex.Entry("pages/14.md", "[샘플] 취업규칙 위키", null)));
+
+        assertThat(markdown).isEqualTo("""
+                # 목차
+
+                - [정보보안 지침](pages/a67336b0c716.md) — 계정·비밀번호 관리
+                - [[샘플] 취업규칙 위키](pages/14.md)""");
     }
 }

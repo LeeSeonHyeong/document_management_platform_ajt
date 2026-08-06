@@ -16,7 +16,7 @@ import com.ajt.backend.global.ai.client.WikiTransformationResponse.RelationChang
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.WikiChange;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -158,7 +158,6 @@ public class WikiTransformationApplier {
     ) {
         WikiFileMutation fileMutation = beginFileMutation();
         try {
-            WikiIndex previousIndex = WikiIndex.parse(readIndex(scopeKey));
             Map<String, Long> categoryIdsByRef = applyCategoryChanges(scopeKey, categoryChanges);
             Set<String> allowedWikiAddresses = allowedWikiAddresses(scopeKey, nullSafe(wikiChanges));
             WikiChangeResult wikiResult = applyWikiChanges(
@@ -175,7 +174,7 @@ public class WikiTransformationApplier {
                     wikiResult.wikiIdsByRef(),
                     wikiResult.deletedWikiIds()
             );
-            writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, previousIndex, fileMutation);
+            writeIndex(scopeKey, nullSafe(indexEntries), wikiResult, fileMutation);
             incrementScopeVersionIfChanged(scopeKey, categoryChanges, wikiChanges, relationChanges, indexEntries);
             completeFileMutationAfterTransaction(fileMutation);
             return List.copyOf(wikiResult.affectedWikiIds());
@@ -364,56 +363,64 @@ public class WikiTransformationApplier {
             String scopeKey,
             List<IndexEntry> indexEntries,
             WikiChangeResult wikiResult,
-            WikiIndex previousIndex,
             WikiFileMutation fileMutation
     ) {
-        List<WikiIndex.Entry> entries = indexEntries.isEmpty()
-                ? survivingPreviousEntries(scopeKey, previousIndex, wikiResult.deletedWikiIds())
-                : resolvedEntries(scopeKey, indexEntries, wikiResult.wikiIdsByRef());
-        storeIndex(fileMutation, scopeKey, WikiIndex.render(entries));
+        applySummaries(scopeKey, indexEntries, wikiResult.wikiIdsByRef());
+        storeIndex(fileMutation, scopeKey, WikiIndex.render(liveEntries(scopeKey)));
     }
 
     /**
-     * AI가 목차를 돌려주지 않은 경우입니다. 기존 목차를 유지하되 삭제된 Wiki 항목만 걷어냅니다.
+     * AI 가 준 항목은 목차의 모양이 아니라 <b>요약의 제안</b>이다. 목차 파일 자체는
+     * DB 로 그린다({@link #liveEntries}) — AI 가 언급하지 않은 Wiki 가 빠지거나, AI 가 항목을
+     * 주지 않은 요청에서 옛 목차의 죽은 항목이 남는 것이 이 파일이 깨지는 두 경로였다.
      */
-    private List<WikiIndex.Entry> survivingPreviousEntries(
-            String scopeKey,
-            WikiIndex previousIndex,
-            Set<Long> deletedWikiIds
-    ) {
-        Set<Long> existingWikiIds = wikiIdsInScope(scopeKey);
-        return previousIndex.entries()
-                .stream()
-                .filter(entry -> !deletedWikiIds.contains(entry.wikiId()))
-                .filter(entry -> existingWikiIds.contains(entry.wikiId()))
-                .toList();
-    }
-
-    private List<WikiIndex.Entry> resolvedEntries(
-            String scopeKey,
-            List<IndexEntry> indexEntries,
-            Map<String, Long> wikiIdsByRef
-    ) {
+    private void applySummaries(
+            String scopeKey, List<IndexEntry> indexEntries, Map<String, Long> wikiIdsByRef) {
         Map<Long, Wiki> wikisById = new LinkedHashMap<>();
         for (Wiki wiki : wikiRepository.findAllByScopeKey(scopeKey)) {
             wikisById.put(wiki.id(), wiki);
         }
-        List<WikiIndex.OrderedEntry> ordered = new ArrayList<>();
         for (IndexEntry indexEntry : indexEntries) {
             long wikiId = resolveWikiRef(indexEntry.wikiRef(), wikiIdsByRef);
             Wiki wiki = wikisById.get(wikiId);
+            // 같은 응답에서 삭제됐거나 다른 공간의 Wiki를 가리키는 항목은 무시한다.
             if (wiki == null) {
-                // 같은 응답에서 삭제됐거나 다른 공간의 Wiki를 가리키는 항목은 목차에 싣지 않는다.
                 continue;
             }
             wiki.changeSummary(indexEntry.summary());
-            String title = isPresent(indexEntry.title()) ? indexEntry.title() : wiki.title();
-            ordered.add(new WikiIndex.OrderedEntry(
-                    indexEntry.order(),
-                    new WikiIndex.Entry(wikiId, title, indexEntry.summary())
-            ));
         }
-        return WikiIndex.sortedByOrder(ordered);
+    }
+
+    /**
+     * 목차는 그 공간의 <b>살아 있는 Wiki 전체</b>다. 정렬은 카테고리명 → 제목(사전순) —
+     * 목차 파일은 사용자에게 보이지 않으므로 편집 의도를 담을 필요가 없고, 순서가 요청마다
+     * 흔들리지 않는 것이 더 중요하다.
+     */
+    private List<WikiIndex.Entry> liveEntries(String scopeKey) {
+        Map<Long, String> categoryNames = new LinkedHashMap<>();
+        wikiCategoryRepository.findAllByScopeKeyOrderByNameAsc(scopeKey)
+                .forEach(category -> categoryNames.put(category.id(), category.name()));
+        return wikiRepository.findAllByScopeKey(scopeKey).stream()
+                .sorted(Comparator
+                        .comparing((Wiki wiki) ->
+                                categoryNames.getOrDefault(wiki.wikiCategoryId(), ""))
+                        .thenComparing(Wiki::title))
+                .map(wiki -> new WikiIndex.Entry(
+                        indexLinkTarget(scopeKey, wiki.wikiPath()), wiki.title(), wiki.summary()))
+                .toList();
+    }
+
+    /**
+     * 저장 경로에서 목차 링크 주소를 만든다: {@code wiki/{scopeKey}/pages/x.md} → {@code pages/x.md}.
+     *
+     * <p><b>{@code wikiId} 로 만들지 않는다.</b> AI 하이드레이션이 같은 {@code wiki_path} 로
+     * 페이지 주소를 만들기 때문에(그쪽 {@code address_from_wiki_path}), 여기서 다른 출처를 쓰면
+     * 두 이름이 갈린다. 갈린 이름을 메우는 변환이 실패한 항목은 {@code dangling-link} 로 그
+     * 공간의 문서 처리를 영구히 막았다.
+     */
+    private static String indexLinkTarget(String scopeKey, String wikiPath) {
+        String prefix = "wiki/" + scopeKey + "/";
+        return wikiPath.startsWith(prefix) ? wikiPath.substring(prefix.length()) : wikiPath;
     }
 
     private long resolveCategoryId(String scopeKey, String categoryRef, Map<String, Long> categoryIdsByRef) {
@@ -457,13 +464,6 @@ public class WikiTransformationApplier {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "같은 Wiki 공간에서 찾을 수 없는 카테고리입니다: " + categoryId
                 ));
-    }
-
-    private Set<Long> wikiIdsInScope(String scopeKey) {
-        return wikiRepository.findAllByScopeKey(scopeKey)
-                .stream()
-                .map(Wiki::id)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     /**
@@ -546,14 +546,6 @@ public class WikiTransformationApplier {
     private void deleteWikiMarkdown(WikiFileMutation fileMutation, String wikiPath) {
         try {
             fileMutation.deleteWikiMarkdown(wikiPath);
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
-        }
-    }
-
-    private String readIndex(String scopeKey) {
-        try {
-            return wikiFileStorage.readIndex(scopeKey);
         } catch (IOException exception) {
             throw new UncheckedIOException(exception);
         }

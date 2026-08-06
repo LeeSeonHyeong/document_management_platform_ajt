@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willAnswer;
@@ -33,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -179,7 +181,7 @@ class WikiTransformationApplierTest {
         );
         then(wikiFileMutation).should().storeIndex(
                 SCOPE_KEY,
-                "# 목차\n\n- [휴가 규정](pages/101.md) — 연차와 반차 사용 기준"
+                "# 목차\n\n- [휴가 규정](pages/leave-policy.md) — 연차와 반차 사용 기준"
         );
     }
 
@@ -242,9 +244,12 @@ class WikiTransformationApplierTest {
         then(wikiFileMutation).should().storeWikiMarkdown(
                 existing.wikiPath(), "# 휴가 규정 개정"
         );
+        // 목차는 이제 AI 가 준 순서가 아니라 그 공간의 살아 있는 Wiki 전체를
+        // 카테고리명 → 제목 순으로 다시 그린다. 두 Wiki 모두 카테고리가 같아(10L) 제목만으로
+        // 정렬되고, "근태 관리"가 "휴가 규정 개정"보다 사전순으로 앞선다.
         then(wikiFileMutation).should().storeIndex(
                 SCOPE_KEY,
-                "# 목차\n\n- [휴가 규정 개정](pages/101.md) — 개정된 휴가 기준\n- [근태 관리](pages/108.md)"
+                "# 목차\n\n- [근태 관리](pages/108.md)\n- [휴가 규정 개정](pages/101.md) — 개정된 휴가 기준"
         );
     }
 
@@ -316,13 +321,10 @@ class WikiTransformationApplierTest {
     }
 
     @Test
-    @DisplayName("목차가 비어 오면 기존 목차를 유지하고 삭제된 Wiki 항목만 걷어낸다")
-    void keepsPreviousIndexWhenNoIndexEntries() throws Exception {
+    @DisplayName("목차가 비어 오면 살아 있는 Wiki 로 다시 그리고 삭제된 Wiki 항목은 남기지 않는다")
+    void redrawsIndexFromLiveWikisWhenNoIndexEntries() throws Exception {
         existingWiki(101L, 10L, "폐지된 규정");
         existingWiki(108L, 10L, "근태 관리");
-        given(wikiFileStorage.readIndex(SCOPE_KEY)).willReturn(
-                "# 목차\n\n- [폐지된 규정](pages/101.md) — 옛 기준\n- [근태 관리](pages/108.md) — 출퇴근"
-        );
         WikiTransformationResponse response = new WikiTransformationResponse(
                 "요약",
                 List.of(),
@@ -335,7 +337,7 @@ class WikiTransformationApplierTest {
 
         then(wikiFileMutation).should().storeIndex(
                 SCOPE_KEY,
-                "# 목차\n\n- [근태 관리](pages/108.md) — 출퇴근"
+                "# 목차\n\n- [근태 관리](pages/108.md)"
         );
     }
 
@@ -543,6 +545,58 @@ class WikiTransformationApplierTest {
     }
 
     @Test
+    @DisplayName("목차 링크가 wiki_path 의 파일 이름을 따른다")
+    void indexLinksFollowTheStoredWikiPath() throws Exception {
+        // 해시 경로(AI 가 만든 위키)와 숫자 경로(시드가 만든 위키)가 섞여 있어도
+        // 둘 다 wiki_path 에서 유도되어야 한다.
+        existingCategory(10L, "인사");
+        Wiki hashed = existingWiki(101L, 10L, "휴가 규정");
+        hashed.assignStoragePath("wiki/ALL/pages/a67336b0c716.md");
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(), List.of(), List.of()));
+
+        ArgumentCaptor<String> index = ArgumentCaptor.forClass(String.class);
+        then(wikiFileMutation).should().storeIndex(eq(SCOPE_KEY), index.capture());
+        assertThat(index.getValue())
+                .contains("(pages/a67336b0c716.md)")
+                .doesNotContain("(pages/101.md)");
+    }
+
+    @Test
+    @DisplayName("해시 경로와 숫자 경로가 두 카테고리에 섞여도 목차 전체가 카테고리명→제목순으로 그려진다")
+    void indexMixesHashAndNumericPathsSortedByCategoryThenTitle() throws Exception {
+        // 실제 데이터 모양: AI 가 만든 위키는 해시 경로, 시드가 만든 위키는 숫자 경로다.
+        // wikiId 로 되돌리면 해시 경로 두 항목의 링크만 pages/{wikiId}.md 로 바뀌고,
+        // 이미 pages/{wikiId}.md 형태인 숫자 경로 항목은 바뀌지 않는다 — 그래서 해시 경로가
+        // 최소 하나 있어야 회귀를 구분할 수 있다.
+        existingCategory(10L, "인사");
+        existingCategory(20L, "보안");
+
+        Wiki leavePolicy = existingWiki(101L, 10L, "휴가 규정");
+        leavePolicy.assignStoragePath("wiki/ALL/pages/a67336b0c716.md");
+        leavePolicy.changeSummary("연차 기준");
+
+        Wiki welfare = existingWiki(102L, 10L, "복지 제도");
+        welfare.changeSummary("복지 안내");
+
+        Wiki accessPolicy = existingWiki(201L, 20L, "출입 정책");
+        accessPolicy.assignStoragePath("wiki/ALL/pages/b91f2c0a33dd.md");
+        accessPolicy.changeSummary("출입증 발급");
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(), List.of(), List.of()));
+
+        ArgumentCaptor<String> index = ArgumentCaptor.forClass(String.class);
+        then(wikiFileMutation).should().storeIndex(eq(SCOPE_KEY), index.capture());
+        assertThat(index.getValue()).isEqualTo(
+                "# 목차\n"
+                        + "\n- [출입 정책](pages/b91f2c0a33dd.md) — 출입증 발급"
+                        + "\n- [복지 제도](pages/102.md) — 복지 안내"
+                        + "\n- [휴가 규정](pages/a67336b0c716.md) — 연차 기준");
+    }
+
+    @Test
     @DisplayName("관계 추가를 양쪽 Wiki 에 저장한다")
     void addsRelationToBothWikis() throws Exception {
         Wiki source = existingWiki(101L, 10L, "휴가 규정");
@@ -607,5 +661,44 @@ class WikiTransformationApplierTest {
         Field idField = target.getClass().getDeclaredField("id");
         idField.setAccessible(true);
         idField.set(target, id);
+    }
+
+    @Test
+    @DisplayName("AI 가 언급하지 않은 Wiki 도 목차에 싣는다")
+    void writesEveryLiveWikiIntoTheIndex() throws Exception {
+        // 실측(ALL 공간): DB 에 9개인데 목차에는 7개만 있었다. AI 가 만들지 않은 위키(시드)는
+        // 목차에 들어간 적이 없어, 그 위키의 요약이 화면에서 비어 보였다.
+        existingCategory(10L, "인사");
+        Wiki mentioned = existingWiki(101L, 10L, "휴가 규정");
+        Wiki unmentioned = existingWiki(108L, 10L, "복지 제도");
+        mentioned.changeSummary("연차와 반차 기준");
+        unmentioned.changeSummary("사내 복지 안내");
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(), List.of(),
+                List.of(new IndexEntry("101", 1, null, "연차와 반차 기준"))));
+
+        ArgumentCaptor<String> index = ArgumentCaptor.forClass(String.class);
+        then(wikiFileMutation).should().storeIndex(eq(SCOPE_KEY), index.capture());
+        assertThat(index.getValue()).contains("휴가 규정").contains("복지 제도");
+    }
+
+    @Test
+    @DisplayName("AI 가 목차 항목을 주지 않아도 살아 있는 Wiki 로 다시 그린다")
+    void redrawsIndexEvenWithoutIndexEntries() throws Exception {
+        // 예전에는 옛 목차를 그대로 유지했다. 그 경로로 죽은 항목이 목차에 남았고,
+        // 다음 작업에서 lint 가 dangling-link 로 실패시켜 그 공간이 영구히 막혔다.
+        existingCategory(10L, "인사");
+        Wiki alive = existingWiki(101L, 10L, "휴가 규정");
+        alive.changeSummary("연차와 반차 기준");
+        given(wikiFileStorage.readIndex(SCOPE_KEY))
+                .willReturn("# 목차\n\n- [사라진 페이지](pages/999.md) — 옛 항목");
+
+        applier.apply(SCOPE_KEY, DOCUMENT_ID, new WikiTransformationResponse(
+                "요약", List.of(), List.of(), List.of(), List.of()));
+
+        ArgumentCaptor<String> index = ArgumentCaptor.forClass(String.class);
+        then(wikiFileMutation).should().storeIndex(eq(SCOPE_KEY), index.capture());
+        assertThat(index.getValue()).contains("휴가 규정").doesNotContain("사라진 페이지");
     }
 }
