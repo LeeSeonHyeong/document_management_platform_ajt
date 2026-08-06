@@ -16,6 +16,7 @@ import com.ajt.backend.global.ai.client.WikiTransformationResponse.RelationChang
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.WikiChange;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -24,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -128,6 +130,116 @@ public class WikiTransformationApplier {
 
         public RemovedDocumentResult {
             affectedWikiIds = List.copyOf(affectedWikiIds);
+        }
+    }
+
+    /**
+     * 근거가 삭제 문서 하나뿐인 Wiki를 AI 호출 <b>전에</b> 결정적으로 삭제합니다.
+     *
+     * <p>"근거가 전부 사라진 페이지의 삭제"는 판단이 필요 없는 기계적 규칙인데 에이전트에게
+     * 맡겨져 있었다. 지울 페이지를 다른 페이지가 링크하면 지시 규칙(목록 밖 수정 금지 vs
+     * dangling-link 정리)이 충돌해, 에이전트가 같은 read 를 반복하다 호출 상한에서 죽었다
+     * (2026-08-07 LangSmith 실측 — 같은 페이지 전문 read 53연속, 토큰 339만 소진).
+     *
+     * <p>삭제 절차는 {@code ACTION_DELETE} 반영과 같다(파일·검색 색인·행·관계 참조). 추가로
+     * 남은 Wiki 본문에서 삭제된 페이지로 향하는 마크다운 링크를 <b>평문화</b>한다 — 링크
+     * 표기만 걷어내고 텍스트는 남긴다. 그 문장의 사실은 다른 근거가 받치고 있고, 데드락의
+     * 원인이던 dangling-link 를 여기서 원천 제거해야 남은 수술을 에이전트에게 맡길 수 있다.
+     */
+    public PruneResult pruneFullyDependentWikis(String scopeKey, long documentId) {
+        List<Wiki> scopeWikis = wikiRepository.findAllByScopeKey(scopeKey);
+        List<Wiki> fullyDependent = scopeWikis.stream()
+                .filter(wiki -> !wiki.documentRefs().isEmpty())
+                .filter(wiki -> wiki.documentRefs().stream().allMatch(ref -> ref == documentId))
+                .toList();
+        int remainingReferencingWikis = (int) scopeWikis.stream()
+                .filter(wiki -> wiki.documentRefs().contains(documentId))
+                .count() - fullyDependent.size();
+        if (fullyDependent.isEmpty()) {
+            return new PruneResult(List.of(), 0, remainingReferencingWikis);
+        }
+
+        WikiFileMutation fileMutation = beginFileMutation();
+        try {
+            Set<Long> deletedWikiIds = new LinkedHashSet<>();
+            Set<String> deletedPageFiles = new LinkedHashSet<>();
+            List<String> deletedWikiTitles = new ArrayList<>();
+            for (Wiki wiki : fullyDependent) {
+                deleteWikiMarkdown(fileMutation, wiki.wikiPath());
+                wikiSearchIndexer.deleteByWikiId(wiki.id());
+                wikiRepository.delete(wiki);
+                deletedWikiIds.add(wiki.id());
+                deletedWikiTitles.add(wiki.title());
+                deletedPageFiles.add(wiki.pageKey() + ".md");
+            }
+            removeDanglingWikiRefs(scopeKey, deletedWikiIds);
+            int flattenedLinkPages = flattenLinksToDeletedPages(scopeKey, deletedPageFiles, fileMutation);
+            storeIndex(fileMutation, scopeKey, WikiIndex.render(liveEntries(scopeKey)));
+            wikiScopeRepository.findById(scopeKey)
+                    .orElseThrow(() -> new IllegalStateException("Wiki 공간을 찾을 수 없습니다: " + scopeKey))
+                    .incrementScopeVersion();
+            completeFileMutationAfterTransaction(fileMutation);
+            return new PruneResult(deletedWikiTitles, flattenedLinkPages, remainingReferencingWikis);
+        } catch (RuntimeException exception) {
+            rollbackFileMutation(fileMutation, exception);
+            throw exception;
+        }
+    }
+
+    /**
+     * 남은 Wiki 본문에서 삭제된 페이지로 향하는 링크를 평문화합니다: {@code [텍스트](pages/키.md)} → 텍스트.
+     */
+    private int flattenLinksToDeletedPages(
+            String scopeKey,
+            Set<String> deletedPageFiles,
+            WikiFileMutation fileMutation
+    ) {
+        Pattern deletedPageLink = deletedPageLinkPattern(deletedPageFiles);
+        int flattenedLinkPages = 0;
+        for (Wiki wiki : wikiRepository.findAllByScopeKey(scopeKey)) {
+            String markdown = readWikiMarkdown(wiki);
+            String flattened = deletedPageLink.matcher(markdown).replaceAll("$1");
+            if (!flattened.equals(markdown)) {
+                storeContent(fileMutation, wiki.wikiPath(), flattened);
+                wikiSearchIndexer.replace(wiki, flattened);
+                flattenedLinkPages++;
+            }
+        }
+        return flattenedLinkPages;
+    }
+
+    private static Pattern deletedPageLinkPattern(Set<String> deletedPageFiles) {
+        String fileNames = deletedPageFiles.stream()
+                .map(Pattern::quote)
+                .collect(Collectors.joining("|"));
+        // 상대 경로 접두(../, wiki/ALL/ 등)를 허용한다 — 화면·에이전트 양쪽 링크 표기와 같은 규칙.
+        return Pattern.compile("\\[([^\\]]*)\\]\\((?:[^()\\s]*?/)?pages/(?:" + fileNames + ")\\)");
+    }
+
+    private String readWikiMarkdown(Wiki wiki) {
+        try {
+            return wikiFileStorage.readWikiMarkdown(wiki.wikiPath());
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+    }
+
+    /**
+     * 결정적 프리패스 결과입니다.
+     *
+     * @param deletedWikiTitles         지운 Wiki 제목 — 관리자 요약에 싣는다
+     * @param flattenedLinkPages        삭제된 페이지로 향하는 링크를 평문화한 Wiki 수
+     * @param remainingReferencingWikis 프리패스 뒤에도 이 문서를 근거로 삼는 Wiki 수.
+     *                                  0이면 걷어낼 것이 없으므로 AI 를 부를 필요가 없다
+     */
+    public record PruneResult(
+            List<String> deletedWikiTitles,
+            int flattenedLinkPages,
+            int remainingReferencingWikis
+    ) {
+
+        public PruneResult {
+            deletedWikiTitles = List.copyOf(deletedWikiTitles);
         }
     }
 

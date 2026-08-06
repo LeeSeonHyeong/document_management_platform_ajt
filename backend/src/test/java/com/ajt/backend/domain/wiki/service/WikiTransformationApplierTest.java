@@ -642,6 +642,86 @@ class WikiTransformationApplierTest {
                 .hasMessageContaining("자기 자신");
     }
 
+    // ------------------------------------------------------------------
+    // 결정적 프리패스 — 근거가 삭제 문서뿐인 위키는 LLM 판단 없이 지운다.
+    //
+    // 배경(2026-08-07 LangSmith 실측): 이 삭제를 에이전트에게 맡기면, 지울 페이지를
+    // 다른 페이지가 링크할 때 지시 규칙(목록 밖 수정 금지 vs dangling-link 수정)이
+    // 충돌해 같은 read 를 53연속 반복하다 호출 상한에서 죽었다.
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("근거가 삭제 문서뿐인 위키를 지우고 남은 본문의 링크를 평문화한다")
+    void prunesFullyDependentWikisAndFlattensInboundLinks() throws Exception {
+        existingCategory(10L, "보안 정책");
+        Wiki dependent = existingWiki(101L, 10L, "AJT 정보보안 기본 정책");
+        dependent.addDocumentRefs(List.of(15L));
+        Wiki survivor = existingWiki(102L, 10L, "신입사원 온보딩 가이드");
+        survivor.addDocumentRefs(List.of(16L));
+        survivor.addWikiRef(101L);
+        given(wikiFileStorage.readWikiMarkdown(survivor.wikiPath())).willReturn(
+                "온보딩 첫 주에 [AJT 정보보안 기본 정책](pages/101.md)을 읽는다.\n"
+                        + "복지는 [복지 제도](pages/205.md) 참고.");
+
+        WikiTransformationApplier.PruneResult result =
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L);
+
+        // 위키 삭제 — 행·색인·파일이 모두 정리된다.
+        assertThat(savedWikis).extracting(Wiki::id).containsExactly(102L);
+        then(wikiSearchIndexer).should().deleteByWikiId(101L);
+        then(wikiFileMutation).should().deleteWikiMarkdown("wiki/ALL/pages/101.md");
+        // 남은 위키의 관계 참조가 정리된다.
+        assertThat(survivor.wikiRefs()).isEmpty();
+        // 본문 링크는 평문화된다 — 텍스트는 남고, 다른 페이지 링크는 그대로다.
+        ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
+        then(wikiFileMutation).should().storeWikiMarkdown(eq(survivor.wikiPath()), body.capture());
+        assertThat(body.getValue())
+                .contains("온보딩 첫 주에 AJT 정보보안 기본 정책을 읽는다.")
+                .contains("[복지 제도](pages/205.md)")
+                .doesNotContain("pages/101.md");
+        then(wikiSearchIndexer).should().replace(eq(survivor), anyString());
+        assertThat(result.deletedWikiTitles()).containsExactly("AJT 정보보안 기본 정책");
+        assertThat(result.flattenedLinkPages()).isEqualTo(1);
+        assertThat(result.remainingReferencingWikis()).isZero();
+    }
+
+    @Test
+    @DisplayName("근거가 남는 위키는 지우지 않고 남은 참조 수를 알린다")
+    void keepsWikisWithOtherEvidenceAndReportsRemaining() throws Exception {
+        existingCategory(10L, "인사");
+        Wiki mixed = existingWiki(101L, 10L, "휴가 규정");
+        mixed.addDocumentRefs(List.of(15L, 16L));
+
+        WikiTransformationApplier.PruneResult result =
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L);
+
+        assertThat(savedWikis).extracting(Wiki::id).containsExactly(101L);
+        assertThat(result.deletedWikiTitles()).isEmpty();
+        assertThat(result.remainingReferencingWikis()).isEqualTo(1);
+        // 지운 것이 없으면 파일·버전도 건드리지 않는다.
+        then(wikiFileMutation).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("프리패스로 공간이 바뀌면 목차를 다시 그리고 scopeVersion을 올린다")
+    void redrawsIndexAndBumpsVersionAfterPrune() throws Exception {
+        WikiScope scope = WikiScope.all();
+        given(wikiScopeRepository.findById(SCOPE_KEY)).willReturn(Optional.of(scope));
+        existingCategory(10L, "보안 정책");
+        Wiki dependent = existingWiki(101L, 10L, "AJT 정보보안 기본 정책");
+        dependent.addDocumentRefs(List.of(15L));
+        Wiki survivor = existingWiki(102L, 10L, "신입사원 온보딩 가이드");
+        survivor.addDocumentRefs(List.of(16L));
+        given(wikiFileStorage.readWikiMarkdown(survivor.wikiPath())).willReturn("링크 없는 본문");
+
+        applier.pruneFullyDependentWikis(SCOPE_KEY, 15L);
+
+        ArgumentCaptor<String> index = ArgumentCaptor.forClass(String.class);
+        then(wikiFileMutation).should().storeIndex(eq(SCOPE_KEY), index.capture());
+        assertThat(index.getValue()).contains("신입사원 온보딩 가이드").doesNotContain("정보보안 기본 정책");
+        assertThat(scope.scopeVersion()).isEqualTo(1L);
+    }
+
     private Wiki existingWiki(long id, long categoryId, String title) throws ReflectiveOperationException {
         Wiki wiki = Wiki.create(SCOPE_KEY, categoryId, title);
         assignId(wiki, id);
