@@ -111,14 +111,25 @@ export default function SignupRequestsPage() {
   return (
     <div className="space-y-5">
       <Link to="/admin/users" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500"><ChevronLeft className="size-4" /> 직원 관리</Link>
+      {/* 통계 카드가 곧 상태 필터다. 클릭하면 해당 상태의 목록을 본다(직원 관리 페이지와 동일한 패턴). */}
       <section className="grid gap-4 md:grid-cols-3">
-        <StatCard label="승인 대기" value={statusCounts[SIGNUP_STATUS.PENDING]} suffix="건" tone="amber" caption="확인이 필요한 요청" />
+        <StatCard
+          label="승인 대기"
+          value={statusCounts[SIGNUP_STATUS.PENDING]}
+          suffix="건"
+          tone="amber"
+          caption="확인이 필요한 요청"
+          onClick={() => handleStatus(SIGNUP_STATUS.PENDING)}
+          active={status === SIGNUP_STATUS.PENDING}
+        />
         <StatCard
           label="승인 완료"
           value={statusCounts[SIGNUP_STATUS.APPROVED]}
           suffix="건"
           tone="blue"
           caption="누적 승인 인원"
+          onClick={() => handleStatus(SIGNUP_STATUS.APPROVED)}
+          active={status === SIGNUP_STATUS.APPROVED}
         />
         <StatCard
           label="거부"
@@ -126,23 +137,13 @@ export default function SignupRequestsPage() {
           suffix="건"
           tone="slate"
           caption="누적 반려 요청"
+          onClick={() => handleStatus(SIGNUP_STATUS.REJECTED)}
+          active={status === SIGNUP_STATUS.REJECTED}
         />
       </section>
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3 px-5 py-4">
           <div><h2 className="text-lg font-bold">가입 요청</h2><p className="text-sm text-slate-400">승인 시 즉시 계정이 활성화됩니다.</p></div>
-          <div className="flex gap-2">
-            {STATUS_TABS.map((tab) => (
-              <Button
-                key={tab.value}
-                size="sm"
-                variant={status === tab.value ? 'secondary' : 'outline'}
-                onClick={() => handleStatus(tab.value)}
-              >
-                {tab.label} {statusCounts[tab.value]}
-              </Button>
-            ))}
-          </div>
         </div>
         <DataTable className="rounded-none border-0 shadow-none" columns={columns} rows={items} rowKey="userId" loading={query.isLoading} emptyState={<EmptyState title="가입 요청이 없습니다." />} />
         {query.data && totalPages > 1 && (
