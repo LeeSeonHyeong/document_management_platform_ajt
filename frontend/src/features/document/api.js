@@ -2,15 +2,20 @@ import apiClient from '@/api/client'
 
 // ── Wiki 원본문서 ────────────────────────────────────────────────
 
-// POST /api/v1/documents (multipart) — 202 { jobId, documentIds, scopeKey, status, createdAt }
-// onUploadProgress: axios 진행률 콜백(선택). 진행 표시가 필요한 업로드 모달에서 넘긴다.
+// POST /api/v1/documents (multipart) — 202 { documentIds, scopeKey, status, createdAt }
+//
+// documentCategoryId·visibilityType은 선택이다. 둘 다 없으면 확정 전 업로드이고, 분류는
+// 이후 PATCH로 지정한다 — 하나만 보내면 400이다(계약 v1.14.0).
+// onUploadProgress: axios 진행률 콜백(선택).
 export async function uploadDocuments({ files, documentCategoryId, visibilityType, departmentIds, onUploadProgress }) {
   const form = new FormData()
   files.forEach((file) => form.append('files', file))
-  form.append('documentCategoryId', documentCategoryId)
-  form.append('visibilityType', visibilityType)
-  // 업로드 요청은 배열이 아니라 콤마로 이어붙인 문자열이다(PATCH의 departmentIds 배열과 다름).
-  if (departmentIds?.length) form.append('departmentIds', departmentIds.join(','))
+  if (documentCategoryId != null && visibilityType) {
+    form.append('documentCategoryId', documentCategoryId)
+    form.append('visibilityType', visibilityType)
+    // 업로드 요청은 배열이 아니라 콤마로 이어붙인 문자열이다(PATCH의 departmentIds 배열과 다름).
+    if (departmentIds?.length) form.append('departmentIds', departmentIds.join(','))
+  }
   const { data } = await apiClient.post('/documents', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
     onUploadProgress,
@@ -139,6 +144,14 @@ export async function fetchAiJobs({ page = 1, size = 20 } = {}) {
 // GET /api/v1/ai-jobs/:jobId
 export async function fetchAiJob(jobId) {
   const { data } = await apiClient.get(`/ai-jobs/${jobId}`)
+  return data
+}
+
+// POST /api/v1/ai-jobs — 202 { jobs: [{ jobId, scopeKey, status, documentIds }] }
+// 확정된 문서들로 작업을 만들고 바로 시작한다. 공개 범위가 섞여 있으면 서버가 범위별로
+// 작업을 나누므로, 프론트가 미리 묶어 보낼 필요가 없다.
+export async function createAiJob(documentIds) {
+  const { data } = await apiClient.post('/ai-jobs', { documentIds })
   return data
 }
 

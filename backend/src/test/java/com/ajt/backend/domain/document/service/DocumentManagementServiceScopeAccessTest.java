@@ -102,8 +102,7 @@ class DocumentManagementServiceScopeAccessTest {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(employeeId, CurrentMemberRole.EMPLOYEE));
 
-        DocumentListResponse response = documentManagementService.findDocuments(
-                1, 100, null, null, null, null, null, null, null, null, null);
+        DocumentListResponse response = documentManagementService.findDocuments(1, 100, null, null, null, null, null, null, null, null, null, null);
 
         List<String> scopeKeys = response.items().stream()
                 .map(DocumentSummaryResponse::scopeKey)
@@ -118,8 +117,7 @@ class DocumentManagementServiceScopeAccessTest {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(superAdminId, CurrentMemberRole.ADMIN));
 
-        DocumentListResponse response = documentManagementService.findDocuments(
-                1, 100, null, null, null, null, null, null, null, null, null);
+        DocumentListResponse response = documentManagementService.findDocuments(1, 100, null, null, null, null, null, null, null, null, null, null);
 
         List<String> scopeKeys = response.items().stream()
                 .map(DocumentSummaryResponse::scopeKey)
@@ -133,8 +131,7 @@ class DocumentManagementServiceScopeAccessTest {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(superAdminId, CurrentMemberRole.ADMIN));
 
-        DocumentListResponse response = documentManagementService.findDocuments(
-                1, 100, null, null, null, null, null, department2Id, null, null, null);
+        DocumentListResponse response = documentManagementService.findDocuments(1, 100, null, null, null, null, null, department2Id, null, null, null, null);
 
         List<String> scopeKeys = response.items().stream()
                 .map(DocumentSummaryResponse::scopeKey)
@@ -149,8 +146,7 @@ class DocumentManagementServiceScopeAccessTest {
         given(currentMemberProvider.currentMember())
                 .willReturn(new CurrentMember(deptManagerId, CurrentMemberRole.ADMIN));
 
-        DocumentListResponse response = documentManagementService.findDocuments(
-                1, 100, null, null, null, null, null, null, null, null, null);
+        DocumentListResponse response = documentManagementService.findDocuments(1, 100, null, null, null, null, null, null, null, null, null, null);
 
         List<String> scopeKeys = response.items().stream()
                 .map(DocumentSummaryResponse::scopeKey)

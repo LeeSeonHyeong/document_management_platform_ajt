@@ -47,6 +47,10 @@ function formatFileSize(bytes) {
 }
 
 function getDocumentType(doc) {
+  // 어느 카드로 올렸는지가 정답이다. 확장자만 보면 PDF로 올린 일정 파일이 「문서」로 뜬다.
+  // uploadKind는 아직 서버에 없는 일정 대기 항목에만 있어, 없으면 확장자로 추정한다.
+  if (doc.uploadKind === 'schedule') return '일정'
+  if (doc.uploadKind === 'document') return '문서'
   const extension = doc.originalFileName?.split('.').pop()?.toLowerCase()
   if (extension === 'csv' || extension === 'xlsx' || extension === 'xls') return '일정'
   return '문서'
@@ -203,7 +207,10 @@ export default function DocumentTable({
         <div className="flex justify-center">
           <QueueVisibilityDropdown
             item={doc}
-            localOnly={doc.previewOnly}
+            // 카테고리가 아직 없으면 서버에 보내지 않는다 — PATCH는 카테고리와 공개 범위를
+            // 함께 받아 서로 맞는지 검증하므로 반쪽만으로는 400이다. 카테고리를 고르는
+            // 순간 QueueCategorySelect가 둘을 함께 저장한다(S15P11B106-276).
+            localOnly={doc.previewOnly || !doc.documentCategoryId}
             onApplied={(changes) => onQueueMetadataChange?.(doc.documentId, changes)}
           />
         </div>

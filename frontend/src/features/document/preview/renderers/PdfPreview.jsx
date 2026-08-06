@@ -16,7 +16,7 @@ const PDF_OPTIONS = {
   standardFontDataUrl: `${import.meta.env.BASE_URL}standard_fonts/`,
 }
 
-export default function PdfPreview({ blob, pageNumber, onPageCountChange, onError }) {
+export default function PdfPreview({ blob, pageNumber, onPageCountChange, onError, zoom = 1 }) {
   const containerRef = useRef(null)
   const [width, setWidth] = useState(0)
 
@@ -43,11 +43,12 @@ export default function PdfPreview({ blob, pageNumber, onPageCountChange, onErro
         {width > 0 && (
           <Page
             pageNumber={pageNumber}
-            width={width}
+            // 확대는 렌더 폭을 키워서 한다. CSS로 늘리면 캔버스를 확대해 글자가 뭉개진다.
+            width={width * zoom}
             onRenderError={onError}
             loading={null}
             error={null}
-            className="[&>canvas]:!h-auto [&>canvas]:!w-full"
+            className="[&>canvas]:!h-auto [&>canvas]:!max-w-none"
           />
         )}
       </Document>

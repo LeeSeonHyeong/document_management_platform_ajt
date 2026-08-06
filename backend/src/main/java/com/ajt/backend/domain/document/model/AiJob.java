@@ -9,7 +9,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -47,14 +47,17 @@ public class AiJob {
     @Column(name = "failure_reason", length = 1000)
     private String failureReason;
 
+    // 시각은 Instant로 다룬다(S15P11B106-276). LocalDateTime은 시간대가 없어 서버 JVM의 기본
+    // 시간대에 따라 값이 달라졌다 — 배포 컨테이너(UTC)가 만든 값을 브라우저가 KST로 읽어
+    // 9시간 과거로 표시됐다. Document도 Instant를 쓴다.
     @Column(name = "created_at", nullable = false)
-    private LocalDateTime createdAt;
+    private Instant createdAt;
 
     @Column(name = "started_at")
-    private LocalDateTime startedAt;
+    private Instant startedAt;
 
     @Column(name = "finished_at")
-    private LocalDateTime finishedAt;
+    private Instant finishedAt;
 
     protected AiJob() {
     }
@@ -76,7 +79,7 @@ public class AiJob {
             throw new IllegalStateException("WAITING 상태의 작업만 시작할 수 있습니다.");
         }
         status = AiJobStatus.PROCESSING;
-        startedAt = LocalDateTime.now();
+        startedAt = Instant.now();
     }
 
     /**
@@ -94,7 +97,7 @@ public class AiJob {
             this.status = AiJobStatus.FAILED;
             this.failureReason = firstFailureReason(documentResults);
         }
-        this.finishedAt = LocalDateTime.now();
+        this.finishedAt = Instant.now();
     }
 
     /**
@@ -104,7 +107,7 @@ public class AiJob {
         requireProcessing();
         this.status = AiJobStatus.FAILED;
         this.failureReason = failureReason;
-        this.finishedAt = LocalDateTime.now();
+        this.finishedAt = Instant.now();
     }
 
     /**
@@ -117,7 +120,7 @@ public class AiJob {
         }
         this.status = AiJobStatus.FAILED;
         this.failureReason = failureReason;
-        this.finishedAt = LocalDateTime.now();
+        this.finishedAt = Instant.now();
     }
 
     /**
@@ -129,7 +132,7 @@ public class AiJob {
             throw new IllegalStateException("대기 또는 처리 중인 작업만 취소할 수 있습니다.");
         }
         status = AiJobStatus.CANCELLED;
-        finishedAt = LocalDateTime.now();
+        finishedAt = Instant.now();
     }
 
     /** 현재 처리 중이던 문서의 결과를 기존 JSON 결과에 누적한다. */
@@ -160,7 +163,7 @@ public class AiJob {
 
     @PrePersist
     void prePersist() {
-        createdAt = LocalDateTime.now();
+        createdAt = Instant.now();
     }
 
     public Long id() {
@@ -187,15 +190,15 @@ public class AiJob {
         return List.copyOf(documentIds);
     }
 
-    public LocalDateTime createdAt() {
+    public Instant createdAt() {
         return createdAt;
     }
 
-    public LocalDateTime startedAt() {
+    public Instant startedAt() {
         return startedAt;
     }
 
-    public LocalDateTime finishedAt() {
+    public Instant finishedAt() {
         return finishedAt;
     }
 

@@ -717,7 +717,7 @@ class DocumentManagementServiceTest {
         given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
 
         DocumentListResponse response =
-                service.findDocuments(1, 20, "ALL", null, "uploaded", null, null, null, null, null, null);
+                service.findDocuments(1, 20, "ALL", null, "uploaded", null, null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isEqualTo(1);
         assertThat(response.page()).isEqualTo(1);
@@ -757,7 +757,7 @@ class DocumentManagementServiceTest {
         given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
 
         DocumentListResponse response =
-                service.findDocuments(1, 20, null, null, null, null, null, null, null, null, null);
+                service.findDocuments(1, 20, null, null, null, null, null, null, null, null, null, null);
 
         assertThat(response.items()).hasSize(1);
         assertThat(response.items().get(0).documentId()).isEqualTo("15");
@@ -781,7 +781,7 @@ class DocumentManagementServiceTest {
         given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
 
         DocumentListResponse response =
-                service.findDocuments(1, 20, null, null, null, null, null, 2L, null, null, null);
+                service.findDocuments(1, 20, null, null, null, null, null, 2L, null, null, null, null);
 
         assertThat(response.items()).hasSize(1);
         // 관리자여도 departmentId 필터가 있으면 공개범위 조회가 일어난다.
@@ -792,7 +792,7 @@ class DocumentManagementServiceTest {
     @Test
     @DisplayName("관리자는 문서 메타데이터를 수정하고 재처리 작업을 생성한다")
     void updatesDocumentMetadata() throws Exception {
-        Document document = uploadedDocument();
+        Document document = processedDocument();
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
@@ -871,7 +871,7 @@ class DocumentManagementServiceTest {
     @Test
     @DisplayName("공개 범위 변경 시 옛 파싱 본문이 없으면 걷어내기를 건너뛰고 새 범위만 반영한다")
     void skipsRemovalWhenParsedMarkdownIsMissing() throws Exception {
-        Document document = uploadedDocument(); // parsedPath 없음(파싱 전)
+        Document document = processedDocument(); // parsedPath 없음
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
@@ -902,7 +902,7 @@ class DocumentManagementServiceTest {
     @Test
     @DisplayName("공개 범위 변경은 새 범위에 처리 중 문서가 있으면 막는다")
     void rejectsScopeChangeWhenNewScopeIsProcessing() throws Exception {
-        Document document = uploadedDocument();
+        Document document = processedDocument();
         assignId(document, 15L);
         Document processing = uploadedDocument();
         assignId(processing, 16L);
@@ -926,7 +926,7 @@ class DocumentManagementServiceTest {
     @Test
     @DisplayName("공개 범위 이동 뒤 작업 생성이 실패하면 파일 이동을 되돌린다")
     void rollsBackFilesWhenScopeReprocessCreationFails() throws Exception {
-        Document document = uploadedDocument();
+        Document document = processedDocument();
         assignId(document, 15L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
@@ -1197,7 +1197,7 @@ class DocumentManagementServiceTest {
         given(departmentRepository.findAllById(any())).willReturn(List.of(dev, plan));
 
         DocumentListResponse response =
-                service.findDocuments(1, 20, "D1-D2", null, null, null, null, null, null, null, null);
+                service.findDocuments(1, 20, "D1-D2", null, null, null, null, null, null, null, null, null);
 
         DocumentSummaryResponse item = response.items().get(0);
         assertThat(item.mimeType()).isEqualTo("text/markdown");
@@ -1214,6 +1214,52 @@ class DocumentManagementServiceTest {
         assertThat(item.uploadedBy().name()).isEqualTo("김관리");
     }
 
+    @Test
+    @DisplayName("처리 전 문서의 분류를 확정하면 재처리 작업을 만들지 않는다(S15P11B106-276)")
+    void classifiesUnprocessedDocumentWithoutReprocess() throws Exception {
+        Document document = uploadedDocument(); // 확정 전 업로드: 처리 이력 없음
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(7L)).willReturn(Optional.of(category(7L, "취업규칙")));
+        given(wikiScopeRepository.findById("ALL")).willReturn(Optional.of(mock(WikiScope.class)));
+
+        DocumentUpdateResponse response = service.update(
+                15L, new DocumentMetadataUpdateRequest(7L, "all", List.of()));
+
+        assertThat(response.jobId()).isNull();
+        assertThat(response.status()).isNull();
+        assertThat(response.reprocessJobs()).isEmpty();
+        assertThat(response.document().documentCategoryName()).isEqualTo("취업규칙");
+        verify(aiJobRepository, never()).save(any(AiJob.class));
+        verify(parseJobLauncher, never()).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
+    }
+
+    @Test
+    @DisplayName("처리 전 문서의 공개 범위를 확정하면 파일만 옮기고 걷어내기를 하지 않는다")
+    void movesFileWhenClassifyingUnprocessedDocument() throws Exception {
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentCategoryRepository.findById(7L))
+                .willReturn(Optional.of(category(7L, "D1-D3", "부서규정")));
+        given(wikiScopeRepository.findById("D1-D3")).willReturn(Optional.of(mock(WikiScope.class)));
+        given(documentFileStorage.moveToScope(anyString(), any(), eq("D1-D3"), eq(15L)))
+                .willReturn(documentFileMutation);
+        given(documentFileMutation.originalPath()).willReturn("wiki/D1-D3/sources/15/original.md");
+        given(documentFileMutation.parsedPath()).willReturn(null);
+
+        DocumentUpdateResponse response = service.update(
+                15L, new DocumentMetadataUpdateRequest(7L, "department", List.of(1L, 3L)));
+
+        assertThat(response.jobId()).isNull();
+        assertThat(document.scopeKey()).isEqualTo("D1-D3");
+        assertThat(document.originalPath()).isEqualTo("wiki/D1-D3/sources/15/original.md");
+        verify(documentFileStorage).moveToScope(anyString(), any(), eq("D1-D3"), eq(15L));
+        verify(aiJobRepository, never()).save(any(AiJob.class));
+    }
+
     private Document uploadedDocument() {
         return Document.uploaded(
                 10L,
@@ -1224,6 +1270,20 @@ class DocumentManagementServiceTest {
                 "text/markdown",
                 1024L
         );
+    }
+
+    /**
+     * 이미 AI 작업을 거쳐 Wiki에 반영된 문서입니다. 파싱 본문 경로는 없습니다.
+     *
+     * <p>메타데이터 수정이 재처리·걷어내기를 일으키는 경로를 검증할 때 쓴다. 처리 이력이 없는
+     * 문서(확정 전 업로드)는 그 경로를 타지 않고 분류만 확정되기 때문이다(S15P11B106-276).
+     */
+    private Document processedDocument() throws ReflectiveOperationException {
+        Document document = uploadedDocument();
+        Field refs = Document.class.getDeclaredField("documentWikiRefs");
+        refs.setAccessible(true);
+        refs.set(document, List.of(101L));
+        return document;
     }
 
     /** 파싱까지 끝난 문서입니다. 걷어내기에 필요한 옛 파싱 본문 경로를 갖습니다. */

@@ -18,6 +18,7 @@ import {
   fetchAiJobs,
   startAiJob,
   cancelAiJob,
+  createAiJob,
 } from './api'
 
 // AI 작업이 끝나면 그 작업이 바꿔놓은 캐시를 모두 무효화한다.
@@ -101,6 +102,19 @@ export function useReplaceDocumentFile(documentId) {
       replaceDocumentFile(documentId, file, { onUploadProgress }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.documents.detail(documentId) })
+      queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
+    },
+  })
+}
+
+// 확정된 문서로 AI 작업을 만들고 바로 시작한다(S15P11B106-276).
+// 작업이 문서 상태를 바꾸므로 문서 목록도 함께 무효화한다 — 대기 목록에서 빠져야 한다.
+export function useCreateAiJob() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: createAiJob,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.documents.all })
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
   })

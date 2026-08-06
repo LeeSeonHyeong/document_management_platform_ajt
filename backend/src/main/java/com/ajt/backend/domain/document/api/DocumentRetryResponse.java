@@ -1,11 +1,11 @@
 package com.ajt.backend.domain.document.api;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public record DocumentRetryResponse(
         String jobId,
         String documentId,
         String status,
-        LocalDateTime createdAt
+        Instant createdAt
 ) {
 }

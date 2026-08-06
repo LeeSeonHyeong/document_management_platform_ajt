@@ -67,10 +67,13 @@ public class DocumentUploadController {
             @RequestParam(name = "departmentId", required = false) Long departmentId,
             @RequestParam(name = "uploadedFrom", required = false) String uploadedFrom,
             @RequestParam(name = "uploadedTo", required = false) String uploadedTo,
+            // 분류 완료 여부(S15P11B106-276). true면 카테고리가 지정된 문서만, false면 확정 전 문서만.
+            @RequestParam(name = "classified", required = false) Boolean classified,
             @RequestParam(name = "sort", required = false) String sort
     ) {
         return documentManagementService.findDocuments(
-                page, size, scopeKey, categoryId, status, keyword, fileType, departmentId, uploadedFrom, uploadedTo, sort);
+                page, size, scopeKey, categoryId, status, keyword, fileType, departmentId,
+                uploadedFrom, uploadedTo, classified, sort);
     }
 
     @GetMapping("/api/v1/documents/{documentId}")
