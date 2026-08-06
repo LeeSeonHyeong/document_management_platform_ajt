@@ -3,6 +3,7 @@ import { Settings } from 'lucide-react'
 import { cn } from '@/shared/lib/cn'
 import { useAiJobs, useDocuments } from '../queries'
 import { readPreviewSourceDocuments } from '../previewStorage'
+import { DOCUMENT_STATUS } from '@/shared/constants/enums'
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
@@ -13,9 +14,19 @@ const TABS = [
 ]
 
 export default function DocumentSectionTabs() {
-  const { data: sourceData } = useDocuments({ page: 1, size: 1 })
+  // 원본 문서 탭의 수는 그 화면이 실제로 보여주는 것과 같아야 한다(S15P11B106-300).
+  // 목록은 위키 반영이 끝난 문서만 보여주는데(S15P11B106-288) 탭은 전체를 세서, 실패·처리 중
+  // 문서까지 포함된 「13」과 목록의 「9건」이 어긋났다.
+  const { data: sourceData } = useDocuments({
+    page: 1,
+    size: 1,
+    status: DOCUMENT_STATUS.COMPLETED,
+  })
   const { data: jobsData } = useAiJobs({ page: 1, size: 20 })
-  const previewSourceCount = readPreviewSourceDocuments().length
+  // 세션스토리지에 남은 옛 미리보기 항목에도 같은 조건을 적용한다(서버 필터를 타지 않는다).
+  const previewSourceCount = readPreviewSourceDocuments().filter(
+    (document) => document.status === DOCUMENT_STATUS.COMPLETED,
+  ).length
   const serverSourceCount =
     sourceData?.totalCount ?? sourceData?.totalItems ?? sourceData?.totalElements ?? sourceData?.items?.length
   const sourceCount = serverSourceCount == null ? previewSourceCount : serverSourceCount + previewSourceCount

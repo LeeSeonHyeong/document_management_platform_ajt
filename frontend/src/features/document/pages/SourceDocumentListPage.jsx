@@ -77,7 +77,12 @@ export default function SourceDocumentListPage() {
     const right = new Date(b.uploadedAt ?? 0).getTime()
     return sortOrder === 'latest' ? right - left : left - right
   })
-  const allDocuments = [...previewDocuments, ...(allData?.items ?? [])]
+  // 사이드바 부서·카테고리 집계도 목록과 같은 기준이어야 한다 — allData 는 서버가 완료만
+  // 걸러 주지만, 세션스토리지의 옛 미리보기 항목은 서버 필터를 타지 않는다.
+  const completedPreviewDocuments = previewDocuments.filter(
+    (document) => document.status === DOCUMENT_STATUS.COMPLETED,
+  )
+  const allDocuments = [...completedPreviewDocuments, ...(allData?.items ?? [])]
   const selectedDepartment = departments.find(
     (department) => String(department.departmentId) === String(filters.departmentId),
   )
