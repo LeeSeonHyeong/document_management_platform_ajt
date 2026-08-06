@@ -29,6 +29,35 @@ logger = logging.getLogger(__name__)
 _CONTEXT_CHARS = 120
 
 
+_SUMMARY_CHARS = 90
+
+
+def _one_liner(doc: dict) -> str:
+    """목록 한 줄에 붙이는 요약. 없으면 빈 문자열이다.
+
+    **목록이 제목만 주면 에이전트가 검색으로 그것을 알아내려 한다.** 실측(2026-08-05,
+    job 33): 라이브 10페이지의 제목만 받은 뒤 `search` 를 35회 불렀고 대부분 0건이었다.
+    「출장 식비」가 「출장비(여비) 정산 안내」에 있다는 것을 제목만으로는 알 수 없다.
+
+    두 출처를 같은 규칙으로 다룬다 — 조회 API 가 준 `summary`(라이브)와 본문 frontmatter 의
+    `description`(작업 층에 방금 쓴 페이지). 후자는 본문이 이미 로드된 경우에만 나온다:
+    목록 때문에 본문을 당기지는 않는다.
+    """
+    summary = (doc.get("summary") or "").strip()
+    if not summary:
+        content = doc.get("content") or ""
+        if "description:" in content[:400]:
+            from .write import extract_frontmatter_field, parse_frontmatter
+
+            summary = (extract_frontmatter_field(parse_frontmatter(content),
+                                                 "description") or "").strip()
+    if not summary:
+        return ""
+    if len(summary) > _SUMMARY_CHARS:
+        summary = summary[:_SUMMARY_CHARS].rstrip() + "…"
+    return f"\n      {summary}"
+
+
 def _snippet(content: str, query: str) -> str:
     if not content:
         return "(빈 내용)"
@@ -77,7 +106,8 @@ class SearchHandler:
                 by_category.setdefault(d.get("category") or "(미분류)", []).append(d)
             for category, group in sorted(by_category.items()):
                 lines.append(f"  [{category}]")
-                lines.extend(f"    {d['address']} — {label(d)}" for d in group)
+                lines.extend(f"    {d['address']} — {label(d)}{_one_liner(d)}"
+                             for d in group)
             if len(pages) > MAX_LIST:
                 lines.append(f"  ... {len(pages) - MAX_LIST}건 더")
         return "\n".join(lines)

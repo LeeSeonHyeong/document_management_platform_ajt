@@ -31,6 +31,7 @@ import tempfile
 import time
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -75,12 +76,44 @@ CALL_TIMEOUT_SECONDS = 600
 # turns, so this is well clear of normal work while still bounded.
 MAX_TURNS = 60
 
-# GMS 게이트웨이의 요청 크기벽(~42K 토큰) 아래로 문맥을 유지하기 위한 압축 설정. 긴 병합은
-# 이력이 누적돼 벽을 넘으면 GMS 가 400 을 내고 잡이 죽는다. deepagents 기본 요약 트리거는
-# 170K/0.85 라 벽보다 훨씬 높아 안 터지므로 낮게 재설정한다. 34K = 벽까지 실측 최대 1턴
-# 증가폭(~4.6K) 여유. (spec: docs/superpowers/specs/2026-08-02-gms-context-compaction-design.md)
-COMPACTION_TRIGGER = ("tokens", 34000)
+# 문맥 압축 설정. **트리거는 프로바이더마다 다르다** — 게이트웨이의 요청 크기벽은 모델의
+# 컨텍스트 창과 다른 제약이라, 하나의 값으로 둘을 만족시킬 수 없다.
+#
+# 게이트웨이(GMS)에는 요청 크기벽(~42K 토큰)이 있다. 긴 병합은 이력이 누적돼 벽을 넘고, 그때
+# GMS 가 400 을 내며 잡이 죽는다 — 실측으로 그때까지 쓴 2,404 크레딧을 잃었다(job 7).
+# deepagents 기본 트리거는 170K/0.85 라 벽보다 훨씬 높아 한 번도 안 터진다. 그래서 벽 아래로
+# 낮춘다. 34K = 벽까지 실측 최대 1턴 증가폭(~4.6K) 여유.
+# (spec: docs/superpowers/specs/2026-08-02-gms-context-compaction-design.md)
+COMPACTION_TRIGGER_CAPPED = ("tokens", 34000)
+
+# 직접 API 에는 그 벽이 없다(컨텍스트 1M). 여기서 34K 를 유지하면 손해가 두 가지다 —
+# 요약 LLM 콜이 몇 턴마다 추가로 돌고, 압축이 이력을 다시 쓰는 순간 프롬프트 캐시가 통째로
+# 무효화된다(캐싱은 접두사 일치라 앞이 한 글자 달라지면 뒤가 다 날아간다). 캐시 읽기 단가는
+# 입력의 0.1배이므로 이력을 길게 들고 가는 편이 오히려 싸다 — 직접 API 에서 캐싱이 실제로
+# 붙는 것은 2026-08-04 에 확인했다(생성 5402 → 다음 호출 읽기 5402). 그래서 압축을 라이브러리
+# 기본값 자리로 되돌린다.
+COMPACTION_TRIGGER_DIRECT = ("tokens", 170000)
+
 COMPACTION_KEEP = ("messages", 6)
+
+# 요청 크기벽이 **없다고 아는** 호스트. 목록에 없으면 벽이 있다고 본다 — 기본값이 안전한
+# 쪽이어야 한다. 잘못 좁히면 요약 콜을 몇 번 더 도는 낭비로 끝나지만, 잘못 넓히면 벽에서
+# 잡이 죽고 그때까지 쓴 비용을 전액 잃는다. 게이트웨이를 다시 쓰게 돼도 이 판단은 자동이라
+# 사람이 설정을 되돌리는 것을 잊어도 안전하다.
+UNCAPPED_API_HOSTS = frozenset({"api.anthropic.com"})
+
+
+def compaction_trigger_for(base_url: str) -> tuple[str, int]:
+    """`base_url` 로 압축 트리거를 고른다.
+
+    빈 값은 SDK 기본 엔드포인트를 뜻하므로 직접 API 다 — 게이트웨이를 쓸 때는 `base_url` 을
+    반드시 주기 때문에, "값이 없다"와 "게이트웨이"가 겹치지 않는다.
+    """
+    if not base_url:
+        return COMPACTION_TRIGGER_DIRECT
+    host = urlsplit(base_url if "//" in base_url else f"//{base_url}").hostname or ""
+    return (COMPACTION_TRIGGER_DIRECT if host.lower() in UNCAPPED_API_HOSTS
+            else COMPACTION_TRIGGER_CAPPED)
 
 _COMPACTION_MW_CLASS = None
 
@@ -328,12 +361,19 @@ class DeepAgentsRuntime:
                                **self._credential_kwargs(self.model))
 
     def _summarization_middleware(self, backend):
-        """GMS 요청 크기벽(~42K) 대응 문맥 압축 미들웨어.
+        """문맥 압축 미들웨어. **트리거를 에이전트 모델의 `base_url` 로 고른다.**
 
-        create_deep_agent 은 기본으로 요약 미들웨어를 넣지만 트리거가 170K/0.85 라 GMS 벽보다
-        훨씬 높아 벽에서 죽을 때까지 안 터진다. 트리거를 34K 로 낮춰 벽 전에 압축하고, 최근
-        6메시지는 보존한다. 요약 콜은 FAST 티어(haiku)로 싸게 돈다. 이름이 기본과 같아
-        (`SummarizationMiddleware`) create_deep_agent 이 기본을 이것으로 교체한다.
+        create_deep_agent 은 기본으로 요약 미들웨어를 넣지만 트리거가 170K/0.85 다. 게이트웨이
+        (GMS)를 쓸 때는 그 값이 요청 크기벽(~42K)보다 훨씬 높아 벽에서 죽을 때까지 안 터지므로
+        34K 로 낮춘다. 직접 API 에는 벽이 없어 낮춘 값이 오히려 손해라(요약 콜 추가 + 프롬프트
+        캐시 무효화) 기본값 자리로 되돌린다 — 판단은 `compaction_trigger_for` 가 한다.
+
+        **에이전트 모델의 주소로 판단한다.** 벽에 부딪히는 것은 이력이 실린 큰 요청, 즉 에이전트
+        호출이다. 요약 콜은 FAST 티어(haiku)로 따로 싸게 도는데, 그쪽 프로바이더가 갈려도 압축을
+        언제 걸어야 하는지는 에이전트 쪽 제약이 정한다.
+
+        이름이 기본과 같아(`SummarizationMiddleware`) create_deep_agent 이 기본을 이것으로
+        교체한다. 최근 6메시지는 어느 경우든 보존한다.
         (spec: docs/superpowers/specs/2026-08-02-gms-context-compaction-design.md)
         """
         from langchain.chat_models import init_chat_model
@@ -345,9 +385,12 @@ class DeepAgentsRuntime:
             fast = self._model_for(FAST)
             summary_model = init_chat_model(fast, max_retries=0,
                                             **self._credential_kwargs(fast))
+        trigger = compaction_trigger_for(
+            self._credential_kwargs(self.model).get("base_url", ""))
+        logger.info("compaction trigger=%s keep=%s", trigger, COMPACTION_KEEP)
         return _compaction_middleware_class()(
             model=summary_model, backend=backend,
-            trigger=COMPACTION_TRIGGER, keep=COMPACTION_KEEP,
+            trigger=trigger, keep=COMPACTION_KEEP,
         )
 
     async def arun_with_tools(self, guide: str, question: str, *, tools: list,
