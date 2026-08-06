@@ -10,7 +10,7 @@
 
 import pytest
 
-from wiki_api.changes import TempRefs, build_response, parse_index_entries
+from wiki_api.changes import TempRefs, build_response
 
 PAGE = """\
 ---
@@ -40,106 +40,55 @@ def test_existing_page_resolves_to_its_wiki_id():
     assert refs.ref_for("a3f2c1d4") == "101"
 
 
-def test_index_entries_come_from_the_markdown_the_agent_wrote():
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-    refs.for_new_page("7b91e0c2")
+async def test_index_entries_carry_the_frontmatter_description_of_touched_pages(
+        vault, scope_row):
+    """`indexEntries` 는 이제 「목차 제안」이 아니라 「요약 제안 채널」이다.
+    목차 마크다운을 파싱하지 않고 페이지 자신의 frontmatter 에서 가져온다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address,
+                   "---\ntitle: 연차 규정\ndescription: 연차 부여와 이월 기준\n"
+                   "tags: [연차]\ncategory: 인사\n---\n\n# 연차 규정\n")
 
-    entries = parse_index_entries(
-        "# 목차\n\n"
-        "- [회의 운영](pages/a3f2c1d4.md) — 정례 회의 운영 기준\n"
-        "- [휴가 규정](pages/7b91e0c2.md) — 연차와 반차\n",
-        refs,
-    )
+    response = await build_response(fs, scope_id, summary="요약")
 
-    assert [(e.wikiRef, e.order, e.title, e.summary) for e in entries] == [
-        ("101", 1, "회의 운영", "정례 회의 운영 기준"),
-        ("wiki-temp-1", 2, "휴가 규정", "연차와 반차"),
-    ]
+    assert [(e.title, e.summary) for e in response.indexEntries] == [
+        ("연차 규정", "연차 부여와 이월 기준")]
 
 
-def test_index_entry_without_a_summary():
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-    entries = parse_index_entries("- [회의 운영](pages/a3f2c1d4.md)\n", refs)
-    assert entries[0].summary is None
+async def test_a_page_without_a_description_is_not_sent_as_an_index_entry(
+        vault, scope_row):
+    """빈 요약을 보내면 Spring 이 `changeSummary(null)` 로 기존 요약을 지운다."""
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address,
+                   "---\ntitle: 연차 규정\ntags: [연차]\ncategory: 인사\n---\n\n# 연차 규정\n")
+
+    response = await build_response(fs, scope_id, summary="요약")
+
+    assert response.indexEntries == []
 
 
-def test_index_entries_come_from_a_table_the_agent_wrote():
-    """에이전트는 목차를 표로 쓴다 — 저장된 측정 8건이 전부 표였다.
+async def test_a_description_that_scrubs_to_empty_is_not_sent_as_an_index_entry(
+        vault, scope_row):
+    """`description` 이 내부 토큰만 담은 괄호 하나뿐이면 스크럽 후 빈 문자열이 된다.
 
-    표 행은 `| 주제 | [제목](주소) | 요약 |` 모양이고 링크가 첫 칸이 아니다. 제목은
-    링크 글자를 쓴다 (목록 형식과 같은 규칙). 요약은 링크 없는 뒤쪽 칸이다.
+    `(document-32 반영)` 은 `reply_sanitizer._INTERNAL_ONLY_PARENTHETICAL_RE` 가 통째로
+    지우는 모양이다 — 그 정규식을 겨냥한 `test_scrub_removes_a_parenthetical_that_only_
+    names_an_internal_document`(`tests/agent_runtime/test_reply_sanitizer.py`)와 같은 계열
+    입력이라 실제로 빈 문자열이 되는 것을 그 테스트로 확인할 수 있다. 이걸 그대로 보내면
+    Spring 이 `changeSummary("")` 를 `changeSummary(null)` 과 같이 취급해 기존 요약을
+    지운다 — description 이 원래 없던 경우보다 늦게, 스크럽 이후에만 걸리는 버그다.
     """
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-    refs.for_new_page("7b91e0c2")
+    _, scope_id, fs = vault
+    address = await fs.allocate_page(scope_id)
+    await fs.write(scope_id, address,
+                   "---\ntitle: 연차 규정\ndescription: (document-32 반영)\n"
+                   "tags: [연차]\ncategory: 인사\n---\n\n# 연차 규정\n")
 
-    entries = parse_index_entries(
-        "## 핵심 내용\n\n"
-        "| 주제 | 페이지 | 요약 |\n"
-        "|------|--------|------|\n"
-        "| 회의 | [회의 운영](pages/a3f2c1d4.md) | 정례 회의 운영 기준 |\n"
-        "| 휴가 | [휴가 규정](pages/7b91e0c2.md) | 연차와 반차 |\n",
-        refs,
-    )
+    response = await build_response(fs, scope_id, summary="요약")
 
-    assert [(e.wikiRef, e.order, e.title, e.summary) for e in entries] == [
-        ("101", 1, "회의 운영", "정례 회의 운영 기준"),
-        ("wiki-temp-1", 2, "휴가 규정", "연차와 반차"),
-    ]
-
-
-def test_table_row_without_a_summary_cell():
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-    entries = parse_index_entries("| [회의 운영](pages/a3f2c1d4.md) |\n", refs)
-    assert [(e.title, e.summary) for e in entries] == [("회의 운영", None)]
-
-
-def test_bullet_link_wrapped_in_bold():
-    """`- **[제목](주소)** — 요약` 도 목차 줄이다. 실제 측정에서 나온 세 번째 형식이다."""
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-    entries = parse_index_entries(
-        "- **[회의 운영](pages/a3f2c1d4.md)** — 정례 회의 운영 기준\n", refs)
-    assert [(e.title, e.summary) for e in entries] == [
-        ("회의 운영", "정례 회의 운영 기준"),
-    ]
-
-
-def test_change_log_bullet_has_no_summary():
-    """「최근 변경」 줄은 요약이 아니다 — 구분선(—) 없이 서술만 이어진다."""
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-    entries = parse_index_entries(
-        "- 2026-07-27: [회의 운영](pages/a3f2c1d4.md) 신규 생성 (원본: `01.md`)\n", refs)
-    assert [(e.title, e.summary) for e in entries] == [("회의 운영", None)]
-
-
-def test_same_page_listed_twice_becomes_one_entry():
-    """「핵심 내용」 표와 「최근 변경」 목록에 같은 페이지가 함께 나온다.
-
-    Spring 이 같은 페이지를 목차에 두 번 받으면 안 된다. 먼저 나온 것을 남긴다.
-    """
-    refs = TempRefs()
-    refs.bind_existing("a3f2c1d4", "101")
-
-    entries = parse_index_entries(
-        "| 회의 | [회의 운영](pages/a3f2c1d4.md) | 정례 회의 운영 기준 |\n"
-        "- [회의 운영](pages/a3f2c1d4.md) — 나중에 나온 설명\n",
-        refs,
-    )
-
-    assert [(e.wikiRef, e.order, e.summary) for e in entries] == [
-        ("101", 1, "정례 회의 운영 기준"),
-    ]
-
-
-def test_index_entries_skip_links_to_unknown_pages():
-    """목차가 없는 페이지를 가리키면 Spring 이 매달린 참조를 받는다."""
-    entries = parse_index_entries("- [없음](pages/deadbeef.md) — 설명\n", TempRefs())
-    assert entries == []
+    assert response.indexEntries == []
 
 
 async def test_create_becomes_a_wiki_change_with_a_temp_ref(vault, scope_row):

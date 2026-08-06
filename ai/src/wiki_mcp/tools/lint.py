@@ -314,10 +314,11 @@ class LintHandler:
                                   issues: list[LintIssue]) -> list[LintIssue]:
         """편집 세션에서 목차의 frontmatter 계열은 `warn` 으로 내린다.
 
-        Spring 이 하이드레이션으로 주는 목차 본문에는 frontmatter 가 없다 — 운영 중인 목차가
-        그렇게 저장돼 있어서다. 그래서 이 오류들은 에이전트가 무엇을 해도 이 세션 안에서
-        사라지지 않고, 반영 게이트도 이미 무시한다. `error` 로 두면 에이전트가 목차를 반복해
-        고치며 턴을 쓴다 (실측 2026-08-05: 두 번 고쳐도 안 없어졌다).
+        연동 경로의 Spring 하이드레이션은 이제 `index.md` 를 아예 넣지 않지만, 개발 도구
+        경로(`LocalVaultFS`/`bootstrap_scope`)는 여전히 frontmatter 없는 `index.md` 를
+        만든다. 그래서 이 오류들은 에이전트가 무엇을 해도 이 세션 안에서 사라지지 않고,
+        반영 게이트도 이미 무시한다. `error` 로 두면 에이전트가 목차를 반복해 고치며 턴을
+        쓴다 (실측 2026-08-05: 두 번 고쳐도 안 없어졌다).
 
         주소 한 곳에만 걸리는 판정이라 인용 쪽(`unresolved-citation-legacy`)처럼 코드를 새로
         나누지 않는다. 게이트는 `error` 만 막으므로 심각도를 내리는 것으로 충분하다.
@@ -500,8 +501,13 @@ class LintHandler:
             return []
         if await self.fs.get_backlinks(self.scope_id, doc["address"]):
             return []
+        # 「목차에서 닿을 수 없다」로 판정하던 것을 바꿨다. 목차는 이제 하이드레이션되지 않고
+        # (S15P11B106-280 이후 Spring 이 DB 로 그린다) 항상 공간 전체를 담으므로 목차 도달성은
+        # 늘 참이다. 남는 질문은 「다른 페이지가 나를 링크하나」이고, 그것은 여전히 중요하다 —
+        # 본문 링크가 「관련 위키」 관계의 유일한 입력원이다 (`guide.py`).
         return [LintIssue("warn", "orphan-page", doc["address"],
-                          "들어오는 링크도 인용도 없다 — 목차에서 닿을 수 없다")]
+                          "다른 페이지 중 아무도 이 페이지를 링크하지 않는다 — "
+                          "관련 페이지가 있으면 본문에서 링크한다")]
 
     # ----- graph-wide -------------------------------------------------------
 

@@ -19,9 +19,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from .base import SOURCES_PREFIX, VaultError
-from .local import INDEX_ADDRESS, PAGES_PREFIX, LocalVaultFS
+from .local import PAGES_PREFIX, LocalVaultFS
 from .query_client import QueryNotFound, ScopeChangedError, WikiQueryClient
-from .spring import SpringVaultFS, address_from_wiki_path, rewrite_index_links
+from .spring import SpringVaultFS, address_from_wiki_path
 
 # 작업층 검색 결과 상한. 설계 §7.1 은 "work 결과는 자르지 않는다" 였는데 D8(출력 토큰
 # 과다)과 충돌해 문서 자신이 "상한을 둔다" 로 결론했다.
@@ -173,20 +173,9 @@ class FederatedVaultFS(SpringVaultFS):
         # 범위 관계 1회. 페이지 루프 뒤에 둔다 — 뒤집으려면 wikiId↔주소 표가 먼저
         # 다 있어야 한다.
         await self._invert_scope_relations()
-        # 목차는 백엔드 `WikiIndex` 가 항상 wikiId 로 링크하지만, 페이지는 위에서 pageKey
-        # 주소로 깔았다. 목차 링크를 페이지 주소로 맞춰야 한 vault 안이 한 이름으로 통일돼
-        # 에이전트가 목차를 다시 써도 lint dangling-link 가 나지 않는다.
-        index_markdown = rewrite_index_links(
-            await self._client.index_markdown(), self._catalog.address_by_wiki_id)
-        await self._insert_live(scope_id, INDEX_ADDRESS, index_markdown,
-                               title="위키 목차", category="목차")
-        # 목차의 링크만 여기서 그래프에 넣는다. 하이드레이션 시점에 본문이 있는 문서가
-        # 목차뿐이고, 페이지 본문의 링크는 그 페이지를 당길 때 `_ensure_body` 가 넣는다.
-        # 예전에는 `_sync_page_references` 가 전체를 훑어 이것이 딸려 왔다 — 그것을
-        # 걷어냈으므로 (S15P11B106-151) 명시해야 목차 링크가 사라지지 않는다.
-        from wiki_mcp.tools.references import sync_references
-
-        await sync_references(self, scope_id, INDEX_ADDRESS, index_markdown)
+        # 목차는 올리지 않는다. Spring 이 DB 로 그리므로(S15P11B106-280) 에이전트가 손댈
+        # 것이 없고, 올리면 그것을 고치려 들다 dangling-link 로 잡이 죽는다. 공간에 무엇이
+        # 있는지는 `search(mode="list")` 가 카테고리별로 더 낫게 보여준다.
         # 하이드레이션은 한 순간의 스냅샷이다 — t0 에는 아무것도 stale 일 수 없다
         # (`spring.py:100-104` 와 같은 이유). 지금은 여기서 참조 그래프를 만들지
         # 않지만, 라이브 행을 넣는 경로가 stale 을 켜는 일이 생기면 이 한 줄이 막는다.

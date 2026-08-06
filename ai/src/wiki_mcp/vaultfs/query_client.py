@@ -232,6 +232,12 @@ class WikiQueryClient:
                                self._scoped())
 
     async def index_markdown(self) -> str:
+        """공간 목차 마크다운.
+
+        지금은 아무도 부르지 않는다 — 목차는 Spring 이 DB 로 그리므로(S15P11B106-280)
+        `FederatedVaultFS._hydrate_catalog` 가 이 응답을 하이드레이션하지 않는다. 계약이
+        제공하는 창구라 메서드 자체는 남긴다.
+        """
         body = await self._get(
             f"/internal/v1/wiki-spaces/{self.scope_key}/index")
         return body.get("indexMarkdown", "")

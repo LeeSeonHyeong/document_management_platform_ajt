@@ -28,7 +28,6 @@
 from __future__ import annotations
 
 import json
-import re
 import uuid
 from pathlib import Path
 
@@ -53,26 +52,6 @@ def address_from_wiki_path(wiki_path: str, scope_key: str) -> str:
     if wiki_path.startswith(prefix):
         return wiki_path[len(prefix):]
     return wiki_path.lstrip("/")
-
-
-_INDEX_LINK_RE = re.compile(r"\(pages/([^)\s]+?)\.md\)")
-
-
-def rewrite_index_links(index_markdown: str,
-                        address_by_wiki_id: dict[str, str]) -> str:
-    """공간 목차의 `pages/{wikiId}.md` 링크를 실제 페이지 주소로 바꾼다.
-
-    백엔드 `WikiIndex` 는 목차를 **항상 wikiId** 로 링크하지만, 페이지는 본문 교차링크에
-    맞춰 **pageKey(해시)** 주소로 하이드레이션된다. 한 vault 에서 두 이름이 만나면 목차
-    링크가 페이지 주소와 어긋나 `lint` 가 dangling-link 로 죽는다 (두 번째 문서부터 잡
-    실패). 목차 링크를 페이지 주소로 맞춰 vault 안을 한 이름으로 통일한다. 지도에 없는
-    링크(이미 pageKey 이거나 알 수 없는 대상)는 건드리지 않는다.
-    """
-    def _replace(match: "re.Match[str]") -> str:
-        address = address_by_wiki_id.get(match.group(1))
-        return f"({address})" if address else match.group(0)
-
-    return _INDEX_LINK_RE.sub(_replace, index_markdown or "")
 
 
 class SpringVaultFS(LocalVaultFS):

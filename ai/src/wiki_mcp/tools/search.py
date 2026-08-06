@@ -78,6 +78,8 @@ class SearchHandler:
             for category, group in sorted(by_category.items()):
                 lines.append(f"  [{category}]")
                 lines.extend(f"    {d['address']} — {label(d)}" for d in group)
+            if len(pages) > MAX_LIST:
+                lines.append(f"  ... {len(pages) - MAX_LIST}건 더")
         return "\n".join(lines)
 
     async def search(self, query: str, pattern: str, tags: list[str] | None, limit: int) -> str:

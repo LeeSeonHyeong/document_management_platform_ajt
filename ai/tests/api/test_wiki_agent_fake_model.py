@@ -51,7 +51,6 @@ HYDRATION_PATHS = {
     f"/internal/v1/wiki-spaces/{SCOPE}/categories",
     "/internal/v1/wiki-pages",
     f"/internal/v1/wiki-spaces/{SCOPE}/relations",
-    f"/internal/v1/wiki-spaces/{SCOPE}/index",
 }
 
 # 하이드레이션이 아니라 **이번 문서 1건**의 파일명 조회다 (S15P11B106-245). 각주가 파일명으로
@@ -130,18 +129,21 @@ def post(call_paths):
 
 
 def test_hydration_calls_the_gateway_once_per_kind(post, call_paths):
-    """카탈로그·목차·카테고리·범위 관계에 각주용 파일명 하나. **위키 장수와 무관하게 각 1회다.**
+    """카탈로그·카테고리·범위 관계에 각주용 파일명 하나. **위키 장수와 무관하게 각 1회다.**
 
     이 상수가 조회 API 전환의 핵심이다. 장수에 비례하면 100장짜리 범위에서 하이드레이션만으로
     수백 회가 나가고, 그때는 지연 적재(S15P11B106-151)가 무의미해진다.
 
-    5회째는 하이드레이션이 아니라 이번 문서의 파일명 조회다(`SOURCE_NAME_PATH`) — 문서 1건당
+    목차는 부르지 않는다 — Spring 이 DB 로 그리므로(S15P11B106-280) 하이드레이션이 그
+    엔드포인트를 더 이상 찾지 않는다.
+
+    4회째는 하이드레이션이 아니라 이번 문서의 파일명 조회다(`SOURCE_NAME_PATH`) — 문서 1건당
     1회이므로 이 불변식을 깨지 않는다. 늘어난 것이 이 하나임을 여기서 못박는다.
     """
     assert post(pages=THREE_PAGES).status_code == 200, call_paths
 
     assert set(call_paths) == HYDRATION_PATHS | {SOURCE_NAME_PATH}, call_paths
-    assert len(call_paths) == 5, call_paths
+    assert len(call_paths) == 4, call_paths
 
 
 def test_hydration_does_not_pull_bodies(post, call_paths):
@@ -173,15 +175,15 @@ def test_backlinks_come_from_the_catalog_not_a_per_page_call(post, call_paths):
     `/wikis/{id}/relations` 를 불렀다. 그 항이 통째로 없어진 것을 지킨다.
 
     **답이 맞는 것까지 본다.** 호출이 0회인 것만 보면 「역링크가 아예 안 나온다」와
-    구분되지 않는다 — 101 을 가리키는 것이 둘 있어야 한다. 목차는 링크가 본문에 있어
-    `sync_references` 가 넣고(S15P11B106-151 이 목차만 남긴 그 경로), 103 은 본문을 당기지
-    않았는데도 카탈로그 뒤집기가 넣는다. **후자가 이 태스크가 만든 것이다.**
+    구분되지 않는다 — 101 을 가리키는 것이 있어야 한다. 103 은 본문을 당기지 않았는데도
+    카탈로그 뒤집기가 넣는다. **이것이 이 태스크가 만든 것이다.** 목차는 이제 하이드레이션
+    대상이 아니므로(S15P11B106-280) 여기 끼지 않는다.
     """
     runtime = BacklinkReadingRuntime()
     assert post(pages=THREE_PAGES, relations=SCOPE_RELATIONS,
                 runtime=runtime).status_code == 200, call_paths
 
-    assert sorted(runtime.backlinks["pages/101.md"]) == ["index.md", "pages/103.md"], \
+    assert sorted(runtime.backlinks["pages/101.md"]) == ["pages/103.md"], \
         runtime.backlinks
     # 나머지를 가리키는 것은 없다 — 뒤집기가 간선을 넓게 흘리지 않는다.
     assert runtime.backlinks["pages/102.md"] == [], runtime.backlinks

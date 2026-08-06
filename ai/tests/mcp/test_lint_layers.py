@@ -193,8 +193,8 @@ async def test_the_agent_still_sees_a_fabricated_quote_on_its_own_page(
 async def test_the_agent_sees_the_inbound_link_it_broke_by_removing_a_page(
         vault, scope_row):
     """이번 작업이 페이지를 지우면 그것을 가리키던 라이브 페이지의 링크가 깨진다.
-    **이것은 이번 작업이 만든 문제**이므로 보여 준다 — 지우지 않거나 링크를 옮기거나
-    목차를 고치는 판단은 에이전트가 한다."""
+    **이것은 이번 작업이 만든 문제**이므로 보여 준다 — 지우지 않거나 링크를 옮기는
+    판단은 에이전트가 한다. 목차는 더 이상 대상이 아니다 — Spring 이 DB 로 그린다."""
     scope_id, fs = vault
     await _write_page(fs, scope_id)
     await fs.remove(scope_id, CLEAN_ADDRESS)

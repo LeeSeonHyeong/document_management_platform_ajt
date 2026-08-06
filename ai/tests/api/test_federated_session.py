@@ -116,9 +116,14 @@ def test_transform_request_requires_capability_and_version():
 
 
 def test_edit_request_requires_capability_and_version():
-    """요청이 위키를 싣지 않으므로 허가값이 없으면 볼 수 있는 위키가 아예 없다."""
+    """요청이 위키를 싣지 않으므로 허가값이 없으면 볼 수 있는 위키가 아예 없다.
+
+    `adminInstructionDocumentId` 도 계약이 필수로 정한 필드다 — 관리자 지시를 저장한
+    원본문서 ID 이고, 수정의 근거가 그것을 인용해야 한다.
+    """
     request = EditRequest(wikiId="101", scopeKey=SCOPE, instruction="줄여줘",
-                          wikiCapability="cap-1", scopeVersion=47)
+                          wikiCapability="cap-1", scopeVersion=47,
+                          adminInstructionDocumentId="817")
 
     assert (request.wikiCapability, request.scopeVersion) == ("cap-1", 47)
 

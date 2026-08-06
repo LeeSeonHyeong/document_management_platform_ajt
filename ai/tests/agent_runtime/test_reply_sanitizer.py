@@ -202,8 +202,9 @@ def test_keeps_a_good_korean_reply_that_mentions_the_table_of_contents():
 # ----- 목차 요약용 토큰 청소 (S15P11B106-251) --------------------------------
 #
 # 위키 상세 화면의 제목 아래 요약은 `wiki.summary` 이고, 그 값은 에이전트 답변이 아니라
-# **목차(`index.md`)에서 파싱해 온 것**이다 (`changes.py::parse_index_entries`). 그래서
-# `sanitize_admin_reply` 경로를 지나지 않아 내부 토큰이 그대로 화면까지 갔다. 실측:
+# **페이지 frontmatter `description` 에서 가져온 것**이다 (`changes.py::
+# index_entries_from_pages`). 그래서 `sanitize_admin_reply` 경로를 지나지 않아 내부
+# 토큰이 그대로 화면까지 갔다. 실측:
 #   "… 사전 승인 절차 (document-32 반영)"  ← 위키 8의 요약, MySQL 에 저장된 값
 #
 # 요약에는 답변용 문장 제거를 걸지 않는다. 요약은 위키 내용이라 「검증 절차 정리」 같은
