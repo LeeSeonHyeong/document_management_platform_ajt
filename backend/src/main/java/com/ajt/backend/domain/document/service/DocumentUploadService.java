@@ -2,12 +2,13 @@ package com.ajt.backend.domain.document.service;
 
 import com.ajt.backend.domain.document.api.DocumentUploadRequest;
 import com.ajt.backend.domain.document.api.DocumentUploadResponse;
-import com.ajt.backend.domain.document.model.AiJob;
+import com.ajt.backend.domain.document.ScopeKey;
+import com.ajt.backend.domain.document.model.DocumentStatus;
 import com.ajt.backend.domain.member.DepartmentScopePolicy;
+import com.ajt.backend.domain.member.ScopeAccess;
 import com.ajt.backend.domain.document.model.Document;
 import com.ajt.backend.domain.document.model.DocumentCategory;
 import com.ajt.backend.domain.document.model.WikiScope;
-import com.ajt.backend.domain.document.repository.AiJobRepository;
 import com.ajt.backend.domain.document.repository.DocumentCategoryRepository;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
@@ -16,11 +17,10 @@ import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -32,7 +32,6 @@ public class DocumentUploadService {
     private final WikiScopeRepository wikiScopeRepository;
     private final DocumentCategoryRepository documentCategoryRepository;
     private final DocumentRepository documentRepository;
-    private final AiJobRepository aiJobRepository;
     private final DocumentFileStorage fileStorage;
     private final DepartmentScopePolicy departmentScopePolicy;
 
@@ -41,7 +40,6 @@ public class DocumentUploadService {
             WikiScopeRepository wikiScopeRepository,
             DocumentCategoryRepository documentCategoryRepository,
             DocumentRepository documentRepository,
-            AiJobRepository aiJobRepository,
             DocumentFileStorage fileStorage,
             DepartmentScopePolicy departmentScopePolicy
     ) {
@@ -49,7 +47,6 @@ public class DocumentUploadService {
         this.wikiScopeRepository = wikiScopeRepository;
         this.documentCategoryRepository = documentCategoryRepository;
         this.documentRepository = documentRepository;
-        this.aiJobRepository = aiJobRepository;
         this.fileStorage = fileStorage;
         this.departmentScopePolicy = departmentScopePolicy;
     }
@@ -61,40 +58,40 @@ public class DocumentUploadService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
-        String scopeKey = request.scopeKey().value();
+        ScopeAccess access = departmentScopePolicy.resolve(currentMember.memberId());
+        String scopeKey = resolveScopeKey(request, access);
         // 수정(S15P11B106-199): 부서관리자는 담당 부서 단일 scope로만 업로드할 수 있다.
         //   전체(ALL)·타부서·복수 부서(scope_key "D1-D2") 업로드는 차단한다. 최고관리자는 제한 없음.
-        if (!departmentScopePolicy.resolve(currentMember.memberId()).canAccessScopeKey(scopeKey)) {
+        if (!access.canAccessScopeKey(scopeKey)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-        DocumentCategory category = documentCategoryRepository.findById(request.documentCategoryId())
-                .orElseThrow(this::invalidUpload);
-        if (!category.belongsToScope(scopeKey)) {
-            throw invalidUpload();
+        Long categoryId = null;
+        if (request.isClassified()) {
+            DocumentCategory category = documentCategoryRepository.findById(request.documentCategoryId())
+                    .orElseThrow(this::invalidUpload);
+            if (!category.belongsToScope(scopeKey)) {
+                throw invalidUpload();
+            }
+            categoryId = category.id();
         }
 
+        String ensuredScopeKey = scopeKey;
         wikiScopeRepository.findById(scopeKey)
-                .orElseGet(() -> wikiScopeRepository.save(wikiScopeFor(request)));
+                .orElseGet(() -> wikiScopeRepository.save(wikiScopeFor(ensuredScopeKey)));
 
         List<String> storedPaths = new ArrayList<>();
         try {
-            List<Document> documents = saveDocuments(request, currentMember.memberId(), scopeKey, storedPaths);
+            List<Document> documents =
+                    saveDocuments(request, currentMember.memberId(), categoryId, scopeKey, storedPaths);
             List<Long> documentIds = documents.stream().map(Document::id).toList();
-            // 업로드는 작업을 WAITING으로만 만든다. 실제 파싱·Wiki 변환은 관리자가 대기 화면에서
-            // 문서별 공개 범위를 확정한 뒤 POST /ai-jobs/{jobId}/start 로 시작한다(AiJobStartService).
-            AiJob job = aiJobRepository.save(AiJob.waiting(
-                    currentMember.memberId(),
-                    scopeKey,
-                    scopeKey + "/jobs/" + UUID.randomUUID(),
-                    documentIds
-            ));
 
+            // 업로드는 AI 작업을 만들지 않는다(S15P11B106-276). 카테고리·공개 부서가 확정된 뒤
+            // POST /ai-jobs 가 작업을 만들고 바로 시작한다(AiJobCreateService).
             return new DocumentUploadResponse(
-                    String.valueOf(job.id()),
                     documentIds.stream().map(String::valueOf).toList(),
                     scopeKey,
-                    job.status().name().toLowerCase(),
-                    LocalDateTime.now()
+                    DocumentStatus.UPLOADED.name().toLowerCase(),
+                    Instant.now()
             );
         } catch (RuntimeException exception) {
             deleteStoredFiles(storedPaths);
@@ -102,9 +99,26 @@ public class DocumentUploadService {
         }
     }
 
+    /**
+     * 문서를 담을 scope_key를 정합니다.
+     *
+     * <p>공개 범위가 지정된 요청은 그 범위를 그대로 쓴다. 확정 전 업로드는 파일을 어딘가에는
+     * 둬야 하므로(scope_key는 NOT NULL이고 저장 경로에도 들어간다) <b>임시 scope</b>를 쓴다.
+     * 부서관리자는 담당 부서 scope 밖으로 나갈 수 없으므로 담당 부서 scope, 최고관리자는
+     * 담당 부서가 없으므로 전체(ALL)다. 확정(PATCH)에서 실제 범위로 파일까지 옮겨진다.
+     */
+    private String resolveScopeKey(DocumentUploadRequest request, ScopeAccess access) {
+        if (request.scopeKey() != null) {
+            return request.scopeKey().value();
+        }
+        String managedScopeKey = access.managedScopeKey();
+        return managedScopeKey != null ? managedScopeKey : "ALL";
+    }
+
     private List<Document> saveDocuments(
             DocumentUploadRequest request,
             long uploaderId,
+            Long documentCategoryId,
             String scopeKey,
             List<String> storedPaths
     ) {
@@ -112,7 +126,7 @@ public class DocumentUploadService {
         for (MultipartFile file : request.files()) {
             Document document = documentRepository.save(Document.uploaded(
                     uploaderId,
-                    request.documentCategoryId(),
+                    documentCategoryId,
                     scopeKey,
                     file.getOriginalFilename(),
                     "pending",
@@ -127,11 +141,12 @@ public class DocumentUploadService {
         return documents;
     }
 
-    private WikiScope wikiScopeFor(DocumentUploadRequest request) {
-        if ("ALL".equals(request.scopeKey().value())) {
+    private WikiScope wikiScopeFor(String scopeKey) {
+        ScopeKey parsed = ScopeKey.parse(scopeKey);
+        if (parsed.isAll()) {
             return WikiScope.all();
         }
-        return WikiScope.department(request.scopeKey().departmentIds());
+        return WikiScope.department(parsed.departmentIds());
     }
 
     private String storeOriginal(String scopeKey, long documentId, MultipartFile file) {

@@ -79,14 +79,16 @@ export default function DocumentReplaceDialog({ open, document, onClose, onStart
         setProgress(null)
         onStarted?.(result)
       },
+      // api/client.js 가 에러를 { status, code, message } 로 정규화해 reject 하므로
+      // error.response 가 아니라 error.status 를 본다.
       onError: (error) => {
         setProgress(null)
-        if (error?.response?.status === 409) {
+        if (error?.status === 409) {
           toast.error('현재 처리 중인 문서는 교체할 수 없습니다.')
-        } else if (error?.response?.status === 400) {
-          toast.error('교체할 파일의 형식이나 용량을 확인해주세요.')
+        } else if (error?.status === 400) {
+          toast.error(error?.message ?? '교체할 파일의 형식이나 용량을 확인해주세요.')
         } else {
-          toast.error('원본 문서를 교체하지 못했습니다.')
+          toast.error(error?.message ?? '원본 문서를 교체하지 못했습니다.')
         }
       },
     })

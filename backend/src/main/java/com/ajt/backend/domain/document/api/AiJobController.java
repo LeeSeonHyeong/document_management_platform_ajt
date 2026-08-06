@@ -1,10 +1,12 @@
 package com.ajt.backend.domain.document.api;
 
+import com.ajt.backend.domain.document.service.AiJobCreateService;
 import com.ajt.backend.domain.document.service.AiJobQueryService;
 import com.ajt.backend.domain.document.service.AiJobCancelService;
 import com.ajt.backend.domain.document.service.AiJobStartService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,15 +19,18 @@ public class AiJobController {
     private final AiJobQueryService aiJobQueryService;
     private final AiJobCancelService aiJobCancelService;
     private final AiJobStartService aiJobStartService;
+    private final AiJobCreateService aiJobCreateService;
 
     public AiJobController(
             AiJobQueryService aiJobQueryService,
             AiJobCancelService aiJobCancelService,
-            AiJobStartService aiJobStartService
+            AiJobStartService aiJobStartService,
+            AiJobCreateService aiJobCreateService
     ) {
         this.aiJobQueryService = aiJobQueryService;
         this.aiJobCancelService = aiJobCancelService;
         this.aiJobStartService = aiJobStartService;
+        this.aiJobCreateService = aiJobCreateService;
     }
 
     // 작업 이력 목록(S15P11B106-192). 관리자 「요약 목록」이 회차별로 묶어 보여준다.
@@ -42,7 +47,15 @@ public class AiJobController {
         return aiJobQueryService.getAiJob(jobId);
     }
 
-    // 업로드로 생성된 대기 작업을 관리자가 시작한다. 업로드만으로는 파싱·Wiki 변환이 돌지 않는다.
+    // 확정된 문서들로 작업을 만들어 바로 시작한다(S15P11B106-276).
+    // 업로드는 작업을 만들지 않으므로, 대기 목록에서 분류를 끝낸 뒤 이 API로 시작한다.
+    @PostMapping("/api/v1/ai-jobs")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public AiJobCreateResponse create(@RequestBody AiJobCreateRequest request) {
+        return aiJobCreateService.create(request == null ? null : request.documentIds());
+    }
+
+    // 이미 만들어진 대기 작업을 시작한다. 업로드만으로는 파싱·Wiki 변환이 돌지 않는다.
     @PostMapping("/api/v1/ai-jobs/{jobId}/start")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public AiJobStartResponse start(@PathVariable long jobId) {

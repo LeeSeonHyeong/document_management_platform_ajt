@@ -30,8 +30,10 @@ export default function SourceDocumentListPage() {
   const [previewDocuments] = useState(readPreviewSourceDocuments)
   const filters = filtersFromParams(searchParams)
 
-  const { data, isLoading } = useDocuments(filters)
-  const { data: allData } = useDocuments({ page: 1, size: 100 })
+  // 확정 전 업로드(카테고리 미지정)는 이 목록에서 제외한다 — 아직 분류가 끝나지 않아
+  // Wiki의 근거가 아니고, 「AI 작업 대기」에서 다룬다(S15P11B106-276).
+  const { data, isLoading } = useDocuments({ ...filters, classified: true })
+  const { data: allData } = useDocuments({ page: 1, size: 100, classified: true })
   const { data: departments = [] } = useDepartments()
   const matchingPreviewDocuments = previewDocuments.filter((document) => {
     if (filters.keyword && !document.originalFileName.toLowerCase().includes(filters.keyword.toLowerCase())) {

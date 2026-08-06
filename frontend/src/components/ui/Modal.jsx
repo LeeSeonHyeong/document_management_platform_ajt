@@ -9,6 +9,8 @@ const SIZES = {
   md: 'max-w-md',
   lg: 'max-w-lg',
   xl: 'max-w-2xl',
+  // 화면을 거의 다 쓰는 크기. 원본 문서를 크게 펼쳐 보는 용도다.
+  full: 'max-w-[100rem]',
 }
 
 export default function Modal({

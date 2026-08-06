@@ -10,7 +10,8 @@ function visibilityLabel(doc) {
 }
 
 // Figma 4-4R — AI 작업 시작 확인.
-// 작업은 업로드 시점에 waiting으로 생성되어 있고, 확인하면 상위가 POST /ai-jobs/:jobId/start 를 호출한다.
+// 확인하면 상위가 POST /ai-jobs 로 작업을 만들어 바로 시작한다(S15P11B106-276).
+// 파일은 이미 서버에 있으므로 이 모달에서 전송하는 것은 없다 — 응답은 곧 돌아온다.
 export default function AiJobStartDialog({
   open,
   onClose,

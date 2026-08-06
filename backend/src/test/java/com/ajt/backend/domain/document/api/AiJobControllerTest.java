@@ -9,11 +9,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.ajt.backend.domain.document.service.AiJobQueryService;
 import com.ajt.backend.domain.document.service.AiJobCancelService;
+import com.ajt.backend.domain.document.service.AiJobCreateService;
 import com.ajt.backend.domain.document.service.AiJobStartService;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import com.ajt.backend.global.error.GlobalExceptionHandler;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -27,12 +28,13 @@ class AiJobControllerTest {
     private final AiJobQueryService aiJobQueryService = org.mockito.Mockito.mock(AiJobQueryService.class);
     private final AiJobCancelService aiJobCancelService = org.mockito.Mockito.mock(AiJobCancelService.class);
     private final AiJobStartService aiJobStartService = org.mockito.Mockito.mock(AiJobStartService.class);
+    private final AiJobCreateService aiJobCreateService = org.mockito.Mockito.mock(AiJobCreateService.class);
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new AiJobController(aiJobQueryService, aiJobCancelService, aiJobStartService))
+                .standaloneSetup(new AiJobController(aiJobQueryService, aiJobCancelService, aiJobStartService, aiJobCreateService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -65,8 +67,8 @@ class AiJobControllerTest {
                                 "agent_timeout"
                         )
                 ),
-                LocalDateTime.parse("2026-07-28T15:00:00"),
-                LocalDateTime.parse("2026-07-28T15:00:02"),
+                Instant.parse("2026-07-28T15:00:00Z"),
+                Instant.parse("2026-07-28T15:00:02Z"),
                 null,
                 null
         ));
@@ -88,8 +90,8 @@ class AiJobControllerTest {
                 // currentStage 는 문서 상태에서 역산한 값이라 실패 지점이 아니다.
                 // 어디서 실패했는지는 failureStage 만 안다.
                 .andExpect(jsonPath("$.documentResults[1].failureStage").value("agent_timeout"))
-                .andExpect(jsonPath("$.createdAt").value("2026-07-28T15:00:00"))
-                .andExpect(jsonPath("$.startedAt").value("2026-07-28T15:00:02"))
+                .andExpect(jsonPath("$.createdAt").value("2026-07-28T15:00:00Z"))
+                .andExpect(jsonPath("$.startedAt").value("2026-07-28T15:00:02Z"))
                 .andExpect(jsonPath("$.finishedAt").doesNotExist())
                 .andExpect(jsonPath("$.failureReason").doesNotExist());
     }
@@ -111,9 +113,9 @@ class AiJobControllerTest {
                                 null,
                                 null
                         )),
-                        LocalDateTime.parse("2026-07-26T15:24:00"),
-                        LocalDateTime.parse("2026-07-26T15:24:01"),
-                        LocalDateTime.parse("2026-07-26T15:26:15"),
+                        Instant.parse("2026-07-26T15:24:00Z"),
+                        Instant.parse("2026-07-26T15:24:01Z"),
+                        Instant.parse("2026-07-26T15:26:15Z"),
                         null
                 )),
                 1,
@@ -129,8 +131,8 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.items[0].documentResults[0].summary")
                         .value("인사규정을 Wiki에 반영했습니다."))
                 // 소요 시간은 프론트가 이 둘의 차로 계산한다.
-                .andExpect(jsonPath("$.items[0].startedAt").value("2026-07-26T15:24:01"))
-                .andExpect(jsonPath("$.items[0].finishedAt").value("2026-07-26T15:26:15"))
+                .andExpect(jsonPath("$.items[0].startedAt").value("2026-07-26T15:24:01Z"))
+                .andExpect(jsonPath("$.items[0].finishedAt").value("2026-07-26T15:26:15Z"))
                 .andExpect(jsonPath("$.page").value(1))
                 .andExpect(jsonPath("$.size").value(20))
                 .andExpect(jsonPath("$.totalCount").value(1))

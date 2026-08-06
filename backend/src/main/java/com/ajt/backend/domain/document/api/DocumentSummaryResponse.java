@@ -43,7 +43,9 @@ public record DocumentSummaryResponse(
                 document.originalFileName(),
                 document.mimeType(),
                 document.fileSize(),
-                String.valueOf(document.documentCategoryId()),
+                // 확정 전 업로드는 카테고리가 없다. String.valueOf(null)은 문자열 "null"을 만들어
+                // 프론트가 값이 있는 것으로 읽는다 — 그러면 분류가 끝난 문서로 보인다.
+                toStringOrNull(document.documentCategoryId()),
                 documentCategoryName,
                 document.scopeKey(),
                 visibilityType,
@@ -53,5 +55,9 @@ public record DocumentSummaryResponse(
                 uploadedBy,
                 document.createdAt()
         );
+    }
+
+    private static String toStringOrNull(Long value) {
+        return value == null ? null : String.valueOf(value);
     }
 }

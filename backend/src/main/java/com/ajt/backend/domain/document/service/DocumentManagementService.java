@@ -38,13 +38,13 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -175,7 +175,7 @@ public class DocumentManagementService {
                 String.valueOf(job.id()),
                 String.valueOf(document.id()),
                 job.status().name().toLowerCase(),
-                LocalDateTime.now()
+                Instant.now()
         );
     }
 
@@ -356,6 +356,14 @@ public class DocumentManagementService {
         String oldScopeKey = document.scopeKey();
         boolean scopeChanged = !oldScopeKey.equals(newScopeKey);
         ensureWikiScope(newScope);
+
+        // 아직 한 번도 처리되지 않은 문서는 걷어낼 Wiki도, 재처리할 것도 없다(S15P11B106-276).
+        // 파일을 올린 직후 분류를 지정하는 경우가 여기다 — 파일만 새 범위로 옮기고 끝낸다.
+        // 이 분기가 없으면 빈 재처리 작업이 생기고, 옛 범위에서 존재하지 않는 Wiki를 걷어내려 한다.
+        if (isUnprocessed(document)) {
+            return updateUnprocessed(document, request.documentCategoryId(), newScopeKey, scopeChanged, category);
+        }
+
         if (scopeChanged) {
             // 양쪽 범위 중 하나라도 처리 중 문서가 있으면 같은 공간의 Wiki를 동시에 고치게 되므로 충돌로 막는다.
             ensureScopeNotProcessing(oldScopeKey);
@@ -464,6 +472,48 @@ public class DocumentManagementService {
                     document.id(), document.parsedPath(), exception);
             return null;
         }
+    }
+
+    /**
+     * 아직 AI 작업을 거치지 않은 문서인지 판단합니다(S15P11B106-276).
+     *
+     * <p>UPLOADED이면서 연결된 Wiki가 없으면 이 문서를 근거로 만들어진 Wiki가 없다는 뜻이다.
+     * 실패·취소 후 UPLOADED로 되돌려진 문서는 Wiki 참조가 남아 있어 여기에 걸리지 않는다.
+     */
+    private boolean isUnprocessed(Document document) {
+        return document.status() == DocumentStatus.UPLOADED && document.documentWikiRefs().isEmpty();
+    }
+
+    /**
+     * 처리 전 문서의 분류를 확정합니다. 재처리·걷어내기 없이 메타데이터와 파일 위치만 맞춘다.
+     * 응답의 jobId는 null이다 — 만들어진 작업이 없다는 뜻이며, 프론트는 이 값을 실패로 보지 않는다.
+     */
+    private DocumentUpdateResponse updateUnprocessed(
+            Document document,
+            long documentCategoryId,
+            String newScopeKey,
+            boolean scopeChanged,
+            DocumentCategory category
+    ) {
+        if (!scopeChanged) {
+            document.changeCategoryAndScope(documentCategoryId, newScopeKey);
+            return new DocumentUpdateResponse(null, null, List.of(), toDetail(document, category));
+        }
+        try {
+            DocumentFileMutation fileMutation = documentFileStorage.moveToScope(
+                    document.originalPath(), document.parsedPath(), newScopeKey, document.id());
+            try {
+                document.changeCategoryScopeAndPaths(
+                        documentCategoryId, newScopeKey, fileMutation.originalPath(), fileMutation.parsedPath());
+                registerFileRollback(fileMutation);
+            } catch (RuntimeException exception) {
+                rollbackFileMutation(fileMutation, exception);
+                throw exception;
+            }
+        } catch (IOException exception) {
+            throw new UncheckedIOException(exception);
+        }
+        return new DocumentUpdateResponse(null, null, List.of(), toDetail(document, category));
     }
 
     private void registerFileRollback(DocumentFileMutation fileMutation) {
@@ -616,7 +666,8 @@ public class DocumentManagementService {
                 document.originalFileName(),
                 document.mimeType(),
                 document.fileSize(),
-                String.valueOf(document.documentCategoryId()),
+                // 확정 전 업로드는 카테고리가 없다. "null" 문자열을 내려보내지 않는다.
+                document.documentCategoryId() == null ? null : String.valueOf(document.documentCategoryId()),
                 category.name(),
                 document.scopeKey(),
                 scope.visibilityType(),
@@ -665,6 +716,7 @@ public class DocumentManagementService {
             Long departmentId,
             String uploadedFrom,
             String uploadedTo,
+            Boolean classified,
             String sort
     ) {
         CurrentMember currentMember = currentMemberProvider.currentMember();
@@ -693,14 +745,16 @@ public class DocumentManagementService {
 
         Pageable pageable = createPageable(page, size, sort);
         Specification<Document> specification = documentSpecification(
-                allowedScopeKeys, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo);
+                allowedScopeKeys, scopeKey, categoryId, status, keyword, fileType, uploadedFrom, uploadedTo, classified);
         Page<Document> documents = documentRepository.findAll(specification, pageable);
 
         // 카테고리명·업로더명·공개범위 부서명을 문서마다 개별 조회하면 N+1이 되므로 페이지 단위로 한 번에 모아 매핑한다.
         // 리뷰: 매핑에 없으면(카테고리 삭제 등) 이름은 null로 내려간다(목록 자체는 정상).
         List<Document> content = documents.getContent();
+        // 확정 전 문서는 카테고리가 null이다(S15P11B106-276). null을 그대로 넘기면 findAllById가 깨진다.
         Set<Long> categoryIds = content.stream()
                 .map(Document::documentCategoryId)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         Map<Long, String> categoryNames = documentCategoryRepository.findAllById(categoryIds).stream()
                 .collect(Collectors.toMap(DocumentCategory::id, DocumentCategory::name));
@@ -774,7 +828,8 @@ public class DocumentManagementService {
             String keyword,
             String fileType,
             String uploadedFrom,
-            String uploadedTo
+            String uploadedTo,
+            Boolean classified
     ) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -789,6 +844,13 @@ public class DocumentManagementService {
             }
             if (categoryId != null) {
                 predicates.add(criteriaBuilder.equal(root.get("documentCategoryId"), categoryId));
+            }
+            // classified 필터(S15P11B106-276): 분류가 끝난 문서만/확정 전 문서만 골라 본다.
+            // 대기 목록 화면이 false로 조회해 새로고침 후에도 목록을 되살린다.
+            if (classified != null) {
+                predicates.add(classified
+                        ? criteriaBuilder.isNotNull(root.get("documentCategoryId"))
+                        : criteriaBuilder.isNull(root.get("documentCategoryId")));
             }
             if (status != null && !status.isBlank()) {
                 predicates.add(criteriaBuilder.equal(root.get("status"), parseStatus(status)));

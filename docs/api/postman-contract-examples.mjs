@@ -1,4 +1,4 @@
-export const contractVersion = "1.14.0";
+export const contractVersion = "1.15.0";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -240,10 +240,9 @@ const contracts = {
     success: {
       httpStatus: 202,
       body: {
-        jobId: "42",
         documentIds: ["15", "16"],
         scopeKey: "D1-D2",
-        status: "waiting",
+        status: "uploaded",
         createdAt: timestamp,
       },
     },
@@ -257,6 +256,26 @@ const contracts = {
           reason: "파일당 최대 크기는 20MB입니다.",
         },
       ],
+    },
+  },
+  "POST /api/v1/ai-jobs": {
+    success: {
+      httpStatus: 202,
+      body: {
+        jobs: [
+          {
+            jobId: "42",
+            scopeKey: "D1-D2",
+            status: "processing",
+            documentIds: ["15", "16"],
+          },
+        ],
+      },
+    },
+    error: {
+      httpStatus: 400,
+      errorCode: "INVALID_REQUEST",
+      message: "카테고리가 지정되지 않은 문서는 AI 작업을 시작할 수 없습니다.",
     },
   },
   "POST /api/v1/ai-jobs/:jobId/start": {

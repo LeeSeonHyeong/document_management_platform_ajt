@@ -1,15 +1,15 @@
 package com.ajt.backend.domain.document.api;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 
 public record AiJobResponse(
         String jobId,
         String status,
         List<DocumentResultResponse> documentResults,
-        LocalDateTime createdAt,
-        LocalDateTime startedAt,
-        LocalDateTime finishedAt,
+        Instant createdAt,
+        Instant startedAt,
+        Instant finishedAt,
         String failureReason
 ) {
 

@@ -8,11 +8,24 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.web.multipart.MultipartFile;
 
+/**
+ * 원본문서 업로드 요청입니다.
+ *
+ * <p>카테고리·공개 범위는 <b>선택</b>이다(S15P11B106-276). 관리자가 파일을 고르는 즉시 업로드하고
+ * 분류는 그 뒤에 지정하므로, 둘 다 비어 있는 요청이 정상이다. 이때 {@code documentCategoryId}와
+ * {@code scopeKey}는 null이고, 확정은 {@code PATCH /documents/{id}}가 담당한다.
+ * 파일 자체의 검증(개수·용량·형식)은 분류 여부와 무관하게 항상 수행한다.
+ */
 public record DocumentUploadRequest(
         List<MultipartFile> files,
-        long documentCategoryId,
+        Long documentCategoryId,
         ScopeKey scopeKey
 ) {
+
+    /** 카테고리·공개 범위가 함께 지정된 요청인지. 둘 중 하나만 온 요청은 of()에서 거부된다. */
+    public boolean isClassified() {
+        return documentCategoryId != null && scopeKey != null;
+    }
 
     private static final int MAX_FILE_COUNT = 20;
     private static final long MAX_FILE_SIZE = 20L * 1024 * 1024;
@@ -33,7 +46,21 @@ public record DocumentUploadRequest(
         List<MultipartFile> copiedFiles = files == null ? List.of() : List.copyOf(files);
         validateFiles(copiedFiles);
 
-        if (documentCategoryId == null || documentCategoryId <= 0) {
+        boolean hasCategory = documentCategoryId != null;
+        boolean hasVisibility = visibilityType != null && !visibilityType.isBlank();
+
+        // 둘 다 없으면 확정 전 업로드다. 하나만 있으면 의도를 알 수 없어 거부한다 —
+        // 카테고리는 공개 범위에 속하므로(category.belongsToScope) 반쪽만으로는 검증할 수 없다.
+        if (!hasCategory && !hasVisibility) {
+            return new DocumentUploadRequest(copiedFiles, null, null);
+        }
+        if (!hasCategory) {
+            throw new DocumentUploadValidationException("documentCategoryId", "문서 카테고리를 지정해야 합니다.");
+        }
+        if (!hasVisibility) {
+            throw new DocumentUploadValidationException("visibilityType", "공개 범위를 지정해야 합니다.");
+        }
+        if (documentCategoryId <= 0) {
             throw new DocumentUploadValidationException("documentCategoryId", "문서 카테고리를 지정해야 합니다.");
         }
 

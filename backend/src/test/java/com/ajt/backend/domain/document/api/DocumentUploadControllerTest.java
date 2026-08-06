@@ -23,7 +23,6 @@ import com.ajt.backend.global.error.GlobalExceptionHandler;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.core.io.ByteArrayResource;
@@ -55,14 +54,13 @@ class DocumentUploadControllerTest {
     }
 
     @Test
-    @DisplayName("multipart 업로드 성공 시 202와 AI 작업 정보를 반환한다")
+    @DisplayName("multipart 업로드 성공 시 202와 업로드된 문서 정보를 반환한다")
     void uploadsDocuments() throws Exception {
         given(documentUploadService.upload(any(DocumentUploadRequest.class))).willReturn(new DocumentUploadResponse(
-                "42",
                 List.of("15", "16"),
                 "D1-D2",
-                "waiting",
-                LocalDateTime.parse("2026-07-28T13:00:00")
+                "uploaded",
+                Instant.parse("2026-07-28T13:00:00Z")
         ));
 
         mockMvc.perform(multipart("/api/v1/documents")
@@ -72,12 +70,11 @@ class DocumentUploadControllerTest {
                         .param("visibilityType", "department")
                         .param("departmentIds", "1", "2"))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.jobId").value("42"))
                 .andExpect(jsonPath("$.documentIds[0]").value("15"))
                 .andExpect(jsonPath("$.documentIds[1]").value("16"))
                 .andExpect(jsonPath("$.scopeKey").value("D1-D2"))
-                .andExpect(jsonPath("$.status").value("waiting"))
-                .andExpect(jsonPath("$.createdAt").value("2026-07-28T13:00:00"));
+                .andExpect(jsonPath("$.status").value("uploaded"))
+                .andExpect(jsonPath("$.createdAt").value("2026-07-28T13:00:00Z"));
     }
 
     @Test
@@ -155,7 +152,7 @@ class DocumentUploadControllerTest {
     @DisplayName("문서 목록 조회 성공 시 200과 목록·페이지 정보를 반환한다")
     void listsDocuments() throws Exception {
         given(documentManagementService.findDocuments(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .willReturn(new DocumentListResponse(
                         List.of(new DocumentSummaryResponse(
                                 "15",
@@ -201,7 +198,7 @@ class DocumentUploadControllerTest {
                 "42",
                 "15",
                 "waiting",
-                LocalDateTime.parse("2026-07-28T14:00:00")
+                Instant.parse("2026-07-28T14:00:00Z")
         ));
 
         mockMvc.perform(post("/api/v1/documents/{documentId}/retry", 15L))
@@ -209,7 +206,7 @@ class DocumentUploadControllerTest {
                 .andExpect(jsonPath("$.jobId").value("42"))
                 .andExpect(jsonPath("$.documentId").value("15"))
                 .andExpect(jsonPath("$.status").value("waiting"))
-                .andExpect(jsonPath("$.createdAt").value("2026-07-28T14:00:00"));
+                .andExpect(jsonPath("$.createdAt").value("2026-07-28T14:00:00Z"));
 
         verify(documentManagementService).retry(15L);
     }

@@ -88,7 +88,10 @@ CREATE TABLE `document_category` (
 CREATE TABLE `document` (
     `document_id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `uploader_id` BIGINT UNSIGNED NOT NULL,
-    `document_category_id` BIGINT UNSIGNED NOT NULL,
+    -- 확정 전 업로드를 담기 위해 NULL 을 허용한다(S15P11B106-276). 파일을 고르는 즉시 업로드하고
+    -- 카테고리·공개 부서는 그 뒤에 지정하므로, 그 사이의 문서는 카테고리가 없다.
+    -- NULL 인 문서는 AI 작업에 넣을 수 없다 — 애플리케이션(AiJobCreateService)이 막는다.
+    `document_category_id` BIGINT UNSIGNED NULL,
     `scope_key` VARCHAR(255) NOT NULL,
     `original_file_name` VARCHAR(255) NOT NULL,
     `original_path` VARCHAR(500) NOT NULL,

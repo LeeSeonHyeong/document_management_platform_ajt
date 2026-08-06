@@ -27,8 +27,9 @@ public class Document {
     @Column(name = "uploader_id", nullable = false)
     private long uploaderId;
 
-    @Column(name = "document_category_id", nullable = false)
-    private long documentCategoryId;
+    // 확정 전 업로드는 카테고리가 없다(S15P11B106-276). 확정(PATCH)에서 채워진다.
+    @Column(name = "document_category_id")
+    private Long documentCategoryId;
 
     @Column(name = "scope_key", nullable = false, length = 255)
     private String scopeKey;
@@ -70,7 +71,7 @@ public class Document {
 
     private Document(
             long uploaderId,
-            long documentCategoryId,
+            Long documentCategoryId,
             String scopeKey,
             String originalFileName,
             String originalPath,
@@ -89,7 +90,7 @@ public class Document {
 
     public static Document uploaded(
             long uploaderId,
-            long documentCategoryId,
+            Long documentCategoryId,
             String scopeKey,
             String originalFileName,
             String originalPath,
@@ -284,8 +285,14 @@ public class Document {
         return uploaderId;
     }
 
-    public long documentCategoryId() {
+    /** 확정 전 업로드는 null이다(S15P11B106-276). */
+    public Long documentCategoryId() {
         return documentCategoryId;
+    }
+
+    /** 카테고리와 공개 범위가 모두 정해져 AI 작업에 넣을 수 있는 문서인지. */
+    public boolean isClassified() {
+        return documentCategoryId != null;
     }
 
     public String scopeKey() {

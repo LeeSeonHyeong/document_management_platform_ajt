@@ -16,7 +16,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
 import java.lang.reflect.Field;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -41,7 +41,7 @@ class AiJobQueryServiceTest {
     void getAiJob() throws Exception {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L, 16L));
         assign(job, "id", 42L);
-        assign(job, "createdAt", LocalDateTime.parse("2026-07-28T15:00:00"));
+        assign(job, "createdAt", Instant.parse("2026-07-28T15:00:00Z"));
         job.start();
         Document completed = uploadedDocument(15L, "first.md");
         completed.startParsing();
@@ -57,7 +57,7 @@ class AiJobQueryServiceTest {
 
         assertThat(response.jobId()).isEqualTo("42");
         assertThat(response.status()).isEqualTo("processing");
-        assertThat(response.createdAt()).isEqualTo(LocalDateTime.parse("2026-07-28T15:00:00"));
+        assertThat(response.createdAt()).isEqualTo(Instant.parse("2026-07-28T15:00:00Z"));
         assertThat(response.startedAt()).isNotNull();
         assertThat(response.finishedAt()).isNull();
         assertThat(response.failureReason()).isNull();
@@ -79,7 +79,7 @@ class AiJobQueryServiceTest {
     void getFinishedAiJob() throws Exception {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L, 16L));
         assign(job, "id", 42L);
-        assign(job, "createdAt", LocalDateTime.parse("2026-07-28T15:00:00"));
+        assign(job, "createdAt", Instant.parse("2026-07-28T15:00:00Z"));
         job.start();
         Document completed = uploadedDocument(15L, "first.md");
         completed.startParsing();
@@ -324,7 +324,8 @@ class AiJobQueryServiceTest {
     private AiJob finishedJob(long jobId, String createdAt, long documentId, String summary) throws Exception {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/%d".formatted(jobId), List.of(documentId));
         assign(job, "id", jobId);
-        assign(job, "createdAt", LocalDateTime.parse(createdAt));
+        // 헬퍼에 넘어오는 값은 'Z' 없는 벽시계 문자열이라 UTC로 읽는다.
+        assign(job, "createdAt", Instant.parse(createdAt + "Z"));
         job.start();
         job.finish(List.of(AiJob.DocumentParseResult.succeeded(documentId, "문서.pdf", summary)));
         return job;
@@ -372,7 +373,7 @@ class AiJobQueryServiceTest {
     void missingDocumentWithoutRecordedResult() throws Exception {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/52", List.of(32L));
         assign(job, "id", 52L);
-        assign(job, "createdAt", LocalDateTime.parse("2026-08-03T15:32:00"));
+        assign(job, "createdAt", Instant.parse("2026-08-03T15:32:00Z"));
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(aiJobRepository.findById(52L)).willReturn(Optional.of(job));
         given(documentRepository.findAllById(List.of(32L))).willReturn(List.of());
@@ -424,7 +425,7 @@ class AiJobQueryServiceTest {
     void runningJobFollowsDocumentStatus() throws Exception {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/55", List.of(35L));
         assign(job, "id", 55L);
-        assign(job, "createdAt", LocalDateTime.parse("2026-08-03T15:32:00"));
+        assign(job, "createdAt", Instant.parse("2026-08-03T15:32:00Z"));
         job.start();
         Document document = uploadedDocument(35L, "규정.docx");
         document.startParsing();
@@ -441,7 +442,7 @@ class AiJobQueryServiceTest {
     private AiJob finishedJob(long jobId, long documentId, AiJob.DocumentParseResult result) throws Exception {
         AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/%d".formatted(jobId), List.of(documentId));
         assign(job, "id", jobId);
-        assign(job, "createdAt", LocalDateTime.parse("2026-08-03T15:32:00"));
+        assign(job, "createdAt", Instant.parse("2026-08-03T15:32:00Z"));
         job.start();
         job.finish(List.of(result));
         return job;

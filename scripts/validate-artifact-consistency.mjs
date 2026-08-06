@@ -364,7 +364,8 @@ expect(
 // 59 는 S15P11B106-101 의 `POST /api/v1/ai-jobs/{jobId}/start` 신설분이다.
 // 60 은 S15P11B106-192 의 `GET /api/v1/ai-jobs` 신설분이다.
 // 61 은 S15P11B106-231 의 `GET /api/v1/wikis/{wikiId}/file`(Wiki 파일 다운로드) 신설분이다.
-expect(publicRequests.length === 61, `공개 API 수가 61개가 아님: ${publicRequests.length}`);
+// 62 는 S15P11B106-276 의 `POST /api/v1/ai-jobs`(작업 생성·시작) 신설분이다.
+expect(publicRequests.length === 62, `공개 API 수가 62개가 아님: ${publicRequests.length}`);
 // Spring → FastAPI 6개 + Wiki 조회 API 8개 + 일정 조회 API 2개. 뒤의 10개는 FastAPI 가
 // Spring Boot 를 호출하는 반대 방향이라 같은 내부 컬렉션에 있지만 baseVariable 이
 // backendBaseUrl 이다.
@@ -420,7 +421,12 @@ const collectionVariable = (collection, key) =>
 // (S15P11B106-260).
 // 1.14.0 은 wiki-edits 요청에 adminInstructionDocumentId를 필수화했다. 기존 호출이 더는
 // 유효하지 않은 호환되지 않는 변경이므로 minor 다.
-const expectedContractVersion = "1.14.0";
+// 1.15.0 은 업로드 흐름 개편이다(S15P11B106-276). 셋 다 호환되지 않는 변경이라 minor 다.
+//   - `POST /documents` 응답에서 jobId 가 사라지고, documentCategoryId·visibilityType 이
+//     필수에서 선택으로 바뀐다. 작업 생성은 신설 `POST /api/v1/ai-jobs` 가 맡는다.
+//   - `GET /documents` 에 classified 필터를 더한다(선택).
+//   - AI 작업·업로드·재시도 응답의 시각이 시간대 표기 없는 값에서 UTC 표기("...Z")로 바뀐다.
+const expectedContractVersion = "1.15.0";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
   `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
