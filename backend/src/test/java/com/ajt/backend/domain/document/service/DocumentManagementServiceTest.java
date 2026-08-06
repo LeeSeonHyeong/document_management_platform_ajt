@@ -256,6 +256,120 @@ class DocumentManagementServiceTest {
     }
 
     @Test
+    @DisplayName("삭제가 실패한 문서를 재시도하면 다시 걷어내기로 돈다")
+    void retryResumesRemovalForFailedDeletion() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        document.markForDeletion();
+        document.failDeleting("걷어내기 실패");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("옛 본문");
+        given(aiJobRepository.findByScopeKeyOrderByIdDesc(eq("ALL"), any()))
+                .willReturn(List.of(removalJob(15L)));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        service.retry(15L);
+
+        // 되돌아갈 자리는 UPLOADED 가 아니라 DELETING 이다 — 걷어내기가 성공해야 행이 지워진다.
+        assertThat(document.status()).isEqualTo(DocumentStatus.DELETING);
+        ArgumentCaptor<DocumentReprocessPlan> plan = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher).launch(any(AiJob.class), plan.capture());
+        assertThat(plan.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REMOVED);
+        assertThat(plan.getValue().removedParsedMarkdownOf(15L)).isEqualTo("옛 본문");
+    }
+
+    @Test
+    @DisplayName("삭제 재시도인데 옛 파싱 본문이 없으면 추가 반영으로 강등하지 않고 막는다")
+    void rejectsRemovalRetryWithoutParsedMarkdown() throws Exception {
+        // 폴백하면 지우려던 문서를 Wiki 에 도로 넣는다. 그래서 작업을 아예 만들지 않는다.
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        document.markForDeletion();
+        document.failDeleting("걷어내기 실패");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        willThrow(new IOException("파싱 파일 유실"))
+                .given(documentFileStorage).readText("wiki/ALL/sources/15/parsed.md");
+        given(aiJobRepository.findByScopeKeyOrderByIdDesc(eq("ALL"), any()))
+                .willReturn(List.of(removalJob(15L)));
+
+        assertThatThrownBy(() -> service.retry(15L))
+                .isInstanceOf(BusinessException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_DOCUMENT_STATUS);
+
+        assertThat(document.status()).isEqualTo(DocumentStatus.FAILED);
+        verify(parseJobLauncher, never()).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
+        verify(aiJobRepository, never()).save(any(AiJob.class));
+    }
+
+    @Test
+    @DisplayName("교체가 실패한 문서를 재시도하면 다시 교체로 돈다")
+    void retryResumesReplacementForFailedReplace() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        // 교체는 재처리로 돌다가 Wiki 반영 단계에서 실패한다.
+        document.markForReprocess();
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/15/parsed.md", List.of(101L));
+        document.failProcessing("교체 반영 실패");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("옛 본문");
+        given(aiJobRepository.findByScopeKeyOrderByIdDesc(eq("ALL"), any()))
+                .willReturn(List.of(jobWithChangeType(15L, WikiDocumentChangeType.DOCUMENT_REPLACED)));
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        service.retry(15L);
+
+        ArgumentCaptor<DocumentReprocessPlan> plan = ArgumentCaptor.forClass(DocumentReprocessPlan.class);
+        verify(parseJobLauncher).launch(any(AiJob.class), plan.capture());
+        assertThat(plan.getValue().changeTypeOf(15L)).isEqualTo(WikiDocumentChangeType.DOCUMENT_REPLACED);
+    }
+
+    @Test
+    @DisplayName("삭제 작업을 만들 때 무엇을 하려는 작업인지 함께 남긴다")
+    void deleteRecordsChangeTypeOnJob() throws Exception {
+        Document document = parsedDocument();
+        assignId(document, 15L);
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("옛 본문");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 42L);
+            return job;
+        });
+
+        service.delete(15L);
+
+        ArgumentCaptor<AiJob> saved = ArgumentCaptor.forClass(AiJob.class);
+        verify(aiJobRepository).save(saved.capture());
+        assertThat(saved.getValue().changeTypeOf(15L))
+                .contains(WikiDocumentChangeType.DOCUMENT_REMOVED.value());
+    }
+
+    /** 이 문서를 걷어내려던 작업 이력입니다. 재처리가 종류를 이어받는지 볼 때 씁니다. */
+    private AiJob removalJob(long documentId) {
+        return jobWithChangeType(documentId, WikiDocumentChangeType.DOCUMENT_REMOVED);
+    }
+
+    private AiJob jobWithChangeType(long documentId, WikiDocumentChangeType changeType) {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/old", List.of(documentId));
+        job.recordChangeTypes(java.util.Map.of(String.valueOf(documentId), changeType.value()));
+        return job;
+    }
+
+    @Test
     @DisplayName("실패 또는 취소 상태가 아닌 문서는 재시도할 수 없다")
     void rejectsRetryForNonFailedDocument() throws Exception {
         Document document = uploadedDocument();
