@@ -57,6 +57,9 @@ export default function DocumentPreview({
   localOnly = false,
   enabled = true,
   className,
+  // 전체보기 버튼 노출 여부(S15P11B106-298). 이미 모달 안에서 보여주는 곳은 끈다 —
+  // 모달 위에 모달이 겹치고 ESC 가 둘을 함께 닫아 바깥 모달까지 사라진다.
+  expandable = true,
 }) {
   const { kind, blob, isLoading, error } = useDocumentPreview({
     documentId,
@@ -172,27 +175,7 @@ export default function DocumentPreview({
 
   const content = (
     <div className={cn('flex flex-col items-center', expanded ? 'w-full' : className)}>
-      {/*
-        확대한 내용은 넘치는 만큼 가로·세로로 스크롤한다. PDF는 렌더 폭 자체가 커지고,
-        나머지 형식은 CSS zoom으로 키운다 — transform scale과 달리 레이아웃을 다시 잡아
-        스크롤 크기가 내용과 맞는다.
-      */}
-      <div
-        className={cn(
-          'w-full overflow-auto rounded-md border border-slate-200 bg-white p-8 shadow-sm',
-          // 전체화면에서는 폭 제한을 풀고 높이를 화면에 맞춘다. PDF는 ResizeObserver로
-          // 부모 폭을 보므로 이것만으로 더 크게 렌더된다.
-          expanded ? 'h-[78vh] max-w-none' : 'max-w-2xl',
-        )}
-      >
-        {cssZoomed ? (
-          <div style={{ zoom }}>{body()}</div>
-        ) : (
-          body()
-        )}
-      </div>
-
-      <div className="mt-3 flex items-center gap-1.5">
+      <div className="mb-3 flex items-center gap-1.5">
         {zoomable && (
           <>
             <button
@@ -224,6 +207,7 @@ export default function DocumentPreview({
             >
               <Plus className="size-4" />
             </button>
+            {expandable && (
             <button
               type="button"
               onClick={() => setExpanded((current) => !current)}
@@ -233,6 +217,7 @@ export default function DocumentPreview({
             >
               {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
             </button>
+            )}
             <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
           </>
         )}
@@ -262,6 +247,26 @@ export default function DocumentPreview({
           </button>
         )}
       </div>
+      {/*
+        확대한 내용은 넘치는 만큼 가로·세로로 스크롤한다. PDF는 렌더 폭 자체가 커지고,
+        나머지 형식은 CSS zoom으로 키운다 — transform scale과 달리 레이아웃을 다시 잡아
+        스크롤 크기가 내용과 맞는다.
+      */}
+      <div
+        className={cn(
+          'w-full overflow-auto rounded-md border border-slate-200 bg-white p-8 shadow-sm',
+          // 전체화면에서는 폭 제한을 풀고 높이를 화면에 맞춘다. PDF는 ResizeObserver로
+          // 부모 폭을 보므로 이것만으로 더 크게 렌더된다.
+          expanded ? 'h-[78vh] max-w-none' : 'max-w-2xl',
+        )}
+      >
+        {cssZoomed ? (
+          <div style={{ zoom }}>{body()}</div>
+        ) : (
+          body()
+        )}
+      </div>
+
     </div>
   )
 

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowLeftRight, ChevronRight, Download, FileText, Maximize2, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ChevronRight, Download, FileText, Trash2 } from 'lucide-react'
 import { Badge, Button, Spinner, useToast } from '@/components/ui'
 import { useAuth } from '@/hooks/useAuth'
 import { fetchDocumentFile } from '../api'
@@ -48,7 +48,6 @@ export default function SourceDocumentDetailPage() {
   const [downloading, setDownloading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [replaceOpen, setReplaceOpen] = useState(false)
-  const previewRef = useRef(null)
 
   const [previewDocument] = useState(() =>
     readPreviewSourceDocuments().find((document) => document.documentId === documentId),
@@ -124,16 +123,12 @@ export default function SourceDocumentDetailPage() {
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => previewRef.current?.requestFullscreen?.()}>
-            <Maximize2 className="size-4" />
-            전체 화면
-          </Button>
         </div>
 
         {/* 처리 상태·실패 사유를 여기 두지 않는다 (S15P11B106-248). AI 작업 결과는 요약 목록의
             관심사이고, 이 화면은 문서 자체를 본다. */}
 
-        <div ref={previewRef} className="mt-4 flex flex-1 flex-col rounded-2xl bg-slate-50 p-8">
+        <div className="mt-4 flex flex-1 flex-col rounded-2xl bg-slate-50 p-8">
           <DocumentPreview
             documentId={doc.documentId}
             fileName={doc.originalFileName}
