@@ -349,7 +349,12 @@ export default function AdminSchedulePage() {
 
   const { data: departments = [] } = useDepartments()
   const approvedQuery = useSchedules({ ...range, status: 'approved' })
-  const draftQuery = useSchedules({ ...range, status: 'draft' })
+  // 승인 대기 목록은 달 범위를 걸지 않는다.
+  //
+  // 검수할 초안이 어느 달에 있는지 관리자가 미리 알 수 없다. 문서에서 추출된 일정은 과거·미래
+  // 어디로든 흩어지므로, 보고 있는 달로 걸면 「추출 완료」가 떴는데 목록이 비어 실패로 보이고
+  // (S15P11B106-276 확인) 검수를 놓친 초안이 다른 달에 묻힌다. 캘린더만 달 단위로 둔다.
+  const draftQuery = useSchedules({ status: 'draft' })
 
   const deptId = deptTab === ALL_TAB ? null : deptTab
   const approvedEvents = useMemo(
@@ -667,6 +672,10 @@ export default function AdminSchedulePage() {
             rowKey="id"
             loading={draftQuery.isLoading}
             emptyState={<EmptyState title="검수할 초안이 없어요" />}
+            // 초안은 모든 달을 모아 보여주므로 많아질 수 있다. 목록 안에서만 스크롤해
+            // 아래 내용이 화면 밖으로 밀려나지 않게 한다. 헤더는 고정한다.
+            scrollClassName="max-h-[28rem]"
+            stickyHeader
           />
         )}
       </Card>
