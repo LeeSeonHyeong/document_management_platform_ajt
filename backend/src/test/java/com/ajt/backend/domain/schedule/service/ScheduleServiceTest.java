@@ -97,17 +97,54 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("부서관리자는 전체(ALL) 일정을 생성할 수 없다(S15P11B106-199)")
-    void departmentManagerCannotCreateAllSchedule() {
+    @DisplayName("부서관리자는 전체(ALL) 일정을 생성할 수 있다(S15P11B106-296)")
+    void departmentManagerCreatesAllSchedule() {
         Department dev = departmentRepository.save(new Department("개발부"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+
+        // 전체 공개는 공용이라 부서관리자도 만든다 — 문서·Wiki 와 같은 기준이다(S15P11B106-292).
+        // 예전에는 같은 부서장이 전사 공지 문서는 올리는데 전사 행사 일정은 못 올렸다.
+        ScheduleCreateResponse created = scheduleService.create(
+                authOf(manager),
+                new ScheduleCreateRequest("전사 공지", null, null, null,
+                        "all", List.of(), START, END));
+
+        assertThat(created.visibilityType()).isEqualTo("all");
+    }
+
+    @Test
+    @DisplayName("부서관리자는 담당 부서가 포함된 복수 부서 일정을 만들 수 있다(S15P11B106-296)")
+    void departmentManagerCreatesSharedDepartmentSchedule() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Department hr = departmentRepository.save(new Department("인사부"));
+        Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
+        dev.assignManager(manager);
+        departmentRepository.save(dev);
+
+        ScheduleCreateResponse created = scheduleService.create(
+                authOf(manager),
+                new ScheduleCreateRequest("개발·인사 공동 워크숍", null, null, null,
+                        "department", List.of(String.valueOf(dev.getId()), String.valueOf(hr.getId())),
+                        START, END));
+
+        assertThat(created.departmentIds()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("부서관리자는 담당 부서가 없는 일정을 만들 수 없다(S15P11B106-199)")
+    void departmentManagerCannotCreateScheduleWithoutOwnDepartment() {
+        Department dev = departmentRepository.save(new Department("개발부"));
+        Department other = departmentRepository.save(new Department("기획부"));
         Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
         dev.assignManager(manager);
         departmentRepository.save(dev);
 
         assertThatThrownBy(() -> scheduleService.create(
                 authOf(manager),
-                new ScheduleCreateRequest("전사 공지", null, null, null,
-                        "all", List.of(), START, END)))
+                new ScheduleCreateRequest("타부서 회의", null, null, null,
+                        "department", List.of(String.valueOf(other.getId())), START, END)))
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.ADMIN_PERMISSION_REQUIRED);
@@ -189,8 +226,8 @@ class ScheduleServiceTest {
     }
 
     @Test
-    @DisplayName("부서관리자는 승인된 전체(ALL) 일정을 조회만 가능하고 수정·삭제는 여전히 불가하다(S15P11B106-240)")
-    void departmentManagerCannotModifyApprovedAll() {
+    @DisplayName("부서관리자는 전체(ALL) 일정을 수정·삭제할 수 있다(S15P11B106-296)")
+    void departmentManagerModifiesAllSchedule() {
         Department dev = departmentRepository.save(new Department("개발부"));
         Member superAdmin = memberRepository.save(admin(dev, "admin@ajt.com"));
         Member manager = memberRepository.save(admin(dev, "mgr@ajt.com"));
@@ -199,16 +236,15 @@ class ScheduleServiceTest {
         Schedule approved = scheduleRepository.save(Schedule.create(superAdmin.getId(), "전사 승인", null, null, null,
                 ScheduleVisibility.ALL, START, END));
         ScheduleUpdateRequest request = new ScheduleUpdateRequest();
-        request.setTitle("무단 변경");
+        request.setTitle("전사 공지 수정");
 
-        assertThatThrownBy(() -> scheduleService.update(authOf(manager), approved.id(), request))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
-        assertThatThrownBy(() -> scheduleService.delete(authOf(manager), approved.id()))
-                .isInstanceOf(BusinessException.class)
-                .extracting("errorCode")
-                .isEqualTo(ErrorCode.SCHEDULE_NOT_FOUND);
+        // S15P11B106-240 에서는 조회만 허용하고 수정·삭제를 막았다. 296 에서 전체 공개를 공용으로
+        // 보기로 해 문서·Wiki 와 기준을 맞췄다 — 전사 문서를 고칠 수 있는 부서장이 전사 일정은
+        // 못 고치는 상태가 어긋났다.
+        assertThat(scheduleService.update(authOf(manager), approved.id(), request).title())
+                .isEqualTo("전사 공지 수정");
+        scheduleService.delete(authOf(manager), approved.id());
+        assertThat(scheduleRepository.findById(approved.id())).isEmpty();
     }
 
     @Test

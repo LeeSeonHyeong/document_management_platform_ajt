@@ -77,10 +77,14 @@ public class ScheduleSourceService {
         List<Long> departmentIds = resolveDepartmentIds(visibility, rawDepartmentIds);
         // 수정(S15P11B106-199): 부서관리자는 담당 부서(DEPARTMENT) 단독 일정 문서만 업로드할 수 있다. 전체(ALL)·타부서·복수부서 차단.
         ScopeAccess scope = departmentScopePolicy.resolve(loginMember.memberId());
+        // 수정(S15P11B106-296): 전체 공개(ALL)와 담당 부서가 포함된 부서 목록을 허용한다.
+        //   문서·Wiki 와 같은 기준이다(S15P11B106-292) — 예전에는 담당 부서 단독만 허용해, 같은
+        //   부서장이 전사 공지 문서는 올리는데 전사 행사 일정은 못 올렸다.
         if (!scope.isSuperAdmin()
-                && (visibility != ScheduleVisibility.DEPARTMENT || !scope.canManageDepartmentScope(departmentIds))) {
+                && visibility != ScheduleVisibility.ALL
+                && !scope.canManageDepartmentScope(departmentIds)) {
             throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED,
-                    "부서관리자는 담당 부서 일정만 관리할 수 있습니다.");
+                    "부서관리자는 담당 부서가 포함된 일정만 관리할 수 있습니다.");
         }
 
         String sourceGroupKey = generateSourceGroupKey();

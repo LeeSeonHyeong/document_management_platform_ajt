@@ -381,9 +381,14 @@ public class ScheduleService {
     }
 
     /**
-     * 부서관리자 관리 스코프 가드(생성·수정 대상 범위, S15P11B106-199).
-     * 최고관리자는 제한 없음. 부서관리자는 DEPARTMENT 공개 + 담당 부서 단독([managedDeptId])만 허용하고,
-     * 전체(ALL)·타부서·복수 부서는 거절한다. PERSONAL은 작성자 본인 일정이라 제한하지 않는다.
+     * 부서관리자 관리 스코프 가드(생성·수정 대상 범위, S15P11B106-199·296).
+     *
+     * <p>최고관리자는 제한 없음. 부서관리자는 <b>전체 공개(ALL)</b>와 담당 부서가 <b>포함된</b> 부서
+     * 목록을 허용하고, 담당 부서가 없는 목록은 거절한다. PERSONAL 은 작성자 본인 일정이라 제한하지
+     * 않는다.
+     *
+     * <p>문서·Wiki 와 같은 기준이다(S15P11B106-292). 예전에는 일정만 담당 부서 단독으로 좁혀,
+     * 같은 부서장이 전사 공지 문서는 올리는데 전사 행사 일정은 못 올렸다.
      */
     private void requireManageableScope(
             AuthenticatedMember loginMember,
@@ -397,15 +402,20 @@ public class ScheduleService {
         if (scope.isSuperAdmin()) {
             return;
         }
-        if (visibility != ScheduleVisibility.DEPARTMENT || !scope.canManageDepartmentScope(departmentIds)) {
+        // 전체 공개는 공용이라 부서관리자도 만들 수 있다. 부서 공개는 담당 부서가 포함돼야 한다.
+        if (visibility == ScheduleVisibility.ALL) {
+            return;
+        }
+        if (!scope.canManageDepartmentScope(departmentIds)) {
             throw new BusinessException(ErrorCode.ADMIN_PERMISSION_REQUIRED,
-                    "부서관리자는 담당 부서 일정만 관리할 수 있습니다.");
+                    "부서관리자는 담당 부서가 포함된 일정만 관리할 수 있습니다.");
         }
     }
 
     /**
-     * 기존 일정에 대한 부서관리자 스코프 가드(수정·삭제·승인 대상, S15P11B106-199).
-     * 부서관리자가 담당 밖(전체·타부서·복수부서) 일정을 다루려 하면 존재를 숨겨 SCHEDULE_NOT_FOUND로 처리한다.
+     * 기존 일정에 대한 부서관리자 스코프 가드(수정·삭제·승인 대상, S15P11B106-199·296).
+     * 부서관리자가 담당 부서가 없는 일정을 다루려 하면 존재를 숨겨 SCHEDULE_NOT_FOUND로 처리한다.
+     * 전체 공개(ALL) 일정은 공용이라 허용한다 — 문서·Wiki 와 같은 기준이다.
      */
     private void requireManageableSchedule(AuthenticatedMember loginMember, Schedule schedule) {
         if (schedule.visibilityType() == ScheduleVisibility.PERSONAL) {
@@ -415,8 +425,10 @@ public class ScheduleService {
         if (scope.isSuperAdmin()) {
             return;
         }
-        if (schedule.visibilityType() != ScheduleVisibility.DEPARTMENT
-                || !scope.canManageDepartmentScope(schedule.departmentIds())) {
+        if (schedule.visibilityType() == ScheduleVisibility.ALL) {
+            return;
+        }
+        if (!scope.canManageDepartmentScope(schedule.departmentIds())) {
             throw new BusinessException(ErrorCode.SCHEDULE_NOT_FOUND);
         }
     }

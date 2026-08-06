@@ -97,16 +97,21 @@ public final class ScopeAccess {
 
     /**
      * 일정 등 "부서 ID 목록" 스코프의 관리(생성·수정·삭제·승인·조회) 가능 여부입니다.
-     * 최고관리자는 모든 부서 목록, 부서관리자는 담당 부서 단독({@code [managedDepartmentId]})만 허용합니다.
-     * 전체(ALL)·타부서·복수 부서 목록은 차단됩니다.
+     * 최고관리자는 모든 부서 목록, 부서관리자는 담당 부서가 포함된 목록을 허용합니다.
+     * 담당 부서가 없는 목록은 차단됩니다. 전체 공개(ALL) 허용은 호출부가 따로 판단합니다.
      */
     public boolean canManageDepartmentScope(java.util.List<Long> departmentIds) {
         if (superAdmin) {
             return true;
         }
+        // 담당 부서가 **포함된** 목록이면 관리할 수 있다(S15P11B106-296).
+        //
+        // 예전에는 담당 부서 단독([managedId])만 허용해, 「개발부+인사부」 공동 일정을 어느 부서장도
+        // 만들 수 없었다(최고관리자만 가능). 문서·Wiki 는 S15P11B106-292 에서 이미 「담당 부서가
+        // 포함된 공간」으로 넓혔고 일정만 남아 있었다 — 같은 부서장이 전사 공지 문서는 올리는데
+        // 전사 행사 일정은 못 올리는 상태였다.
         return managedDepartmentId != null
                 && departmentIds != null
-                && departmentIds.size() == 1
                 && departmentIds.contains(managedDepartmentId);
     }
 }
