@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FileText } from 'lucide-react'
+import { BookOpen, FileText } from 'lucide-react'
 import { useWiki } from '../queries'
 import WikiSourcePreviewModal from './WikiSourcePreviewModal'
 
@@ -53,16 +53,25 @@ export default function WikiEvidenceSections({ wikiId }) {
             </EvidenceCard>
           )}
 
+          {/* 두 카드는 나란히 서므로 머리(제목+설명)와 줄 높이를 맞춘다. 한쪽에만 설명이 있거나
+              한쪽에만 아이콘이 있으면 목록 시작 높이와 줄 높이가 어긋나 흐트러져 보인다. */}
           {related.length > 0 && (
-            <EvidenceCard title="관련 위키" count={related.length}>
+            <EvidenceCard
+              title="관련 위키"
+              subtitle="이 위키와 서로 연결된 다른 위키"
+              count={related.length}
+            >
               <ul className="space-y-2">
                 {related.map((relatedWiki) => (
                   <li key={relatedWiki.wikiId}>
                     <Link
                       to={`/wiki/${relatedWiki.wikiId}`}
-                      className="focus-ring block truncate rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-medium text-slate-600 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600"
+                      className="focus-ring flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-xs font-medium text-slate-600 transition-colors hover:border-violet-200 hover:bg-violet-50 hover:text-violet-600"
                     >
-                      {relatedWiki.title}
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-500">
+                        <BookOpen className="size-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{relatedWiki.title}</span>
                     </Link>
                   </li>
                 ))}
