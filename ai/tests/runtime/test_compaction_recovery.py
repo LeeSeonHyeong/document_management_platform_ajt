@@ -77,3 +77,33 @@ async def test_압축_뒤_이력을_되읽고_계속한다(tmp_path):
         "트리거를 확인한다")
     assert result.error is None, result.error
     assert result.tool_calls.get("read_conversation_history", 0) == 1
+
+
+async def test_압축이_작업_상태_보존_지시를_요약_모델에_전달한다(tmp_path):
+    """job 41 의 두 번째 국면을 막는 배선 — 요약이 「끝났다」를 들고 있어야 한다.
+
+    도구(093c866)만으로는 부족했다는 것이 실측이다: 이력 되읽기는 성공했지만 원문은
+    「무엇이 끝났는지」를 말해 주지 않아, 에이전트가 guide 4회·lint 6회를 반복하다 죽었다.
+    그래서 요약 프롬프트에 작업 상태 보존을 요구한다 — 이 테스트는 압축이 **실제로
+    터졌을 때** 그 지시가 요약 모델에 전달되는지를 잡는다. 상수·배선 중 한쪽만 있으면
+    실패한다.
+
+    요약의 **품질**(정말 좋은 상태 요약이 나오는가)은 LLM 판단이라 여기서 못 잰다 —
+    실기동의 몫이다.
+    """
+    read_big = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
+    script = [read_big] * 8 + [("text", "작업을 마쳤다.")]
+    model = ScriptedModel(script=script, padding=PADDING)
+
+    try:
+        scope_id, fs = await _vault(tmp_path)
+        result = await _runtime(model).arun(
+            "원본문서를 반영하라", fs=fs, scope_id=scope_id, root=tmp_path,
+            scope_key=SCOPE, job_id=JOB, timeout=120)
+    finally:
+        await LocalVaultFS.close()
+
+    assert result.error is None, result.error
+    assert model.summary_requests >= 1, (
+        "압축이 터졌는데 요약 요청에 wiki_work_state 지시가 없다 — "
+        "summary_prompt 배선이 빠졌다")

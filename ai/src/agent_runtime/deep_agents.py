@@ -145,6 +145,51 @@ def compaction_trigger_for(base_url: str) -> tuple[str, int]:
     return (COMPACTION_TRIGGER_DIRECT if host.lower() in UNCAPPED_API_HOSTS
             else COMPACTION_TRIGGER_CAPPED)
 
+# 압축 요약에 **작업 진행 상태를 반드시 남기게** 하는 추가 지시 (2026-08-06 job 41).
+#
+# 기본 요약 프롬프트는 범용 컨텍스트 추출이라, 압축이 터지면 「내가 무엇을 만들었고 이미
+# 끝났는지」가 요약에서 사라졌다. 실측: 문서 48 반영이 13턴에 사실상 끝났는데(create·
+# edit·lint 통과) 압축 후 에이전트가 그 사실을 잃고 guide 4회·lint 6회·이력 되읽기 5회를
+# 돌다 죽었다. 이력 원문을 되읽는 도구(093c866)는 동작했지만 원문은 「끝났다」를 말해 주지
+# 않는다 — 그 판단은 요약이 들고 있어야 한다.
+#
+# deepagents 자신이 media 안내를 끼우는 방식과 같다: `<messages>` 마커 **앞**에 splice 한다.
+# 그 마커 자리에 실제 대화가 삽입되므로 마커를 깨면 요약 전체가 고장난다.
+_WIKI_STATE_SUMMARY_ADDENDUM = """<wiki_work_state>
+이것은 사내 위키 편집 작업의 문맥이다. 요약에 아래 네 가지를 **반드시** 담는다.
+하나라도 빠지면 이후 턴이 이미 끝난 작업을 처음부터 다시 시작한다.
+
+1. 반영 중인 원본문서의 주소 (예: `sources/48/parsed/content.md`)
+2. 이번 작업에서 **만들었거나 고친** 위키 페이지의 주소와 제목, 각각에 무엇을 했는지
+3. 마지막 `lint` 결과 — 통과했으면 「통과」라고 명시한다
+4. **남은 일** — 구체적으로 적는다. 다 끝났으면 「남은 일 없음 — 최종 보고만 남았다」라고
+   적는다. 이 줄이 요약의 마지막 줄이어야 한다
+
+이미 완료한 단계(문서 읽기, 검색, 페이지 생성·수정, lint)는 **반복하지 않는다**고
+명시한다. guide 를 다시 부를 필요도 없다 — 작업 방식은 이미 확인했다.
+</wiki_work_state>"""
+
+
+def _wiki_summary_prompt() -> str:
+    """작업 상태 보존 지시를 끼운 요약 프롬프트. deepagents 가 있어야 계산된다."""
+    from deepagents.middleware.summarization import DEEPAGENTS_DEFAULT_SUMMARY_PROMPT
+
+    return DEEPAGENTS_DEFAULT_SUMMARY_PROMPT.replace(
+        "\n<messages>\n",
+        f"\n{_WIKI_STATE_SUMMARY_ADDENDUM}\n\n<messages>\n",
+        1,
+    )
+
+
+def __getattr__(name: str):
+    # `WIKI_SUMMARY_PROMPT` 는 deepagents 문자열에서 유도되는데 deepagents 는 선택
+    # 의존성이다 — 모듈 상수로 두면 미설치 환경에서 이 모듈 import 자체가 죽는다.
+    # PEP 562 로 첫 접근 때 계산한다.
+    if name == "WIKI_SUMMARY_PROMPT":
+        return _wiki_summary_prompt()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 _COMPACTION_MW_CLASS = None
 
 
@@ -431,6 +476,9 @@ class DeepAgentsRuntime:
         return _compaction_middleware_class()(
             model=summary_model, backend=backend,
             trigger=trigger, keep=COMPACTION_KEEP,
+            # 기본 요약은 범용 추출이라 「무엇을 끝냈는지」를 안 남긴다 — 압축 뒤 에이전트가
+            # 완료한 작업을 처음부터 반복했다 (job 41, `_WIKI_STATE_SUMMARY_ADDENDUM` 주석).
+            summary_prompt=_wiki_summary_prompt(),
         )
 
     async def arun_with_tools(self, guide: str, question: str, *, tools: list,
