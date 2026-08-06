@@ -166,6 +166,7 @@ class DocumentUploadControllerTest {
                                 List.of(),
                                 "uploaded",
                                 null,
+                                0,
                                 new DocumentUploaderResponse("10", "김관리"),
                                 Instant.parse("2026-07-28T05:00:00Z")
                         )),

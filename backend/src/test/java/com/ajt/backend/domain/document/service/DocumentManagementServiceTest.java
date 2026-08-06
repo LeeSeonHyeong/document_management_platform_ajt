@@ -849,6 +849,31 @@ class DocumentManagementServiceTest {
     }
 
     @Test
+    @DisplayName("목록은 문서가 아직 Wiki 근거인지 알 수 있게 위키 수를 함께 준다")
+    void findDocumentsExposesWikiCount() throws Exception {
+        // 삭제·교체가 실패한 문서는 status 가 FAILED 여도 Wiki 근거로는 그대로 남아 있다.
+        // 목록 화면이 그 둘을 구분하려면 상태만으로는 부족하다(S15P11B106-306).
+        Document document = uploadedDocument();
+        assignId(document, 15L);
+        document.startParsing();
+        document.completeParsing("wiki/ALL/sources/15/parsed.md", List.of());
+        document.completeProcessing(List.of(101L));
+        document.markForDeletion();
+        document.failDeleting("걷어내기 실패");
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(documentRepository.findAll(any(Specification.class), any(Pageable.class)))
+                .willReturn(new PageImpl<>(List.of(document), PageRequest.of(0, 20), 1));
+        given(documentCategoryRepository.findAllById(any())).willReturn(List.of(category(7L, "취업규칙")));
+
+        DocumentListResponse response =
+                service.findDocuments(1, 20, "ALL", null, "failed", null, null, null, null, null, null, null);
+
+        DocumentSummaryResponse item = response.items().get(0);
+        assertThat(item.status()).isEqualTo("failed");
+        assertThat(item.wikiCount()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("사원은 접근 가능한 문서만 조회하며, 소속 부서·공개범위를 조회해 필터를 만든다")
     void findDocumentsForEmployee() throws Exception {
         Document document = uploadedDocument();
