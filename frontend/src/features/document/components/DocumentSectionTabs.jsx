@@ -22,6 +22,16 @@ export default function DocumentSectionTabs() {
     size: 1,
     status: DOCUMENT_STATUS.COMPLETED,
   })
+  // 목록은 삭제·교체가 실패한 문서도 되살려 보여준다 — 위키 근거로는 남아 있기 때문이다
+  // (S15P11B106-306). 탭도 같은 기준으로 세야 한다.
+  const { data: failedData } = useDocuments({
+    page: 1,
+    size: 100,
+    status: DOCUMENT_STATUS.FAILED,
+  })
+  const failedEvidenceCount = (failedData?.items ?? []).filter(
+    (document) => (document.wikiCount ?? 0) > 0,
+  ).length
   const { data: jobsData } = useAiJobs({ page: 1, size: 20 })
   // 세션스토리지에 남은 옛 미리보기 항목에도 같은 조건을 적용한다(서버 필터를 타지 않는다).
   const previewSourceCount = readPreviewSourceDocuments().filter(
@@ -29,7 +39,10 @@ export default function DocumentSectionTabs() {
   ).length
   const serverSourceCount =
     sourceData?.totalCount ?? sourceData?.totalItems ?? sourceData?.totalElements ?? sourceData?.items?.length
-  const sourceCount = serverSourceCount == null ? previewSourceCount : serverSourceCount + previewSourceCount
+  const sourceCount =
+    serverSourceCount == null
+      ? previewSourceCount + failedEvidenceCount
+      : serverSourceCount + previewSourceCount + failedEvidenceCount
   // 요약 목록이 보여주는 것과 같은 수 — 종료된 작업 회차의 개수다.
   const summaryCount = (jobsData?.items ?? []).filter((job) => TERMINAL_STATUSES.has(job.status)).length
   return (
