@@ -32,6 +32,8 @@ import com.ajt.backend.domain.member.DepartmentScopePolicy;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
 import com.ajt.backend.domain.member.ScopeAccess;
+import com.ajt.backend.domain.wiki.model.Wiki;
+import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.global.ai.client.WikiDocumentChangeType;
 import com.ajt.backend.global.error.BusinessException;
 import com.ajt.backend.global.error.ErrorCode;
@@ -89,6 +91,9 @@ public class DocumentManagementService {
     private final AiJobFailureMarker aiJobFailureMarker;
     private final DocumentFailureMarker documentFailureMarker;
     private final DepartmentScopePolicy departmentScopePolicy;
+    // 상세 응답의 「연결된 위키 문서」. 문서가 들고 있는 참조(document_wiki_refs)로 제목을 채운다.
+    // 반대 방향(wiki → document)은 이미 InternalWikiQueryService 가 DocumentRepository 를 읽는다.
+    private final WikiRepository wikiRepository;
 
     public DocumentManagementService(
             CurrentMemberProvider currentMemberProvider,
@@ -102,7 +107,8 @@ public class DocumentManagementService {
             DepartmentRepository departmentRepository,
             AiJobFailureMarker aiJobFailureMarker,
             DocumentFailureMarker documentFailureMarker,
-            DepartmentScopePolicy departmentScopePolicy
+            DepartmentScopePolicy departmentScopePolicy,
+            WikiRepository wikiRepository
     ) {
         this.currentMemberProvider = currentMemberProvider;
         this.documentRepository = documentRepository;
@@ -116,6 +122,7 @@ public class DocumentManagementService {
         this.aiJobFailureMarker = aiJobFailureMarker;
         this.documentFailureMarker = documentFailureMarker;
         this.departmentScopePolicy = departmentScopePolicy;
+        this.wikiRepository = wikiRepository;
     }
 
     @Transactional(readOnly = true)
@@ -770,8 +777,31 @@ public class DocumentManagementService {
                 uploaderRef(document.uploaderId()),
                 document.createdAt(),
                 "/api/v1/documents/%d/file".formatted(document.id()),
-                List.of()
+                relatedWikis(document)
         );
+    }
+
+    /**
+     * 이 문서를 근거로 삼는 Wiki 들입니다(S15P11B106-310).
+     *
+     * <p>예전에는 {@code List.of()} 로 비워 둬서 상세 화면이 언제나 「이 문서로 반영된 위키가
+     * 없습니다」 였다. 참조는 문서 행({@code document_wiki_refs})에 이미 있었고 제목만 채우면 됐다.
+     *
+     * <p>순서는 문서에 저장된 참조 순서를 지킨다. 지워진 Wiki 를 가리키는 참조는 건너뛴다.
+     */
+    private List<DocumentDetailResponse.RelatedWikiResponse> relatedWikis(Document document) {
+        List<Long> refs = document.documentWikiRefs();
+        if (refs.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Wiki> byId = wikiRepository.findAllById(refs).stream()
+                .collect(Collectors.toMap(Wiki::id, wiki -> wiki));
+        return refs.stream()
+                .map(byId::get)
+                .filter(Objects::nonNull)
+                .map(wiki -> new DocumentDetailResponse.RelatedWikiResponse(
+                        String.valueOf(wiki.id()), wiki.title()))
+                .toList();
     }
 
     private DocumentUploaderResponse uploaderRef(long uploaderId) {
