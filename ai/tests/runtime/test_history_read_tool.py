@@ -104,3 +104,25 @@ def test_도구_이름과_설명이_용도를_말한다():
 
     assert HISTORY_PREFIX in tool.description
     assert "file_path" in tool.input_schema["properties"]
+
+
+async def test_긴_이력은_한국어_토큰_기준으로_잘라_돌려준다():
+    """이 도구가 문맥 폭탄이 되면 안 된다 (2026-08-06 실기동, 문서 48 두 번째 실패).
+
+    처음 상한은 40,000자였다 — 영어(~4자=1토큰) 감각으로 잡은 값인데 **한국어는
+    ~1자=1토큰이다** (compaction 설계 문서의 count_tokens 실측 0.85~1.02). 그래서 이력
+    읽기 한 번이 ~40K 토큰을 되돌려줬고, 압축 직후(~11K)에 읽으면 한 턴에 +23.5K 가
+    뛰어 GMS 42K 벽으로 직행했다. 실측 톱니: 34K→압축→11K→이력읽기→34K→또 압축…
+    한 실행에서 압축이 8번 터지며 상태 보존 요약(!273)까지 무력화됐다.
+
+    상한의 근거는 압축 트리거의 여유 설계다: 트리거 34K 는 「1턴 최대 증가 ~4.6K」를
+    전제로 잡혔으므로(42K 벽 - 34K - 여유), 도구 결과도 그 계약 안에 있어야 한다.
+    4,000자 ≈ 한국어 ~4K 토큰이다.
+    """
+    root, backend = _backend_with_history("가나다라마바사아자차카타파하 " * 5_000)
+    tool = history_read_tool(backend)
+
+    out = await tool.call(file_path=f"{HISTORY_PREFIX}/session_abc.md")
+
+    assert len(out) <= 4_200, f"응답이 {len(out)}자 — 한 턴 증가 예산(~4.6K 토큰)을 넘는다"
+    assert out.rstrip().endswith("하") or "하" in out[-40:], "뒤쪽(최근)이 남아야 한다"

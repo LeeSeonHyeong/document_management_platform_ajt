@@ -33,7 +33,7 @@ from pathlib import Path
 
 from wiki_mcp.services.chunker import store_chunks
 
-from .local import SOURCES_PREFIX, LocalVaultFS, kind_for
+from .local import SOURCES_PREFIX, LocalVaultFS, _nfc, kind_for
 
 # `tools.write` imports `tools.references`, which imports `vaultfs` (for the
 # `VaultFS` type) — and `vaultfs/__init__.py` imports this module. A top-level
@@ -103,6 +103,10 @@ class SpringVaultFS(LocalVaultFS):
                            original_file_name: str | None = None) -> str:
         """Spring 에 없는 원본문서를 라이브 층에 넣는다 (삭제된 문서의 재조정용)."""
         address = f"{SOURCES_PREFIX}{document_id}/parsed/content.md"
+        if original_file_name:
+            # macOS 업로드는 NFD 로 온다 — 각주(NFC)와 만나려면 저장 시 정규화해야 한다
+            # (`local.py::_nfc` 주석, 2026-08-06 job 43).
+            original_file_name = _nfc(original_file_name)
         await self._insert_live(scope_id, address, text, source_id=document_id,
                                 original_file_name=original_file_name or f"document-{document_id}",
                                 title=Path(original_file_name or document_id).stem)
