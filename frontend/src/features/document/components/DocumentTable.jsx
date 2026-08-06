@@ -80,7 +80,15 @@ export default function DocumentTable({
           <p className="block truncate font-semibold text-slate-800" title={doc.originalFileName}>
             {doc.originalFileName}
           </p>
-          <p className="text-xs text-slate-400">{formatFileSize(doc.fileSize)}</p>
+          {/* 이 목록에는 상태 열이 없다(아래 주석). 그런데 삭제·교체가 실패해 되살아난 문서는
+              멀쩡한 근거 문서와 구분돼야 한다 — 관리자가 다시 손봐야 할 줄이다(S15P11B106-306). */}
+          {doc.status === 'failed' ? (
+            <p className="truncate text-xs font-medium text-rose-600" title={doc.failureReason ?? undefined}>
+              처리 실패 — 다시 시도해주세요
+            </p>
+          ) : (
+            <p className="text-xs text-slate-400">{formatFileSize(doc.fileSize)}</p>
+          )}
         </div>
       </div>
     ),
