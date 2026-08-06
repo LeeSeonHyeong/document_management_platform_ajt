@@ -25,6 +25,9 @@ export default function SignupPage() {
     defaultValues: { name: '', email: '', departmentId: '', password: '', passwordConfirm: '' },
   })
 
+  // 이메일은 서버 정규화(소문자 저장)에 맞춰 입력 즉시 소문자로 변환한다.
+  const emailField = register('email')
+
   const onSubmit = async (values) => {
     try {
       await signup(values)
@@ -60,14 +63,25 @@ export default function SignupPage() {
       </header>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-        <Input label="이름" placeholder="홍길동" error={errors.name?.message} {...register('name')} />
+        <Input
+          label="이름"
+          placeholder="홍길동"
+          maxLength={30}
+          error={errors.name?.message}
+          {...register('name')}
+        />
         <Input
           label="이메일"
           type="email"
           autoComplete="username"
           placeholder="you@company.com"
+          maxLength={30}
           error={errors.email?.message}
-          {...register('email')}
+          {...emailField}
+          onChange={(e) => {
+            e.target.value = e.target.value.toLowerCase()
+            emailField.onChange(e)
+          }}
         />
         <Select
           label="소속 부서"
