@@ -16,6 +16,12 @@ export default function DataTable({
   toolbar,
   className,
   tableClassName,
+  // 스크롤 영역에 붙일 클래스. 높이를 제한해 표 안에서만 스크롤하게 할 때 쓴다
+  // (예: 'max-h-[28rem]'). overflow-x-auto 는 세로도 함께 auto 가 되므로 이 div 가
+  // 스크롤 컨테이너다 — 바깥에 높이를 걸면 헤더까지 같이 밀려 올라간다.
+  scrollClassName,
+  // 헤더를 스크롤 위에 고정한다. 높이를 제한할 때 함께 쓴다.
+  stickyHeader = false,
 }) {
   const keyOf = (row, i) => (typeof rowKey === 'function' ? rowKey(row) : (row[rowKey] ?? i))
 
@@ -26,7 +32,7 @@ export default function DataTable({
           {toolbar}
         </div>
       )}
-      <div className="overflow-x-auto">
+      <div className={cn('overflow-x-auto', scrollClassName)}>
         <table className={cn('w-full text-sm', tableClassName)}>
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50 text-xs font-medium text-slate-500">
@@ -35,6 +41,8 @@ export default function DataTable({
                   key={col.key}
                   className={cn(
                     'whitespace-nowrap px-4 py-3 text-center',
+                    // tr 의 배경은 sticky 로 떠오른 th 를 덮어주지 못한다 — th 에 직접 준다.
+                    stickyHeader && 'sticky top-0 z-10 bg-slate-50',
                     col.headerClassName,
                   )}
                 >
