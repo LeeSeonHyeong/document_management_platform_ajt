@@ -21,6 +21,7 @@ import com.ajt.backend.domain.document.repository.DocumentRepository;
 import com.ajt.backend.domain.document.repository.WikiScopeRepository;
 import com.ajt.backend.domain.member.Member;
 import com.ajt.backend.domain.member.MemberRepository;
+import com.ajt.backend.domain.member.SuperAdminChecker;
 import com.ajt.backend.domain.member.Role;
 import com.ajt.backend.domain.question.QuestionAskService.AuthorizedSources;
 import com.ajt.backend.domain.question.dto.QuestionAskRequest;
@@ -65,6 +66,7 @@ class QuestionAskServiceTest {
     private final QuestionAnswerTransactionService answerTransactionService =
             mock(QuestionAnswerTransactionService.class);
     private final WikiCapabilityService capabilityService = mock(WikiCapabilityService.class);
+    private final SuperAdminChecker superAdminChecker = mock(SuperAdminChecker.class);
     private final QuestionAskService service = new QuestionAskService(
             aiClient,
             memberRepository,
@@ -76,7 +78,8 @@ class QuestionAskServiceTest {
             questionRepository,
             answerTransactionService,
             new ScheduleVisibilityPolicy(),
-            capabilityService
+            capabilityService,
+            superAdminChecker
     );
 
     @Test
@@ -90,6 +93,29 @@ class QuestionAskServiceTest {
 
         verify(aiClient, times(1)).generateAnswer(any());
         verifyNoMoreInteractions(aiClient);
+    }
+
+    @Test
+    @DisplayName("최고관리자는 모든 Wiki 공간을 근거로 쓴다(S15P11B106-290)")
+    void superAdminSeesEveryScope() throws Exception {
+        // 최고관리자의 소속은 명목상 '최고관리자' 부서라, 소속 기준으로 계산하면 부서 공간이
+        // 하나도 안 잡혀 「개발부 규정이 뭐야」에 근거를 못 찾았다.
+        givenMemberCanSee("ALL");
+        WikiScope devScope = mock(WikiScope.class);
+        given(devScope.scopeKey()).willReturn("D1");
+        given(devScope.scopeVersion()).willReturn(9L);
+        given(wikiScopeRepository.findAll()).willReturn(List.of(devScope));
+        given(wikiScopeRepository.findById("D1")).willReturn(Optional.of(devScope));
+        given(wikiFileStorage.readIndex("D1")).willReturn("# D1");
+        given(superAdminChecker.isSuperAdmin(any(Member.class))).willReturn(true);
+        given(aiClient.generateAnswer(any())).willReturn(anyAnswer());
+        givenSaveAnswerEchoes();
+
+        service.ask(employee(), new QuestionAskRequest(null, "개발부 규정이 뭐야?"));
+
+        assertThat(capturedRequest().wikiIndexes())
+                .extracting(AnswerGenerationRequest.WikiIndex::scopeKey)
+                .containsExactlyInAnyOrder("ALL", "D1");
     }
 
     @Test
