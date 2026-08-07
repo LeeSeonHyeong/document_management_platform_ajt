@@ -27,11 +27,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import tempfile
 import time
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -150,44 +150,59 @@ def turn_limit_middleware():
 
     return ModelCallLimitMiddleware(thread_limit=MAX_TURNS, exit_behavior="error")
 
-# 문맥 압축 설정. **트리거는 프로바이더마다 다르다** — 게이트웨이의 요청 크기벽은 모델의
-# 컨텍스트 창과 다른 제약이라, 하나의 값으로 둘을 만족시킬 수 없다.
+# 문맥 압축 설정. **프로바이더 무관 하나의 트리거, 눈금은 실토큰이다** (S15P11B106-320·321).
 #
-# 게이트웨이(GMS)에는 요청 크기벽(~42K 토큰)이 있다. 긴 병합은 이력이 누적돼 벽을 넘고, 그때
-# GMS 가 400 을 내며 잡이 죽는다 — 실측으로 그때까지 쓴 2,404 크레딧을 잃었다(job 7).
-# deepagents 기본 트리거는 170K/0.85 라 벽보다 훨씬 높아 한 번도 안 터진다. 그래서 벽 아래로
-# 낮춘다. 34K = 벽까지 실측 최대 1턴 증가폭(~4.6K) 여유.
-# (spec: docs/superpowers/specs/2026-08-02-gms-context-compaction-design.md)
-COMPACTION_TRIGGER_CAPPED = ("tokens", 34000)
-
-# 직접 API 에는 그 벽이 없다(컨텍스트 1M). 여기서 34K 를 유지하면 손해가 두 가지다 —
-# 요약 LLM 콜이 몇 턴마다 추가로 돌고, 압축이 이력을 다시 쓰는 순간 프롬프트 캐시가 통째로
-# 무효화된다(캐싱은 접두사 일치라 앞이 한 글자 달라지면 뒤가 다 날아간다). 캐시 읽기 단가는
-# 입력의 0.1배이므로 이력을 길게 들고 가는 편이 오히려 싸다 — 직접 API 에서 캐싱이 실제로
-# 붙는 것은 2026-08-04 에 확인했다(생성 5402 → 다음 호출 읽기 5402). 그래서 압축을 라이브러리
-# 기본값 자리로 되돌린다.
-COMPACTION_TRIGGER_DIRECT = ("tokens", 170000)
+# 눈금이 실토큰인 이유: 라이브러리 기본 카운터(글자수/4 근사)는 한국어 실토큰을 약 4배
+# 과소평가한다 (docs/findings/2026-08-07-compaction-summary-starvation.md). 그 눈금 위의
+# 트리거는 이력의 언어에 따라 4배 널뛰어서 — 같은 값이 영문에선 컨텍스트의 17%, 한국어에선
+# 68% 를 뜻했다 — 값 하나로 "일찍 누르지도, 죽기 전에 못 오지도 않게" 잡을 수 없었다.
+# 그래서 CJK 문자에 할증을 얹는 카운터(`_count_tokens_cjk`)를 주입해 눈금을 실토큰에
+# 맞추고, 트리거를 그 눈금으로 정한다.
+#
+# 110K = 컨텍스트 200K 의 55%. 카운터의 최악 실측 오차(한·영 혼합 마크다운 0.76배 —
+# `_count_tokens_cjk` docstring)를 적용해도 실토큰 ~145K 에서 발동하고, 남는 55K 가
+# 시스템 프롬프트+도구 정의(~15K)와 출력 여유를 감당한다. 종전 게이트웨이 값 34K(근사)의
+# 한국어 실효 발동점이 ~136K 실토큰이었으므로, 카운터 눈금의 110K(한국어 실 ~115K)는
+# 실측으로 검증된 그 지점보다 살짝 이른 안전측이다. 영문 이력은 이제 34K 실토큰(17%)이
+# 아니라 같은 110K 에서 눌린다 — 불필요한 조기 압축과 그때마다의 프롬프트 캐시 무효화가
+# 사라진다.
+#
+# GMS 게이트웨이의 요청 크기벽(~42K 실토큰)은 이 값 위에 있(었)다 — GMS 크레딧이 소진돼
+# (2026-08-07) 직접 API 상시라 벽이 없지만, 게이트웨이로 돌아가는 날에는 이 값을 벽 아래로
+# 내려야 한다 (이제 눈금이 실토큰에 가까워 벽과 같은 단위로 비교하면 된다).
+COMPACTION_TRIGGER = ("tokens", 110_000)
 
 COMPACTION_KEEP = ("messages", 6)
 
-# 요청 크기벽이 **없다고 아는** 호스트. 목록에 없으면 벽이 있다고 본다 — 기본값이 안전한
-# 쪽이어야 한다. 잘못 좁히면 요약 콜을 몇 번 더 도는 낭비로 끝나지만, 잘못 넓히면 벽에서
-# 잡이 죽고 그때까지 쓴 비용을 전액 잃는다. 게이트웨이를 다시 쓰게 돼도 이 판단은 자동이라
-# 사람이 설정을 되돌리는 것을 잊어도 안전하다.
-UNCAPPED_API_HOSTS = frozenset({"api.anthropic.com"})
+# 한글·한자·가나 문자 (호환 자모·전각 포함 주요 블록). Claude 토크나이저 실측
+# (count_tokens API, 2026-08-07): 순수 영문은 글자수/4 근사가 1.01배로 정확하고,
+# 한국어는 한글 1자당 ~1.3토큰이라 근사가 4배쯤 빗나간다.
+_CJK_CHARS = re.compile(
+    r"[ᄀ-ᇿ぀-ヿ㄰-㆏一-鿿가-힣]")
 
 
-def compaction_trigger_for(base_url: str) -> tuple[str, int]:
-    """`base_url` 로 압축 트리거를 고른다.
+def _count_tokens_cjk(messages) -> int:
+    """글자수/4 근사에 CJK 할증(1자당 +1토큰)을 얹어 실토큰에 맞춘 카운터 (S15P11B106-321).
 
-    빈 값은 SDK 기본 엔드포인트를 뜻하므로 직접 API 다 — 게이트웨이를 쓸 때는 `base_url` 을
-    반드시 주기 때문에, "값이 없다"와 "게이트웨이"가 겹치지 않는다.
+    할증 후 CJK 1자 = 1.25토큰. count_tokens API 대조 실측: 한국어 규정문 0.96배,
+    한·영 혼합 마크다운 0.76배(마크다운 기호·조사 밀도 탓 — 남는 과소평가는 트리거의
+    컨텍스트 여유분이 흡수한다), 영문 1.01배. 텍스트 본문만 보정한다 — 도구 인자·이미지
+    블록 등 나머지는 기본 근사의 몫이다.
     """
-    if not base_url:
-        return COMPACTION_TRIGGER_DIRECT
-    host = urlsplit(base_url if "//" in base_url else f"//{base_url}").hostname or ""
-    return (COMPACTION_TRIGGER_DIRECT if host.lower() in UNCAPPED_API_HOSTS
-            else COMPACTION_TRIGGER_CAPPED)
+    from langchain_core.messages.utils import count_tokens_approximately
+
+    extra = 0
+    for message in messages:
+        content = getattr(message, "content", "")
+        if isinstance(content, str):
+            texts = [content]
+        elif isinstance(content, list):
+            texts = [part.get("text", "") for part in content if isinstance(part, dict)]
+        else:
+            texts = []
+        for text in texts:
+            extra += len(_CJK_CHARS.findall(text))
+    return count_tokens_approximately(messages) + extra
 
 # 압축 요약에 **작업 진행 상태를 반드시 남기게** 하는 추가 지시 (2026-08-06 job 41).
 #
@@ -242,7 +257,7 @@ def _compaction_middleware_class():
 
     create_deep_agent 은 기본 요약 미들웨어(같은 클래스)를 무조건 넣는다. 프로필에서 그 base
     클래스를 정확-타입으로 exclude 하면 base 는 빠지지만, 이 서브클래스는 다른 타입이라 살아
-    남는다 — 그래야 우리 낮은 트리거(34K) 요약 하나만 남고 「중복 미들웨어」 어서션을 피한다
+    남는다 — 그래야 우리 낮은 트리거 요약 하나만 남고 「중복 미들웨어」 어서션을 피한다
     (`deepagents/_excluded_middleware.py::_apply_excluded_middleware` docstring). 캐시로 타입을
     고정한다 — 호출마다 새 타입을 만들면 exclude 대상과의 정확-타입 비교가 흔들린다."""
     global _COMPACTION_MW_CLASS
@@ -259,12 +274,14 @@ def _compaction_middleware_class():
             (findings/2026-08-07-compaction-summary-starvation.md, 가짜 모델 실측).
             """
 
-            # 한국어 근사 8K ≈ 실 32K 토큰 — GMS 요청 크기벽(~42K 실토큰) 안에 드는
-            # 최대 규모다. 요약 모델(FAST haiku)의 컨텍스트로는 어느 쪽이든 충분하다.
-            _TRIM_BUDGET_TOKENS = 8_000
+            # 눈금이 실토큰이 되면서(S15P11B106-321, `_count_tokens_cjk`) 종전 근사 8K
+            # (한국어 실 ~32K)를 실토큰으로 환산한 값. 요약 모델(FAST haiku)의 컨텍스트
+            # (200K)에 여유 있게 들어간다.
+            _TRIM_BUDGET_TOKENS = 32_000
 
             def __init__(self, *args, **kwargs):
                 kwargs.setdefault("trim_tokens_to_summarize", self._TRIM_BUDGET_TOKENS)
+                kwargs.setdefault("token_counter", _count_tokens_cjk)
                 super().__init__(*args, **kwargs)
                 # 요약 생성은 `_lc_helper`(langchain 미들웨어 인스턴스)에 위임된다 —
                 # 이 클래스에 같은 이름의 메서드를 정의해도 위임 경로는 그것을 안 부른다.
@@ -273,7 +290,7 @@ def _compaction_middleware_class():
                 # 가짜 모델 테스트가 고정한다 (라이브러리가 바뀌면 그 테스트가 먼저 빨개진다).
                 helper = self._lc_helper
                 original_trim = helper._trim_messages_for_summary
-                budget_chars = self._TRIM_BUDGET_TOKENS * 2  # 근사 1토큰 ≈ 한국어 1~2자
+                budget_chars = self._TRIM_BUDGET_TOKENS  # 실토큰 눈금: 한국어 1토큰 ≈ 1자
 
                 def trim_with_tail_fallback(messages):
                     trimmed = original_trim(messages)
@@ -528,16 +545,8 @@ class DeepAgentsRuntime:
                                **self._credential_kwargs(self.model))
 
     def _summarization_middleware(self, backend):
-        """문맥 압축 미들웨어. **트리거를 에이전트 모델의 `base_url` 로 고른다.**
-
-        create_deep_agent 은 기본으로 요약 미들웨어를 넣지만 트리거가 170K/0.85 다. 게이트웨이
-        (GMS)를 쓸 때는 그 값이 요청 크기벽(~42K)보다 훨씬 높아 벽에서 죽을 때까지 안 터지므로
-        34K 로 낮춘다. 직접 API 에는 벽이 없어 낮춘 값이 오히려 손해라(요약 콜 추가 + 프롬프트
-        캐시 무효화) 기본값 자리로 되돌린다 — 판단은 `compaction_trigger_for` 가 한다.
-
-        **에이전트 모델의 주소로 판단한다.** 벽에 부딪히는 것은 이력이 실린 큰 요청, 즉 에이전트
-        호출이다. 요약 콜은 FAST 티어(haiku)로 따로 싸게 도는데, 그쪽 프로바이더가 갈려도 압축을
-        언제 걸어야 하는지는 에이전트 쪽 제약이 정한다.
+        """문맥 압축 미들웨어. 트리거는 프로바이더 무관 `COMPACTION_TRIGGER` 하나다 — 근거는
+        그 상수의 주석에 있다 (한국어 근사 과소평가 때문에 170K 는 사실상 「압축 없음」이었다).
 
         이름이 기본과 같아(`SummarizationMiddleware`) create_deep_agent 이 기본을 이것으로
         교체한다. 최근 6메시지는 어느 경우든 보존한다.
@@ -552,12 +561,10 @@ class DeepAgentsRuntime:
             fast = self._model_for(FAST)
             summary_model = init_chat_model(fast, max_retries=0,
                                             **self._credential_kwargs(fast))
-        trigger = compaction_trigger_for(
-            self._credential_kwargs(self.model).get("base_url", ""))
-        logger.info("compaction trigger=%s keep=%s", trigger, COMPACTION_KEEP)
+        logger.info("compaction trigger=%s keep=%s", COMPACTION_TRIGGER, COMPACTION_KEEP)
         return _compaction_middleware_class()(
             model=summary_model, backend=backend,
-            trigger=trigger, keep=COMPACTION_KEEP,
+            trigger=COMPACTION_TRIGGER, keep=COMPACTION_KEEP,
             # 기본 요약은 범용 추출이라 「무엇을 끝냈는지」를 안 남긴다 — 압축 뒤 에이전트가
             # 완료한 작업을 처음부터 반복했다 (job 41, `_WIKI_STATE_SUMMARY_ADDENDUM` 주석).
             summary_prompt=_wiki_summary_prompt(),
@@ -697,13 +704,13 @@ class DeepAgentsRuntime:
             HarnessProfile(
                 excluded_tools=EXCLUDED_BUILTIN_TOOLS,
                 general_purpose_subagent=GeneralPurposeSubagentProfile(enabled=False),
-                # 기본 요약(트리거 170K)을 정확-타입으로 뺀다 — 우리 서브클래스(34K)만 남긴다.
+                # 기본 요약(트리거 170K/근사)을 정확-타입으로 뺀다 — 우리 서브클래스만 남긴다.
                 # frozenset 이다 — 프로필 병합이 `|` 로 합집합하므로 list 면 TypeError.
                 excluded_middleware=frozenset({SummarizationMiddleware}),
             ),
         )
         # GMS 요청 크기벽(~42K) 아래로 문맥을 유지한다. 위 프로필이 기본 요약(170K)을 빼고,
-        # 여기서 낮은 트리거(34K) 요약 서브클래스를 넣는다. 요약 오프로드용 backend 는 이
+        # 여기서 낮은 트리거 요약 서브클래스를 넣는다. 요약 오프로드용 backend 는 이
         # 작업의 임시 루트에 둔다 — 텍스트 요약이라 거의 안 쓰인다.
         from deepagents.backends import FilesystemBackend
         compaction_backend = FilesystemBackend(root_dir=str(root), virtual_mode=True)
