@@ -217,6 +217,21 @@ export function hasUnsettledWork(items) {
   )
 }
 
+// 폴링하는 화면이 「지금 상태」를 보여주려면 전역 기본값 세 가지를 되돌려야 한다.
+// 기본값은 관리 화면 일반을 위한 것이고(30초 캐시·포커스 재요청 없음), 진행 중인 작업을
+// 지켜보는 화면에는 맞지 않는다 — 작업이 몇 분씩 걸려 사용자가 탭을 떠나 있기 때문이다.
+//
+//  - refetchIntervalInBackground: 탭이 뒤로 가면 react-query 가 폴링을 멈춘다. 그동안
+//    작업이 끝나도 화면은 떠날 때 모습 그대로다.
+//  - refetchOnWindowFocus: 돌아온 순간 바로 맞춘다. 없으면 다음 폴링까지 옛 화면을 본다.
+//  - staleTime 0: 다른 화면에 갔다가 30초 안에 돌아오면 기본값은 캐시를 그대로 믿어
+//    다시 읽지 않는다. 그 사이에 끝난 작업이 「처리 중」으로 남는다.
+export const LIVE_QUERY_OPTIONS = {
+  refetchIntervalInBackground: true,
+  refetchOnWindowFocus: true,
+  staleTime: 0,
+}
+
 export function useAiJobs(filters = {}) {
   const queryClient = useQueryClient()
   const query = useQuery({
@@ -224,6 +239,7 @@ export function useAiJobs(filters = {}) {
     queryFn: () => fetchAiJobs(filters),
     refetchInterval: (query) =>
       hasUnsettledWork(query.state.data?.items ?? []) ? RUNNING_JOB_POLL_MS : false,
+    ...LIVE_QUERY_OPTIONS,
   })
 
   // 진행 중이던 작업이 전부 끝난 순간 한 번, 그 작업이 바꿔놓은 문서·위키 캐시를 걷어낸다.
