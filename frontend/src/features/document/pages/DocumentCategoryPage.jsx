@@ -93,9 +93,14 @@ export default function DocumentCategoryPage() {
     return cards
   }, [categories, departments])
 
-  const filteredCategories = !deptFilter
-    ? categories
-    : categories.filter((category) => departmentValuesFor(category).includes(deptFilter))
+  // 카테고리 목록은 이름 오름차순으로 통일한다(S15P11B106-322). 서버는 scopeKey 우선 정렬로
+  // 내려주므로 부서마다 순서가 달라 보였다 — 화면에서는 부서와 무관하게 이름순으로만 보여준다.
+  const filteredCategories = useMemo(() => {
+    const base = !deptFilter
+      ? categories
+      : categories.filter((category) => departmentValuesFor(category).includes(deptFilter))
+    return [...base].sort((a, b) => a.name.localeCompare(b.name, 'ko'))
+  }, [categories, deptFilter])
 
   function handleAdd() {
     const name = newName.trim()

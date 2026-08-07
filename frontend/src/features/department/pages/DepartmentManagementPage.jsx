@@ -426,8 +426,14 @@ export default function DepartmentManagementPage() {
             label="부서명"
             required
             value={editName}
-            onChange={(event) => setEditName(event.target.value)}
+            maxLength={DEPARTMENT_NAME_MAX_LENGTH}
+            onChange={(event) => setEditName(sanitizePlainName(event.target.value))}
             placeholder="부서명"
+            error={
+              editName.length >= DEPARTMENT_NAME_MAX_LENGTH
+                ? `* 부서명은 최대 ${DEPARTMENT_NAME_MAX_LENGTH}자까지 입력할 수 있습니다.`
+                : undefined
+            }
           />
           <Field label="부서 관리자" error={editManagerError}>
             <select

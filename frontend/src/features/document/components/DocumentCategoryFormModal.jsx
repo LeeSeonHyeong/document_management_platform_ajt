@@ -4,6 +4,11 @@ import { Modal, Button, Field, Input, Textarea, useToast } from '@/components/ui
 import { useCreateDocumentCategory, useUpdateDocumentCategory } from '../queries'
 import DepartmentMultiSelect from './DepartmentMultiSelect'
 
+// 추가 화면과 같은 이름 제한(20자)에 맞춘다. 설명은 DB(VARCHAR 1000) 안에서 넉넉히 200자로 막는다.
+// (S15P11B106-322: 수정 모달에는 입력 제한이 없어 추가 화면과 규칙이 어긋났다.)
+const CATEGORY_NAME_MAX_LENGTH = 20
+const CATEGORY_DESCRIPTION_MAX_LENGTH = 200
+
 // Figma 4-8-1R — 원본문서 카테고리 추가/수정.
 export default function DocumentCategoryFormModal({
   open,
@@ -96,8 +101,14 @@ export default function DocumentCategoryFormModal({
           label="카테고리명"
           required
           value={name}
+          maxLength={CATEGORY_NAME_MAX_LENGTH}
           onChange={(event) => setName(event.target.value)}
           placeholder="카테고리 이름"
+          error={
+            name.length >= CATEGORY_NAME_MAX_LENGTH
+              ? `* 카테고리명은 최대 ${CATEGORY_NAME_MAX_LENGTH}자까지 입력할 수 있습니다.`
+              : undefined
+          }
         />
         {mode === 'edit' && (
           <Field label="공개 부서">
@@ -128,10 +139,16 @@ export default function DocumentCategoryFormModal({
         <Textarea
           label="설명"
           value={description}
+          maxLength={CATEGORY_DESCRIPTION_MAX_LENGTH}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="이 카테고리에 대한 간단한 설명 (선택)"
           rows={2}
           className="h-16 resize-none overflow-y-auto"
+          error={
+            description.length >= CATEGORY_DESCRIPTION_MAX_LENGTH
+              ? `* 설명은 최대 ${CATEGORY_DESCRIPTION_MAX_LENGTH}자까지 입력할 수 있습니다.`
+              : undefined
+          }
         />
         <div className="flex items-center gap-2 rounded-xl bg-primary-50 px-3 py-2.5 text-xs text-slate-500">
           <Info className="size-4 shrink-0 text-primary-500" />
