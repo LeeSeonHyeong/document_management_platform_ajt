@@ -49,15 +49,23 @@ apiClient.interceptors.request.use(async (config) => {
 
 // 백엔드 공통 오류 envelope: { timestamp, status, error, code, message, path, fieldErrors }
 // 애플리케이션에서 다루기 쉬운 형태로 정규화한다.
-function normalizeError(error) {
+export function normalizeError(error) {
   const res = error.response
   const body = res?.data ?? {}
+  const status = res?.status ?? 0
+  const code = body.code ?? (res ? 'UNKNOWN_ERROR' : 'NETWORK_ERROR')
+  // 5xx 의 message 는 개발자용 원문일 확률이 높다(역직렬화 실패·SQL 예외가 그대로 온 사례,
+  // S15P11B106-319). 화면에는 일반 안내 + 코드만 내고, 원문은 raw 로 개발 콘솔에서 본다.
+  // 4xx 는 백엔드가 쓰는 업무 검증 문구이므로 그대로 신뢰한다.
+  const message =
+    status >= 500
+      ? `서버 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요. (오류 코드: ${code})`
+      : (body.message ??
+        (res ? '요청 처리 중 오류가 발생했습니다.' : '서버에 연결할 수 없습니다.'))
   return {
-    status: res?.status ?? 0,
-    code: body.code ?? (res ? 'UNKNOWN_ERROR' : 'NETWORK_ERROR'),
-    message:
-      body.message ??
-      (res ? '요청 처리 중 오류가 발생했습니다.' : '서버에 연결할 수 없습니다.'),
+    status,
+    code,
+    message,
     fieldErrors: body.fieldErrors ?? [],
     raw: error,
   }
