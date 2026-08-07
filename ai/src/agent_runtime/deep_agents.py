@@ -715,7 +715,9 @@ class DeepAgentsRuntime:
         # 이 도구는 그 디렉터리 **하나만** 읽는다. `read_file` 을 푸는 것이 아니다 —
         # 그러면 `write_file` 과 함께 MCP 우회가 열린다 (`history_tool.py` 헤더).
         specs = [*specs, history_read_tool(compaction_backend)]
-        tools = langchain_tools(specs, counts)
+        # 반복 퇴행 가드 — 실행별 인스턴스라 작업 사이 상태가 안 섞인다 (S15P11B106-316).
+        from wiki_mcp.repeat_guard import RepeatCallGuard
+        tools = langchain_tools(specs, counts, repeat_guard=RepeatCallGuard())
         agent = create_deep_agent(
             model=self._chat_model(limit),
             tools=tools,
@@ -841,7 +843,8 @@ class DeepAgentsRuntime:
         return text, _usage(messages), _turns(messages)
 
 
-def langchain_tools(tools: list, counter: dict | None = None) -> list:
+def langchain_tools(tools: list, counter: dict | None = None,
+                    repeat_guard=None) -> list:
     """`AgentTool` 목록을 LangChain 도구로 감싼다.
 
     LangChain 임포트를 이 파일 안에 둔다 — 배포 의존성을 깔지 않은 설치에서도
@@ -854,6 +857,10 @@ def langchain_tools(tools: list, counter: dict | None = None) -> list:
     코루틴 객체를 그대로 도구 결과로 삼아 모델이 `<coroutine object ...>` 를 읽는다 —
     도구가 아무 일도 안 하고 성공한 것처럼 보인다. 위키 편집 도구가 전부 async 다
     (S15P11B106-152).
+
+    `repeat_guard` 를 주면 **동일 호출·동일 결과의 연속 반복을 경고로 바꾼다**
+    (S15P11B106-316). MCP 서버 디스패처의 가드(S15P11B106-311)와 같은 규칙인데,
+    운영 위키 경로는 MCP 없이 이 래퍼로 도구를 부르므로 여기가 그 경로의 배선 지점이다.
     """
     import inspect
 
@@ -861,21 +868,33 @@ def langchain_tools(tools: list, counter: dict | None = None) -> list:
 
     def wrap(tool):
         if inspect.iscoroutinefunction(tool.call):
-            if counter is None:
+            if counter is None and repeat_guard is None:
                 return {"coroutine": tool.call}
 
             async def acalled(**kwargs):
-                counter[tool.name] = counter.get(tool.name, 0) + 1
-                return await tool.call(**kwargs)
+                if counter is not None:
+                    counter[tool.name] = counter.get(tool.name, 0) + 1
+                result = await tool.call(**kwargs)
+                if repeat_guard is not None:
+                    warning = repeat_guard.note(tool.name, kwargs, result)
+                    if warning is not None:
+                        return warning
+                return result
 
             return {"coroutine": acalled}
 
-        if counter is None:
+        if counter is None and repeat_guard is None:
             return {"func": tool.call}
 
         def called(**kwargs):
-            counter[tool.name] = counter.get(tool.name, 0) + 1
-            return tool.call(**kwargs)
+            if counter is not None:
+                counter[tool.name] = counter.get(tool.name, 0) + 1
+            result = tool.call(**kwargs)
+            if repeat_guard is not None:
+                warning = repeat_guard.note(tool.name, kwargs, result)
+                if warning is not None:
+                    return warning
+            return result
 
         return {"func": called}
 

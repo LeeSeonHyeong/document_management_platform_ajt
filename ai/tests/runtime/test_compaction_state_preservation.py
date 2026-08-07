@@ -112,9 +112,14 @@ async def test_한국어_장문_모양에서도_상태보존_요약이_실행된
     job = "job-korean-big"
     scope_id = await SpringVaultFS.open(tmp_path, SCOPE, job)
     await bootstrap_scope(SCOPE)
-    await register_source(SCOPE, "9", "큰문서.md", KOREAN_BIG_SOURCE)
-    read_big = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
-    model = ScriptedModel(script=[read_big] * 8 + [("text", "끝")], padding="")
+    # 서로 다른 두 문서를 번갈아 읽는다 — 같은 문서 반복이면 반복 가드(S15P11B106-316)가
+    # 3회째부터 본문 대신 짧은 경고를 돌려줘 컨텍스트가 안 자라고, 압축이 영영 안 온다.
+    # (그 상호작용 자체가 가드의 목적이다 — job 43 이 이 가드가 있었으면 안 죽었다.)
+    await register_source(SCOPE, "9", "큰문서A.md", KOREAN_BIG_SOURCE)
+    await register_source(SCOPE, "10", "큰문서B.md", KOREAN_BIG_SOURCE.replace("통합", "별첨"))
+    read_a = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
+    read_b = ("tool", "read", {"scope": SCOPE, "path": "sources/10/parsed/content.md"})
+    model = ScriptedModel(script=[read_a, read_b] * 4 + [("text", "끝")], padding="")
     runtime = DeepAgentsRuntime(
         model="anthropic:claude-sonnet-4-6",
         credentials={"anthropic": ("test-key", "https://gms.example/anthropic")},

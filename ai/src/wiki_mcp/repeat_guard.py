@@ -42,22 +42,46 @@ _WARNING = (
     "다음 행동(`edit`·`create`·`delete`·`lint`, 또는 작업 종료 보고)으로 넘어간다."
 )
 
-# (도구, 인자 해시, 결과 해시)와 연속 횟수. 프로세스 전역 — 프로세스 1개 = 작업 1개.
-_last_call: tuple[str, str, str] | None = None
-_streak = 0
-
-
-def reset_repeat_memory() -> None:
-    """인프로세스 테스트 사이에 상태를 비운다. 실서버는 프로세스 수명이 곧 작업 수명이라 불필요."""
-    global _last_call, _streak
-    _last_call = None
-    _streak = 0
-
-
 def _fingerprint(name: str, arguments: dict[str, Any], result: Any) -> tuple[str, str, str]:
     args_key = json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False, default=str)
     result_key = hashlib.sha256(repr(result).encode("utf-8", "replace")).hexdigest()
     return (name, args_key, result_key)
+
+
+class RepeatCallGuard:
+    """동일 (도구, 인자)·동일 결과의 연속 반복을 세고, 문턱부터 경고문을 돌려준다.
+
+    상태를 인스턴스에 담는 이유(S15P11B106-316): 운영 위키 경로(`arun`)는 MCP 없이
+    도구를 인프로세스로 부른다 — 프로세스 전역이면 여러 작업이 한 서버 프로세스에서
+    상태를 공유한다. 실행마다 인스턴스를 새로 만들면 리셋 배관이 필요 없다.
+    """
+
+    def __init__(self) -> None:
+        self._last_call: tuple[str, str, str] | None = None
+        self._streak = 0
+
+    def note(self, name: str, arguments: dict[str, Any], result: Any) -> str | None:
+        """호출 결과를 기록하고, 문턱을 넘었으면 결과 대신 쓸 경고문을 돌려준다."""
+        fingerprint = _fingerprint(name, arguments, result)
+        if fingerprint == self._last_call:
+            self._streak += 1
+        else:
+            self._last_call = fingerprint
+            self._streak = 1
+        if self._streak < REPEAT_THRESHOLD:
+            return None
+        return _WARNING.format(count=self._streak)
+
+
+# MCP 서버 경로(하네스·claude-code)용 모듈 인스턴스. 그쪽은 프로세스 1개 = 작업 1개라
+# 전역이어도 세션이 안 섞인다.
+_module_guard = RepeatCallGuard()
+
+
+def reset_repeat_memory() -> None:
+    """인프로세스 테스트 사이에 상태를 비운다. 실서버는 프로세스 수명이 곧 작업 수명이라 불필요."""
+    global _module_guard
+    _module_guard = RepeatCallGuard()
 
 
 def guard_repeated_calls(mcp) -> None:
@@ -66,18 +90,11 @@ def guard_repeated_calls(mcp) -> None:
     original = manager.call_tool
 
     async def guarded(name, arguments, context=None, convert_result=False):
-        global _last_call, _streak
         result = await original(name, arguments, context=context,
                                 convert_result=convert_result)
-        fingerprint = _fingerprint(name, arguments, result)
-        if fingerprint == _last_call:
-            _streak += 1
-        else:
-            _last_call = fingerprint
-            _streak = 1
-        if _streak < REPEAT_THRESHOLD:
+        warning = _module_guard.note(name, arguments, result)
+        if warning is None:
             return result
-        warning = _WARNING.format(count=_streak)
         if convert_result:
             from mcp.types import TextContent
             return [TextContent(type="text", text=warning)]
