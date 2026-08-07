@@ -93,10 +93,11 @@ public class InquiryController {
             @RequestParam(name = "memberId", required = false) String memberId,
             @RequestParam(name = "createdFrom", required = false) String createdFrom,
             @RequestParam(name = "createdTo", required = false) String createdTo,
-            @RequestParam(name = "sort", required = false) String sort
+            @RequestParam(name = "sort", required = false) String sort,
+            @RequestParam(name = "keyword", required = false) String keyword
     ) {
         return inquiryService.findInquiries(
-                loginMember, page, size, status, priority, memberId, createdFrom, createdTo, sort);
+                loginMember, page, size, status, priority, memberId, createdFrom, createdTo, sort, keyword);
     }
 
     /**

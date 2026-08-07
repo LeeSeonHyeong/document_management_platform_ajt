@@ -149,12 +149,13 @@ public class InquiryService {
             String memberId,
             String createdFrom,
             String createdTo,
-            String sort
+            String sort,
+            String keyword
     ) {
         requireLogin(loginMember);
         Pageable pageable = createPageable(page, size, sort);
         Specification<Inquiry> specification = inquirySpecification(
-                loginMember, isSuperAdmin(loginMember), status, priority, memberId, createdFrom, createdTo);
+                loginMember, isSuperAdmin(loginMember), status, priority, memberId, createdFrom, createdTo, keyword);
         Page<InquirySummaryResponse> result = inquiryRepository.findAll(specification, pageable)
                 .map(InquirySummaryResponse::from);
         return InquiryListResponse.from(result);
@@ -417,7 +418,8 @@ public class InquiryService {
             String priority,
             String memberId,
             String createdFrom,
-            String createdTo
+            String createdTo,
+            String keyword
     ) {
         return (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -466,6 +468,15 @@ public class InquiryService {
             Optional<Instant> to = parseDateEndExclusive(createdTo);
             if (to.isPresent()) {
                 predicates.add(criteriaBuilder.lessThan(root.get("createdAt"), to.get()));
+            }
+            // 문의 목록 검색: 제목과 요청자(작성자) 이름을 OR로 부분 일치 검색한다.
+            //   직원 현황(MemberService.addKeywordPredicate)과 같이 소문자 변환 후 양쪽 %로 비교한다.
+            //   authorJoin은 위에서 이미 만들어 둔 조인을 재사용해 중복 조인을 만들지 않는다.
+            if (keyword != null && !keyword.isBlank()) {
+                String likeKeyword = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(criteriaBuilder.or(
+                        criteriaBuilder.like(criteriaBuilder.lower(root.get("title")), likeKeyword),
+                        criteriaBuilder.like(criteriaBuilder.lower(authorJoin.get("name")), likeKeyword)));
             }
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
         };
