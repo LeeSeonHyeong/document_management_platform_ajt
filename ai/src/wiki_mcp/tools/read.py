@@ -42,7 +42,15 @@ def _extract_sections(content: str, wanted: list[str]) -> str:
 
     names = {s.lower() for s in wanted}
     matched = [text for name, text in sections if name.lower() in names]
-    return "\n\n".join(matched) if matched else f"{wanted}에 해당하는 절이 없다."
+    if matched:
+        return "\n\n".join(matched)
+    # 미스 응답에 실제 절 목록을 싣는다 (S15P11B106-315). "없다"만 돌려주면 모델이 이름을
+    # 다시 추측하거나 전문 재읽기로 후퇴한다 — 2026-08-07 read 53연속 반복 사고의 직전
+    # 행동이 정확히 그것이었다. 목록이 있으면 한 번에 교정한다.
+    if not sections:
+        return f"{wanted}에 해당하는 절이 없다. 이 페이지에는 절 제목이 없다 — 전문을 읽는다."
+    available = ", ".join(name for name, _ in sections)
+    return f"{wanted}에 해당하는 절이 없다. 이 페이지의 절: {available}"
 
 
 class ReadHandler:
