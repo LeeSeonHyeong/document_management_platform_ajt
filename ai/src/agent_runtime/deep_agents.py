@@ -250,7 +250,45 @@ def _compaction_middleware_class():
         from deepagents.middleware.summarization import SummarizationMiddleware
 
         class _CompactionSummarizationMiddleware(SummarizationMiddleware):
-            pass
+            """trim 이 비어도 상태보존 요약이 침묵 소멸하지 않게 한다 (S15P11B106-313).
+
+            기본 trim 예산(4,000 근사)은 한국어 장문 read 결과 하나(근사 ~4.6K)보다
+            작아서, 프로덕션에서 압축을 가장 자주 유발하는 모양에서 trim 이 빈 목록을
+            내고 베이스가 **LLM 호출 없이** "too long to summarize" 폴백으로 이력을
+            갈아치웠다 — !273 의 프롬프트가 실행될 기회가 없었다
+            (findings/2026-08-07-compaction-summary-starvation.md, 가짜 모델 실측).
+            """
+
+            # 한국어 근사 8K ≈ 실 32K 토큰 — GMS 요청 크기벽(~42K 실토큰) 안에 드는
+            # 최대 규모다. 요약 모델(FAST haiku)의 컨텍스트로는 어느 쪽이든 충분하다.
+            _TRIM_BUDGET_TOKENS = 8_000
+
+            def __init__(self, *args, **kwargs):
+                kwargs.setdefault("trim_tokens_to_summarize", self._TRIM_BUDGET_TOKENS)
+                super().__init__(*args, **kwargs)
+                # 요약 생성은 `_lc_helper`(langchain 미들웨어 인스턴스)에 위임된다 —
+                # 이 클래스에 같은 이름의 메서드를 정의해도 위임 경로는 그것을 안 부른다.
+                # 그래서 헬퍼 인스턴스의 trim 을 직접 감싼다. 사설 속성 의존이지만
+                # 아래 폴백이 없으면 요약이 침묵 소멸하므로, 계약은 한국어 장문 모양의
+                # 가짜 모델 테스트가 고정한다 (라이브러리가 바뀌면 그 테스트가 먼저 빨개진다).
+                helper = self._lc_helper
+                original_trim = helper._trim_messages_for_summary
+                budget_chars = self._TRIM_BUDGET_TOKENS * 2  # 근사 1토큰 ≈ 한국어 1~2자
+
+                def trim_with_tail_fallback(messages):
+                    trimmed = original_trim(messages)
+                    if trimmed:
+                        return trimmed
+                    # 예산보다 큰 단일 메시지(또는 human 시작점 부재) 때문에 비었다 —
+                    # 꼬리 메시지를 글자수로 잘라서라도 준다. 불완전한 요약이 요약 없음보다
+                    # 낫다: 폴백 문자열은 「무엇이 끝났는지」를 전부 버려 에이전트가
+                    # 처음부터 다시 시작한다 (job 41 의 guide 4회·lint 6회).
+                    from langchain_core.messages import HumanMessage
+                    tail = messages[-1]
+                    text = str(getattr(tail, "content", tail))
+                    return [HumanMessage(content=text[-budget_chars:])]
+
+                helper._trim_messages_for_summary = trim_with_tail_fallback
 
         _COMPACTION_MW_CLASS = _CompactionSummarizationMiddleware
     return _COMPACTION_MW_CLASS

@@ -80,3 +80,58 @@ def test_미들웨어가_그_프롬프트를_실제로_쓴다():
 def test_media_안내는_유지된다():
     """deepagents 가 끼워 두는 media 참조 안내를 우리 프롬프트가 밀어내면 안 된다."""
     assert "media_reference_information" in WIKI_SUMMARY_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# 한국어 장문 모양 (2026-08-07 실측, findings/2026-08-07-compaction-summary-starvation.md)
+#
+# 위 배선 테스트들은 「중간 메시지 다수」 모양에서만 검증됐다. 프로덕션에서 압축을 가장
+# 자주 유발하는 모양 — 한국어 장문 read 반복(job 43·사내규정 통합본) — 에서는 read 결과
+# 하나가 trim 예산(기본 4,000 근사)을 넘어 trim 이 빈 목록을 냈고, 미들웨어가 **LLM 호출
+# 없이** "Previous conversation was too long to summarize." 폴백으로 이력을 갈아치웠다.
+# 즉 위의 프롬프트가 아무리 옳아도 실행되지 않았다.
+# ---------------------------------------------------------------------------
+
+from pathlib import Path  # noqa: E402
+
+from wiki_mcp.vaultfs import LocalVaultFS  # noqa: E402
+from wiki_mcp.vaultfs.local import bootstrap_scope, register_source  # noqa: E402
+from wiki_mcp.vaultfs.spring import SpringVaultFS  # noqa: E402
+
+from .fake_models import ScriptedModel  # noqa: E402
+
+SCOPE = "ALL"
+# 한국어 32K자 — 근사 카운터로는 ~8K 로 보이는 크기다. read 결과 하나가 옛 trim 예산
+# (4,000 근사)을 단독으로 넘는 것이 이 모양의 핵심이다.
+KOREAN_BIG_SOURCE = ("# 사내규정 통합본\n\n"
+                     + ("근태와 휴가와 보안과 경비 규정을 통합해 정리한다 " * 25 + "\n") * 26)
+
+
+async def test_한국어_장문_모양에서도_상태보존_요약이_실행된다(tmp_path):
+    """압축은 발동하는데 요약 LLM 이 0회면 — 상태보존이 침묵 소멸한 것이다."""
+    job = "job-korean-big"
+    scope_id = await SpringVaultFS.open(tmp_path, SCOPE, job)
+    await bootstrap_scope(SCOPE)
+    await register_source(SCOPE, "9", "큰문서.md", KOREAN_BIG_SOURCE)
+    read_big = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
+    model = ScriptedModel(script=[read_big] * 8 + [("text", "끝")], padding="")
+    runtime = DeepAgentsRuntime(
+        model="anthropic:claude-sonnet-4-6",
+        credentials={"anthropic": ("test-key", "https://gms.example/anthropic")},
+        chat_model=model,
+    )
+
+    try:
+        result = await runtime.arun(
+            "원본문서를 반영하라", fs=SpringVaultFS(SCOPE, job), scope_id=scope_id,
+            root=tmp_path, scope_key=SCOPE, job_id=job, timeout=120)
+    finally:
+        await LocalVaultFS.close()
+
+    assert result.error is None, result.error
+    assert model.seen_history_path is not None, (
+        "압축이 안 터졌다 — 이 테스트의 전제가 깨졌다. KOREAN_BIG_SOURCE 크기나 "
+        "트리거를 확인한다")
+    assert model.summary_requests >= 1, (
+        "압축이 터졌는데 상태보존 요약 LLM 이 불리지 않았다 — trim 이 빈 목록을 내고 "
+        "폴백 문자열로 이력을 갈아치운 것이다 (2026-08-07 findings)")
