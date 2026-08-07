@@ -16,6 +16,7 @@ import com.ajt.backend.global.ai.client.WikiTransformationResponse.RelationChang
 import com.ajt.backend.global.ai.client.WikiTransformationResponse.WikiChange;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -146,17 +147,34 @@ public class WikiTransformationApplier {
      * 표기만 걷어내고 텍스트는 남긴다. 그 문장의 사실은 다른 근거가 받치고 있고, 데드락의
      * 원인이던 dangling-link 를 여기서 원천 제거해야 남은 수술을 에이전트에게 맡길 수 있다.
      */
-    public PruneResult pruneFullyDependentWikis(String scopeKey, long documentId) {
+    public PruneResult pruneFullyDependentWikis(String scopeKey, long documentId, String originalFileName) {
         List<Wiki> scopeWikis = wikiRepository.findAllByScopeKey(scopeKey);
         List<Wiki> fullyDependent = scopeWikis.stream()
                 .filter(wiki -> !wiki.documentRefs().isEmpty())
                 .filter(wiki -> wiki.documentRefs().stream().allMatch(ref -> ref == documentId))
                 .toList();
+        // 혼합 참조 생존자 중 본문에 인용이 없는 것 — refs 는 메타데이터라 본문과 어긋날 수
+        // 있고(중복 업로드 오염 등), 어긋난 참조를 남기면 걷어내기 가드(S15P11B106-225)가
+        // 「참조는 있는데 변경 0건」오탐을 낸다(2026-08-07 문서 44 실측). 전부의존 판정은
+        // 건드리지 않는다 — 그쪽 의미(근거가 이 문서뿐이면 삭제)는 refs 가 정본이다.
+        List<Wiki> staleRefWikis = scopeWikis.stream()
+                .filter(wiki -> !fullyDependent.contains(wiki))
+                .filter(wiki -> wiki.documentRefs().contains(documentId))
+                .filter(wiki -> !bodyCitesDocument(wiki, originalFileName))
+                .toList();
         int remainingReferencingWikis = (int) scopeWikis.stream()
                 .filter(wiki -> wiki.documentRefs().contains(documentId))
-                .count() - fullyDependent.size();
+                .count() - fullyDependent.size() - staleRefWikis.size();
+        // 참조 정리는 DB 만 바꾼다 — 파일 변이 없이 먼저 처리한다. 근거 목록이 바뀌므로
+        // 스냅샷 일관성(DR-030)을 위해 버전은 올린다.
+        for (Wiki wiki : staleRefWikis) {
+            wiki.removeDocumentRef(documentId);
+        }
         if (fullyDependent.isEmpty()) {
-            return new PruneResult(List.of(), 0, remainingReferencingWikis);
+            if (!staleRefWikis.isEmpty()) {
+                incrementScopeVersion(scopeKey);
+            }
+            return new PruneResult(List.of(), 0, staleRefWikis.size(), remainingReferencingWikis);
         }
 
         WikiFileMutation fileMutation = beginFileMutation();
@@ -175,15 +193,35 @@ public class WikiTransformationApplier {
             removeDanglingWikiRefs(scopeKey, deletedWikiIds);
             int flattenedLinkPages = flattenLinksToDeletedPages(scopeKey, deletedPageFiles, fileMutation);
             storeIndex(fileMutation, scopeKey, WikiIndex.render(liveEntries(scopeKey)));
-            wikiScopeRepository.findById(scopeKey)
-                    .orElseThrow(() -> new IllegalStateException("Wiki 공간을 찾을 수 없습니다: " + scopeKey))
-                    .incrementScopeVersion();
+            incrementScopeVersion(scopeKey);
             completeFileMutationAfterTransaction(fileMutation);
-            return new PruneResult(deletedWikiTitles, flattenedLinkPages, remainingReferencingWikis);
+            return new PruneResult(deletedWikiTitles, flattenedLinkPages,
+                    staleRefWikis.size(), remainingReferencingWikis);
         } catch (RuntimeException exception) {
             rollbackFileMutation(fileMutation, exception);
             throw exception;
         }
+    }
+
+    /**
+     * 본문이 이 문서를 각주로 인용하는지 봅니다. 각주는 원본 파일명으로 문서를 가리키므로
+     * 파일명 포함 여부가 판정이다. NFC 로 정규화한다 — macOS 업로드 파일명은 NFD 로 와서
+     * 정규화 없이는 같은 이름을 다른 글자로 본다(S15P11B106-278 과 같은 함정).
+     * 파일명을 모르면(문서 행 소실) 보수적으로 인용 있음으로 취급한다.
+     */
+    private boolean bodyCitesDocument(Wiki wiki, String originalFileName) {
+        if (originalFileName == null || originalFileName.isBlank()) {
+            return true;
+        }
+        String fileName = Normalizer.normalize(originalFileName, Normalizer.Form.NFC);
+        String markdown = Normalizer.normalize(readWikiMarkdown(wiki), Normalizer.Form.NFC);
+        return markdown.contains(fileName);
+    }
+
+    private void incrementScopeVersion(String scopeKey) {
+        wikiScopeRepository.findById(scopeKey)
+                .orElseThrow(() -> new IllegalStateException("Wiki 공간을 찾을 수 없습니다: " + scopeKey))
+                .incrementScopeVersion();
     }
 
     /**
@@ -229,12 +267,14 @@ public class WikiTransformationApplier {
      *
      * @param deletedWikiTitles         지운 Wiki 제목 — 관리자 요약에 싣는다
      * @param flattenedLinkPages        삭제된 페이지로 향하는 링크를 평문화한 Wiki 수
-     * @param remainingReferencingWikis 프리패스 뒤에도 이 문서를 근거로 삼는 Wiki 수.
+     * @param detachedStaleRefWikis     본문 인용이 없어 참조만 정리한 Wiki 수(S15P11B106-312)
+     * @param remainingReferencingWikis 프리패스 뒤에도 본문으로 이 문서를 인용하는 Wiki 수.
      *                                  0이면 걷어낼 것이 없으므로 AI 를 부를 필요가 없다
      */
     public record PruneResult(
             List<String> deletedWikiTitles,
             int flattenedLinkPages,
+            int detachedStaleRefWikis,
             int remainingReferencingWikis
     ) {
 
