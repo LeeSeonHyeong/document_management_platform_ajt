@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '@/shared/api/queryKeys'
-import { invalidateAfterAiJob } from '../queries'
+import { invalidateAfterAiJob, LIVE_QUERY_OPTIONS } from '../queries'
 import { fetchAiJob, cancelAiJob } from '../api'
 
 const POLL_INTERVAL_MS = 2000
@@ -31,6 +31,8 @@ export function useAiJobPolling(jobId) {
       const status = query.state.data?.status
       return status && TERMINAL_STATUSES.has(status) ? false : POLL_INTERVAL_MS
     },
+    // 탭을 떠나 있어도 계속 읽고, 돌아오면 즉시 맞춘다(queries.js 의 주석 참고).
+    ...LIVE_QUERY_OPTIONS,
   })
 
   const cancelMutation = useMutation({
