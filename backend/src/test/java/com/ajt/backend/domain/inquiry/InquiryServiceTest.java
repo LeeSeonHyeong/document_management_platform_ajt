@@ -166,7 +166,7 @@ class InquiryServiceTest {
         inquiryService.create(login(other), request(assignee.getId(), List.of()));
 
         InquiryListResponse response = inquiryService.findInquiries(
-                login(author), null, null, null, null, null, null, null, null);
+                login(author), null, null, null, null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isEqualTo(1);
         assertThat(response.items().getFirst().author().name()).isEqualTo("홍길동");
@@ -184,7 +184,7 @@ class InquiryServiceTest {
         inquiryService.create(login(author), request(otherAdmin.getId(), List.of()));
 
         InquiryListResponse response = inquiryService.findInquiries(
-                login(assignee), null, null, null, null, null, null, null, null);
+                login(assignee), null, null, null, null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isEqualTo(1);
         assertThat(response.items().getFirst().assignee().name()).isEqualTo("김관리");
@@ -204,20 +204,49 @@ class InquiryServiceTest {
 
         // status 없이 조회하면 담당 문의 둘 다 보인다.
         assertThat(inquiryService.findInquiries(
-                login(assignee), null, null, null, null, null, null, null, null).totalCount())
+                login(assignee), null, null, null, null, null, null, null, null, null).totalCount())
                 .isEqualTo(2);
 
         // 미처리(pending)만 — 답변하지 않은 문의 1건.
         InquiryListResponse pendingOnly = inquiryService.findInquiries(
-                login(assignee), null, null, "pending", null, null, null, null, null);
+                login(assignee), null, null, "pending", null, null, null, null, null, null);
         assertThat(pendingOnly.totalCount()).isEqualTo(1);
         assertThat(pendingOnly.items().getFirst().status()).isEqualTo("pending");
 
         // 처리완료(done)만 — 답변한 문의 1건.
         InquiryListResponse doneOnly = inquiryService.findInquiries(
-                login(assignee), null, null, "done", null, null, null, null, null);
+                login(assignee), null, null, "done", null, null, null, null, null, null);
         assertThat(doneOnly.totalCount()).isEqualTo(1);
         assertThat(doneOnly.items().getFirst().status()).isEqualTo("done");
+    }
+
+    @Test
+    @DisplayName("문의 목록은 keyword로 제목과 요청자 이름을 부분 일치 검색한다")
+    void findInquiriesSearchesByTitleAndAuthorName() {
+        // 요청자가 다른 두 문의를 담당자 한 명에게 등록해 두고, 제목·요청자 이름 각각으로 검색되는지 확인한다.
+        Department department = departmentRepository.save(new Department("인사부"));
+        Member author = memberRepository.save(approvedEmployee(department, "emp@ajt.com", "홍길동", "AJT-2026-0001"));
+        Member other = memberRepository.save(approvedEmployee(department, "other@ajt.com", "박사원", "AJT-2026-0002"));
+        Member assignee = memberRepository.save(approvedAdmin(department, "admin@ajt.com", "김관리"));
+        inquiryService.create(login(author), request(assignee.getId(), "연차 문의", List.of()));
+        inquiryService.create(login(other), request(assignee.getId(), "출장비 정산 문의", List.of()));
+
+        // 제목 부분 일치 — '출장비 정산 문의' 1건.
+        InquiryListResponse byTitle = inquiryService.findInquiries(
+                login(assignee), null, null, null, null, null, null, null, null, "출장비");
+        assertThat(byTitle.totalCount()).isEqualTo(1);
+        assertThat(byTitle.items().getFirst().title()).isEqualTo("출장비 정산 문의");
+
+        // 요청자 이름 부분 일치 — 홍길동이 등록한 1건.
+        InquiryListResponse byAuthor = inquiryService.findInquiries(
+                login(assignee), null, null, null, null, null, null, null, null, "홍길");
+        assertThat(byAuthor.totalCount()).isEqualTo(1);
+        assertThat(byAuthor.items().getFirst().author().name()).isEqualTo("홍길동");
+
+        // 어느 쪽에도 없는 검색어는 0건이다.
+        assertThat(inquiryService.findInquiries(
+                login(assignee), null, null, null, null, null, null, null, null, "없는검색어").totalCount())
+                .isZero();
     }
 
     @Test
@@ -370,7 +399,7 @@ class InquiryServiceTest {
 
         // 최고관리자는 어느 문의의 담당자도 아니지만 전체(2건)를 조회한다.
         InquiryListResponse response = inquiryService.findInquiries(
-                login(superAdmin), null, null, null, null, null, null, null, null);
+                login(superAdmin), null, null, null, null, null, null, null, null, null);
 
         assertThat(response.totalCount()).isEqualTo(2);
     }
@@ -446,7 +475,11 @@ class InquiryServiceTest {
 
     // 문의 등록 요청을 만드는 헬퍼입니다. 제목·내용·우선순위는 고정하고 담당자와 첨부만 바꿔 씁니다.
     private InquiryCreateRequest request(long assigneeId, List<MultipartFile> attachments) {
-        return InquiryCreateRequest.of(assigneeId, "연차 문의", "연차 사용 기준이 궁금합니다.", "normal", attachments);
+        return request(assigneeId, "연차 문의", attachments);
+    }
+
+    private InquiryCreateRequest request(long assigneeId, String title, List<MultipartFile> attachments) {
+        return InquiryCreateRequest.of(assigneeId, title, "연차 사용 기준이 궁금합니다.", "normal", attachments);
     }
 
     private Member approvedAdmin(Department department, String email, String name) {

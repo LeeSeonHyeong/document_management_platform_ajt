@@ -1723,6 +1723,7 @@ const publicFolders = [
         { key: "createdFrom", value: "2026-07-01", disabled: true },
         { key: "createdTo", value: "2026-07-31", disabled: true },
         { key: "sort", value: "createdAt,desc", disabled: true },
+        { key: "keyword", value: "연차", disabled: true },
       ],
       description: docs({
         summary: "사용자가 조회할 수 있는 문의 목록을 조회합니다.",
@@ -1734,6 +1735,7 @@ const publicFolders = [
           "`memberId`: 등록자 ID 필터",
           "`createdFrom`, `createdTo`: 등록 기간",
           "`sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`",
+          "`keyword`: 문의 제목 또는 요청자 이름 검색어. 대소문자 구분 없이 부분 일치합니다",
         ],
         policy: [
           "사원은 본인 문의만 조회합니다.",
