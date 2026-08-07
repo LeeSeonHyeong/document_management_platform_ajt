@@ -46,7 +46,7 @@ async def _vault(tmp_path):
 
 
 def _runtime(model):
-    # base_url 이 게이트웨이여야 압축 트리거가 34K 가 된다 (`compaction_trigger_for`).
+    # 트리거는 프로바이더 무관 34K 다 (`COMPACTION_TRIGGER`).
     return DeepAgentsRuntime(
         model="anthropic:claude-sonnet-4-6",
         credentials={"anthropic": ("test-key", "https://gms.example/anthropic")},
