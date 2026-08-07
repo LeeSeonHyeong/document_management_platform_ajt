@@ -34,7 +34,10 @@ services:
       AI_MODEL_QUALITY: "anthropic:claude-sonnet-4-6"
       SCHEDULE_EXTRACTOR_PROVIDER: "anthropic"
       SCHEDULE_EXTRACTOR_MODEL: "claude-haiku-4-5-20251001"
-      ANTHROPIC_BASE_URL: "https://gms.ssafy.io/gmsapi/api.anthropic.com"
+      # 비우면 SDK 기본 엔드포인트(api.anthropic.com, 직접 Claude)를 쓴다.
+      # GMS 게이트웨이를 쓰려면 해당 스택 env 파일에
+      # ANTHROPIC_BASE_URL=https://gms.ssafy.io/gmsapi/api.anthropic.com 를 지정한다.
+      ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}"
       # 스캔 PDF OCR 은 Google Gemini 비전으로 읽는다 — GMS 게이트웨이의 ~100KB 본문
       # 제한 때문에 실제 스캔 페이지가 anthropic 경로에선 거의 다 실패한다(settings.py).
