@@ -64,9 +64,10 @@ public class DocumentWikiTransformationTransactionService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public WikiTransformationApplier.PruneResult pruneFullyDependentWikis(
             long documentId,
-            String scopeKey
+            String scopeKey,
+            String originalFileName
     ) {
-        return applier.pruneFullyDependentWikis(scopeKey, documentId);
+        return applier.pruneFullyDependentWikis(scopeKey, documentId, originalFileName);
     }
 
     /**

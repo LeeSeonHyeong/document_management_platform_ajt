@@ -664,7 +664,7 @@ class WikiTransformationApplierTest {
                         + "복지는 [복지 제도](pages/205.md) 참고.");
 
         WikiTransformationApplier.PruneResult result =
-                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L);
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, "인사규정.pdf");
 
         // 위키 삭제 — 행·색인·파일이 모두 정리된다.
         assertThat(savedWikis).extracting(Wiki::id).containsExactly(102L);
@@ -691,9 +691,12 @@ class WikiTransformationApplierTest {
         existingCategory(10L, "인사");
         Wiki mixed = existingWiki(101L, 10L, "휴가 규정");
         mixed.addDocumentRefs(List.of(15L, 16L));
+        // 본문이 실제로 인용해야 "남는 참조"다 (S15P11B106-312) — 인용 없는 참조는 정리된다.
+        given(wikiFileStorage.readWikiMarkdown(mixed.wikiPath()))
+                .willReturn("연차는 15일이다[^1].\n\n[^1]: 인사규정.pdf, 3장 — \"연차 15일\"");
 
         WikiTransformationApplier.PruneResult result =
-                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L);
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, "인사규정.pdf");
 
         assertThat(savedWikis).extracting(Wiki::id).containsExactly(101L);
         assertThat(result.deletedWikiTitles()).isEmpty();
@@ -714,12 +717,83 @@ class WikiTransformationApplierTest {
         survivor.addDocumentRefs(List.of(16L));
         given(wikiFileStorage.readWikiMarkdown(survivor.wikiPath())).willReturn("링크 없는 본문");
 
-        applier.pruneFullyDependentWikis(SCOPE_KEY, 15L);
+        applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, "인사규정.pdf");
 
         ArgumentCaptor<String> index = ArgumentCaptor.forClass(String.class);
         then(wikiFileMutation).should().storeIndex(eq(SCOPE_KEY), index.capture());
         assertThat(index.getValue()).contains("신입사원 온보딩 가이드").doesNotContain("정보보안 기본 정책");
         assertThat(scope.scopeVersion()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("본문에 인용이 없는 근거 참조는 프리패스가 정리하고 남은 참조로 세지 않는다(S15P11B106-312)")
+    void detachesStaleRefsWithoutBodyCitations() throws Exception {
+        // 2026-08-07 실측(문서 44): refs 에는 있는데 본문 각주가 0건 → 에이전트가 옳게
+        // "걷어낼 것 없음"을 내도 S15P11B106-225 가드가 오탐 실패를 냈다.
+        existingCategory(10L, "인사");
+        Wiki stale = existingWiki(101L, 10L, "보상 체계");
+        stale.addDocumentRefs(List.of(15L, 16L));
+        given(wikiFileStorage.readWikiMarkdown(stale.wikiPath()))
+                .willReturn("본문은 다른 문서만 인용한다[^1].\n\n[^1]: 다른문서.pdf, 절 — \"내용\"");
+
+        WikiTransformationApplier.PruneResult result =
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, "인사규정.pdf");
+
+        assertThat(stale.documentRefs()).containsExactly(16L);
+        assertThat(result.remainingReferencingWikis()).isZero();
+        assertThat(result.detachedStaleRefWikis()).isEqualTo(1);
+        assertThat(result.deletedWikiTitles()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("본문이 인용하는 참조는 남은 참조로 남는다(S15P11B106-312)")
+    void keepsRefsBackedByBodyCitations() throws Exception {
+        existingCategory(10L, "인사");
+        Wiki citing = existingWiki(101L, 10L, "휴가 규정");
+        citing.addDocumentRefs(List.of(15L, 16L));
+        given(wikiFileStorage.readWikiMarkdown(citing.wikiPath()))
+                .willReturn("연차는 15일이다[^1].\n\n[^1]: 인사규정.pdf, 3장 — \"연차 15일\"");
+
+        WikiTransformationApplier.PruneResult result =
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, "인사규정.pdf");
+
+        assertThat(citing.documentRefs()).containsExactly(15L, 16L);
+        assertThat(result.remainingReferencingWikis()).isEqualTo(1);
+        assertThat(result.detachedStaleRefWikis()).isZero();
+    }
+
+    @Test
+    @DisplayName("NFD 파일명도 NFC 본문 인용과 같다고 판정한다(S15P11B106-312, 278 함정)")
+    void normalizesFilenamesBeforeCitationCheck() throws Exception {
+        existingCategory(10L, "인사");
+        Wiki citing = existingWiki(101L, 10L, "휴가 규정");
+        citing.addDocumentRefs(List.of(15L, 16L));
+        // 본문(에이전트 작성)은 NFC.
+        given(wikiFileStorage.readWikiMarkdown(citing.wikiPath()))
+                .willReturn("연차[^1].\n\n[^1]: 인사규정.pdf, 3장 — \"연차\"");
+        // macOS 업로드 파일명은 NFD 로 온다.
+        String nfdFileName = java.text.Normalizer.normalize("인사규정.pdf", java.text.Normalizer.Form.NFD);
+
+        WikiTransformationApplier.PruneResult result =
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, nfdFileName);
+
+        // NFC 정규화 없이는 인용을 못 찾아 stale 로 오판된다 — refs 가 남아야 한다.
+        assertThat(citing.documentRefs()).containsExactly(15L, 16L);
+        assertThat(result.remainingReferencingWikis()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("파일명을 모르면 참조를 정리하지 않는다 — 보수적으로 인용 있음 취급(S15P11B106-312)")
+    void keepsRefsWhenFilenameIsUnknown() throws Exception {
+        existingCategory(10L, "인사");
+        Wiki wiki = existingWiki(101L, 10L, "휴가 규정");
+        wiki.addDocumentRefs(List.of(15L, 16L));
+
+        WikiTransformationApplier.PruneResult result =
+                applier.pruneFullyDependentWikis(SCOPE_KEY, 15L, null);
+
+        assertThat(wiki.documentRefs()).containsExactly(15L, 16L);
+        assertThat(result.remainingReferencingWikis()).isEqualTo(1);
     }
 
     private Wiki existingWiki(long id, long categoryId, String title) throws ReflectiveOperationException {

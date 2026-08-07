@@ -446,8 +446,8 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
 
-        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0, 1));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -484,8 +484,8 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
 
-        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0, 1));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -511,8 +511,8 @@ class DocumentParseWorkerTest {
                 anyLong(), anyLong(), anyString(), any(), any(), anyString()))
                 .willThrow(timeout());
 
-        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0, 1));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -541,8 +541,8 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(101L), "걷어내기 완료"));
 
-        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0, 1));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -570,8 +570,8 @@ class DocumentParseWorkerTest {
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
                 .willReturn(new WikiTransformationResult(List.of(), "걷어낼 내용을 찾지 못했습니다", 2));
 
-        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 1));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0, 1));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -594,8 +594,8 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
-        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0));
+        given(transactionService.pruneFullyDependentWikis(anyLong(), anyString(), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of(), 0, 0, 0));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 취업규칙\n본문"));
 
@@ -616,9 +616,9 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
-        given(transactionService.pruneFullyDependentWikis(15L, "ALL"))
+        given(transactionService.pruneFullyDependentWikis(eq(15L), eq("ALL"), any()))
                 .willReturn(new WikiTransformationApplier.PruneResult(
-                        List.of("AJT 정보보안 기본 정책"), 1, 0));
+                        List.of("AJT 정보보안 기본 정책"), 1, 0, 0));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 정책\n본문"));
 
@@ -641,8 +641,8 @@ class DocumentParseWorkerTest {
         given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
-        given(transactionService.pruneFullyDependentWikis(15L, "ALL"))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of("정보보안 정책"), 0, 1));
+        given(transactionService.pruneFullyDependentWikis(eq(15L), eq("ALL"), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(List.of("정보보안 정책"), 0, 0, 1));
         given(wikiTransformationService.requestForDocumentChange(
                 anyLong(), anyLong(), anyString(), any(), any(), anyString()))
                 .willReturn(transformationResponse("남은 인용을 걷어냈습니다"));
