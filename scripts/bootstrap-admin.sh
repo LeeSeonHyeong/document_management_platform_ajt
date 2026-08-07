@@ -74,7 +74,9 @@ if [[ "$existing_count" != "0" ]]; then
   exit 3
 fi
 
-admin_password="$(openssl rand -hex 16)"
+# 초기 비밀번호는 15자 영숫자(대소문자+숫자, 약 89비트)로 만든다. 백엔드 정책(8~100자) 안에 든다.
+# pipefail 환경이라 파이프를 일찍 닫는 head -c 대신, 입력을 끝까지 읽는 cut 으로 15자를 취한다.
+admin_password="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | cut -c1-15)"
 password_hash="$(htpasswd -bnBC 12 "" "$admin_password" | cut -d: -f2 | tr -d '\n')"
 [[ -n "$password_hash" ]] || die_config "failed to generate BCrypt password hash"
 
