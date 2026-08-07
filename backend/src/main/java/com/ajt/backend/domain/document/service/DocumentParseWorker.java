@@ -206,7 +206,7 @@ public class DocumentParseWorker {
             // 결정적 프리패스: 근거가 이 문서뿐인 Wiki 는 판단이 필요 없으므로 AI 전에 지운다.
             // 링크받는 페이지의 삭제를 에이전트에게 맡기면 지시 규칙이 충돌해 같은 read 를
             // 반복하다 호출 상한에서 죽는 데드락이 있었다 (2026-08-07 LangSmith 실측).
-            var prune = transactionService.pruneFullyDependentWikis(documentId, scopeKey);
+            var prune = transactionService.pruneFullyDependentWikis(documentId, scopeKey, fileName);
             if (prune.remainingReferencingWikis() == 0) {
                 // 걷어낼 것이 남지 않았다 — AI 를 부르지 않고 끝낸다 (LLM 비용 0).
                 finishDeletion(documentId);
@@ -268,6 +268,11 @@ public class DocumentParseWorker {
      */
     private static String pruneSummary(WikiTransformationApplier.PruneResult prune) {
         if (prune.deletedWikiTitles().isEmpty()) {
+            if (prune.detachedStaleRefWikis() > 0) {
+                return "이 문서를 본문에서 인용하는 위키가 없어 위키 "
+                        + prune.detachedStaleRefWikis()
+                        + "건의 근거 기록만 정리하고 문서를 삭제했습니다.";
+            }
             return "이 문서를 근거로 삼는 위키가 없어 위키 변경 없이 문서를 삭제했습니다.";
         }
         StringBuilder summary = new StringBuilder()
@@ -280,6 +285,11 @@ public class DocumentParseWorker {
             summary.append(" 삭제된 페이지로 향하는 링크가 있던 위키 ")
                     .append(prune.flattenedLinkPages())
                     .append("건에서 링크 표기를 정리했습니다(내용은 유지).");
+        }
+        if (prune.detachedStaleRefWikis() > 0) {
+            summary.append(" 근거 기록만 있고 본문 인용이 없던 위키 ")
+                    .append(prune.detachedStaleRefWikis())
+                    .append("건의 참조를 정리했습니다.");
         }
         return summary.toString();
     }
