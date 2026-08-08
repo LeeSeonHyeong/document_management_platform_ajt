@@ -1,4 +1,4 @@
-"""동일 도구 호출 반복 가드 — 퇴행 루프를 3회에서 끊는다 (S15P11B106-311).
+"""동일 도구 호출 반복 가드 — 3회부터 경고, 6회부터 잡 중단 (S15P11B106-311·322).
 
 2026-08-07 삭제 데드락에서 모델이 같은 페이지 전문 `read` 를 53연속 반복하다 턴 상한에서
 죽고 토큰 339만 개를 태웠다. 반복의 구조는 자기강화다: 동일 호출이 동일 본문을 컨텍스트에
@@ -36,11 +36,34 @@ from typing import Any
 # 3회째부터는 새 정보가 없다는 사실 자체가 에이전트에게 가장 유용한 정보다.
 REPEAT_THRESHOLD = 3
 
+# 몇 번째부터 잡을 끊나 (S15P11B106-325). 잡 61 실측: 경고 21회를 무시하고 40턴을
+# 태웠다 — 퇴행 루프(빈 텍스트 + 동일 툴콜 자기복제)는 경고문으로 못 멈춘다. 이력에
+# 동일 (호출→결과) 쌍이 쌓일수록 다음 턴도 그 패턴을 복제할 확률이 오르므로, 경고
+# 3회를 무시했으면 회복 가능성이 없다고 보고 끊는다. 오탐 여지: 실측 전수(성공 14잡)에서
+# 최장 연속 동일 호출이 **1회** — 정상 작업은 이 근처에도 안 온다. 결과가 달라지면
+# 스트릭이 리셋되므로 수정 후 재읽기 같은 정당한 재호출도 안전하다.
+ABORT_THRESHOLD = 6
+
 _WARNING = (
     "⚠️ **같은 호출을 같은 결과로 {count}번 연속 반복하고 있다.** 이 호출은 몇 번을 "
     "다시 불러도 같은 것을 돌려준다 — 새 정보는 없다. 이미 받은 내용으로 판단해서 "
     "다음 행동(`edit`·`create`·`delete`·`lint`, 또는 작업 종료 보고)으로 넘어간다."
 )
+
+
+class RepeatLoopError(RuntimeError):
+    """에이전트가 경고를 무시하고 동일 호출을 계속 반복해 잡을 중단한다.
+
+    도구 래퍼 밖으로 던져져 실행을 끝내는 것이 의도다 — 관리자 문구 번역은
+    `agent_runtime.deep_agents._admin_error_message` 가 한다.
+    """
+
+    def __init__(self, name: str, count: int) -> None:
+        super().__init__(
+            f"에이전트가 같은 작업을 반복해 중단했다 (`{name}` 동일 호출 {count}회 연속, "
+            f"경고 {count - REPEAT_THRESHOLD + 1}회 무시)")
+        self.tool_name = name
+        self.count = count
 
 def _fingerprint(name: str, arguments: dict[str, Any], result: Any) -> tuple[str, str, str]:
     args_key = json.dumps(arguments or {}, sort_keys=True, ensure_ascii=False, default=str)
@@ -61,13 +84,18 @@ class RepeatCallGuard:
         self._streak = 0
 
     def note(self, name: str, arguments: dict[str, Any], result: Any) -> str | None:
-        """호출 결과를 기록하고, 문턱을 넘었으면 결과 대신 쓸 경고문을 돌려준다."""
+        """호출 결과를 기록하고, 문턱을 넘었으면 결과 대신 쓸 경고문을 돌려준다.
+
+        `ABORT_THRESHOLD` 회째부터는 경고 대신 `RepeatLoopError` 를 던져 잡을 끝낸다.
+        """
         fingerprint = _fingerprint(name, arguments, result)
         if fingerprint == self._last_call:
             self._streak += 1
         else:
             self._last_call = fingerprint
             self._streak = 1
+        if self._streak >= ABORT_THRESHOLD:
+            raise RepeatLoopError(name, self._streak)
         if self._streak < REPEAT_THRESHOLD:
             return None
         return _WARNING.format(count=self._streak)
