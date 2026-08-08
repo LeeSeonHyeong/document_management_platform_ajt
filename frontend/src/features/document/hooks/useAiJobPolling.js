@@ -7,6 +7,21 @@ import { fetchAiJob, cancelAiJob } from '../api'
 const POLL_INTERVAL_MS = 2000
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
+// 전역 쿼리 기본값은 탭 복귀 갱신이 꺼져 있다. 진행 모달은 백그라운드에서도
+// 종료 상태를 받아야 하므로 단건·다중 작업이 같은 실시간 정책을 쓴다.
+export function createAiJobPollingQuery(jobId) {
+  return {
+    queryKey: qk.aiJobs.detail(jobId),
+    queryFn: () => fetchAiJob(jobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status && TERMINAL_STATUSES.has(status) ? false : POLL_INTERVAL_MS
+    },
+    // 단건·다중 진행 화면 모두 탭을 떠나 있어도 최신 종료 상태를 받는다.
+    ...LIVE_QUERY_OPTIONS,
+  }
+}
+
 // 폴링하던 작업이 끝나는 순간 문서·위키 캐시를 걷어낸다.
 // 이게 없으면 「갱신된 위키 보기」로 넘어간 화면이 편집 전 위키를 그대로 보여준다 —
 // 위키 화면은 작업을 지켜보지 않으므로 스스로 다시 읽을 계기가 없다.
@@ -24,15 +39,8 @@ export function useAiJobPolling(jobId) {
   const queryClient = useQueryClient()
 
   const query = useQuery({
-    queryKey: qk.aiJobs.detail(jobId),
-    queryFn: () => fetchAiJob(jobId),
+    ...createAiJobPollingQuery(jobId),
     enabled: Boolean(jobId),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status && TERMINAL_STATUSES.has(status) ? false : POLL_INTERVAL_MS
-    },
-    // 탭을 떠나 있어도 계속 읽고, 돌아오면 즉시 맞춘다(queries.js 의 주석 참고).
-    ...LIVE_QUERY_OPTIONS,
   })
 
   const cancelMutation = useMutation({
@@ -76,14 +84,7 @@ export function useAiJobsPolling(jobIds) {
   const ids = jobIds ?? []
 
   const results = useQueries({
-    queries: ids.map((jobId) => ({
-      queryKey: qk.aiJobs.detail(jobId),
-      queryFn: () => fetchAiJob(jobId),
-      refetchInterval: (query) => {
-        const status = query.state.data?.status
-        return status && TERMINAL_STATUSES.has(status) ? false : POLL_INTERVAL_MS
-      },
-    })),
+    queries: ids.map(createAiJobPollingQuery),
   })
 
   const jobs = results.map((result) => result.data).filter(Boolean)
@@ -107,5 +108,5 @@ export function useAiJobsPolling(jobIds) {
     { total: 0, completed: 0, failed: 0, cancelled: 0, processing: 0 },
   )
 
-  return { isFinished, documentResults, progress }
+  return { jobs, isFinished, documentResults, progress }
 }

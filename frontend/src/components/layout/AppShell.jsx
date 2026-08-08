@@ -6,6 +6,7 @@ import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import ChatAssistant from '@/features/chat/components/ChatAssistant'
 import AiJobQueueProvider from '@/features/document/AiJobQueueProvider'
+import AiJobCompletionNotifier from '@/features/document/AiJobCompletionNotifier'
 
 // 로그인 이후 공통 셸: 좌측 사이드바 + 상단바 + 메인 콘텐츠.
 // 페이지별 플로팅 버튼(Fab)은 각 페이지가 직접 렌더한다(고정 위치).
@@ -36,6 +37,7 @@ export default function AppShell() {
   // (S15P11B106-230). 로그인 사용자에게만 필요하고 로그아웃하면 셸과 함께 사라진다.
   return (
     <AiJobQueueProvider>
+      <AiJobCompletionNotifier />
       <div className="flex h-screen overflow-hidden bg-[#eef4ff]">
         <Sidebar
           role={role}
