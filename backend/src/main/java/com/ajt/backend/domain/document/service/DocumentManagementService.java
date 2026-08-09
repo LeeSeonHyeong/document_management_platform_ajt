@@ -620,9 +620,6 @@ public class DocumentManagementService {
         String scopeKey = document.scopeKey();
         String originalPath = document.originalPath();
         String parsedPath = document.parsedPath();
-        // 같은 공간의 Wiki를 동시에 고치지 않도록 처리 중 문서가 있으면 충돌로 막는다.
-        ensureScopeNotProcessing(scopeKey);
-
         String removedParsedMarkdown = readParsedMarkdownQuietly(document);
 
         // 수정(S15P11B106-195): 걷어낼 것이 있으면 여기서 지우지 않는다. DELETING 으로 표시만 하고

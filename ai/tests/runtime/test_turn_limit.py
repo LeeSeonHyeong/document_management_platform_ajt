@@ -74,10 +74,14 @@ from agent_runtime.deep_agents import DeepAgentsRuntime  # noqa: E402
 
 
 class NeverStopsModel(BaseChatModel):
-    """항상 `guide` 를 다시 부르는 모델. 스스로는 절대 끝내지 않는다.
+    """두 호출을 교대로 도는 모델. 스스로는 절대 끝내지 않는다.
 
     2026-08-06 실패의 모양이다 — 도구만 부르고 텍스트를 한 자도 내지 않았다(AI 메시지
     40개가 전부 순수 도구 호출). 그때 상한이 무엇을 하는지가 이 테스트의 대상이다.
+    호출을 턴마다 바꾸는 이유(S15P11B106-325): 동일 호출 반복은 이제 반복 가드
+    에스컬레이션이 6회에서 먼저 끊는다 — 턴 상한은 가드가 못 잡는 폭주(호출이 매번
+    미묘하게 다른 유형, `repeat_guard` docstring 의 「의도된 한계」)의 마지막 방어선이고,
+    이 테스트가 재현하는 것이 그 유형이다.
     """
 
     calls: int = 0
@@ -93,9 +97,12 @@ class NeverStopsModel(BaseChatModel):
                   run_manager: CallbackManagerForLLMRun | None = None,
                   **kwargs) -> ChatResult:
         self.calls += 1
+        # guide 와 list_scopes 를 교대로 — 연속 동일 호출이 아니어서 반복 가드의
+        # 스트릭이 매번 리셋되고, 오직 턴 상한만이 이 폭주를 멈출 수 있다.
+        name = "guide" if self.calls % 2 else "list_scopes"
         message = AIMessage(
             content="",
-            tool_calls=[{"name": "guide", "args": {}, "id": f"call_{self.calls}"}],
+            tool_calls=[{"name": name, "args": {}, "id": f"call_{self.calls}"}],
         )
         return ChatResult(generations=[ChatGeneration(message=message)])
 

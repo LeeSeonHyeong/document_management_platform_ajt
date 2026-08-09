@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "AJT Backend Public API",
-    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.15.2이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
+    "description": "Frontend → Spring Boot 공개 API입니다. 개발 계약 v1.15.3이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -47,7 +47,7 @@
     },
     {
       "key": "contractVersion",
-      "value": "1.15.2",
+      "value": "1.15.3",
       "type": "string"
     },
     {
@@ -5092,11 +5092,16 @@
                   "key": "sort",
                   "value": "createdAt,desc",
                   "disabled": true
+                },
+                {
+                  "key": "keyword",
+                  "value": "연차",
+                  "disabled": true
                 }
               ],
               "variable": []
             },
-            "description": "사용자가 조회할 수 있는 문의 목록을 조회합니다.\n내 문의와 관리자 문의 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `status`: 답변 대기 또는 답변 완료\n- `priority`: high, normal 또는 low\n- `memberId`: 등록자 ID 필터\n- `createdFrom`, `createdTo`: 등록 기간\n- `sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`\n\n### Request Body\n없음\n\n### 정책\n- 사원은 본인 문의만 조회합니다.\n- 관리자는 본인이 담당자로 지정된 문의만 조회합니다.\n\n### Response\n- `items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+            "description": "사용자가 조회할 수 있는 문의 목록을 조회합니다.\n내 문의와 관리자 문의 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `status`: 답변 대기 또는 답변 완료\n- `priority`: high, normal 또는 low\n- `memberId`: 등록자 ID 필터\n- `createdFrom`, `createdTo`: 등록 기간\n- `sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`\n- `keyword`: 문의 제목 또는 요청자 이름 검색어. 대소문자 구분 없이 부분 일치합니다\n\n### Request Body\n없음\n\n### 정책\n- 사원은 본인 문의만 조회합니다.\n- 관리자는 본인이 담당자로 지정된 문의만 조회합니다.\n\n### Response\n- `items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
           },
           "response": [
             {
@@ -5154,11 +5159,16 @@
                       "key": "sort",
                       "value": "createdAt,desc",
                       "disabled": true
+                    },
+                    {
+                      "key": "keyword",
+                      "value": "연차",
+                      "disabled": true
                     }
                   ],
                   "variable": []
                 },
-                "description": "사용자가 조회할 수 있는 문의 목록을 조회합니다.\n내 문의와 관리자 문의 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `status`: 답변 대기 또는 답변 완료\n- `priority`: high, normal 또는 low\n- `memberId`: 등록자 ID 필터\n- `createdFrom`, `createdTo`: 등록 기간\n- `sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`\n\n### Request Body\n없음\n\n### 정책\n- 사원은 본인 문의만 조회합니다.\n- 관리자는 본인이 담당자로 지정된 문의만 조회합니다.\n\n### Response\n- `items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "사용자가 조회할 수 있는 문의 목록을 조회합니다.\n내 문의와 관리자 문의 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `status`: 답변 대기 또는 답변 완료\n- `priority`: high, normal 또는 low\n- `memberId`: 등록자 ID 필터\n- `createdFrom`, `createdTo`: 등록 기간\n- `sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`\n- `keyword`: 문의 제목 또는 요청자 이름 검색어. 대소문자 구분 없이 부분 일치합니다\n\n### Request Body\n없음\n\n### 정책\n- 사원은 본인 문의만 조회합니다.\n- 관리자는 본인이 담당자로 지정된 문의만 조회합니다.\n\n### Response\n- `items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "OK",
               "code": 200,
@@ -5231,11 +5241,16 @@
                       "key": "sort",
                       "value": "createdAt,desc",
                       "disabled": true
+                    },
+                    {
+                      "key": "keyword",
+                      "value": "연차",
+                      "disabled": true
                     }
                   ],
                   "variable": []
                 },
-                "description": "사용자가 조회할 수 있는 문의 목록을 조회합니다.\n내 문의와 관리자 문의 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `status`: 답변 대기 또는 답변 완료\n- `priority`: high, normal 또는 low\n- `memberId`: 등록자 ID 필터\n- `createdFrom`, `createdTo`: 등록 기간\n- `sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`\n\n### Request Body\n없음\n\n### 정책\n- 사원은 본인 문의만 조회합니다.\n- 관리자는 본인이 담당자로 지정된 문의만 조회합니다.\n\n### Response\n- `items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
+                "description": "사용자가 조회할 수 있는 문의 목록을 조회합니다.\n내 문의와 관리자 문의 관리 화면에서 사용합니다.\n\n### Authorization\n- HttpOnly 인증 쿠키 필요\n\n### Path Params\n없음\n\n### Query Params\n- `page`, `size`: 페이지네이션\n- `status`: 답변 대기 또는 답변 완료\n- `priority`: high, normal 또는 low\n- `memberId`: 등록자 ID 필터\n- `createdFrom`, `createdTo`: 등록 기간\n- `sort`: 정렬 필드와 방향. 기본값 `createdAt,desc`\n- `keyword`: 문의 제목 또는 요청자 이름 검색어. 대소문자 구분 없이 부분 일치합니다\n\n### Request Body\n없음\n\n### 정책\n- 사원은 본인 문의만 조회합니다.\n- 관리자는 본인이 담당자로 지정된 문의만 조회합니다.\n\n### Response\n- `items`: 문의 ID, 제목, 작성자 이름·부서, 담당자 이름·부서, 우선순위, 상태와 생성 시각\n- 페이지 정보\n\n### Error\n- `400 Bad Request`: 필터 또는 페이지값 오류\n- `401 Unauthorized`: 인증 쿠키가 없거나 유효하지 않음"
               },
               "status": "Bad Request",
               "code": 400,

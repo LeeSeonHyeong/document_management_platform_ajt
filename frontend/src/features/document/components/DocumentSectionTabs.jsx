@@ -23,7 +23,7 @@ export default function DocumentSectionTabs() {
     status: DOCUMENT_STATUS.COMPLETED,
   })
   // 목록은 삭제·교체가 실패한 문서도 되살려 보여준다 — 위키 근거로는 남아 있기 때문이다
-  // (S15P11B106-306). 탭도 같은 기준으로 세야 한다.
+  // (S15P11B106-306). 탭도 같은 기준으로 세야 한다(S15P11B106-317).
   const { data: failedData } = useDocuments({
     page: 1,
     size: 100,
