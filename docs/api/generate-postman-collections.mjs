@@ -3,7 +3,8 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSavedExamples,
-  contractVersion,
+  internalContractVersion,
+  publicContractVersion,
 } from "./postman-contract-examples.mjs";
 
 const outputDir = dirname(fileURLToPath(import.meta.url));
@@ -2896,14 +2897,14 @@ const publicCollection = {
   info: {
     name: "AJT Backend Public API",
     description:
-      `Frontend → Spring Boot 공개 API입니다. 개발 계약 v${contractVersion}이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.`,
+      `Frontend → Spring Boot 공개 API입니다. 개발 계약 v${publicContractVersion}이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.`,
     schema: collectionSchema,
   },
   auth: cookieAuth,
   event: publicCollectionEvent,
   variable: [
     { key: "backendBaseUrl", value: "http://localhost:8080", type: "string" },
-    { key: "contractVersion", value: contractVersion, type: "string" },
+    { key: "contractVersion", value: publicContractVersion, type: "string" },
     { key: "userId", value: "1", type: "string" },
     { key: "departmentId", value: "1", type: "string" },
     { key: "categoryId", value: "1", type: "string" },
@@ -2928,13 +2929,13 @@ const internalCollection = {
   info: {
     name: "AJT FastAPI Internal API",
     description:
-      `Spring Boot → FastAPI 내부 API입니다. 개발 계약 v${contractVersion}이며 Frontend는 직접 호출하지 않습니다.`,
+      `Spring Boot → FastAPI 내부 API입니다. 개발 계약 v${internalContractVersion}이며 Frontend는 직접 호출하지 않습니다.`,
     schema: collectionSchema,
   },
   auth: internalApiKeyAuth,
   variable: [
     { key: "aiBaseUrl", value: "http://localhost:8000", type: "string" },
-    { key: "contractVersion", value: contractVersion, type: "string" },
+    { key: "contractVersion", value: internalContractVersion, type: "string" },
     { key: "internalApiKey", value: "local-dev-key", type: "string" },
     { key: "jobId", value: "1", type: "string" },
     { key: "documentId", value: "1", type: "string" },
