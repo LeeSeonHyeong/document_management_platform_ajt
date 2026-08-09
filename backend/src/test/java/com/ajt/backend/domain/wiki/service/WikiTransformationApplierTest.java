@@ -680,7 +680,8 @@ class WikiTransformationApplierTest {
                 .contains("[복지 제도](pages/205.md)")
                 .doesNotContain("pages/101.md");
         then(wikiSearchIndexer).should().replace(eq(survivor), anyString());
-        assertThat(result.deletedWikiTitles()).containsExactly("AJT 정보보안 기본 정책");
+        assertThat(result.deletedWikis()).containsExactly(
+                new WikiTransformationApplier.PrunedWiki(101L, "AJT 정보보안 기본 정책"));
         assertThat(result.flattenedLinkPages()).isEqualTo(1);
         assertThat(result.remainingReferencingWikis()).isZero();
     }

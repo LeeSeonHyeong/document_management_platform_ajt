@@ -1,4 +1,5 @@
-export const contractVersion = "1.15.3";
+export const publicContractVersion = "1.15.5";
+export const internalContractVersion = "1.15.3";
 
 const timestamp = "2026-07-27T09:00:00Z";
 const requestId = "01KABCDEF123456789";
@@ -306,12 +307,20 @@ const contracts = {
             {
               documentId: "15",
               originalFileName: "문서-15.pdf",
+              changeType: "document_added",
               order: 1,
               status: "completed",
               currentStage: "wiki_applied",
               summary: "2024 인사규정 문서에서 연차 산정 기준과 경조사 휴가 항목을 추출해 「2024 인사규정 안내」 Wiki를 새로 만들었습니다.",
               failureReason: null,
               failureStage: null,
+              affectedWikis: [
+                {
+                  wikiId: "101",
+                  title: "2024 인사규정 안내",
+                  deleted: false,
+                },
+              ],
             },
           ],
           createdAt: timestamp,
@@ -326,12 +335,14 @@ const contracts = {
             {
               documentId: "16",
               originalFileName: "문서-16.pdf",
+              changeType: "document_removed",
               order: 1,
               status: "failed",
               currentStage: "parsing",
               summary: null,
               failureReason: "스캔된 PDF에서 텍스트를 읽지 못했습니다.",
               failureStage: "context_load",
+              affectedWikis: [],
             },
           ],
           createdAt: "2026-07-25T09:00:00Z",
@@ -357,22 +368,37 @@ const contracts = {
           {
             documentId: "15",
             originalFileName: "문서-15.pdf",
+            changeType: "document_removed",
             order: 1,
             status: "completed",
             currentStage: "wiki_applied",
             summary: "휴가 규정을 Wiki에 반영했습니다.",
             failureReason: null,
             failureStage: null,
+            affectedWikis: [
+              {
+                wikiId: "101",
+                title: "폐지된 연차 규정",
+                deleted: true,
+              },
+              {
+                wikiId: "102",
+                title: "휴가 규정",
+                deleted: false,
+              },
+            ],
           },
           {
             documentId: "16",
             originalFileName: "문서-16.pdf",
+            changeType: "document_added",
             order: 2,
             status: "processing",
             currentStage: "parsing",
             summary: null,
             failureReason: null,
             failureStage: null,
+            affectedWikis: [],
           },
         ],
         createdAt: timestamp,

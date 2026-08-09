@@ -49,22 +49,26 @@ class AiJobControllerTest {
                         new AiJobResponse.DocumentResultResponse(
                                 "15",
                                 "문서-15.pdf",
+                                "document_added",
                                 1,
                                 "processing",
                                 "wiki_pending",
                                 null,
                                 null,
-                                null
+                                null,
+                                List.of()
                         ),
                         new AiJobResponse.DocumentResultResponse(
                                 "16",
                                 "문서-16.pdf",
+                                "document_added",
                                 2,
                                 "failed",
                                 "parsing",
                                 null,
                                 "FastAPI timeout",
-                                "agent_timeout"
+                                "agent_timeout",
+                                List.of()
                         )
                 ),
                 Instant.parse("2026-07-28T15:00:00Z"),
@@ -78,11 +82,13 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.jobId").value("42"))
                 .andExpect(jsonPath("$.status").value("processing"))
                 .andExpect(jsonPath("$.documentResults[0].documentId").value("15"))
+                .andExpect(jsonPath("$.documentResults[0].changeType").value("document_added"))
                 .andExpect(jsonPath("$.documentResults[0].order").value(1))
                 .andExpect(jsonPath("$.documentResults[0].status").value("processing"))
                 .andExpect(jsonPath("$.documentResults[0].currentStage").value("wiki_pending"))
                 .andExpect(jsonPath("$.documentResults[0].summary").doesNotExist())
                 .andExpect(jsonPath("$.documentResults[0].failureReason").doesNotExist())
+                .andExpect(jsonPath("$.documentResults[0].affectedWikis", empty()))
                 .andExpect(jsonPath("$.documentResults[1].documentId").value("16"))
                 .andExpect(jsonPath("$.documentResults[1].status").value("failed"))
                 .andExpect(jsonPath("$.documentResults[1].currentStage").value("parsing"))
@@ -90,6 +96,7 @@ class AiJobControllerTest {
                 // currentStage 는 문서 상태에서 역산한 값이라 실패 지점이 아니다.
                 // 어디서 실패했는지는 failureStage 만 안다.
                 .andExpect(jsonPath("$.documentResults[1].failureStage").value("agent_timeout"))
+                .andExpect(jsonPath("$.documentResults[1].affectedWikis", empty()))
                 .andExpect(jsonPath("$.createdAt").value("2026-07-28T15:00:00Z"))
                 .andExpect(jsonPath("$.startedAt").value("2026-07-28T15:00:02Z"))
                 .andExpect(jsonPath("$.finishedAt").doesNotExist())
@@ -106,12 +113,14 @@ class AiJobControllerTest {
                         List.of(new AiJobResponse.DocumentResultResponse(
                                 "15",
                                 "문서-15.pdf",
+                                "document_removed",
                                 1,
                                 "completed",
                                 "wiki_applied",
                                 "인사규정을 Wiki에 반영했습니다.",
                                 null,
-                                null
+                                null,
+                                List.of(new AiJobResponse.AffectedWikiResponse("101", "휴가 규정", true))
                         )),
                         Instant.parse("2026-07-26T15:24:00Z"),
                         Instant.parse("2026-07-26T15:24:01Z"),
@@ -130,6 +139,10 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.items[0].status").value("completed"))
                 .andExpect(jsonPath("$.items[0].documentResults[0].summary")
                         .value("인사규정을 Wiki에 반영했습니다."))
+                .andExpect(jsonPath("$.items[0].documentResults[0].changeType").value("document_removed"))
+                .andExpect(jsonPath("$.items[0].documentResults[0].affectedWikis[0].wikiId").value("101"))
+                .andExpect(jsonPath("$.items[0].documentResults[0].affectedWikis[0].title").value("휴가 규정"))
+                .andExpect(jsonPath("$.items[0].documentResults[0].affectedWikis[0].deleted").value(true))
                 // 소요 시간은 프론트가 이 둘의 차로 계산한다.
                 .andExpect(jsonPath("$.items[0].startedAt").value("2026-07-26T15:24:01Z"))
                 .andExpect(jsonPath("$.items[0].finishedAt").value("2026-07-26T15:26:15Z"))

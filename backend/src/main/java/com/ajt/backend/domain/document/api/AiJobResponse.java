@@ -30,12 +30,21 @@ public record AiJobResponse(
     public record DocumentResultResponse(
             String documentId,
             String originalFileName,
+            String changeType,
             int order,
             String status,
             String currentStage,
             String summary,
             String failureReason,
-            String failureStage
+            String failureStage,
+            List<AffectedWikiResponse> affectedWikis
+    ) {
+    }
+
+    public record AffectedWikiResponse(
+            String wikiId,
+            String title,
+            boolean deleted
     ) {
     }
 }
