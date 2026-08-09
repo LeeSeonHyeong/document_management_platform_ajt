@@ -191,3 +191,92 @@ def test_도구를_한_번도_못_부른_상한은_상한이_아니다(monkeypat
 
     assert response.status_code == 500
     assert response.json()["code"] == "MODEL_CALL_FAILED"
+
+
+def test_읽었는데_신고만_비면_읽은_것이_출처가_된다(monkeypatch):
+    """모델이 본문을 읽고 그 내용으로 답했는데 `usedWikiIds` 만 빠뜨린 경우.
+
+    실측(2026-08-09)에서 「브랜드 색상 코드가 뭐야?」·「연차가 며칠이야?」가 정확한 답을
+    내고도 출처 0건으로 저장됐다. 답을 못 한 것(FR-QNA-007)과 달리 **답은 했는데 근거만
+    사라진 것**이라 사용자에게는 출처 없는 답으로 보인다.
+
+    `build_response` 의 주석은 「출처를 0개로 만드는 것보다 과다 포함이 낫다」인데 폴백
+    조건이 `if report:` 였다 — 신고 자체가 오면 ID 가 비어도 폴백이 걸리지 않았다.
+    """
+    runtime = ScriptedAgentRuntime(
+        READ_BOTH,
+        report={"answer": "연차는 20일이고 다음 워크샵은 8월 12일입니다.",
+                "usedWikiIds": [], "usedScheduleIds": [], "questionType": "mixed"})
+
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 200
+    sources = response.json()["sources"]
+    assert [s["wikiId"] for s in sources if s["type"] == "wiki"] == ["101"]
+    assert [s["scheduleId"] for s in sources if s["type"] == "schedule"] == ["31"]
+
+
+def test_검색만_했으면_신고가_비어도_출처가_없다(monkeypatch):
+    """폴백이 없는 근거까지 만들어 내면 안 된다 — 읽은 기록이 없으면 그대로 비운다."""
+    runtime = ScriptedAgentRuntime(
+        [("search_wiki", {"scopeKey": "ALL", "query": "연차"})],
+        report={"answer": "위키에서 찾지 못했습니다.", "usedWikiIds": [],
+                "usedScheduleIds": [], "questionType": "wiki"})
+
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 200
+    assert response.json()["sources"] == []
+
+
+def test_목차의_파일이름_링크는_지침에_실리지_않는다():
+    """모델이 파일 이름을 wikiId 자리에 넣지 못하게 링크를 걷어낸다.
+
+    2026-08-09 실측: 「재택근무 며칠까지?」에서 모델이 목차 링크를 보고
+    `read_wiki(wikiId='2f8c41d7ab90')` 로 나갔다. Spring 이 400 을 냈고, 읽은 기록이
+    비어 정확한 답에 출처가 하나도 붙지 않았다. 제목과 요약은 남아야 한다.
+    """
+    from datetime import date
+
+    from wiki_api.answer_guide import chat_guide
+
+    index = ("# 목차\n"
+             "- [연차유급휴가 규정](pages/67910e3f5c0c.md) — 연차 부여·사용 기준\n"
+             "- [정보보안 지침](pages/a67336b0c716.md) — 계정·비밀번호 관리\n")
+    guide = chat_guide([], [{"scopeKey": "ALL", "indexMarkdown": index}],
+                       today=date(2026, 8, 9))
+
+    assert "pages/67910e3f5c0c.md" not in guide
+    assert "pages/a67336b0c716.md" not in guide
+    assert "연차유급휴가 규정" in guide          # 제목은 남는다
+    assert "연차 부여·사용 기준" in guide        # 요약도 남는다
+
+
+def test_검색만_하고_신고하면_출처가_붙는다(monkeypatch):
+    """`read_wiki` 를 건너뛰고 검색 결과로 답해도 근거는 남는다.
+
+    2026-08-09 실측: 「재택근무 며칠까지?」가 `search_wiki` 만 부르고 정확히 답했는데
+    출처가 0건이었다. 스니펫은 그 위키의 실제 본문 조각이라 근거로 인정한다.
+    """
+    runtime = ScriptedAgentRuntime(
+        [("search_wiki", {"scopeKey": "ALL", "query": "연차"})],
+        report={"answer": "연차는 20일입니다.", "usedWikiIds": ["101"],
+                "usedScheduleIds": [], "questionType": "wiki"})
+
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 200
+    assert [s["wikiId"] for s in response.json()["sources"]] == ["101"]
+
+
+def test_어떤_도구도_꺼내지_않은_것을_신고하면_버린다(monkeypatch):
+    """지어내기 방지는 그대로다 — 검색에도 안 걸린 ID 는 출처가 되지 못한다."""
+    runtime = ScriptedAgentRuntime(
+        [("search_wiki", {"scopeKey": "ALL", "query": "연차"})],
+        report={"answer": "어딘가에 그렇게 적혀 있습니다.", "usedWikiIds": ["999"],
+                "usedScheduleIds": [], "questionType": "wiki"})
+
+    response = _post(monkeypatch, runtime)
+
+    assert response.status_code == 200
+    assert response.json()["sources"] == []
