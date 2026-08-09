@@ -6,7 +6,12 @@ import { useAiJobs, useRetryDocument } from '../queries'
 import { useDocumentDetails } from '../hooks/useDocumentDetails'
 import DocumentSectionTabs from '../components/DocumentSectionTabs'
 import AiJobDocumentSummaryModal from '../components/AiJobDocumentSummaryModal'
+import AffectedWikiDisplay from '../components/AffectedWikiDisplay'
 import { DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../status'
+import {
+  affectedWikisFor,
+  documentAction,
+} from '../aiJobResultPresentation'
 
 // 종료된 작업만 요약이 있다. 진행 중인 작업은 위쪽에 따로 묶어 진행 화면으로 보낸다.
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
@@ -168,6 +173,7 @@ function SummaryModal({ selected, docById, onClose }) {
 
 function JobCard({ job, docById, onOpenSummary }) {
   const duration = formatDuration(job.startedAt, job.finishedAt)
+  const jobAction = documentAction(job.documentResults[0]?.changeType)
   // 중단은 「아직 시작하지 않은 문서」만 취소한다. 이미 시작한 문서는 끝까지 처리되고 Wiki에도
   // 반영된다(AiJob.cancel). 그동안 이 카드는 「취소됨」인데 행은 「처리 중」이라 무슨 일인지
   // 알 수 없었다 — 지금 무엇이 도는 중인지 말로 적는다.
@@ -184,9 +190,9 @@ function JobCard({ job, docById, onOpenSummary }) {
           </span>
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-slate-800">{formatDateTime(job.createdAt)} 작업</h2>
-            <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-600">
-              문서 {job.documentResults.length}개
-            </span>
+            <Badge tone={jobAction.tone}>
+              {jobAction.label} {job.documentResults.length}건
+            </Badge>
           </div>
         </div>
         {duration && <span className="text-xs text-slate-400">소요 {duration}</span>}
@@ -203,7 +209,7 @@ function JobCard({ job, docById, onOpenSummary }) {
         <span className="text-center">파일명</span>
         <span className="text-center">공개 부서</span>
         <span className="text-center">카테고리</span>
-        <span className="text-center">생성된 위키 문서</span>
+        <span className="text-center">생성·변경된 위키 문서</span>
         <span className="text-center">상태</span>
         <span className="text-center">관리</span>
       </div>
@@ -215,6 +221,7 @@ function JobCard({ job, docById, onOpenSummary }) {
           // 있으므로(S15P11B106-202) 나머지 칸만 「삭제된 문서」로 읽히게 한다.
           const deleted = !document
           const fileName = result.originalFileName ?? document?.originalFileName
+          const affectedWikis = affectedWikisFor(result, document)
           return (
             <li
               key={result.documentId}
@@ -243,9 +250,7 @@ function JobCard({ job, docById, onOpenSummary }) {
               <span className="truncate text-center text-slate-500">
                 {deleted ? '-' : (document.documentCategoryName ?? '미분류')}
               </span>
-              <span className="truncate text-center font-semibold text-primary-600">
-                {document?.relatedWikis?.[0]?.title ?? '-'}
-              </span>
+              <AffectedWikiDisplay wikis={affectedWikis} />
               <div className="flex justify-center">
                 <Badge tone={DOC_STATUS_TONE[result.status] ?? 'neutral'}>
                   {DOC_STATUS_LABEL[result.status] ?? result.status}

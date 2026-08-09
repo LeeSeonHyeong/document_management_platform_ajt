@@ -8,6 +8,23 @@ const STAGE_LABELS = {
   wiki_applied: '위키 반영 완료',
 }
 
+const DOCUMENT_STAGE_LABELS = ['원본 문서 분석', '위키 변경안 생성', '위키 반영']
+
+export function documentStagesFor(result) {
+  if (result?.status === 'waiting' || result?.status === 'uploaded') {
+    return DOCUMENT_STAGE_LABELS.map((label) => ({ label, status: 'waiting' }))
+  }
+  const stage = result?.currentStage
+  let activeIndex = 0
+  if (stage === 'wiki_pending' || stage === 'wiki_transform') activeIndex = 1
+  if (stage === 'wiki_applied' || result?.status === 'completed') activeIndex = 3
+
+  return DOCUMENT_STAGE_LABELS.map((label, index) => ({
+    label,
+    status: index < activeIndex ? 'completed' : index === activeIndex ? 'processing' : 'waiting',
+  }))
+}
+
 function stageLabelFor(result) {
   if (result.status === 'completed') return '완료'
   if (result.status === 'failed') return '실패'

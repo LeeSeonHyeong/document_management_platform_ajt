@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'ajt:tracked-ai-jobs'
+export const AI_JOB_TRACKED_EVENT = 'ajt:tracked-ai-jobs-changed'
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
@@ -20,11 +21,20 @@ function saveTrackedIds(ids) {
   }
 }
 
+function notifyTrackedJobsChanged() {
+  globalThis.dispatchEvent?.(new Event(AI_JOB_TRACKED_EVENT))
+}
+
+export function getTrackedAiJobIds() {
+  return [...loadTrackedIds()]
+}
+
 export function trackAiJob(jobId) {
   if (jobId == null) return
   const ids = loadTrackedIds()
   ids.add(String(jobId))
   saveTrackedIds(ids)
+  notifyTrackedJobsChanged()
 }
 
 export function trackAiJobsFromResponse(response) {
@@ -43,6 +53,7 @@ export function takeTerminalAiJobNotifications(jobs) {
   )
   terminalJobs.forEach((job) => ids.delete(String(job.jobId)))
   saveTrackedIds(ids)
+  if (terminalJobs.length) notifyTrackedJobsChanged()
   return terminalJobs
 }
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { aiJobNotificationFor, clearTrackedAiJobsForTest, trackAiJobsFromResponse, takeTerminalAiJobNotifications, trackAiJob } from './aiJobNotifications'
+import { aiJobNotificationFor, clearTrackedAiJobsForTest, getTrackedAiJobIds, trackAiJobsFromResponse, takeTerminalAiJobNotifications, trackAiJob } from './aiJobNotifications'
 
 function stubSessionStorage() {
   const values = new Map()
@@ -11,6 +11,10 @@ describe('AI 작업 종료 알림 레지스트리', () => {
   it('현재 세션에 등록한 완료 작업을 한 번만 반환한다', () => {
     trackAiJob('17'); const jobs = [{ jobId: '17', status: 'completed' }]
     expect(takeTerminalAiJobNotifications(jobs)).toEqual(jobs); expect(takeTerminalAiJobNotifications(jobs)).toEqual([])
+  })
+  it('알림 폴러가 현재 세션의 작업 ID만 직접 조회할 수 있다', () => {
+    trackAiJob('17'); trackAiJob('18')
+    expect(getTrackedAiJobIds()).toEqual(['17', '18'])
   })
   it('현재 세션에 등록하지 않은 작업 종료는 반환하지 않는다', () => {
     expect(takeTerminalAiJobNotifications([{ jobId: '18', status: 'failed' }])).toEqual([])

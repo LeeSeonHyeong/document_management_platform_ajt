@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { buildAiJobProgress } from './aiJobProgress'
+import { buildAiJobProgress, documentStagesFor } from './aiJobProgress'
 
 describe('묶음 AI 작업 진행 표시', () => {
+  it('위키 변경안 생성 중인 문서의 실제 처리 단계를 표시한다', () => {
+    expect(documentStagesFor({ status: 'processing', currentStage: 'wiki_transform' })).toEqual([
+      { label: '원본 문서 분석', status: 'completed' },
+      { label: '위키 변경안 생성', status: 'processing' },
+      { label: '위키 반영', status: 'waiting' },
+    ])
+  })
+
   it('현재 처리 문서와 범위별 완료 수를 만든다', () => {
     const progress = buildAiJobProgress(
       [
