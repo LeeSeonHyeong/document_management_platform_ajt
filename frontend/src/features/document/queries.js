@@ -20,6 +20,7 @@ import {
   cancelAiJob,
   createAiJob,
 } from './api'
+import { trackAiJobsFromResponse } from './aiJobNotifications'
 
 // AI 작업이 끝나면 그 작업이 바꿔놓은 캐시를 모두 무효화한다.
 //
@@ -100,7 +101,8 @@ export function useReplaceDocumentFile(documentId) {
     // payload: { file, onUploadProgress } — 진행률은 axios 업로드 이벤트를 그대로 넘긴다.
     mutationFn: ({ file, onUploadProgress }) =>
       replaceDocumentFile(documentId, file, { onUploadProgress }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      trackAiJobsFromResponse(response)
       queryClient.invalidateQueries({ queryKey: qk.documents.detail(documentId) })
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
@@ -113,7 +115,8 @@ export function useCreateAiJob() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: createAiJob,
-    onSuccess: () => {
+    onSuccess: (response) => {
+      trackAiJobsFromResponse(response)
       queryClient.invalidateQueries({ queryKey: qk.documents.all })
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
@@ -124,7 +127,8 @@ export function useDeleteDocument() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteDocument,
-    onSuccess: () => {
+    onSuccess: (response) => {
+      trackAiJobsFromResponse(response)
       queryClient.invalidateQueries({ queryKey: qk.documents.all })
       // 삭제는 위키를 걷어내는 재처리 작업(jobId)을 새로 만든다. 이걸 무효화하지 않으면
       // 요약 목록이 삭제 전 캐시(전부 종료 상태 → 폴링도 꺼짐)를 그대로 그려서,
@@ -138,7 +142,8 @@ export function useRetryDocument() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: retryDocument,
-    onSuccess: (_data, documentId) => {
+    onSuccess: (response, documentId) => {
+      trackAiJobsFromResponse(response)
       queryClient.invalidateQueries({ queryKey: qk.documents.detail(documentId) })
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
@@ -267,8 +272,10 @@ export function useStartAiJob() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: startAiJob,
-    onSuccess: (_data, jobId) => {
+    onSuccess: (response, jobId) => {
+      trackAiJobsFromResponse(response)
       queryClient.invalidateQueries({ queryKey: qk.aiJobs.detail(jobId) })
+      queryClient.invalidateQueries({ queryKey: qk.aiJobs.all })
     },
   })
 }

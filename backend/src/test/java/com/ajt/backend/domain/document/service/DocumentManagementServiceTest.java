@@ -1210,8 +1210,8 @@ class DocumentManagementServiceTest {
     }
 
     @Test
-    @DisplayName("삭제 대기 문서는 같은 범위의 다른 문서 작업도 막는다")
-    void deletingDocumentBlocksTheScope() throws Exception {
+    @DisplayName("삭제 대기 문서가 있어도 같은 범위의 다른 문서를 별도 대기 작업으로 삭제한다")
+    void queuesDeletionWhenAnotherDocumentIsDeleting() throws Exception {
         Document deleting = parsedDocument();
         assignId(deleting, 15L);
         deleting.markForDeletion();
@@ -1219,10 +1219,21 @@ class DocumentManagementServiceTest {
         assignId(other, 16L);
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
         given(documentRepository.findById(16L)).willReturn(Optional.of(other));
-        given(documentRepository.findByScopeKey("ALL")).willReturn(List.of(deleting, other));
+        given(documentFileStorage.readText("wiki/ALL/sources/15/parsed.md")).willReturn("# 두 번째 문서");
+        given(aiJobRepository.save(any(AiJob.class))).willAnswer(invocation -> {
+            AiJob job = invocation.getArgument(0);
+            assignId(job, 43L);
+            return job;
+        });
 
-        assertThatThrownBy(() -> service.delete(16L))
-                .isInstanceOf(BusinessException.class);
+        DocumentDeleteResponse response = service.delete(16L);
+
+        assertThat(response.deleted()).isFalse();
+        assertThat(response.reprocessRequired()).isTrue();
+        assertThat(response.jobId()).isEqualTo("43");
+        assertThat(response.status()).isEqualTo("deleting");
+        assertThat(other.status()).isEqualTo(DocumentStatus.DELETING);
+        verify(parseJobLauncher).launch(any(AiJob.class), any(DocumentReprocessPlan.class));
     }
 
     @Test

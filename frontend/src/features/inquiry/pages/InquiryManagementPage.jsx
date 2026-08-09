@@ -168,26 +168,24 @@ export default function InquiryManagementPage() {
     {
       key: 'content',
       header: '문의 내용',
-      width: '38%',
+      width: '30%',
       render: (inquiry) => (
-        // 제목·요청자가 길어도 두 줄을 넘기지 않도록 각각 한 줄로 줄인다(전체 값은 title).
+        // 제목이 길어도 한 줄로 줄인다(전체 값은 title).
         <div className="flex min-w-0 items-center gap-3">
           <PriorityBadge priority={inquiry.priority} />
-          <div className="min-w-0">
-            <p className="truncate font-semibold text-slate-800" title={inquiry.title}>{inquiry.title}</p>
-            {/* TODO(API): 문의 목록 계약의 author에는 department가 없어 요청자 부서는 '-'로 표시된다. */}
-            <p className="mt-0.5 truncate text-xs text-slate-400">{inquiry.author?.name} · {inquiry.author?.department?.name ?? '-'}</p>
-          </div>
+          <p className="min-w-0 truncate font-semibold text-slate-800" title={inquiry.title}>{inquiry.title}</p>
         </div>
       ),
     },
-    { key: 'assignee', header: '담당자', width: '20%', render: (inquiry) => `${inquiry.assignee?.name} (${inquiry.assignee?.department?.name ?? '-'})` },
-    { key: 'status', header: '상태', width: '14%', render: (inquiry) => <StatusBadge status={inquiry.status} /> },
-    { key: 'createdAt', header: '접수 시간', width: '14%', render: (inquiry) => relativeTime(inquiry.createdAt) },
+    // 요청자는 keyword 검색 대상이므로 담당자와 같은 형식의 독립 열로 보여준다.
+    { key: 'author', header: '요청자', width: '18%', render: (inquiry) => `${inquiry.author?.name} (${inquiry.author?.department?.name ?? '-'})` },
+    { key: 'assignee', header: '담당자', width: '18%', render: (inquiry) => `${inquiry.assignee?.name} (${inquiry.assignee?.department?.name ?? '-'})` },
+    { key: 'status', header: '상태', width: '12%', render: (inquiry) => <StatusBadge status={inquiry.status} /> },
+    { key: 'createdAt', header: '접수 시간', width: '11%', render: (inquiry) => relativeTime(inquiry.createdAt) },
     {
       key: 'manage',
       header: '관리',
-      width: '14%',
+      width: '11%',
       render: (inquiry) => (
         <Button size="sm" variant="outline" onClick={() => navigate(`/admin/inquiries/${inquiry.inquiryId}`)}>상세</Button>
       ),

@@ -41,12 +41,15 @@ PADDING = "이 문단은 문맥을 채우기 위한 것이다. " * 900   # 약 2
 async def _vault(tmp_path):
     scope_id = await SpringVaultFS.open(tmp_path, SCOPE, JOB)
     await bootstrap_scope(SCOPE)
-    await register_source(SCOPE, "9", "큰문서.md", BIG_SOURCE)
+    # 두 문서를 교대로 읽는다 — 동일 read 연속은 반복 가드 에스컬레이션(S15P11B106-325)이
+    # 6회에서 잡을 끊어 버려서, 압축까지 가는 정당한 장문 작업의 모양이 아니다.
+    await register_source(SCOPE, "9", "큰문서A.md", BIG_SOURCE)
+    await register_source(SCOPE, "10", "큰문서B.md", BIG_SOURCE.replace("규정", "별첨"))
     return scope_id, SpringVaultFS(SCOPE, JOB)
 
 
 def _runtime(model):
-    # base_url 이 게이트웨이여야 압축 트리거가 34K 가 된다 (`compaction_trigger_for`).
+    # 트리거는 프로바이더 무관 34K 다 (`COMPACTION_TRIGGER`).
     return DeepAgentsRuntime(
         model="anthropic:claude-sonnet-4-6",
         credentials={"anthropic": ("test-key", "https://gms.example/anthropic")},
@@ -56,8 +59,9 @@ def _runtime(model):
 
 async def test_압축_뒤_이력을_되읽고_계속한다(tmp_path):
     """고침 전에는 이 지점에서 문맥을 잃고 아무것도 못 했다."""
-    read_big = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
-    script = [read_big] * 8 + [
+    read_a = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
+    read_b = ("tool", "read", {"scope": SCOPE, "path": "sources/10/parsed/content.md"})
+    script = [read_a, read_b] * 4 + [
         # 압축이 터진 뒤 안내받은 경로를 그대로 읽는다. 진짜 모델이 하는 일과 같다.
         ("tool", "read_conversation_history", {"file_path": "$history"}),
         ("text", "이력을 확인하고 이어서 작업했다."),
@@ -91,8 +95,9 @@ async def test_압축이_작업_상태_보존_지시를_요약_모델에_전달�
     요약의 **품질**(정말 좋은 상태 요약이 나오는가)은 LLM 판단이라 여기서 못 잰다 —
     실기동의 몫이다.
     """
-    read_big = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
-    script = [read_big] * 8 + [("text", "작업을 마쳤다.")]
+    read_a = ("tool", "read", {"scope": SCOPE, "path": "sources/9/parsed/content.md"})
+    read_b = ("tool", "read", {"scope": SCOPE, "path": "sources/10/parsed/content.md"})
+    script = [read_a, read_b] * 4 + [("text", "작업을 마쳤다.")]
     model = ScriptedModel(script=script, padding=PADDING)
 
     try:

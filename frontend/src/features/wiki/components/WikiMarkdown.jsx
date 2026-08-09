@@ -221,7 +221,7 @@ export default function WikiMarkdown({ markdown, wikiIdByPageKey }) {
       // `remarkFrontmatter` 가 없으면 본문 맨 앞의 `---` YAML 블록이 frontmatter 로 파싱되지
       // 않아 **제목처럼 렌더링된다** — `title: ... description: ... tags: [...]` 가 큰 글씨로
       // 화면에 찍혔다. 이 플러그인이 그 블록을 yaml 노드로 만들고, 렌더러가 없어 버려진다.
-      remarkPlugins={[remarkGfm, remarkFrontmatter]}
+      remarkPlugins={[[remarkGfm, { singleTilde: false }], remarkFrontmatter]}
       // 각주 묶음 앞에 remark 가 넣는 기본 제목이 영문 `Footnotes` 였다 — 한국어 화면에 그것만
       // 튀었다. 저장된 본문에는 없는 글자이므로(생성 위키 전수 확인) 여기서 말을 정한다.
       remarkRehypeOptions={{

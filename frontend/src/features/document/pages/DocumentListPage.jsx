@@ -23,6 +23,7 @@ import { useAiJobQueue } from '../useAiJobQueue'
 import AiJobStartDialog from '../components/AiJobStartDialog'
 import AiJobProgressDialog from '../components/AiJobProgressDialog'
 import ScheduleExtractionDialog from '../components/ScheduleExtractionDialog'
+import { validateScheduleSourceFile, validateWikiSourceFile } from '../validateWikiSourceFile'
 
 // Figma 4R — 문서 관리 목록. 업로드·처리 현황을 관리자가 확인하는 화면.
 // 카테고리와 공개 부서가 모두 지정된 문서인지 판단한다.
@@ -45,6 +46,7 @@ export default function DocumentListPage() {
   const [startOpen, setStartOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressJobIds, setProgressJobIds] = useState([])
+  const [progressJobRefs, setProgressJobRefs] = useState([])
   const [progressDocumentCount, setProgressDocumentCount] = useState(0)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   // 문서 파일 대기 목록은 서버에서 읽는다 (S15P11B106-276). 파일을 고르는 즉시 업로드하므로
@@ -108,6 +110,7 @@ export default function DocumentListPage() {
           description="일반 문서, 규정, 안내문 등 다양한 문서를 업로드하세요."
           extensions={['TXT', 'MD', 'PDF', 'DOCX']}
           accept={FILE_ACCEPT.WIKI_SOURCE}
+          validateFileContent={validateWikiSourceFile}
           selectedFiles={previewUploadFiles}
           onFilesSelected={setPreviewUploadFiles}
           queuedCount={waitingDocuments.length}
@@ -143,6 +146,7 @@ export default function DocumentListPage() {
           description="회의, 교육, 행사 등 일정 파일을 업로드하세요."
           extensions={['TXT', 'MD', 'DOCX', 'PDF', 'CSV', 'XLSX']}
           accept={FILE_ACCEPT.SCHEDULE}
+          validateFileContent={validateScheduleSourceFile}
           selectedFiles={previewScheduleFiles}
           onFilesSelected={setPreviewScheduleFiles}
           queuedCount={waitingDocuments.length}
@@ -276,7 +280,12 @@ export default function DocumentListPage() {
               const result = await createAiJobMutation.mutateAsync(
                 serverDocuments.map((document) => Number(document.documentId)),
               )
-              startedJobIds = (result.jobs ?? []).map((job) => job.jobId)
+              const jobs = result.jobs ?? []
+              startedJobIds = jobs.map((job) => job.jobId)
+              setProgressJobRefs(jobs.map((job) => ({
+                jobId: job.jobId,
+                scopeLabel: scopeLabelForJob(job, serverDocuments),
+              })))
             } catch (error) {
               toast.error(uploadErrorMessage(error))
               return
@@ -348,6 +357,7 @@ export default function DocumentListPage() {
       <AiJobProgressDialog
         open={progressOpen}
         jobIds={progressJobIds}
+        jobRefs={progressJobRefs}
         documentCount={progressDocumentCount}
         onBackground={() => setProgressOpen(false)}
         onDone={() => {
@@ -357,6 +367,14 @@ export default function DocumentListPage() {
       />
     </section>
   )
+}
+
+function scopeLabelForJob(job, documents) {
+  const jobDocumentIds = new Set((job.documentIds ?? []).map(String))
+  const document = documents.find((item) => jobDocumentIds.has(String(item.documentId)))
+  if (!document || document.visibilityType === 'all') return '전체 공개'
+  const names = [...new Set((document.departments ?? []).map((department) => department.name).filter(Boolean))]
+  return names.length ? names.join(' + ') : job.scopeKey
 }
 
 function UploadCard({
@@ -372,6 +390,7 @@ function UploadCard({
   onUploadFile,
   onUploaded,
   onUploadFailed,
+  validateFileContent,
   onClick,
   queuedCount = 0,
   queuedBytes = 0,
@@ -462,7 +481,7 @@ function UploadCard({
   // accept를 아예 무시한다. 그래서 여기서 확장자·용량을 직접 검사한다.
   // 백엔드(DocumentUploadRequest·ScheduleSourceService)는 확장자+MIME까지 다시 검증한다 —
   // 이 검사는 대기 목록에 못 쓸 파일이 쌓여 'AI 작업 시작'에서야 400으로 터지는 것을 막는 용도다.
-  function selectFiles(fileList) {
+  async function selectFiles(fileList) {
     const files = Array.from(fileList ?? [])
     if (!files.length) return
 
@@ -472,35 +491,39 @@ function UploadCard({
     let runningCount = queuedCount
     let runningBytes = queuedBytes
 
-    files.forEach((file) => {
+    for (const file of files) {
       const extension = fileExtensionOf(file.name)
       if (!accept.includes(extension)) {
         rejected.push(`${file.name} (지원하지 않는 형식)`)
-        return
+        continue
       }
       // 확장자만 바꿔치기한 파일 걸러내기. 브라우저가 type을 비워 보내는 경우가 있어
       // 값이 있을 때만 대조한다(비었으면 백엔드 검증에 맡긴다).
       const allowedMimeTypes = FILE_MIME_TYPES[extension] ?? []
       if (file.type && !allowedMimeTypes.includes(file.type)) {
         rejected.push(`${file.name} (확장자와 파일 형식이 다름)`)
-        return
+        continue
       }
       if (file.size > MAX_FILE_SIZE_BYTES) {
         rejected.push(`${file.name} (20MB 초과)`)
-        return
+        continue
+      }
+      if (validateFileContent && !(await validateFileContent(file, extension))) {
+        rejected.push(`${file.name} (확장자와 실제 파일 형식이 다름)`)
+        continue
       }
       if (runningCount + 1 > MAX_UPLOAD_FILE_COUNT) {
         rejected.push(`${file.name} (한 번에 ${MAX_UPLOAD_FILE_COUNT}개까지)`)
-        return
+        continue
       }
       if (runningBytes + file.size > MAX_UPLOAD_TOTAL_SIZE_BYTES) {
         rejected.push(`${file.name} (합계 100MB 초과)`)
-        return
+        continue
       }
       runningCount += 1
       runningBytes += file.size
       accepted.push(file)
-    })
+    }
 
     if (rejected.length) {
       const extra = rejected.length > 1 ? ` 외 ${rejected.length - 1}개` : ''
@@ -784,4 +807,3 @@ function getDepartmentIds(document) {
     .map((department) => department.departmentId ?? department.id)
     .filter(Boolean)
 }
-

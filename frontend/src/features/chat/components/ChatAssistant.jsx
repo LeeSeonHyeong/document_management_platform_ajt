@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { ChevronDown, ChevronUp, Send, Sparkles, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ArrowUpRight, Send, Sparkles, X } from 'lucide-react'
 import ColumnResizer from '@/features/wiki/components/ColumnResizer'
 import ChatMarkdown from '@/features/wiki/components/ChatMarkdown'
-import { askQuestion } from '../api'
+import { askQuestion, fetchQuestionHistory } from '../api'
 
 // 대화창 폭(px). 최소 390, 최대 화면 절반(50vw). 조정값은 localStorage로 유지한다.
 // 패널이 우측에 고정돼 있어 왼쪽 가장자리 손잡이를 왼쪽으로 끌면 넓어진다(ColumnResizer invert).
 const MIN_WIDTH = 390
 const WIDTH_STORAGE_KEY = 'chat-assistant-width'
+// 진행 중인 대화의 id. 이것만 남기고 대화 내용은 저장하지 않는다 — 내용까지 브라우저에
+// 두면 같은 기기에서 계정을 바꿨을 때 남의 대화가 보인다. id 만 남기면 이력은 서버에서
+// 받아 오고, 서버는 본인 질문만 돌려주므로 다른 계정의 id 로는 아무것도 오지 않는다.
+const CONVERSATION_STORAGE_KEY = 'chat-assistant-conversation'
 const maxWidth = () => Math.max(MIN_WIDTH, Math.floor(window.innerWidth / 2))
 const clampWidth = (value) => Math.min(Math.max(value, MIN_WIDTH), maxWidth())
 
@@ -19,39 +24,40 @@ const WELCOME_MESSAGE = {
   sources: [],
 }
 
-function SourceCard({ source }) {
-  const [open, setOpen] = useState(false)
-  const isWiki = source.type === 'wiki'
+// 위키 출처는 그 위키로 넘어간다. 종전에는 눌러도 접기/펼치기만 됐고, 펼치면
+// `source.evidenceDocuments` 를 그리게 돼 있었는데 **응답에 그런 필드가 없다**
+// (`QuestionSourceResponse` 는 type·wikiId·scheduleId·title 넷뿐이다). 그래서 눌러도
+// 늘 빈 칸이 열렸다. 일정은 사원이 볼 상세 경로가 없어(admin/schedules 뿐) 링크로
+// 만들지 않고 표시만 한다.
+function SourceCard({ source, onNavigate }) {
+  const isWiki = source.type === 'wiki' && source.wikiId
+  const body = (
+    <span className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
+      <span>
+        <span className="block text-xs font-semibold text-primary-700">{source.title}</span>
+        <span className="text-[11px] text-slate-400">{source.type === 'wiki' ? '위키 출처' : '일정 출처'}</span>
+      </span>
+      {isWiki && <ArrowUpRight className="size-3.5 shrink-0 text-slate-400" />}
+    </span>
+  )
+  const shell = 'mt-2 block overflow-hidden rounded-lg border border-primary-100 bg-primary-50/60'
+  if (!isWiki) return <div className={shell}>{body}</div>
   return (
-    <div className="mt-2 overflow-hidden rounded-lg border border-primary-100 bg-primary-50/60">
-      <button type="button" onClick={() => isWiki && setOpen((value) => !value)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left">
-        <span>
-          <span className="block text-xs font-semibold text-primary-700">{source.title}</span>
-          <span className="text-[11px] text-slate-400">{isWiki ? '위키 출처' : '일정 출처'}</span>
-        </span>
-        {isWiki && (open ? <ChevronUp className="size-3.5 text-slate-400" /> : <ChevronDown className="size-3.5 text-slate-400" />)}
-      </button>
-      {open && source.evidenceDocuments?.length > 0 && (
-        <div className="border-t border-primary-100 px-3 py-2">
-          {source.evidenceDocuments.map((document) => (
-            <a key={document.documentId} href={document.downloadUrl} className="block truncate text-[11px] text-primary-600 hover:underline">
-              원본문서 · {document.originalFileName}
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
+    <Link to={`/wiki/${source.wikiId}`} onClick={onNavigate}
+          className={`${shell} focus-ring transition hover:border-primary-300 hover:bg-primary-50`}>
+      {body}
+    </Link>
   )
 }
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onNavigate }) {
   const mine = message.role === 'user'
   return (
     <div className={`flex ${mine ? 'justify-end' : 'justify-start gap-2'}`}>
       {!mine && <span className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-violet-600 text-white"><Sparkles className="size-4" /></span>}
       <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${mine ? 'rounded-br-md bg-slate-200 text-slate-800' : 'rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm'}`}>
         <ChatMarkdown markdown={message.content} tone="agent" />
-        {message.sources?.map((source) => <SourceCard key={`${source.type}-${source.wikiId ?? source.scheduleId}`} source={source} />)}
+        {message.sources?.map((source) => <SourceCard key={`${source.type}-${source.wikiId ?? source.scheduleId}`} source={source} onNavigate={onNavigate} />)}
       </div>
     </div>
   )
@@ -61,7 +67,9 @@ export default function ChatAssistant() {
   const messagesEndRef = useRef(null)
   const [open, setOpen] = useState(false)
   const [question, setQuestion] = useState('')
-  const [conversationId, setConversationId] = useState(null)
+  const [conversationId, setConversationId] = useState(
+    () => globalThis.localStorage?.getItem(CONVERSATION_STORAGE_KEY) || null,
+  )
   const [messages, setMessages] = useState([WELCOME_MESSAGE])
   const [width, setWidth] = useState(() => {
     const stored = Number(globalThis.localStorage?.getItem(WIDTH_STORAGE_KEY))
@@ -75,6 +83,9 @@ export default function ChatAssistant() {
     mutationFn: (text) => askQuestion(text, conversationId),
     onSuccess: (data) => {
       setConversationId(data.conversationId)
+      if (data.conversationId) {
+        globalThis.localStorage?.setItem(CONVERSATION_STORAGE_KEY, data.conversationId)
+      }
       setMessages((current) => [...current, {
         id: data.questionId,
         role: 'assistant',
@@ -95,6 +106,50 @@ export default function ChatAssistant() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, mutation.isPending])
+
+  // 새로고침하면 컴포넌트 상태가 초기화돼 대화가 사라져 보였다. 저장해 둔 대화 id 로
+  // 서버에서 이력을 받아 복원한다. 실패하면 조용히 새 대화로 시작한다 — 이력을 못
+  // 불러온 것 때문에 질문 자체를 막을 이유는 없다.
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (!open || restoredRef.current || !conversationId) return
+    restoredRef.current = true
+    let cancelled = false
+    fetchQuestionHistory({ conversationId, size: 50 })
+      .then((data) => {
+        const items = data?.items ?? []
+        if (cancelled) return
+        // 0건이면 남의 대화이거나 사라진 대화다. 그대로 두면 다음 질문이 이 id 를 실어
+        // 보내고 서버가 404 를 낸다(다른 사용자의 대화는 존재를 숨기려 404). 지우고
+        // 새 대화로 시작한다.
+        if (items.length === 0) {
+          globalThis.localStorage?.removeItem(CONVERSATION_STORAGE_KEY)
+          setConversationId(null)
+          return
+        }
+        const restored = items
+          .slice()
+          .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+          .flatMap((item) => {
+            const turn = [{ id: `q-${item.questionId}`, role: 'user', content: item.question, sources: [] }]
+            if (item.answer) {
+              turn.push({
+                id: item.questionId,
+                role: 'assistant',
+                content: item.answer,
+                sources: item.sources ?? [],
+              })
+            }
+            return turn
+          })
+        setMessages([WELCOME_MESSAGE, ...restored])
+      })
+      .catch(() => {
+        globalThis.localStorage?.removeItem(CONVERSATION_STORAGE_KEY)
+        setConversationId(null)
+      })
+    return () => { cancelled = true }
+  }, [open, conversationId])
 
   const submit = () => {
     const text = question.trim()
@@ -148,7 +203,11 @@ export default function ChatAssistant() {
         </header>
 
         <div className="flex-1 space-y-4 overflow-y-auto bg-gradient-to-b from-blue-50/80 via-indigo-50/70 to-violet-50/80 p-4">
-          {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+          {/* 출처를 누르면 위키로 넘어간다. 패널이 z-50 으로 화면을 덮고 있어 닫아 주지
+              않으면 넘어간 위키가 가려진다. */}
+          {messages.map((message) => (
+            <MessageBubble key={message.id} message={message} onNavigate={() => setOpen(false)} />
+          ))}
           {mutation.isPending && (
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <span className="flex size-7 items-center justify-center rounded-lg bg-primary-500 text-white"><Sparkles className="size-4" /></span>

@@ -5,8 +5,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 
 import com.ajt.backend.domain.document.model.Document;
+import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.model.DocumentStatus;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.wiki.model.Wiki;
+import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.service.WikiTransformationApplier;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
 import java.lang.reflect.Field;
@@ -23,6 +26,7 @@ class DocumentWikiTransformationTransactionServiceTest {
 
     private final DocumentRepository documentRepository = mock(DocumentRepository.class);
     private final WikiTransformationApplier applier = mock(WikiTransformationApplier.class);
+    private final WikiRepository wikiRepository = mock(WikiRepository.class);
 
     @Test
     @DisplayName("Wiki 변경을 반영한 뒤 같은 문서를 완료 처리한다")
@@ -41,6 +45,25 @@ class DocumentWikiTransformationTransactionServiceTest {
         assertThat(document.documentWikiRefs()).containsExactly(101L);
         assertThat(result.affectedWikiIds()).containsExactly(101L);
         assertThat(result.summary()).isEqualTo("반영 완료");
+    }
+
+    @Test
+    @DisplayName("문서 삭제로 수정된 살아 있는 Wiki도 ID·제목 스냅샷을 남긴다")
+    void snapshotsSurvivingWikisChangedByRemoval() throws Exception {
+        Wiki surviving = Wiki.create("ALL", 7L, "취업규칙");
+        assignId(surviving, 101L);
+        WikiTransformationResponse response = response("인용 근거를 걷어냈습니다.");
+        given(applier.applyRemovedDocument("ALL", 15L, response))
+                .willReturn(new WikiTransformationApplier.RemovedDocumentResult(List.of(101L), 1));
+        given(wikiRepository.findAllById(List.of(101L))).willReturn(List.of(surviving));
+        DocumentWikiTransformationTransactionService service =
+                new DocumentWikiTransformationTransactionService(documentRepository, applier, wikiRepository);
+
+        DocumentWikiTransformationTransactionService.WikiTransformationResult result =
+                service.applyRemovedDocument(15L, "ALL", response);
+
+        assertThat(result.affectedWikis())
+                .containsExactly(new AiJob.AffectedWiki(101L, "취업규칙"));
     }
 
     @Test
@@ -72,5 +95,11 @@ class DocumentWikiTransformationTransactionServiceTest {
         Field idField = Document.class.getDeclaredField("id");
         idField.setAccessible(true);
         idField.set(document, id);
+    }
+
+    private void assignId(Wiki wiki, long id) throws ReflectiveOperationException {
+        Field idField = Wiki.class.getDeclaredField("id");
+        idField.setAccessible(true);
+        idField.set(wiki, id);
     }
 }

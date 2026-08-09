@@ -307,7 +307,11 @@ class DocumentParseWorkerTest {
                 any()
         )).willReturn(transformationResponse("휴가 규정을 Wiki에 반영했습니다."));
         given(transactionService.applyAddedDocument(eq(15L), eq("ALL"), any()))
-                .willReturn(new WikiTransformationResult(List.of(101L), "휴가 규정을 Wiki에 반영했습니다."));
+                .willReturn(new WikiTransformationResult(
+                        List.of(101L),
+                        List.of(new AiJob.AffectedWiki(101L, "휴가 규정")),
+                        "휴가 규정을 Wiki에 반영했습니다."
+                ));
         given(wikiTransformationService.requestForDocumentChange(
                 anyLong(),
                 eq(16L),
@@ -333,6 +337,8 @@ class DocumentParseWorkerTest {
                         org.assertj.core.groups.Tuple.tuple(15L, true, "휴가 규정을 Wiki에 반영했습니다.", null),
                         org.assertj.core.groups.Tuple.tuple(16L, false, null, "agent_timeout")
                 );
+        assertThat(job.documentResults().getFirst().affectedWikis())
+                .containsExactly(new AiJob.AffectedWiki(101L, "휴가 규정"));
     }
 
     @Test
@@ -525,6 +531,31 @@ class DocumentParseWorkerTest {
     }
 
     @Test
+    @DisplayName("프리패스 Wiki 삭제 후 AI 걷어내기가 실패해도 이미 삭제된 Wiki 이력은 남긴다")
+    void keepsPrunedWikiHistoryWhenLaterRemovalFails() throws Exception {
+        Document document = document(15L, "rule.md");
+        document.markForDeletion();
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assignId(job, 42L);
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of(document));
+        given(documentRepository.findById(15L)).willReturn(Optional.of(document));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(transactionService.pruneFullyDependentWikis(eq(15L), eq("ALL"), any()))
+                .willReturn(new WikiTransformationApplier.PruneResult(
+                        List.of(new WikiTransformationApplier.PrunedWiki(201L, "정보보안 정책")),
+                        0, 0, 1));
+        given(wikiTransformationService.requestForDocumentChange(
+                anyLong(), anyLong(), anyString(), any(), any(), anyString()))
+                .willThrow(timeout());
+
+        worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 정책\n본문"));
+
+        assertThat(job.documentResults().getFirst().success()).isFalse();
+        assertThat(job.documentResults().getFirst().affectedWikis())
+                .containsExactly(new AiJob.AffectedWiki(201L, "정보보안 정책", true));
+    }
+
+    @Test
     @DisplayName("범위 변경 걷어내기는 문서를 지우지 않는다 — 삭제 대기가 아니다")
     void scopeChangeRemovalDoesNotDeleteTheDocument() throws Exception {
         // 범위 변경에서 문서는 이미 새 범위로 옮겨져 DELETING 이 아니다. 지우면 안 된다.
@@ -618,7 +649,8 @@ class DocumentParseWorkerTest {
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
         given(transactionService.pruneFullyDependentWikis(eq(15L), eq("ALL"), any()))
                 .willReturn(new WikiTransformationApplier.PruneResult(
-                        List.of("AJT 정보보안 기본 정책"), 1, 0, 0));
+                        List.of(new WikiTransformationApplier.PrunedWiki(201L, "AJT 정보보안 기본 정책")),
+                        1, 0, 0));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 정책\n본문"));
 
@@ -642,12 +674,17 @@ class DocumentParseWorkerTest {
         given(documentRepository.findById(15L)).willReturn(Optional.of(document));
         given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
         given(transactionService.pruneFullyDependentWikis(eq(15L), eq("ALL"), any()))
-                .willReturn(new WikiTransformationApplier.PruneResult(List.of("정보보안 정책"), 0, 0, 1));
+                .willReturn(new WikiTransformationApplier.PruneResult(
+                        List.of(new WikiTransformationApplier.PrunedWiki(201L, "정보보안 정책")),
+                        0, 0, 1));
         given(wikiTransformationService.requestForDocumentChange(
                 anyLong(), anyLong(), anyString(), any(), any(), anyString()))
                 .willReturn(transformationResponse("남은 인용을 걷어냈습니다"));
         given(transactionService.applyRemovedDocument(anyLong(), anyString(), any()))
-                .willReturn(new WikiTransformationResult(List.of(101L), "남은 인용을 걷어냈습니다"));
+                .willReturn(new WikiTransformationResult(
+                        List.of(101L),
+                        List.of(new AiJob.AffectedWiki(101L, "취업규칙")),
+                        "남은 인용을 걷어냈습니다"));
 
         worker.parse(job, DocumentReprocessPlan.removed(15L, "# 옛 정책\n본문"));
 
@@ -655,6 +692,9 @@ class DocumentParseWorkerTest {
         assertThat(job.documentResults().get(0).summary())
                 .contains("정보보안 정책")
                 .contains("남은 인용을 걷어냈습니다");
+        assertThat(job.documentResults().get(0).affectedWikis()).containsExactly(
+                new AiJob.AffectedWiki(201L, "정보보안 정책", true),
+                new AiJob.AffectedWiki(101L, "취업규칙", false));
     }
 
     @Test

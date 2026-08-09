@@ -245,6 +245,15 @@ public class AiJob {
         return documentResults == null ? List.of() : List.copyOf(documentResults);
     }
 
+    /** 작업 결과에 영향을 준 Wiki의 ID·제목·삭제 여부 스냅샷입니다. */
+    public record AffectedWiki(long wikiId, String title, boolean deleted) {
+
+        /** 삭제 표시가 없던 기존 성공 결과는 살아 있는 Wiki입니다. */
+        public AffectedWiki(long wikiId, String title) {
+            this(wikiId, title, false);
+        }
+    }
+
     /**
      * 문서 한 건의 처리 결과입니다. ai_job.document_results JSON으로 저장됩니다.
      *
@@ -263,15 +272,42 @@ public class AiJob {
             boolean success,
             String summary,
             String failureReason,
-            String failureStage
+            String failureStage,
+            List<AffectedWiki> affectedWikis
     ) {
+
+        public DocumentParseResult {
+            affectedWikis = affectedWikis == null ? List.of() : List.copyOf(affectedWikis);
+        }
+
         public static DocumentParseResult succeeded(long documentId, String originalFileName, String summary) {
-            return new DocumentParseResult(documentId, originalFileName, true, summary, null, null);
+            return succeeded(documentId, originalFileName, summary, List.of());
+        }
+
+        public static DocumentParseResult succeeded(
+                long documentId,
+                String originalFileName,
+                String summary,
+                List<AffectedWiki> affectedWikis
+        ) {
+            return new DocumentParseResult(
+                    documentId, originalFileName, true, summary, null, null, affectedWikis);
         }
 
         public static DocumentParseResult failed(
                 long documentId, String originalFileName, String failureReason, String failureStage) {
-            return new DocumentParseResult(documentId, originalFileName, false, null, failureReason, failureStage);
+            return failed(documentId, originalFileName, failureReason, failureStage, List.of());
+        }
+
+        public static DocumentParseResult failed(
+                long documentId,
+                String originalFileName,
+                String failureReason,
+                String failureStage,
+                List<AffectedWiki> affectedWikis
+        ) {
+            return new DocumentParseResult(
+                    documentId, originalFileName, false, null, failureReason, failureStage, affectedWikis);
         }
     }
 }

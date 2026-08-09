@@ -430,14 +430,20 @@ const collectionVariable = (collection, key) =>
 // 필드 추가라 patch 다.
 // 1.15.2 는 Wiki 목록 항목과 상세의 relatedWikis 에 pageKey 를 더한 것이다 — 본문 내부 링크
 // `pages/{pageKey}.md` 를 화면이 wikiId 로 되돌리기 위해서다(S15P11B106-300). 필드 추가라 patch 다.
-const expectedContractVersion = "1.15.2";
+// 1.15.3 은 문의 목록 조회에 선택 keyword 검색(제목·요청자 이름)을 더한 것이다.
+// 선택 파라미터 추가라 기존 호출이 그대로 유효하므로 patch 다.
+// 1.15.4 는 AI 작업 문서 결과에 실제로 생성하거나 변경한 Wiki 목록을 더한 것이다.
+// 공개 응답 필드 추가라 patch 다. 내부 AI 계약은 바뀌지 않는다.
+// 1.15.5 는 작업 유형과 Wiki 하드 삭제 스냅샷을 공개 응답에 더한 patch 다.
+const expectedPublicContractVersion = "1.15.5";
+const expectedInternalContractVersion = "1.15.3";
 expect(
-  collectionVariable(publicCollection, "contractVersion") === expectedContractVersion,
-  `공개 API 계약 버전이 ${expectedContractVersion}이 아님`,
+  collectionVariable(publicCollection, "contractVersion") === expectedPublicContractVersion,
+  `공개 API 계약 버전이 ${expectedPublicContractVersion}이 아님`,
 );
 expect(
-  collectionVariable(internalCollection, "contractVersion") === expectedContractVersion,
-  `내부 API 계약 버전이 ${expectedContractVersion}이 아님`,
+  collectionVariable(internalCollection, "contractVersion") === expectedInternalContractVersion,
+  `내부 API 계약 버전이 ${expectedInternalContractVersion}이 아님`,
 );
 
 const p0PublicEndpoints = [
