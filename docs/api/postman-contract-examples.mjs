@@ -1,4 +1,4 @@
-export const publicContractVersion = "1.15.4";
+export const publicContractVersion = "1.15.5";
 export const internalContractVersion = "1.15.3";
 
 const timestamp = "2026-07-27T09:00:00Z";
@@ -307,6 +307,7 @@ const contracts = {
             {
               documentId: "15",
               originalFileName: "문서-15.pdf",
+              changeType: "document_added",
               order: 1,
               status: "completed",
               currentStage: "wiki_applied",
@@ -317,6 +318,7 @@ const contracts = {
                 {
                   wikiId: "101",
                   title: "2024 인사규정 안내",
+                  deleted: false,
                 },
               ],
             },
@@ -333,6 +335,7 @@ const contracts = {
             {
               documentId: "16",
               originalFileName: "문서-16.pdf",
+              changeType: "document_removed",
               order: 1,
               status: "failed",
               currentStage: "parsing",
@@ -365,6 +368,7 @@ const contracts = {
           {
             documentId: "15",
             originalFileName: "문서-15.pdf",
+            changeType: "document_removed",
             order: 1,
             status: "completed",
             currentStage: "wiki_applied",
@@ -374,13 +378,20 @@ const contracts = {
             affectedWikis: [
               {
                 wikiId: "101",
+                title: "폐지된 연차 규정",
+                deleted: true,
+              },
+              {
+                wikiId: "102",
                 title: "휴가 규정",
+                deleted: false,
               },
             ],
           },
           {
             documentId: "16",
             originalFileName: "문서-16.pdf",
+            changeType: "document_added",
             order: 2,
             status: "processing",
             currentStage: "parsing",

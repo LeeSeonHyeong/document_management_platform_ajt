@@ -18,6 +18,7 @@ import com.ajt.backend.global.error.ErrorCode;
 import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -81,6 +82,7 @@ class AiJobQueryServiceTest {
         assign(job, "id", 42L);
         assign(job, "createdAt", Instant.parse("2026-07-28T15:00:00Z"));
         job.start();
+        job.recordChangeTypes(Map.of("15", "document_replaced"));
         Document completed = uploadedDocument(15L, "first.md");
         completed.startParsing();
         completed.completeParsing("wiki/ALL/sources/15/parsed.md");
@@ -107,12 +109,14 @@ class AiJobQueryServiceTest {
         assertThat(response.status()).isEqualTo("completed");
         assertThat(response.finishedAt()).isNotNull();
         assertThat(response.documentResults().get(0).status()).isEqualTo("completed");
+        assertThat(response.documentResults().get(0).changeType()).isEqualTo("document_replaced");
         assertThat(response.documentResults().get(0).currentStage()).isEqualTo("wiki_applied");
         assertThat(response.documentResults().get(0).summary()).isEqualTo("휴가 규정을 Wiki에 반영했습니다.");
         assertThat(response.documentResults().get(0).failureReason()).isNull();
         assertThat(response.documentResults().get(0).affectedWikis())
-                .containsExactly(new AiJobResponse.AffectedWikiResponse("101", "휴가 규정"));
+                .containsExactly(new AiJobResponse.AffectedWikiResponse("101", "휴가 규정", false));
         assertThat(response.documentResults().get(1).status()).isEqualTo("failed");
+        assertThat(response.documentResults().get(1).changeType()).isEqualTo("document_added");
         assertThat(response.documentResults().get(1).summary()).isNull();
         assertThat(response.documentResults().get(1).failureReason()).isEqualTo("Wiki 변환에 실패했습니다.");
         assertThat(response.documentResults().get(1).failureStage()).isEqualTo("agent_timeout");
@@ -143,6 +147,28 @@ class AiJobQueryServiceTest {
                     assertThat(result.originalFileName()).isEqualTo("2024_인사규정_최종.pdf");
                     assertThat(result.summary()).isEqualTo("인사규정을 Wiki에 반영했습니다.");
                 });
+    }
+
+    @Test
+    @DisplayName("삭제된 Wiki 스냅샷은 조회 응답에서 삭제 여부를 구분한다")
+    void marksDeletedWikiSnapshotsInResponse() throws Exception {
+        AiJob job = AiJob.waiting(10L, "ALL", "ALL/jobs/1", List.of(15L));
+        assign(job, "id", 42L);
+        job.start();
+        job.finish(List.of(AiJob.DocumentParseResult.succeeded(
+                15L,
+                "폐지된-규정.pdf",
+                "위키를 삭제했습니다.",
+                List.of(new AiJob.AffectedWiki(201L, "폐지된 규정", true))
+        )));
+        given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
+        given(aiJobRepository.findById(42L)).willReturn(Optional.of(job));
+        given(documentRepository.findAllById(List.of(15L))).willReturn(List.of());
+
+        AiJobResponse response = service.getAiJob(42L);
+
+        assertThat(response.documentResults().getFirst().affectedWikis())
+                .containsExactly(new AiJobResponse.AffectedWikiResponse("201", "폐지된 규정", true));
     }
 
     @Test

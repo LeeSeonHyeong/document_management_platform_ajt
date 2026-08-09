@@ -84,7 +84,7 @@ public class AiJobQueryService {
         return new AiJobResponse(
                 String.valueOf(job.id()),
                 job.status().name().toLowerCase(),
-                documentResults(job.status(), job.documentIds(), documentsById, recordedResultsById(job)),
+                documentResults(job, documentsById, recordedResultsById(job)),
                 job.createdAt(),
                 job.startedAt(),
                 job.finishedAt(),
@@ -116,14 +116,14 @@ public class AiJobQueryService {
     }
 
     private List<AiJobResponse.DocumentResultResponse> documentResults(
-            AiJobStatus jobStatus,
-            List<Long> documentIds,
+            AiJob job,
             Map<Long, Document> documentsById,
             Map<Long, AiJob.DocumentParseResult> recordedResultsById
     ) {
+        List<Long> documentIds = job.documentIds();
         return documentIds.stream()
                 .map(documentId -> toDocumentResult(
-                        jobStatus,
+                        job,
                         documentId,
                         documentsById.get(documentId),
                         recordedResultsById.get(documentId),
@@ -134,16 +134,18 @@ public class AiJobQueryService {
     }
 
     private AiJobResponse.DocumentResultResponse toDocumentResult(
-            AiJobStatus jobStatus,
+            AiJob job,
             long documentId,
             Document document,
             AiJob.DocumentParseResult recordedResult,
             List<Long> orderedDocumentIds
     ) {
+        AiJobStatus jobStatus = job.status();
         DocumentStatus status = statusOf(jobStatus, document, recordedResult);
         return new AiJobResponse.DocumentResultResponse(
                 String.valueOf(documentId),
                 fileNameOf(document, recordedResult),
+                job.changeTypeOf(documentId).orElse("document_added"),
                 orderedDocumentIds.indexOf(documentId) + 1,
                 responseStatus(status),
                 currentStage(status),
@@ -155,7 +157,8 @@ public class AiJobQueryService {
                         : recordedResult.affectedWikis().stream()
                                 .map(wiki -> new AiJobResponse.AffectedWikiResponse(
                                         String.valueOf(wiki.wikiId()),
-                                        wiki.title()
+                                        wiki.title(),
+                                        wiki.deleted()
                                 ))
                                 .toList()
         );

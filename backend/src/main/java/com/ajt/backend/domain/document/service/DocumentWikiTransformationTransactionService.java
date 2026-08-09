@@ -69,7 +69,10 @@ public class DocumentWikiTransformationTransactionService {
         WikiTransformationApplier.RemovedDocumentResult removed =
                 applier.applyRemovedDocument(scopeKey, documentId, response);
         return new WikiTransformationResult(
-                removed.affectedWikiIds(), response.summary(), removed.referencingWikiCount());
+                removed.affectedWikiIds(),
+                affectedWikisOf(removed.affectedWikiIds()),
+                response.summary(),
+                removed.referencingWikiCount());
     }
 
     /**

@@ -30,6 +30,7 @@ public record AiJobResponse(
     public record DocumentResultResponse(
             String documentId,
             String originalFileName,
+            String changeType,
             int order,
             String status,
             String currentStage,
@@ -42,7 +43,8 @@ public record AiJobResponse(
 
     public record AffectedWikiResponse(
             String wikiId,
-            String title
+            String title,
+            boolean deleted
     ) {
     }
 }

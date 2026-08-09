@@ -434,7 +434,8 @@ const collectionVariable = (collection, key) =>
 // 선택 파라미터 추가라 기존 호출이 그대로 유효하므로 patch 다.
 // 1.15.4 는 AI 작업 문서 결과에 실제로 생성하거나 변경한 Wiki 목록을 더한 것이다.
 // 공개 응답 필드 추가라 patch 다. 내부 AI 계약은 바뀌지 않는다.
-const expectedPublicContractVersion = "1.15.4";
+// 1.15.5 는 작업 유형과 Wiki 하드 삭제 스냅샷을 공개 응답에 더한 patch 다.
+const expectedPublicContractVersion = "1.15.5";
 const expectedInternalContractVersion = "1.15.3";
 expect(
   collectionVariable(publicCollection, "contractVersion") === expectedPublicContractVersion,
