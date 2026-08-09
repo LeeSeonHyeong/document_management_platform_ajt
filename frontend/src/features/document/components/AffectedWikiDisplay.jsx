@@ -23,7 +23,9 @@ function WikiTitle({ wiki }) {
 }
 
 export function AffectedWikiContent({ wikis = [], expanded, onToggle }) {
-  if (wikis.length === 0) return <span className="text-slate-400">-</span>
+  if (wikis.length === 0) {
+    return <span className="flex justify-center text-slate-400">-</span>
+  }
 
   const first = wikis[0]
   const remainingCount = wikis.length - 1
