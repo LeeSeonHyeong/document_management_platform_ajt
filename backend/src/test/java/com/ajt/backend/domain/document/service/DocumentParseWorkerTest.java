@@ -307,7 +307,11 @@ class DocumentParseWorkerTest {
                 any()
         )).willReturn(transformationResponse("휴가 규정을 Wiki에 반영했습니다."));
         given(transactionService.applyAddedDocument(eq(15L), eq("ALL"), any()))
-                .willReturn(new WikiTransformationResult(List.of(101L), "휴가 규정을 Wiki에 반영했습니다."));
+                .willReturn(new WikiTransformationResult(
+                        List.of(101L),
+                        List.of(new AiJob.AffectedWiki(101L, "휴가 규정")),
+                        "휴가 규정을 Wiki에 반영했습니다."
+                ));
         given(wikiTransformationService.requestForDocumentChange(
                 anyLong(),
                 eq(16L),
@@ -333,6 +337,8 @@ class DocumentParseWorkerTest {
                         org.assertj.core.groups.Tuple.tuple(15L, true, "휴가 규정을 Wiki에 반영했습니다.", null),
                         org.assertj.core.groups.Tuple.tuple(16L, false, null, "agent_timeout")
                 );
+        assertThat(job.documentResults().getFirst().affectedWikis())
+                .containsExactly(new AiJob.AffectedWiki(101L, "휴가 규정"));
     }
 
     @Test

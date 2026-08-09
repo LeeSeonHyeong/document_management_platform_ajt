@@ -359,7 +359,8 @@ public class DocumentParseWorker {
             // 반영 트랜잭션은 별도로 조회한 엔티티를 완료 처리한다. 이 인스턴스도 작업 결과를
             // 조립할 때 일관된 상태를 보도록만 맞추며, 여기서 다시 저장하지는 않는다.
             document.completeProcessing(result.affectedWikiIds());
-            return AiJob.DocumentParseResult.succeeded(document.id(), document.originalFileName(), result.summary());
+            return AiJob.DocumentParseResult.succeeded(
+                    document.id(), document.originalFileName(), result.summary(), result.affectedWikis());
         } catch (AiClientException exception) {
             document.failProcessing(failureReason(exception));
             documentRepository.save(document);

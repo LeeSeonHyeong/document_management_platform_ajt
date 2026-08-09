@@ -245,6 +245,10 @@ public class AiJob {
         return documentResults == null ? List.of() : List.copyOf(documentResults);
     }
 
+    /** 작업 결과에 영향을 준 Wiki의 제목 스냅샷입니다. */
+    public record AffectedWiki(long wikiId, String title) {
+    }
+
     /**
      * 문서 한 건의 처리 결과입니다. ai_job.document_results JSON으로 저장됩니다.
      *
@@ -263,15 +267,31 @@ public class AiJob {
             boolean success,
             String summary,
             String failureReason,
-            String failureStage
+            String failureStage,
+            List<AffectedWiki> affectedWikis
     ) {
+
+        public DocumentParseResult {
+            affectedWikis = affectedWikis == null ? List.of() : List.copyOf(affectedWikis);
+        }
+
         public static DocumentParseResult succeeded(long documentId, String originalFileName, String summary) {
-            return new DocumentParseResult(documentId, originalFileName, true, summary, null, null);
+            return succeeded(documentId, originalFileName, summary, List.of());
+        }
+
+        public static DocumentParseResult succeeded(
+                long documentId,
+                String originalFileName,
+                String summary,
+                List<AffectedWiki> affectedWikis
+        ) {
+            return new DocumentParseResult(
+                    documentId, originalFileName, true, summary, null, null, affectedWikis);
         }
 
         public static DocumentParseResult failed(
                 long documentId, String originalFileName, String failureReason, String failureStage) {
-            return new DocumentParseResult(documentId, originalFileName, false, null, failureReason, failureStage);
+            return new DocumentParseResult(documentId, originalFileName, false, null, failureReason, failureStage, List.of());
         }
     }
 }
