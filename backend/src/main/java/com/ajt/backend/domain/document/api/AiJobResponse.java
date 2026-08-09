@@ -35,7 +35,14 @@ public record AiJobResponse(
             String currentStage,
             String summary,
             String failureReason,
-            String failureStage
+            String failureStage,
+            List<AffectedWikiResponse> affectedWikis
+    ) {
+    }
+
+    public record AffectedWikiResponse(
+            String wikiId,
+            String title
     ) {
     }
 }

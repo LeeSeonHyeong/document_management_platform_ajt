@@ -149,7 +149,15 @@ public class AiJobQueryService {
                 currentStage(status),
                 recordedResult == null ? null : recordedResult.summary(),
                 failureReasonOf(jobStatus, document, recordedResult),
-                recordedResult == null ? null : recordedResult.failureStage()
+                recordedResult == null ? null : recordedResult.failureStage(),
+                recordedResult == null
+                        ? List.of()
+                        : recordedResult.affectedWikis().stream()
+                                .map(wiki -> new AiJobResponse.AffectedWikiResponse(
+                                        String.valueOf(wiki.wikiId()),
+                                        wiki.title()
+                                ))
+                                .toList()
         );
     }
 

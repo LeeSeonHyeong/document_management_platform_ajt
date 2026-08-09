@@ -90,7 +90,12 @@ class AiJobQueryServiceTest {
         failed.completeParsing("wiki/ALL/sources/16/parsed.md");
         failed.failProcessing("Wiki 변환에 실패했습니다.");
         job.finish(List.of(
-                AiJob.DocumentParseResult.succeeded(15L, "문서-15.pdf", "휴가 규정을 Wiki에 반영했습니다."),
+                AiJob.DocumentParseResult.succeeded(
+                        15L,
+                        "문서-15.pdf",
+                        "휴가 규정을 Wiki에 반영했습니다.",
+                        List.of(new AiJob.AffectedWiki(101L, "휴가 규정"))
+                ),
                 AiJob.DocumentParseResult.failed(16L, "문서-16.pdf", "Wiki 변환에 실패했습니다.", "agent_timeout")
         ));
         given(currentMemberProvider.currentMember()).willReturn(new CurrentMember(10L, CurrentMemberRole.ADMIN));
@@ -105,10 +110,13 @@ class AiJobQueryServiceTest {
         assertThat(response.documentResults().get(0).currentStage()).isEqualTo("wiki_applied");
         assertThat(response.documentResults().get(0).summary()).isEqualTo("휴가 규정을 Wiki에 반영했습니다.");
         assertThat(response.documentResults().get(0).failureReason()).isNull();
+        assertThat(response.documentResults().get(0).affectedWikis())
+                .containsExactly(new AiJobResponse.AffectedWikiResponse("101", "휴가 규정"));
         assertThat(response.documentResults().get(1).status()).isEqualTo("failed");
         assertThat(response.documentResults().get(1).summary()).isNull();
         assertThat(response.documentResults().get(1).failureReason()).isEqualTo("Wiki 변환에 실패했습니다.");
         assertThat(response.documentResults().get(1).failureStage()).isEqualTo("agent_timeout");
+        assertThat(response.documentResults().get(1).affectedWikis()).isEmpty();
         // currentStage 는 문서 상태에서 역산해 실패한 문서를 전부 parsing 으로 만든다.
         // 이 문서는 파싱을 끝내고 Wiki 변환에서 죽었으므로 두 값이 갈린다 — 화면은
         // failureStage 를 보여야 한다.

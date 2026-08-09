@@ -54,7 +54,8 @@ class AiJobControllerTest {
                                 "wiki_pending",
                                 null,
                                 null,
-                                null
+                                null,
+                                List.of()
                         ),
                         new AiJobResponse.DocumentResultResponse(
                                 "16",
@@ -64,7 +65,8 @@ class AiJobControllerTest {
                                 "parsing",
                                 null,
                                 "FastAPI timeout",
-                                "agent_timeout"
+                                "agent_timeout",
+                                List.of()
                         )
                 ),
                 Instant.parse("2026-07-28T15:00:00Z"),
@@ -83,6 +85,7 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.documentResults[0].currentStage").value("wiki_pending"))
                 .andExpect(jsonPath("$.documentResults[0].summary").doesNotExist())
                 .andExpect(jsonPath("$.documentResults[0].failureReason").doesNotExist())
+                .andExpect(jsonPath("$.documentResults[0].affectedWikis", empty()))
                 .andExpect(jsonPath("$.documentResults[1].documentId").value("16"))
                 .andExpect(jsonPath("$.documentResults[1].status").value("failed"))
                 .andExpect(jsonPath("$.documentResults[1].currentStage").value("parsing"))
@@ -90,6 +93,7 @@ class AiJobControllerTest {
                 // currentStage 는 문서 상태에서 역산한 값이라 실패 지점이 아니다.
                 // 어디서 실패했는지는 failureStage 만 안다.
                 .andExpect(jsonPath("$.documentResults[1].failureStage").value("agent_timeout"))
+                .andExpect(jsonPath("$.documentResults[1].affectedWikis", empty()))
                 .andExpect(jsonPath("$.createdAt").value("2026-07-28T15:00:00Z"))
                 .andExpect(jsonPath("$.startedAt").value("2026-07-28T15:00:02Z"))
                 .andExpect(jsonPath("$.finishedAt").doesNotExist())
@@ -111,7 +115,8 @@ class AiJobControllerTest {
                                 "wiki_applied",
                                 "인사규정을 Wiki에 반영했습니다.",
                                 null,
-                                null
+                                null,
+                                List.of(new AiJobResponse.AffectedWikiResponse("101", "휴가 규정"))
                         )),
                         Instant.parse("2026-07-26T15:24:00Z"),
                         Instant.parse("2026-07-26T15:24:01Z"),
@@ -130,6 +135,8 @@ class AiJobControllerTest {
                 .andExpect(jsonPath("$.items[0].status").value("completed"))
                 .andExpect(jsonPath("$.items[0].documentResults[0].summary")
                         .value("인사규정을 Wiki에 반영했습니다."))
+                .andExpect(jsonPath("$.items[0].documentResults[0].affectedWikis[0].wikiId").value("101"))
+                .andExpect(jsonPath("$.items[0].documentResults[0].affectedWikis[0].title").value("휴가 규정"))
                 // 소요 시간은 프론트가 이 둘의 차로 계산한다.
                 .andExpect(jsonPath("$.items[0].startedAt").value("2026-07-26T15:24:01Z"))
                 .andExpect(jsonPath("$.items[0].finishedAt").value("2026-07-26T15:26:15Z"))
