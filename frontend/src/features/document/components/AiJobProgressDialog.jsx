@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { ChevronDown, Sparkles } from 'lucide-react'
+import { Check, ChevronDown, Circle, Sparkles } from 'lucide-react'
 import { Button, Modal } from '@/components/ui'
 import { useAiJobsPolling } from '../hooks/useAiJobPolling'
-import { buildAiJobProgress } from '../aiJobProgress'
+import { buildAiJobProgress, documentStagesFor } from '../aiJobProgress'
 
 // Figma 4-5R — GET /ai-jobs/:jobId 폴링 결과로 실제 진행 단계를 표시한다.
 // 업로드가 공개 범위별로 여러 작업으로 쪼개질 수 있어 jobIds 여러 개를 한 모달에 합쳐 보여준다.
@@ -11,6 +11,7 @@ export default function AiJobProgressDialog({ open, jobIds, jobRefs = [], docume
   // 닫혀 있는 동안에는 폴링하지 않는다.
   const { jobs, documentResults, progress, isFinished } = useAiJobsPolling(open ? jobIds : [])
   const { current, groups } = buildAiJobProgress(jobs, jobRefs)
+  const stages = documentStagesFor(current)
   const total = documentResults.length || documentCount
 
   return (
@@ -52,15 +53,19 @@ export default function AiJobProgressDialog({ open, jobIds, jobRefs = [], docume
             : `문서 ${total}개를 파싱하고 위키 문서를 생성하는 중입니다`}
         </p>
 
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left">
-          <p className="text-[11px] font-semibold tracking-wide text-slate-400">현재 처리 중</p>
+        <div className="mt-5 overflow-hidden rounded-xl border border-slate-200 text-left">
           {current ? (
             <>
-              <p className="mt-1 truncate text-sm font-bold text-slate-800">{current.originalFileName ?? '이름 없는 문서'}</p>
-              <p className="mt-1 text-xs text-slate-500">{current.scopeLabel} · {current.stageLabel}</p>
+              <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+                <p className="text-[11px] font-semibold tracking-wide text-slate-400">현재 처리 중 · {current.scopeLabel}</p>
+                <p className="mt-1 truncate text-sm font-bold text-slate-800">{current.originalFileName ?? '이름 없는 문서'}</p>
+              </div>
+              <div className="space-y-1 p-3">
+                {stages.map((stage) => <DocumentStage key={stage.label} {...stage} />)}
+              </div>
             </>
           ) : (
-            <p className="mt-1 text-sm font-semibold text-slate-600">{isFinished ? '모든 문서 처리가 끝났습니다.' : '다음 문서를 준비하고 있습니다.'}</p>
+            <p className="px-4 py-5 text-sm font-semibold text-slate-600">{isFinished ? '모든 문서 처리가 끝났습니다.' : '다음 문서를 준비하고 있습니다.'}</p>
           )}
         </div>
 
@@ -90,5 +95,25 @@ export default function AiJobProgressDialog({ open, jobIds, jobRefs = [], docume
         )}
       </div>
     </Modal>
+  )
+}
+
+function DocumentStage({ label, status }) {
+  const active = status === 'processing'
+  const completed = status === 'completed'
+  return (
+    <div className={`flex items-center gap-3 rounded-lg px-2 py-2 ${active ? 'bg-blue-50' : ''}`}>
+      {completed ? (
+        <span className="flex size-6 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Check className="size-3.5" strokeWidth={3} /></span>
+      ) : (
+        <span className={`flex size-6 items-center justify-center rounded-full ${active ? 'border-2 border-blue-500 text-blue-500' : 'text-slate-300'}`}>
+          {active ? <span className="size-2 rounded-full bg-blue-500" /> : <Circle className="size-4" />}
+        </span>
+      )}
+      <span className={`text-sm font-semibold ${active || completed ? 'text-slate-700' : 'text-slate-400'}`}>{label}</span>
+      <span className={`ml-auto rounded-md px-2 py-1 text-[10px] font-semibold ${completed ? 'bg-emerald-50 text-emerald-600' : active ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-400'}`}>
+        {completed ? '완료' : active ? '진행 중' : '대기'}
+      </span>
+    </div>
   )
 }

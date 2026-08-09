@@ -9,7 +9,6 @@ import AiJobDocumentSummaryModal from '../components/AiJobDocumentSummaryModal'
 import AffectedWikiDisplay from '../components/AffectedWikiDisplay'
 import { DOC_STATUS_LABEL, DOC_STATUS_TONE } from '../status'
 import {
-  actionTypeCountsLabel,
   affectedWikisFor,
   documentAction,
 } from '../aiJobResultPresentation'
@@ -174,6 +173,7 @@ function SummaryModal({ selected, docById, onClose }) {
 
 function JobCard({ job, docById, onOpenSummary }) {
   const duration = formatDuration(job.startedAt, job.finishedAt)
+  const jobAction = documentAction(job.documentResults[0]?.changeType)
   // 중단은 「아직 시작하지 않은 문서」만 취소한다. 이미 시작한 문서는 끝까지 처리되고 Wiki에도
   // 반영된다(AiJob.cancel). 그동안 이 카드는 「취소됨」인데 행은 「처리 중」이라 무슨 일인지
   // 알 수 없었다 — 지금 무엇이 도는 중인지 말로 적는다.
@@ -190,12 +190,9 @@ function JobCard({ job, docById, onOpenSummary }) {
           </span>
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-slate-800">{formatDateTime(job.createdAt)} 작업</h2>
-            <span className="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-600">
-              문서 {job.documentResults.length}개
-            </span>
-            <span className="text-xs font-semibold text-slate-500">
-              {actionTypeCountsLabel(job.documentResults)}
-            </span>
+            <Badge tone={jobAction.tone}>
+              {jobAction.label} {job.documentResults.length}건
+            </Badge>
           </div>
         </div>
         {duration && <span className="text-xs text-slate-400">소요 {duration}</span>}
@@ -225,7 +222,6 @@ function JobCard({ job, docById, onOpenSummary }) {
           const deleted = !document
           const fileName = result.originalFileName ?? document?.originalFileName
           const affectedWikis = affectedWikisFor(result, document)
-          const action = documentAction(result.changeType)
           return (
             <li
               key={result.documentId}
@@ -239,7 +235,6 @@ function JobCard({ job, docById, onOpenSummary }) {
                   <p className="truncate font-semibold text-slate-800">
                     {fileName ?? `문서 ${result.documentId}`}
                   </p>
-                  <Badge tone={action.tone} className="mt-1">{action.label}</Badge>
                   <p className="text-xs text-slate-400">
                     {deleted ? '삭제된 문서' : formatFileSize(document?.fileSize)}
                   </p>

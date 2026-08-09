@@ -6,6 +6,15 @@ import { fetchAiJob, cancelAiJob } from '../api'
 
 const POLL_INTERVAL_MS = 2000
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+const TERMINAL_DOCUMENT_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+function isSettled(job) {
+  return Boolean(
+    job &&
+      TERMINAL_STATUSES.has(job.status) &&
+      (job.documentResults ?? []).every((result) => TERMINAL_DOCUMENT_STATUSES.has(result.status)),
+  )
+}
 
 // 전역 쿼리 기본값은 탭 복귀 갱신이 꺼져 있다. 진행 모달은 백그라운드에서도
 // 종료 상태를 받아야 하므로 단건·다중 작업이 같은 실시간 정책을 쓴다.
@@ -14,8 +23,7 @@ export function createAiJobPollingQuery(jobId) {
     queryKey: qk.aiJobs.detail(jobId),
     queryFn: () => fetchAiJob(jobId),
     refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status && TERMINAL_STATUSES.has(status) ? false : POLL_INTERVAL_MS
+      return isSettled(query.state.data) ? false : POLL_INTERVAL_MS
     },
     // 단건·다중 진행 화면 모두 탭을 떠나 있어도 최신 종료 상태를 받는다.
     ...LIVE_QUERY_OPTIONS,
@@ -51,7 +59,7 @@ export function useAiJobPolling(jobId) {
   })
 
   const job = query.data ?? null
-  const isFinished = Boolean(job && TERMINAL_STATUSES.has(job.status))
+  const isFinished = isSettled(job)
   useInvalidateOnFinish(isFinished ? String(jobId) : null)
   const documentResults = [...(job?.documentResults ?? [])].sort((a, b) => a.order - b.order)
 
@@ -89,7 +97,7 @@ export function useAiJobsPolling(jobIds) {
 
   const jobs = results.map((result) => result.data).filter(Boolean)
   const allLoaded = ids.length > 0 && jobs.length === ids.length
-  const isFinished = allLoaded && jobs.every((job) => TERMINAL_STATUSES.has(job.status))
+  const isFinished = allLoaded && jobs.every(isSettled)
   useInvalidateOnFinish(isFinished ? ids.join(',') : null)
 
   const documentResults = jobs
