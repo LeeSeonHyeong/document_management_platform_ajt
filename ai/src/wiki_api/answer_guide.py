@@ -11,10 +11,31 @@
 
 from __future__ import annotations
 
+import re
+
 from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+_INDEX_LINK_RE = re.compile(r"\[([^\]]+)\]\(pages/[^)]+\.md\)")
+
+
+def strip_page_links(index_markdown: str) -> str:
+    """목차의 `[제목](pages/키.md)` 을 제목만 남긴다.
+
+    **챗봇은 파일을 열 수 없다.** 본문을 읽는 유일한 방법은 `read_wiki(wikiId)` 인데,
+    목차에 링크가 보이면 모델이 그 파일 이름을 wikiId 자리에 넣는다 — 지침에 "파일
+    이름은 wikiId 가 아니다" 라고 적어 두어도 그렇다. 2026-08-09 실측에서 「재택근무
+    며칠까지?」가 `read_wiki(scopeKey='ALL', wikiId='2f8c41d7ab90')` 로 나가 400 을
+    받았고, 읽은 기록이 비어 정확한 답에 출처가 하나도 붙지 않았다.
+
+    링크를 지우면 남는 길은 `search_wiki` 뿐이고, 그 결과에는 진짜 wikiId 가 들어 있다.
+    제목과 요약은 그대로 남으므로 "무엇이 있는지" 를 보는 목차의 쓰임은 줄지 않는다.
+    """
+    return _INDEX_LINK_RE.sub(r"\1", index_markdown)
+
 
 GUIDE = """너는 사내 위키와 일정에 답하는 사내 안내원이다.
 
@@ -26,8 +47,8 @@ GUIDE = """너는 사내 위키와 일정에 답하는 사내 안내원이다.
    본문에 있는 내용이 목차에 안 보일 수 있다** — 검색해 보지 않고 「없다」고 판단하면
    실제로 있는 답을 놓친다.
 3. **위키 질문이면** `search_wiki` 로 읽을 페이지의 `wikiId` 를 찾고 그 값으로 `read_wiki`
-   를 부른다. **목차의 링크(`pages/….md`)는 파일 이름이고 `wikiId` 가 아니다** — 그 값을
-   `read_wiki` 에 넣으면 읽히지 않는다. 목차는 무엇이 있는지 보고 검색어를 고르는 데 쓴다.
+   를 부른다. **목차에는 `wikiId` 가 없다** — 무엇이 있는지 보고 검색어를 고르는 데 쓴다.
+   본문을 읽으려면 반드시 `search_wiki` 를 먼저 부른다.
 4. **일정 질문이면** `list_schedules` 로 기간을 정해 목록을 보고, 필요한 것을
    `read_schedule` 로 읽는다.
 5. **읽은 것으로 답한다.**
@@ -83,7 +104,7 @@ def chat_guide(history: list[dict], indexes: list[dict], *,
     if indexes:
         for entry in indexes:
             parts.append(f"\n### 범위 `{entry.get('scopeKey')}`\n\n"
-                         f"{entry.get('indexMarkdown') or '(빈 목차)'}\n")
+                         f"{strip_page_links(entry.get('indexMarkdown') or '') or '(빈 목차)'}\n")
     else:
         parts.append("\n(목차가 없다. 위키 질문에는 답할 수 없다.)\n")
 
