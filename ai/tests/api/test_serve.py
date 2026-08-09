@@ -333,6 +333,21 @@ def test_configure_langsmith_does_nothing_when_tracing_is_off(monkeypatch):
     assert "LANGSMITH_TRACING" not in __import__("os").environ
 
 
+def test_configure_langsmith_does_nothing_when_configuration_is_incomplete(monkeypatch):
+    """활성화 플래그만으로는 의도치 않은 외부 관측을 시작하지 않는다."""
+    from wiki_api.serve import configure_langsmith
+    from wiki_api.settings import ServerSettings
+
+    monkeypatch.delenv("LANGSMITH_TRACING", raising=False)
+    monkeypatch.delenv("LANGSMITH_API_KEY", raising=False)
+    monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
+    settings = ServerSettings(internal_api_key="k", backend_base_url="http://backend:8080",
+                              langsmith_tracing=True, langsmith_api_key="",
+                              langsmith_project="ajt-wiki-verify")
+    configure_langsmith(settings)
+    assert "LANGSMITH_TRACING" not in __import__("os").environ
+
+
 def test_configure_langsmith_sets_environ_when_tracing_is_on(monkeypatch):
     """켜져 있으면 SDK 가 직접 읽는 `os.environ` 에 세 값을 되심는다."""
     from wiki_api.serve import configure_langsmith

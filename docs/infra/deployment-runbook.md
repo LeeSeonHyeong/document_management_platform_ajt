@@ -118,11 +118,15 @@ MYSQL_ROOT_PASSWORD=<openssl rand -hex 24>
 MYSQL_PASSWORD=<SPRING_DATASOURCE_PASSWORD와 동일>
 AI_INTERNAL_API_KEY=<openssl rand -base64 48>
 ANTHROPIC_API_KEY=<SSAFY GMS에서 발급한 API 키>
+# SSAFY 운영 배포에서는 직접 Anthropic API가 아닌 GMS 게이트웨이를 사용한다.
+ANTHROPIC_BASE_URL=https://gms.ssafy.io/gmsapi/api.anthropic.com
 ```
 
-`AI_BASE_URL`, `AI_RUNTIME`, `SCHEDULE_EXTRACTOR_PROVIDER`, `ANTHROPIC_BASE_URL`은
-`docker-compose.yml`이 각각 내부 서비스 주소, `deepagents`, `anthropic`, SSAFY GMS 주소로
-고정한다. 운영 환경파일에서 Ollama 주소나 프로바이더를 지정하지 않는다.
+`AI_BASE_URL`, `AI_RUNTIME`, `SCHEDULE_EXTRACTOR_PROVIDER`와
+`SCHEDULE_EXTRACTOR_MODEL`은 `docker-compose.yml`이 각각 내부 서비스 주소,
+`deepagents`, `anthropic`, Haiku 모델로 고정한다. `ANTHROPIC_BASE_URL`은 compose가
+운영 환경파일 값 그대로 AI 컨테이너에 전달하므로 SSAFY 운영 배포에서는 위 GMS 주소를 반드시
+지정한다. 운영 환경파일에서 Ollama 주소나 프로바이더를 지정하지 않는다.
 
 검사할 때 값 자체를 출력하지 않는다.
 
@@ -130,7 +134,7 @@ ANTHROPIC_API_KEY=<SSAFY GMS에서 발급한 API 키>
 sudo stat -c '%U %G %a %n' /var/lib/jenkins/ajt-secrets/prod.env
 sudo -u jenkins test -r /var/lib/jenkins/ajt-secrets/prod.env
 
-for key in AI_INTERNAL_API_KEY ANTHROPIC_API_KEY; do
+for key in AI_INTERNAL_API_KEY ANTHROPIC_API_KEY ANTHROPIC_BASE_URL; do
   sudo -u jenkins grep -qE "^${key}=.+" /var/lib/jenkins/ajt-secrets/prod.env \
     && echo "${key}=SET" \
     || echo "${key}=MISSING"

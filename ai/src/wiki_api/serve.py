@@ -197,7 +197,11 @@ def configure_langsmith(settings: ServerSettings) -> None:
     `.env` 값이 조용히 버려지지 않는다(2026-08-04, `ServerSettings` 에 필드가 없어서
     트레이싱이 항상 꺼져 있었다).
     """
-    if not settings.langsmith_tracing:
+    # 관측은 명시적으로 활성화하고, 자격과 프로젝트까지 모두 있어야 한다.
+    # 불완전한 설정으로 SDK가 외부 기본값을 추측하거나 기동 뒤에 실패하지 않게 한다.
+    if not (settings.langsmith_tracing
+            and settings.langsmith_api_key
+            and settings.langsmith_project):
         return
     os.environ.setdefault("LANGSMITH_TRACING", "true")
     if settings.langsmith_api_key:
