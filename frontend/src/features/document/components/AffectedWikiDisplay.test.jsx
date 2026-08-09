@@ -35,7 +35,7 @@ describe('작업 결과의 영향 Wiki 표시', () => {
     expect(html).toContain('href="/wiki/23"')
   })
 
-  it('영향 Wiki가 없으면 빈값을 표시한다', () => {
-    expect(render([])).toContain('>-<')
+  it('영향 Wiki가 없으면 열 가운데에 빈값을 표시한다', () => {
+    expect(render([])).toContain('class="flex justify-center text-slate-400">-</span>')
   })
 })
