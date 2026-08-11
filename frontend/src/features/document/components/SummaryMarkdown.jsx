@@ -83,7 +83,7 @@ export default function SummaryMarkdown({ markdown }) {
   }, [navigate])
 
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+    <ReactMarkdown remarkPlugins={[[remarkGfm, { singleTilde: false }]]} components={components}>
       {markdown ?? ''}
     </ReactMarkdown>
   )

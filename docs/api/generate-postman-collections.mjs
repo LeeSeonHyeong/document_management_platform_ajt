@@ -3,7 +3,8 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSavedExamples,
-  contractVersion,
+  internalContractVersion,
+  publicContractVersion,
 } from "./postman-contract-examples.mjs";
 
 const outputDir = dirname(fileURLToPath(import.meta.url));
@@ -1097,6 +1098,8 @@ const publicFolders = [
         response: [
           "`items`: 단건 조회와 같은 구조. `jobId`, `status`, `documentResults`, `createdAt`, `startedAt`, `finishedAt`, `failureReason`",
           "`documentResults[].summary`: 그 회차에 이 문서로 무엇이 바뀌었는지에 대한 AI 작업 요약",
+          "`documentResults[].changeType`: `document_added`, `document_replaced`, `document_removed`. 필드가 없던 과거 작업은 `document_added`",
+          "`documentResults[].affectedWikis`: 그 작업 회차에서 실제로 생성·변경·삭제한 Wiki 목록. 각 항목은 `wikiId`, 당시 제목 `title`, 하드 삭제 여부 `deleted`를 담고 영향 Wiki가 없으면 빈 배열",
           "`documentResults[].failureStage`: 실제로 어디서 실패했는지. 실패하지 않았거나 단계를 알 수 없으면 `null`",
           "`documentResults[].originalFileName`: 그때 그 파일 이름의 스냅샷. 문서를 하드 삭제해도 이력에 남는다(DR-021·DR-024와 같은 방식). 이 필드가 생기기 전 작업은 `null`",
           "`page`, `size`, `totalCount`, `totalPages`",
@@ -1118,7 +1121,8 @@ const publicFolders = [
         pathParams: ["`jobId`: 조회할 AI 작업 ID"],
         response: [
           "`status`: `waiting`, `processing`, `completed`, `failed`, `cancelled`",
-          "`documentResults`: 문서별 순서, 파일명 스냅샷, 상태, 현재 단계, 요약과 실패 사유·실패 단계",
+          "`documentResults`: 문서별 순서, 파일명 스냅샷, 작업 유형 `changeType`, 상태, 현재 단계, 요약과 실패 사유·실패 단계. 과거 결과에 `changeType`이 없으면 `document_added`",
+          "`documentResults[].affectedWikis`: 그 작업 회차에서 실제로 생성·변경·삭제한 Wiki 목록. `deleted=true`면 하드 삭제된 페이지의 ID·제목 스냅샷이며, 아니면 상세 화면으로 연결할 수 있다",
           "`documentResults[].currentStage`는 문서 상태에서 역산한 진행 위치라 실패 지점이 아니다. 어디서 실패했는지는 `failureStage`가 알려준다",
           "`createdAt`, `startedAt`, `finishedAt`, `failureReason`",
         ],
@@ -2894,14 +2898,14 @@ const publicCollection = {
   info: {
     name: "AJT Backend Public API",
     description:
-      `Frontend → Spring Boot 공개 API입니다. 개발 계약 v${contractVersion}이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.`,
+      `Frontend → Spring Boot 공개 API입니다. 개발 계약 v${publicContractVersion}이며 P0 Request의 Saved Examples에서 성공·오류 응답을 확인합니다.`,
     schema: collectionSchema,
   },
   auth: cookieAuth,
   event: publicCollectionEvent,
   variable: [
     { key: "backendBaseUrl", value: "http://localhost:8080", type: "string" },
-    { key: "contractVersion", value: contractVersion, type: "string" },
+    { key: "contractVersion", value: publicContractVersion, type: "string" },
     { key: "userId", value: "1", type: "string" },
     { key: "departmentId", value: "1", type: "string" },
     { key: "categoryId", value: "1", type: "string" },
@@ -2926,13 +2930,13 @@ const internalCollection = {
   info: {
     name: "AJT FastAPI Internal API",
     description:
-      `Spring Boot → FastAPI 내부 API입니다. 개발 계약 v${contractVersion}이며 Frontend는 직접 호출하지 않습니다.`,
+      `Spring Boot → FastAPI 내부 API입니다. 개발 계약 v${internalContractVersion}이며 Frontend는 직접 호출하지 않습니다.`,
     schema: collectionSchema,
   },
   auth: internalApiKeyAuth,
   variable: [
     { key: "aiBaseUrl", value: "http://localhost:8000", type: "string" },
-    { key: "contractVersion", value: contractVersion, type: "string" },
+    { key: "contractVersion", value: internalContractVersion, type: "string" },
     { key: "internalApiKey", value: "local-dev-key", type: "string" },
     { key: "jobId", value: "1", type: "string" },
     { key: "documentId", value: "1", type: "string" },

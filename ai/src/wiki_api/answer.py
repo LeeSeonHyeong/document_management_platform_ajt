@@ -1,9 +1,15 @@
 """챗봇 — 에이전트 하나가 조회하고 답한다 (`POST /internal/v1/answers`).
 
-**출처는 모델의 신고와 읽은 기록의 교집합이다.** 모델이 「이걸 썼다」고 적고, 우리가 도구
-기록으로 검사한다 — 안 읽은 것을 신고해도 통과하지 못하고(지어내기 불가), 읽었지만 답에
-쓰지 않은 것도 섞이지 않는다. 이전 구현은 모델이 낸 ID 를 **요청에 실려 온** 집합으로만
-걸러서 「안 읽은 자료를 출처로 신고하는 것」을 막지 못했다.
+**출처는 모델의 신고와 도구가 꺼내 온 기록의 교집합이다.** 모델이 「이걸 썼다」고 적고,
+우리가 도구 기록으로 검사한다 — 어떤 도구도 꺼낸 적 없는 것을 신고하면 통과하지 못하고
+(지어내기 불가), 꺼냈지만 답에 쓰지 않은 것도 섞이지 않는다. 이전 구현은 모델이 낸 ID 를
+**요청에 실려 온** 집합으로만 걸러서 「안 읽은 자료를 출처로 신고하는 것」을 막지 못했다.
+
+「꺼내 온 기록」은 `read_wiki` 로 본문을 읽은 것과 `search_wiki` 가 스니펫으로 돌려준 것을
+함께 센다 (`ReadLedger`). 스니펫도 그 위키의 실제 본문 조각이라서다 — 2026-08-09 실측에서
+모델이 검색 결과만으로 정확히 답하고 `read_wiki` 를 건너뛰어, 맞는 답에 출처가 하나도
+붙지 않았다. **다만 신고가 비었을 때의 폴백은 읽은 것만 쓴다** — 검색 결과까지 쓰면 스친
+위키가 전부 근거로 딸려 나온다.
 
 **질문 유형은 모델이 질문 맥락으로 판단한다** (FR-QNA-002). 읽은 자료의 종류로 정하면 일정
 질문을 위키 공지로 답했을 때 유형이 뒤집힌다.
@@ -100,14 +106,25 @@ def build_response(run: RunResult, ledger: ReadLedger) -> AnswerResponse:
         raise InternalError(EMPTY_ANSWER_CODE, "모델이 빈 답변을 냈습니다.", status=500)
 
     # 신고가 없으면 읽은 것 전부로 떨어진다 — 출처를 0개로 만드는 것보다 과다 포함이 낫다.
-    if report:
-        used_wikis = [str(i) for i in report.get("usedWikiIds") or []]
-        used_schedules = [str(i) for i in report.get("usedScheduleIds") or []]
-    else:
+    #
+    # **신고가 통째로 없을 때만이 아니라 ID 가 비었을 때도 떨어진다.** 조건이 `if report:`
+    # 였을 때는 모델이 `answer` 와 `questionType` 만 채우고 `usedWikiIds` 를 빠뜨리면
+    # 폴백이 걸리지 않아 출처가 조용히 0개가 됐다 — 실측(2026-08-09)에서 「브랜드 색상
+    # 코드가 뭐야?」·「연차가 며칠이야?」가 정확한 답을 내고도 근거 없이 저장됐다.
+    #
+    # 읽은 기록이 비어 있으면 여기서도 비는 것이 맞다. 검색만 하고 못 찾은 경우
+    # (FR-QNA-007)까지 근거를 지어내면 안 된다.
+    used_wikis = [str(i) for i in report.get("usedWikiIds") or []]
+    used_schedules = [str(i) for i in report.get("usedScheduleIds") or []]
+    if not used_wikis and not used_schedules:
         used_wikis = [wiki_id for wiki_id, _ in ledger.wikis]
         used_schedules = [schedule_id for schedule_id, _ in ledger.schedules]
+        if used_wikis or used_schedules:
+            logger.info("출처 신고가 비어 읽은 기록으로 채운다 — 위키 %s · 일정 %s",
+                        used_wikis, used_schedules)
 
-    # 읽은 기록이 화이트리스트다. 안 읽은 것을 신고해도 여기서 빠진다.
+    # 도구가 꺼내 온 기록이 화이트리스트다(읽은 것 ∪ 검색으로 본 것).
+    # 어떤 도구도 꺼낸 적 없는 것을 신고하면 여기서 빠진다.
     sources = [AnswerSource(type="wiki", wikiId=wiki_id,
                             title=ledger.title_of_wiki(wiki_id))
                for wiki_id in used_wikis if ledger.title_of_wiki(wiki_id)]
@@ -115,6 +132,19 @@ def build_response(run: RunResult, ledger: ReadLedger) -> AnswerResponse:
                              title=ledger.title_of_schedule(schedule_id))
                 for schedule_id in used_schedules
                 if ledger.title_of_schedule(schedule_id)]
+
+    # 출처가 비는 일이 실제로 있었는데 무엇이 비었는지 남는 것이 없어 원인을 못 좁혔다
+    # (신고를 안 한 것인지, 본문을 안 읽은 것인지). 판정에 쓴 세 가지를 한 줄로 남긴다 —
+    # 질문·답변 본문은 개인정보가 실리므로 넣지 않는다.
+    if not sources:
+        logger.warning(
+            "출처 0건 — 부른 도구 %s · 읽은 위키 %s · 검색으로 본 위키 %s · 읽은 일정 %s "
+            "· 신고 위키 %s · 신고 일정 %s",
+            dict(run.tool_calls or {}),
+            [wiki_id for wiki_id, _ in ledger.wikis],
+            [wiki_id for wiki_id, _ in ledger.seen_wikis],
+            [schedule_id for schedule_id, _ in ledger.schedules],
+            report.get("usedWikiIds"), report.get("usedScheduleIds"))
 
     kind = report.get("questionType")
     if kind not in ("wiki", "schedule", "mixed"):

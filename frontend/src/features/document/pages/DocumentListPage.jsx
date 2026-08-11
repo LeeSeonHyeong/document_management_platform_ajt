@@ -46,6 +46,7 @@ export default function DocumentListPage() {
   const [startOpen, setStartOpen] = useState(false)
   const [progressOpen, setProgressOpen] = useState(false)
   const [progressJobIds, setProgressJobIds] = useState([])
+  const [progressJobRefs, setProgressJobRefs] = useState([])
   const [progressDocumentCount, setProgressDocumentCount] = useState(0)
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   // 문서 파일 대기 목록은 서버에서 읽는다 (S15P11B106-276). 파일을 고르는 즉시 업로드하므로
@@ -279,7 +280,12 @@ export default function DocumentListPage() {
               const result = await createAiJobMutation.mutateAsync(
                 serverDocuments.map((document) => Number(document.documentId)),
               )
-              startedJobIds = (result.jobs ?? []).map((job) => job.jobId)
+              const jobs = result.jobs ?? []
+              startedJobIds = jobs.map((job) => job.jobId)
+              setProgressJobRefs(jobs.map((job) => ({
+                jobId: job.jobId,
+                scopeLabel: scopeLabelForJob(job, serverDocuments),
+              })))
             } catch (error) {
               toast.error(uploadErrorMessage(error))
               return
@@ -351,6 +357,7 @@ export default function DocumentListPage() {
       <AiJobProgressDialog
         open={progressOpen}
         jobIds={progressJobIds}
+        jobRefs={progressJobRefs}
         documentCount={progressDocumentCount}
         onBackground={() => setProgressOpen(false)}
         onDone={() => {
@@ -360,6 +367,14 @@ export default function DocumentListPage() {
       />
     </section>
   )
+}
+
+function scopeLabelForJob(job, documents) {
+  const jobDocumentIds = new Set((job.documentIds ?? []).map(String))
+  const document = documents.find((item) => jobDocumentIds.has(String(item.documentId)))
+  if (!document || document.visibilityType === 'all') return '전체 공개'
+  const names = [...new Set((document.departments ?? []).map((department) => department.name).filter(Boolean))]
+  return names.length ? names.join(' + ') : job.scopeKey
 }
 
 function UploadCard({
@@ -792,4 +807,3 @@ function getDepartmentIds(document) {
     .map((department) => department.departmentId ?? department.id)
     .filter(Boolean)
 }
-

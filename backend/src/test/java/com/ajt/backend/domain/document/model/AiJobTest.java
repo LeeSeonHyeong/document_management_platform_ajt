@@ -71,6 +71,15 @@ class AiJobTest {
     }
 
     @Test
+    @DisplayName("기존 성공 결과 팩토리는 영향 Wiki를 빈 목록으로 남긴다")
+    void keepsAffectedWikisEmptyForLegacySucceededFactory() {
+        AiJob.DocumentParseResult result =
+                AiJob.DocumentParseResult.succeeded(3L, "doc-3.md", "휴가 규정을 Wiki에 반영했습니다.");
+
+        assertThat(result.affectedWikis()).isEmpty();
+    }
+
+    @Test
     @DisplayName("문서가 전부 실패하면 실패로 끝나고 첫 실패 사유를 남긴다")
     void failsWhenEveryDocumentFails() {
         AiJob job = processingJob();

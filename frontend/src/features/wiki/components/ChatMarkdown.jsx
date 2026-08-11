@@ -6,12 +6,16 @@ import { cn } from '@/shared/lib/cn'
 // 본문용 `WikiMarkdown`은 각주 툴팁·헤딩 번호·내부 위키 링크·머메이드까지 처리하는데,
 // 채팅 메시지(수정 요청·에이전트 응답)엔 그런 요소가 나오지 않는다 — 딱 GFM 기본만 쓴다.
 // 관리자 말풍선은 흰 글자, 에이전트 말풍선은 진한 글자라 링크·코드 색을 톤별로 나눈다.
+// `singleTilde: false` — 물결표 하나짜리(`~`)를 취소선으로 보지 않는다. 한국어 본문은
+// `07시~22시`·`2~3회`처럼 범위 표기에 물결표를 쓰는데, 기본값(`true`)이면 한 문단에 두 번
+// 나오는 순간 그 사이가 통째로 취소선이 된다 — 2026-08-09 위키 수정 답변에서 「07시~22시에서
+// **07시~23시**로」가 글자에 줄이 그어진 채 나왔다. `~~취소선~~`은 그대로 동작한다.
 export default function ChatMarkdown({ markdown, tone = 'agent' }) {
   const mine = tone === 'admin'
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
       components={{
         p: ({ children }) => <p className="my-1.5 leading-6 first:mt-0 last:mb-0">{children}</p>,
         ul: ({ children }) => <ul className="my-1.5 list-disc space-y-0.5 pl-4">{children}</ul>,

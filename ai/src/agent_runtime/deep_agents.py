@@ -124,6 +124,13 @@ def _admin_error_message(exc: Exception, last_stage: str) -> str:
         # 관리자가 고칠 수 없는 문제 — 재시도 유도가 아니라 문의 안내가 맞다.
         return ("AI 서비스 사용량 한도 문제로 처리가 중단되었습니다. 개발팀에 알려 "
                 f"주세요. (API 과금 한도, 마지막 도달 단계: {last_stage})")
+    if type(exc).__name__ == "RepeatLoopError":
+        # 반복 가드 에스컬레이션 (S15P11B106-325, `wiki_mcp.repeat_guard`). 퇴행 루프는
+        # 같은 문서에서 재현되기도, 재시도 한 번에 풀리기도 한다(잡 61 직전의 잡 43 유형) —
+        # 그래서 처방은 재시도 우선, 반복되면 문의다.
+        return ("AI가 같은 작업을 반복하기만 해서 처리를 중단했습니다. 다시 시도해 "
+                "주시고, 같은 문서에서 반복되면 개발팀에 알려 주세요. "
+                f"(반복 루프 중단, 마지막 도달 단계: {last_stage})")
     if type(exc).__name__ == "GraphRecursionError":
         # 턴 상한의 백스톱. 미들웨어(`turn_limit_middleware`)가 먼저 걸리는 것이
         # 정상이지만, 배수 회귀로 백스톱이 먼저 걸려도 관리자 안내는 같아야 한다.

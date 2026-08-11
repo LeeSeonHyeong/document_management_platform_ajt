@@ -2,10 +2,11 @@
 .claude/
 .worktrees/
 
-# 환경변수(비밀) — 서버에만 두고 절대 커밋하지 않는다. 단 예시(.env.example)는 커밋
+# 환경변수(비밀) — 서버에만 두고 절대 커밋하지 않는다. 단 값이 빈 예시(*.example)는 커밋
 .env
 .env.*
 !.env.example
+!.env.demo.example
 
 # OS·에디터가 만드는 파일. 사람마다 달라 저장소에 두면 서로 덮어쓴다.
 .DS_Store

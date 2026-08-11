@@ -202,15 +202,20 @@ public class DocumentParseWorker {
         String scopeKey = job.scopeKey();
         // 지우기 전에 이름을 잡아 둔다 — 결과에 남길 스냅샷이다 (S15P11B106-202).
         String fileName = document == null ? null : document.originalFileName();
+        // 프리패스는 REQUIRES_NEW로 먼저 커밋된다. 후속 AI 단계가 실패해도
+        // 이미 영구 삭제된 Wiki 이력을 실패 결과에 남겨야 한다.
+        List<AiJob.AffectedWiki> prunedAffectedWikis = List.of();
         try {
             // 결정적 프리패스: 근거가 이 문서뿐인 Wiki 는 판단이 필요 없으므로 AI 전에 지운다.
             // 링크받는 페이지의 삭제를 에이전트에게 맡기면 지시 규칙이 충돌해 같은 read 를
             // 반복하다 호출 상한에서 죽는 데드락이 있었다 (2026-08-07 LangSmith 실측).
             var prune = transactionService.pruneFullyDependentWikis(documentId, scopeKey, fileName);
+            prunedAffectedWikis = deletedAffectedWikis(prune);
             if (prune.remainingReferencingWikis() == 0) {
                 // 걷어낼 것이 남지 않았다 — AI 를 부르지 않고 끝낸다 (LLM 비용 0).
                 finishDeletion(documentId);
-                return AiJob.DocumentParseResult.succeeded(documentId, fileName, pruneSummary(prune));
+                return AiJob.DocumentParseResult.succeeded(
+                        documentId, fileName, pruneSummary(prune), prunedAffectedWikis);
             }
             var response = wikiTransformationService.requestForDocumentChange(
                     job.id(),
@@ -234,7 +239,7 @@ public class DocumentParseWorker {
                         documentId, scopeKey, result.referencingWikiCount());
                 markDeletionFailed(documentId, EMPTY_REMOVAL_REASON);
                 return AiJob.DocumentParseResult.failed(
-                        documentId, fileName, EMPTY_REMOVAL_REASON, null);
+                        documentId, fileName, EMPTY_REMOVAL_REASON, null, prunedAffectedWikis);
             }
 
             // 여기까지 왔으면 Wiki 에서 이 문서의 근거가 걷혔다. 이제 지운다.
@@ -242,18 +247,22 @@ public class DocumentParseWorker {
             String summary = prune.deletedWikiTitles().isEmpty()
                     ? result.summary()
                     : pruneSummary(prune) + "\n\n" + result.summary();
-            return AiJob.DocumentParseResult.succeeded(documentId, fileName, summary);
+            List<AiJob.AffectedWiki> affectedWikis = new ArrayList<>(prunedAffectedWikis);
+            affectedWikis.addAll(result.affectedWikis());
+            return AiJob.DocumentParseResult.succeeded(documentId, fileName, summary, affectedWikis);
         } catch (AiClientException exception) {
             markDeletionFailed(documentId, failureReason(exception));
             return AiJob.DocumentParseResult.failed(
                     documentId,
                     fileName,
                     failureReason(exception),
-                    exception.failureStage()
+                    exception.failureStage(),
+                    prunedAffectedWikis
             );
         } catch (RuntimeException exception) {
             markDeletionFailed(documentId, exception.getMessage());
-            return AiJob.DocumentParseResult.failed(documentId, fileName, exception.getMessage(), null);
+            return AiJob.DocumentParseResult.failed(
+                    documentId, fileName, exception.getMessage(), null, prunedAffectedWikis);
         }
     }
 
@@ -292,6 +301,15 @@ public class DocumentParseWorker {
                     .append("건의 참조를 정리했습니다.");
         }
         return summary.toString();
+    }
+
+    /** 하드 삭제 전에 잡아 둔 Wiki를 클릭 불가능한 작업 이력 스냅샷으로 바꿉니다. */
+    private static List<AiJob.AffectedWiki> deletedAffectedWikis(
+            WikiTransformationApplier.PruneResult prune
+    ) {
+        return prune.deletedWikis().stream()
+                .map(wiki -> new AiJob.AffectedWiki(wiki.wikiId(), wiki.title(), true))
+                .toList();
     }
 
     private void finishDeletion(long documentId) {
@@ -359,7 +377,8 @@ public class DocumentParseWorker {
             // 반영 트랜잭션은 별도로 조회한 엔티티를 완료 처리한다. 이 인스턴스도 작업 결과를
             // 조립할 때 일관된 상태를 보도록만 맞추며, 여기서 다시 저장하지는 않는다.
             document.completeProcessing(result.affectedWikiIds());
-            return AiJob.DocumentParseResult.succeeded(document.id(), document.originalFileName(), result.summary());
+            return AiJob.DocumentParseResult.succeeded(
+                    document.id(), document.originalFileName(), result.summary(), result.affectedWikis());
         } catch (AiClientException exception) {
             document.failProcessing(failureReason(exception));
             documentRepository.save(document);

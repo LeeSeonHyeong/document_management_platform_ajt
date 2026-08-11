@@ -1,10 +1,17 @@
 package com.ajt.backend.domain.document.service;
 
 import com.ajt.backend.domain.document.model.Document;
+import com.ajt.backend.domain.document.model.AiJob;
 import com.ajt.backend.domain.document.repository.DocumentRepository;
+import com.ajt.backend.domain.wiki.model.Wiki;
+import com.ajt.backend.domain.wiki.repository.WikiRepository;
 import com.ajt.backend.domain.wiki.service.WikiTransformationApplier;
 import com.ajt.backend.global.ai.client.WikiTransformationResponse;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,13 +21,24 @@ public class DocumentWikiTransformationTransactionService {
 
     private final DocumentRepository documentRepository;
     private final WikiTransformationApplier applier;
+    private final WikiRepository wikiRepository;
 
+    @Autowired
     public DocumentWikiTransformationTransactionService(
             DocumentRepository documentRepository,
-            WikiTransformationApplier applier
+            WikiTransformationApplier applier,
+            WikiRepository wikiRepository
     ) {
         this.documentRepository = documentRepository;
         this.applier = applier;
+        this.wikiRepository = wikiRepository;
+    }
+
+    DocumentWikiTransformationTransactionService(
+            DocumentRepository documentRepository,
+            WikiTransformationApplier applier
+    ) {
+        this(documentRepository, applier, null);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -33,7 +51,7 @@ public class DocumentWikiTransformationTransactionService {
                 .orElseThrow(() -> new IllegalArgumentException("문서를 찾을 수 없습니다: " + documentId));
         List<Long> affectedWikiIds = applier.apply(scopeKey, documentId, response);
         document.completeProcessing(affectedWikiIds);
-        return new WikiTransformationResult(affectedWikiIds, response.summary());
+        return new WikiTransformationResult(affectedWikiIds, affectedWikisOf(affectedWikiIds), response.summary());
     }
 
     /**
@@ -51,7 +69,10 @@ public class DocumentWikiTransformationTransactionService {
         WikiTransformationApplier.RemovedDocumentResult removed =
                 applier.applyRemovedDocument(scopeKey, documentId, response);
         return new WikiTransformationResult(
-                removed.affectedWikiIds(), response.summary(), removed.referencingWikiCount());
+                removed.affectedWikiIds(),
+                affectedWikisOf(removed.affectedWikiIds()),
+                response.summary(),
+                removed.referencingWikiCount());
     }
 
     /**
@@ -70,22 +91,45 @@ public class DocumentWikiTransformationTransactionService {
         return applier.pruneFullyDependentWikis(scopeKey, documentId, originalFileName);
     }
 
+    private List<AiJob.AffectedWiki> affectedWikisOf(List<Long> affectedWikiIds) {
+        if (wikiRepository == null || affectedWikiIds.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, Wiki> wikisById = wikiRepository.findAllById(affectedWikiIds).stream()
+                .collect(Collectors.toMap(Wiki::id, Function.identity()));
+        return affectedWikiIds.stream()
+                .map(wikisById::get)
+                .filter(java.util.Objects::nonNull)
+                .map(wiki -> new AiJob.AffectedWiki(wiki.id(), wiki.title()))
+                .toList();
+    }
+
     /**
      * @param referencingWikiCount 걷어내기 <b>전에</b> 이 문서를 근거로 삼던 Wiki 수입니다.
      *                             걷어내기가 아닌 반영에서는 0입니다(S15P11B106-225).
      */
     public record WikiTransformationResult(
             List<Long> affectedWikiIds,
+            List<AiJob.AffectedWiki> affectedWikis,
             String summary,
             int referencingWikiCount
     ) {
 
         public WikiTransformationResult {
             affectedWikiIds = List.copyOf(affectedWikiIds);
+            affectedWikis = List.copyOf(affectedWikis);
         }
 
         public WikiTransformationResult(List<Long> affectedWikiIds, String summary) {
-            this(affectedWikiIds, summary, 0);
+            this(affectedWikiIds, List.of(), summary, 0);
+        }
+
+        public WikiTransformationResult(List<Long> affectedWikiIds, List<AiJob.AffectedWiki> affectedWikis, String summary) {
+            this(affectedWikiIds, affectedWikis, summary, 0);
+        }
+
+        public WikiTransformationResult(List<Long> affectedWikiIds, String summary, int referencingWikiCount) {
+            this(affectedWikiIds, List.of(), summary, referencingWikiCount);
         }
     }
 }

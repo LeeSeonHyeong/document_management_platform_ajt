@@ -181,13 +181,14 @@ public class WikiTransformationApplier {
         try {
             Set<Long> deletedWikiIds = new LinkedHashSet<>();
             Set<String> deletedPageFiles = new LinkedHashSet<>();
-            List<String> deletedWikiTitles = new ArrayList<>();
+            List<PrunedWiki> deletedWikis = new ArrayList<>();
             for (Wiki wiki : fullyDependent) {
+                // delete() 후에는 행을 다시 조회할 수 없으니 이력에 필요한 ID·제목을 먼저 잡아 둔다.
+                deletedWikis.add(new PrunedWiki(wiki.id(), wiki.title()));
                 deleteWikiMarkdown(fileMutation, wiki.wikiPath());
                 wikiSearchIndexer.deleteByWikiId(wiki.id());
                 wikiRepository.delete(wiki);
                 deletedWikiIds.add(wiki.id());
-                deletedWikiTitles.add(wiki.title());
                 deletedPageFiles.add(wiki.pageKey() + ".md");
             }
             removeDanglingWikiRefs(scopeKey, deletedWikiIds);
@@ -195,7 +196,7 @@ public class WikiTransformationApplier {
             storeIndex(fileMutation, scopeKey, WikiIndex.render(liveEntries(scopeKey)));
             incrementScopeVersion(scopeKey);
             completeFileMutationAfterTransaction(fileMutation);
-            return new PruneResult(deletedWikiTitles, flattenedLinkPages,
+            return new PruneResult(deletedWikis, flattenedLinkPages,
                     staleRefWikis.size(), remainingReferencingWikis);
         } catch (RuntimeException exception) {
             rollbackFileMutation(fileMutation, exception);
@@ -265,22 +266,31 @@ public class WikiTransformationApplier {
     /**
      * 결정적 프리패스 결과입니다.
      *
-     * @param deletedWikiTitles         지운 Wiki 제목 — 관리자 요약에 싣는다
+     * @param deletedWikis              지운 Wiki ID·제목 스냅샷 — 삭제 이력과 관리자 요약에 싣는다
      * @param flattenedLinkPages        삭제된 페이지로 향하는 링크를 평문화한 Wiki 수
      * @param detachedStaleRefWikis     본문 인용이 없어 참조만 정리한 Wiki 수(S15P11B106-312)
      * @param remainingReferencingWikis 프리패스 뒤에도 본문으로 이 문서를 인용하는 Wiki 수.
      *                                  0이면 걷어낼 것이 없으므로 AI 를 부를 필요가 없다
      */
     public record PruneResult(
-            List<String> deletedWikiTitles,
+            List<PrunedWiki> deletedWikis,
             int flattenedLinkPages,
             int detachedStaleRefWikis,
             int remainingReferencingWikis
     ) {
 
         public PruneResult {
-            deletedWikiTitles = List.copyOf(deletedWikiTitles);
+            deletedWikis = List.copyOf(deletedWikis);
         }
+
+        /** 기존 관리자 요약 문구가 제목만 필요로 할 때 쓰는 파생값입니다. */
+        public List<String> deletedWikiTitles() {
+            return deletedWikis.stream().map(PrunedWiki::title).toList();
+        }
+    }
+
+    /** Wiki 행이 사라지기 전에 잡아 두는 삭제 이력 스냅샷입니다. */
+    public record PrunedWiki(long wikiId, String title) {
     }
 
     /**

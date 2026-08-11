@@ -44,7 +44,7 @@ flowchart LR
     end
 
     F -->|"/api/ 프록시"| B
-    B -->|"내부 API<br/>X-Internal-Api-Key"| A
+    B -->|"내부 API<br/>X-Internal-API-Key"| A
     B -->|JDBC| M
     A -->|"위키 조회 API"| B
 

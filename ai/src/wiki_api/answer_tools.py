@@ -31,14 +31,33 @@ class QueryFailed(RuntimeError):
 
 
 class ReadLedger:
-    """한 요청 동안 무엇을 읽었는지. 순서를 지키고 중복을 지운다."""
+    """한 요청 동안 도구가 무엇을 꺼내 왔는지. 순서를 지키고 중복을 지운다.
+
+    **읽은 것과 검색으로 본 것을 나눠 담는다.** 출처로 인정하는 범위는 둘의 합집합이고,
+    모델이 신고를 빠뜨렸을 때의 폴백은 **읽은 것만** 쓴다. 폴백까지 검색 결과를 쓰면
+    「부업」을 물었을 때 검색에 스친 「보상」·「주식 옵션」이 통째로 근거로 딸려 나온다.
+
+    검색 결과를 출처로 인정하는 이유는 `search_wiki` 가 돌려주는 스니펫이 **그 위키의
+    실제 본문 조각**이기 때문이다 — 모델이 지어낸 것이 아니다. 어떤 도구도 꺼낸 적 없는
+    ID 를 신고하면 여전히 걸러진다 (2026-08-09, 본문을 읽지 않고 스니펫으로 답해
+    정확한 답에 출처가 하나도 붙지 않던 것을 여기서 푼다).
+    """
 
     def __init__(self) -> None:
         self._wikis: dict[str, str] = {}
+        self._seen_wikis: dict[str, str] = {}
         self._schedules: dict[str, str] = {}
 
     def note_wiki(self, wiki_id: str, title: str) -> None:
         self._wikis.setdefault(str(wiki_id), title)
+
+    def note_wiki_seen(self, wiki_id: str, title: str) -> None:
+        """검색이 꺼내 온 위키. 본문을 읽은 것은 아니다."""
+        self._seen_wikis.setdefault(str(wiki_id), title)
+
+    @property
+    def seen_wikis(self) -> list[tuple[str, str]]:
+        return list(self._seen_wikis.items())
 
     def note_schedule(self, schedule_id: str, title: str) -> None:
         self._schedules.setdefault(str(schedule_id), title)
@@ -55,7 +74,8 @@ class ReadLedger:
         return not self._wikis and not self._schedules
 
     def title_of_wiki(self, wiki_id: str) -> str | None:
-        return self._wikis.get(str(wiki_id))
+        """출처로 인정하는 범위 — 읽은 것 ∪ 검색으로 본 것."""
+        return self._wikis.get(str(wiki_id)) or self._seen_wikis.get(str(wiki_id))
 
     def title_of_schedule(self, schedule_id: str) -> str | None:
         return self._schedules.get(str(schedule_id))
@@ -121,8 +141,13 @@ def build_wiki_tools(client: ChatQueryClient, ledger: ReadLedger) -> list[AgentT
         except QueryFailed as failed:
             logger.warning("search_wiki 실패 — scope=%s: %s", scopeKey, failed)
             return f"볼 수 없는 범위이거나 조회에 실패했습니다: {failed}"
-        return _rows_text(body.get("items") or [], ("wikiId", "title", "snippet"),
-                          MAX_WIKI_SEARCH_ROWS)
+        items = body.get("items") or []
+        # 스니펫으로 답하고 read_wiki 를 건너뛰는 실행이 있다. 검색이 꺼내 온 것도
+        # 근거로 인정하려면 여기서 장부에 남겨야 한다.
+        for row in items:
+            if row.get("wikiId") is not None:
+                ledger.note_wiki_seen(row["wikiId"], str(row.get("title") or row["wikiId"]))
+        return _rows_text(items, ("wikiId", "title", "snippet"), MAX_WIKI_SEARCH_ROWS)
 
     def read_wiki(scopeKey: str, wikiId: str) -> str:
         try:
